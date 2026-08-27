@@ -1,0 +1,10 @@
+.venv/
+.cache/
+.data/
+.runs/
+.reports/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+.env
