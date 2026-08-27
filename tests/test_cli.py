@@ -37,3 +37,10 @@ def test_case_role_defaults_to_development_and_accepts_measurement() -> None:
 
     assert default.case_role == "development"
     assert measurement.case_role == "measurement"
+
+
+def test_openrca2_smoke_defaults_to_the_frozen_measurement_case() -> None:
+    args = _parser().parse_args(["smoke-openrca2"])
+
+    assert args.case == "otel-demo3-shipping-delay-m6fhpx"
+    assert str(args.cache_dir) == ".data/openrca2"

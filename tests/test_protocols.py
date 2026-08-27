@@ -1,12 +1,21 @@
 import json
 
 import snappy
+from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
+    ExportMetricsServiceRequest,
+)
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
 )
 
 from semantic_rca_bench.protocols.loki import LogRecord, _to_nanoseconds, write_logs
-from semantic_rca_bench.protocols.otlp import OtlpTraceWriter, TraceSpan
+from semantic_rca_bench.protocols.otlp import (
+    HistogramMetricPoint,
+    NumberMetricPoint,
+    OtlpMetricWriter,
+    OtlpTraceWriter,
+    TraceSpan,
+)
 from semantic_rca_bench.protocols.prometheus import (
     encode_write_request,
     prometheus_metric_name,
@@ -114,6 +123,61 @@ def test_otlp_replay_preserves_native_graph_and_resource_fields() -> None:
     assert replayed.events[0].name == "exception"
 
 
+def test_otlp_metric_replay_preserves_types_attributes_and_histogram_aggregates() -> None:
+    client = _Client()
+    writer = OtlpMetricWriter(client, "incident", scope_version="dataset-v1")
+    common = {
+        "service_name": "shipping",
+        "resource_attributes": {"k8s.namespace.name": "otel-demo"},
+        "attributes": {"destination": "quote"},
+    }
+
+    assert writer.write_gauges([NumberMetricPoint("queue.depth", 100, 2.0, **common)]) == 1
+    assert writer.write_sums([NumberMetricPoint("requests", 200, 3.0, **common)]) == 1
+    assert (
+        writer.write_histograms(
+            [
+                HistogramMetricPoint(
+                    "request.duration",
+                    300,
+                    count=4,
+                    sum=12.0,
+                    min=1.0,
+                    max=6.0,
+                    **common,
+                )
+            ]
+        )
+        == 1
+    )
+
+    requests = [ExportMetricsServiceRequest.FromString(call["body"]) for call in client.calls]
+    gauge = requests[0].resource_metrics[0].scope_metrics[0].metrics[0]
+    total = requests[1].resource_metrics[0].scope_metrics[0].metrics[0]
+    histogram = requests[2].resource_metrics[0].scope_metrics[0].metrics[0]
+    resources = {
+        item.key: item.value.string_value
+        for item in requests[0].resource_metrics[0].resource.attributes
+    }
+
+    assert resources == {
+        "service.name": "shipping",
+        "k8s.namespace.name": "otel-demo",
+    }
+    assert gauge.gauge.data_points[0].as_double == 2.0
+    assert total.sum.data_points[0].as_double == 3.0
+    assert total.sum.aggregation_temporality == 0
+    assert total.sum.is_monotonic is False
+    point = histogram.histogram.data_points[0]
+    assert point.count == 4
+    assert point.sum == 12.0
+    assert point.min == 1.0
+    assert point.max == 6.0
+    assert list(point.explicit_bounds) == []
+    assert list(point.bucket_counts) == [4]
+    assert client.calls[0]["headers"]["x-greptime-otlp-metric-promote-all-resource-attrs"] == "true"
+
+
 def test_otlp_replay_does_not_invent_service_name() -> None:
     client = _Client()
     span = TraceSpan(
@@ -197,9 +261,7 @@ def test_loki_replay_preserves_record_labels() -> None:
         "container_name": "payment",
         "pod_uid": "pod-uid",
     }
-    assert payload["streams"][0]["values"] == [
-        ["1700000000000000000", "failed request"]
-    ]
+    assert payload["streams"][0]["values"] == [["1700000000000000000", "failed request"]]
 
 
 def _count_length_delimited_field(payload: bytes, field_number: int) -> int:

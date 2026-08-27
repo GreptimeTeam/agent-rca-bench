@@ -15,12 +15,13 @@ The semantic tools simulate the context assembly planned for the GreptimeDB MCP
 server. The benchmark does not treat the raw system tables as a complete agent
 interface. Reports identify this simulated MCP surface in the protocol metadata.
 
-Telemetry is replayed through production ingestion protocols. The RCAEval,
-RCA100, and OpenRCA adapters send metrics through Prometheus remote write v1,
-traces through OpenTelemetry Protocol (OTLP) HTTP using `greptime_trace_v1`,
-and logs through Loki push. RCA100 also sends Kubernetes events and alerts
-through separate Loki tables. The adapters do not create telemetry tables,
-attach semantic options, or ingest a dataset's reference topology.
+Telemetry is replayed through production ingestion protocols. RCAEval, RCA100,
+and OpenRCA 1.0 send metrics through Prometheus remote write v1. OpenRCA 2.0
+preserves its source Gauge, Sum, and Histogram groups through OTLP metrics. All
+trace-bearing adapters use OTLP HTTP with `greptime_trace_v1`; logs use Loki
+push. RCA100 also sends Kubernetes events and alerts through separate Loki
+tables. The adapters do not create telemetry tables, attach semantic options,
+or ingest a dataset's reference topology.
 
 ## Development
 
@@ -146,6 +147,21 @@ UTC+8 window start. Its report records all protocol representation decisions,
 including unknown trace duration units and the absence of graph-capable span
 semantics. Source timestamps, labels, topology, and ground truth are never
 repaired.
+
+Import and validate the frozen OpenRCA 2.0 measurement case without calling a
+model:
+
+```bash
+uv run semantic-rca smoke-openrca2 \
+  --cache-dir .data/openrca2 \
+  --endpoint http://127.0.0.1:4000 \
+  --database semantic_openrca2_shipping_delay
+```
+
+The smoke gate records source metric collisions and unavailable aggregation
+metadata, checks stored row counts after database primary-key semantics, and
+verifies that native spans derive the injected `shipping -> quote` call. The
+reference causal graph is validation-only and is never ingested.
 
 Run independent case instances concurrently when throughput matters:
 

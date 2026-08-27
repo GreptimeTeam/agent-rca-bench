@@ -91,6 +91,38 @@ def assert_semantic_graph_isolated(client: GreptimeClient, database: str) -> Non
     )
 
 
+def assert_semantic_graph_window_empty(
+    client: GreptimeClient,
+    case_input: CaseInput,
+) -> dict[str, int | str]:
+    start = _timestamp(case_input.time_start)
+    end = _timestamp(case_input.time_end)
+    counts = {}
+    for name, table in (
+        ("entity_rows", "semantic_entities"),
+        ("relationship_rows", "semantic_relationships"),
+    ):
+        result = client.query(
+            f"""
+            SELECT COUNT(*)
+            FROM greptime_private.{table}
+            WHERE observed_at >= '{start}' AND observed_at < '{end}'
+            """
+        )
+        counts[name] = int(result.rows[0][0])
+    if counts["entity_rows"] or counts["relationship_rows"]:
+        raise GraphIsolationError(
+            "Semantic Graph already contains observations in the case window: "
+            f"entities={counts['entity_rows']}, relationships={counts['relationship_rows']}"
+        )
+    return {
+        "mode": "empty-window-before-ingest",
+        "window_start": start,
+        "window_end": end,
+        **counts,
+    }
+
+
 def summarize_semantic_surfaces(surfaces: dict[str, object]) -> dict[str, object]:
     table_semantics = _result(surfaces.get("table_semantics"))
     entities = _result(surfaces.get("entities"))

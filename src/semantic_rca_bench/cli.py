@@ -30,6 +30,19 @@ from semantic_rca_bench.datasets.openrca import (
 )
 from semantic_rca_bench.datasets.openrca import ingest_case as ingest_openrca_case
 from semantic_rca_bench.datasets.openrca import validate_ingest as validate_openrca_ingest
+from semantic_rca_bench.datasets.openrca2 import (
+    DATASET_REVISION as OPENRCA2_DATASET_REVISION,
+)
+from semantic_rca_bench.datasets.openrca2 import (
+    DEFAULT_CASE as DEFAULT_OPENRCA2_CASE,
+)
+from semantic_rca_bench.datasets.openrca2 import (
+    SOURCE_REVISION as OPENRCA2_SOURCE_REVISION,
+)
+from semantic_rca_bench.datasets.openrca2 import OpenRCA2Repository
+from semantic_rca_bench.datasets.openrca2 import ingest_case as ingest_openrca2_case
+from semantic_rca_bench.datasets.openrca2 import source_audit as source_audit_openrca2
+from semantic_rca_bench.datasets.openrca2 import validate_ingest as validate_openrca2_ingest
 from semantic_rca_bench.datasets.rca100 import (
     DATASET_REVISION as RCA100_DATASET_REVISION,
 )
@@ -58,6 +71,7 @@ from semantic_rca_bench.greptimedb.server import inspect_checkout, write_json
 from semantic_rca_bench.greptimedb.visibility import QueryGateway
 from semantic_rca_bench.inspect import (
     assert_semantic_graph_isolated,
+    assert_semantic_graph_window_empty,
     inspect_semantic_surfaces,
     summarize_semantic_surfaces,
 )
@@ -119,6 +133,16 @@ def _parser() -> argparse.ArgumentParser:
     openrca_smoke.add_argument("--endpoint", default="http://127.0.0.1:4000")
     openrca_smoke.add_argument("--database")
     openrca_smoke.add_argument("--case", default=DEFAULT_BANK_CASE)
+
+    openrca2_smoke = subparsers.add_parser("smoke-openrca2")
+    openrca2_smoke.add_argument(
+        "--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO
+    )
+    openrca2_smoke.add_argument("--cache-dir", type=Path, default=Path(".data/openrca2"))
+    openrca2_smoke.add_argument("--reports-dir", type=Path, default=Path(".reports"))
+    openrca2_smoke.add_argument("--endpoint", default="http://127.0.0.1:4000")
+    openrca2_smoke.add_argument("--database")
+    openrca2_smoke.add_argument("--case", default=DEFAULT_OPENRCA2_CASE)
 
     run = subparsers.add_parser("run")
     run.add_argument("--report", type=Path, required=True)
@@ -293,6 +317,58 @@ def smoke_openrca(args: argparse.Namespace) -> int:
             "alert_source": "benchmark-task-window",
         },
         "source_audit": audit,
+        "ingest": counts.model_dump(mode="json"),
+        "semantic_surfaces": surfaces,
+        "validation": validation,
+        "ground_truth": case.ground_truth.model_dump(mode="json"),
+    }
+    write_json(report_path, report)
+    print(report_path)
+    return 0
+
+
+def smoke_openrca2(args: argparse.Namespace) -> int:
+    checkout = inspect_checkout(
+        args.greptimedb_repo,
+        expected_branch="feat/semantic-graph-declaration-visibility",
+    )
+    case = OpenRCA2Repository(args.cache_dir).fetch_case(args.case)
+    run_id = time.strftime("%Y%m%d-%H%M%S")
+    case_slug = re.sub(r"[^a-z0-9]+", "-", args.case.lower()).strip("-")
+    database = args.database or f"semantic_openrca2_{run_id.replace('-', '_')}"
+    case = case.model_copy(update={"input": case.input.model_copy(update={"database": database})})
+    report_path = args.reports_dir / f"smoke-openrca2-{case_slug}-{run_id}.json"
+    audit = source_audit_openrca2(case)
+    with GreptimeClient(args.endpoint, database=database, timeout=120) as client:
+        server_status = client.status()
+        client.create_database(database)
+        graph_isolation = assert_semantic_graph_window_empty(client, case.input)
+        counts = ingest_openrca2_case(client, case)
+        surfaces = inspect_semantic_surfaces(client, case.input)
+        validation = validate_openrca2_ingest(client, case, counts)
+    report = {
+        "greptimedb": checkout,
+        "server": {
+            "endpoint": args.endpoint,
+            "database": database,
+            "status": server_status,
+        },
+        "dataset_revision": OPENRCA2_DATASET_REVISION,
+        "adapter_source_revision": OPENRCA2_SOURCE_REVISION,
+        "case": {
+            "adapter": "openrca2-ops-lite",
+            "source_case": case.source_case,
+            "dataset": case.dataset,
+            "system": case.system,
+            "time_start": case.input.time_start,
+            "time_end": case.input.time_end,
+            "alert_time": case.input.alert_time,
+            "alert_text": case.input.alert_text,
+            "fault_taxonomy": case.input.fault_taxonomy,
+            "alert_source": "dataset-conclusion",
+        },
+        "source_audit": audit,
+        "graph_isolation": graph_isolation,
         "ingest": counts.model_dump(mode="json"),
         "semantic_surfaces": surfaces,
         "validation": validation,
@@ -525,6 +601,8 @@ def main() -> None:
             code = smoke_rca100(args)
         elif args.command == "smoke-openrca":
             code = smoke_openrca(args)
+        elif args.command == "smoke-openrca2":
+            code = smoke_openrca2(args)
         elif args.command == "run":
             code = run(args)
         elif args.command == "batch":

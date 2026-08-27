@@ -12,7 +12,8 @@ but it must record every lossy or synthetic protocol field.
 | RCAEval | Established control for code-level failures | Included | Case-dependent; treated as graph-negative unless source identity supports edges |
 | RCA100 v1.1 | Native OpenTelemetry and reference topology | Included | Positive: witnessed service calls are available |
 | OpenRCA 1.0 Bank | Wide enterprise metric schema and legacy multimodal telemetry | Included | Not applicable: no standard entity identity or span roles |
-| OpenRCA 2.0 Lite | Native OTel, causal paths, and diverse injected faults | Pending access | Expected positive; must be verified from the artifact |
+| OpenRCA 2.0 ops-lite | Native OTel and verified causal paths | Included as a frozen measurement case | Positive: standard client/server spans witness service calls |
+| Amazon PetShop | Component-level causal RCA over service metrics | Rejected | Metric-only; no incident-local mechanism label or continuous baseline |
 | AnoMod TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
 | Eadro / Nezha | Earlier multimodal RCA corpora | Rejected | Modalities do not provide a reliable shared incident timeline |
 
@@ -99,11 +100,56 @@ Correcting the clock, relabeling faults, or filling missing evidence would turn
 the benchmark into an evaluation of an edited derivative. The corpus is
 therefore rejected rather than repaired.
 
-## OpenRCA 2.0 Lite access gate
+## OpenRCA 2.0 ops-lite
 
-OpenRCA 2.0 Lite is the best candidate for a fourth corpus because its published
-design includes pre-fault and post-fault OTel-derived telemetry, causal paths,
-and filtering of silent injections. The paper is available at
-<https://arxiv.org/abs/2606.27154>. The pinned Hugging Face artifacts currently
-return HTTP 401 without repository authorization. No adapter or benchmark claim
-will be based on inaccessible metadata alone.
+- Paper: <https://arxiv.org/abs/2606.27154>.
+- Public artifact: <https://huggingface.co/datasets/anon-ops/ops-lite>, pinned at
+  `9ac09981c08ab02a0b923eab7830d778934851a8`.
+- The case-selection rule was frozen from the manifest before telemetry
+  inspection: choose a non-hybrid OpenTelemetry Demo case, exclude frontend and
+  load-generator roots, maximize propagation depth, and prefer a fault family
+  not already represented. This selects
+  `otel-demo3-shipping-delay-m6fhpx`.
+- Ground truth is `shipping` with `NetworkDelay`; the injection contract targets
+  `quote`. The case has a contiguous five-minute normal window and five-minute
+  abnormal window, 4,484 standard OTel spans, and a validation-only 15-node,
+  18-edge causal graph.
+- The selected case has no log records. It is a metrics-and-traces case, not a
+  claimed tri-modal case.
+- The trace artifact contains native service names, trace/span IDs, parent IDs,
+  span kinds, status codes, HTTP attributes, and nanosecond timestamps and
+  durations. The adapter does not ingest the reference causal graph.
+- Metrics retain their source Gauge, Sum, and Histogram group. The artifact does
+  not publish Sum temporality or monotonicity, Histogram bucket boundaries, or
+  whether each `attr.*` column was originally a resource or data-point
+  attribute. The adapter records these losses, uses OTLP's unspecified
+  temporality and the required `is_monotonic=false` placeholder, represents a
+  Histogram with one exhaustive `+Inf` bucket, and keeps `attr.*` as data-point
+  attributes. This means Sum subtype metadata is not suitable for scoring.
+- The processed metrics omit dimensions needed to distinguish many points.
+  There are 98,017 source points, 52,587 unique identities under the published
+  columns, and 5,291 identities with conflicting values. The adapter adds no
+  synthetic label; GreptimeDB primary-key behavior remains part of the measured
+  ingestion result.
+
+This case is retained because the selected network fault is supported by native
+trace structure and a directly testable `shipping -> quote` call edge. Its
+metric collision counts are a hard quality caveat, not hidden preprocessing.
+
+## Amazon PetShop rejection
+
+Amazon Science's PetShop dataset is published with the CLeaR 2024 paper at
+<https://proceedings.mlr.press/v236/hardt24a.html>. The source was audited at
+revision `2e96f937c4c044b8b4aad03217592cd52e66db5d`.
+
+PetShop is authoritative for component-level causal RCA, but it does not fit
+this benchmark's incident contract:
+
+- each fault file has only five metric samples at five-minute intervals;
+- the normal baseline is stored in a separate run months away from the fault;
+- ground truth identifies a root node but leaves the root metric null; and
+- a fault mechanism would have to be inferred from reproduction shell commands.
+
+Using it would change the task to component ranking over sparse snapshots and
+would require a hand-authored mechanism label. It is rejected rather than
+adapted.

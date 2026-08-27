@@ -42,6 +42,9 @@ Use this development corpus portfolio:
 3. OpenRCA 1.0 Bank as an established enterprise-telemetry corpus for measuring
    Table Semantics over a wide legacy metric schema. Its traces do not contain
    enough standard identity or span-role information to evaluate relationships.
+4. OpenRCA 2.0 ops-lite as the frozen measurement corpus. The selected OTel Demo
+   network-delay case has paired normal/abnormal windows and native relational
+   trace evidence. Its processed metric dimension loss is recorded, not repaired.
 
 Select additional datasets by authority, root-cause quality, telemetry fidelity,
 system and failure diversity, and non-overlap with this portfolio. Freeze the
@@ -129,11 +132,12 @@ aligns catalog recall and ranking fields, records requested and rejected tool
 calls, records execution position and case role, and reports baseline
 availability.
 
-Next, evaluate authoritative dataset candidates and add only complementary
-corpora or cases that pass no-model fidelity gates. Freeze the measurement set
-and case-selection rules before inspecting agent behavior. Do not run paid RCA
-while adding datasets. After the set is frozen, run one controlled batch and
-use its failures for the next implementation review.
+The OpenRCA 2.0 selection rule is frozen and its adapter is under no-model
+validation. Amazon PetShop was rejected after source inspection because its
+sparse metric snapshots and missing mechanism label do not satisfy the incident
+contract. Do not run paid RCA while adding datasets. After OpenRCA 2.0 passes its
+protocol and semantic-surface gates, decide whether one additional non-overlap
+corpus is necessary, freeze the set, and run one controlled batch.
 
 ## Out of scope for the current stage
 

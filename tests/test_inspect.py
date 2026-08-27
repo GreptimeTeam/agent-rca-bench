@@ -4,6 +4,7 @@ from semantic_rca_bench.contracts import CaseInput, QueryResult
 from semantic_rca_bench.inspect import (
     GraphIsolationError,
     assert_semantic_graph_isolated,
+    assert_semantic_graph_window_empty,
     inspect_semantic_surfaces,
     summarize_semantic_surfaces,
 )
@@ -103,3 +104,21 @@ def test_graph_isolation_rejects_sources_from_another_database() -> None:
 
     with pytest.raises(GraphIsolationError, match="case_b.greptime_traces"):
         assert_semantic_graph_isolated(client, "case_a")  # type: ignore[arg-type]
+
+
+def test_graph_window_isolation_checks_both_surfaces_before_ingest() -> None:
+    client = StubClient(
+        [
+            QueryResult(query_id="q1", columns=["count"], rows=[[0]], elapsed_seconds=0),
+            QueryResult(query_id="q2", columns=["count"], rows=[[0]], elapsed_seconds=0),
+        ]
+    )
+    case = CaseInput(case_token="case", time_start=0, time_end=60, alert_time=30)
+
+    isolation = assert_semantic_graph_window_empty(client, case)  # type: ignore[arg-type]
+
+    assert isolation["mode"] == "empty-window-before-ingest"
+    assert isolation["entity_rows"] == 0
+    assert isolation["relationship_rows"] == 0
+    assert "semantic_entities" in client.queries[0]
+    assert "semantic_relationships" in client.queries[1]

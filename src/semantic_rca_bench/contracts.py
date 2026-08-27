@@ -90,9 +90,28 @@ class OpenRCACase(BaseModel):
     traces_path: Path
 
 
+class OpenRCA2Case(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source_case: str
+    dataset: str
+    system: str
+    root: Path
+    input: CaseInput
+    ground_truth: GroundTruth
+    gauge_paths: tuple[Path, ...]
+    sum_paths: tuple[Path, ...]
+    histogram_paths: tuple[Path, ...]
+    logs_paths: tuple[Path, ...]
+    traces_paths: tuple[Path, ...]
+    injection_path: Path
+    causal_graph_path: Path
+
+
 class IngestCounts(BaseModel):
     metric_source_rows: int = 0
     metrics_samples: int = 0
+    metric_protocol_rows: int = 0
     metric_unique_samples: int = 0
     metric_duplicate_samples: int = 0
     metric_conflicting_timestamps: int = 0
@@ -100,6 +119,7 @@ class IngestCounts(BaseModel):
     trace_spans: int = 0
     event_records: int = 0
     alert_records: int = 0
+    rejected_metric_points: int = 0
     rejected_trace_spans: int = 0
     remapped_trace_ids: int = 0
     remapped_span_ids: int = 0
