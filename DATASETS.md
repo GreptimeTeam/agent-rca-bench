@@ -19,6 +19,27 @@ but it must record every lossy or synthetic protocol field.
 | AnoMod TrainTicket | TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
 | Eadro / Nezha | Mixed microservice benchmarks | Earlier multimodal RCA corpora | Not audited | No rejection claim until source artifacts are audited |
 
+## Public reference eligibility
+
+Dataset availability is not the same as permission to redistribute the evidence
+needed to audit a benchmark result.
+
+| Corpus | Confirmed terms | 1.0 public-reference role |
+| --- | --- | --- |
+| RCAEval | Dataset repository declares MIT | Eligible for a downloader-backed Table or Graph-negative role; individual cases still require the normal fidelity gates |
+| RCA100 v1.1 | No dataset license found; answer key asks users to contact the publisher before redistribution | Internal only until written terms or permission cover the required telemetry and labels |
+| OpenRCA 1.0 Bank / Market / Telecom | Paper appendix declares telemetry CC BY-NC 4.0 | Optional noncommercial, downloader-backed evaluation; not the unrestricted reference corpus, and raw telemetry must not be copied into release artifacts |
+| OpenRCA 2.0 ops-lite | Dataset card says Apache-2.0, paper says CC-BY-SA 4.0, and the artifact is not the promised archival release | Internal protocol-formal evidence until provenance and terms are reconciled |
+
+The current portfolio therefore has no Graph-positive measurement source with
+confirmed terms for public source access and publication of the required audit
+evidence. This is a concrete 1.0 release blocker. It must be resolved by
+authoritative terms for an existing source or by adding a different
+authoritative public corpus that already contains stable identity, client/server
+roles, parent-child links, independently verifiable edges, and request/error
+counts. The benchmark must not fill that gap with inferred or name-matched
+topology.
+
 ## Fresh micro-benchmark measurement audit
 
 Discovery v2 uses the OpenRCA source revision and pinned public mirror recorded

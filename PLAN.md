@@ -167,6 +167,14 @@ These names are not interchangeable. The RCA fields cover the complete run to a
 jointly valid diagnosis; the micro-benchmark fields stop at the cited canonical
 evidence result.
 
+Protocol v22 defines an execution-valid RCA citation as one non-empty claim that
+uniquely references a successful, non-truncated `execute_sql` or
+`query_semantic_graph` `QueryResult` with the same output query ID. Catalog and
+schema discovery do not count as incident evidence. This referential check does
+not establish that the result supports the diagnosis. Before the end-to-end
+transfer cohort is frozen, each case must therefore add a deterministic,
+source-faithful evidence-support predicate. Do not substitute an LLM judge.
+
 Reported model tokens remain exploratory until a runner-specific accounting
 contract is frozen. API usage sums provider response usage and stores uncached
 input in `run.usage`; cache creation and cache reads remain in the raw response
@@ -177,44 +185,29 @@ results, and structured output are present in the provider context, but the
 runners do not expose a comparable component-level breakdown. Token deltas may
 therefore be compared only within the same model, runner, protocol, and case.
 
-## Public-release and statistical-power gates
+## Benchmark 1.0 release gate and research-claim gate
 
-The current Discovery v2 and Graph v3 measurements are mechanism evidence, not
-powered estimates of a broad semantic-layer effect. Discovery contributes five
-eligible case medians and Graph contributes two, both below any defensible
-cross-system sample-size claim. No current artifact freezes a minimum practical
-effect, tie rate, valid-completion rate, or required independent case count.
-Therefore the open-benchmark completion standard is not yet satisfied, and no
-new paid RCA batch is authorized by the existing measurements.
+The current Discovery v2 and Graph v3 results are mechanism evidence, not a
+powered estimate of a general semantic-layer effect and not yet a public 1.0
+cohort. Benchmark product readiness and confirmatory research readiness are
+separate milestones.
 
-Before an end-to-end measurement batch, add a tracked power-analysis artifact
-that freezes, for each Table-minus-Raw and Graph-minus-Table primary endpoint:
+Benchmark 1.0 requires a frozen specification and canonical API runner, a small
+legally reproducible cohort covering Table-positive, Graph-positive, and
+Graph-negative roles, one fresh end-to-end transfer demonstration, and public
+artifacts from which a third party can reproduce scoring and primary metrics.
+It does not require multiple models, many system families, or statistical power
+for a population claim. Results must be labeled as evidence over the fixed
+cohort rather than a general effect.
 
-- the minimum practically meaningful row and call reduction;
-- the exact-sign-test direction probability under the target effect;
-- family-wise alpha and multiplicity procedure;
-- expected tie and validity-gate exclusion rates;
-- required eligible independent cases and enrollment allowance;
-- required coverage across independent system families.
+The current blocker is the lack of a Graph-positive source with unambiguous
+public terms. Resolve that source and freeze the transfer scorer before defining
+the public artifact schema. Raw `.reports/` trajectories are not the release
+contract because they contain provider payloads and local metadata.
 
-The calculation must treat the case as the independent unit and must not count
-repetitions toward sample size. For scale only, an exact two-sided sign test with
-80% power to detect a `0.75` favorable-direction probability needs 30 non-tied
-cases at unadjusted `alpha=0.05`, or 44 under the conservative
-`alpha=0.05/4` bound for the four-test family. These are reference calculations,
-not the frozen design; practical effect and exclusion assumptions still need an
-explicit product/research decision.
-
-Ignored `.reports/` files are working artifacts, not a public evidence channel.
-Before a result can support a 1.0 headline, every formal report contributing to
-that result must be audited for dataset redistribution terms and provider or
-credential material, exported without changing metric-bearing fields, and
-published as an immutable versioned release artifact. The tracked summary must
-record its release filename, byte size, and SHA-256, and the release must include
-commands that regenerate the summary from those exact reports. A hash without
-the corresponding downloadable artifact is insufficient. If a report cannot be
-published lawfully, its result remains internal and cannot support the public
-reproducibility claim.
+A later confirmatory study must pre-register practical effect thresholds,
+multiplicity, exclusion assumptions, power, and independent-case enrollment.
+Repetitions never count toward sample size.
 
 ## Delivery stages
 
@@ -272,13 +265,17 @@ reported model tokens improved in both cases, with median deltas `-61.25`,
 `-2.5`, and `-40,831`; each sign test has `p=0.5`.
 
 `RESULTS.md` records the case-level evidence, paired statistics, exclusions, and
-limitations. `fixtures/measurement/results-summary.json` records the exact
+limitations. `fixtures/measurement/results-summary.json` records the exact raw
 formal-report hashes, run-pair descriptions, case-level inference, and metric
-registration status. No paid full RCA batch was run. Do not promote these retrieval
-results into an RCA claim. The next valid experimental stage is to add
-independent, source-faithful relational cases, then freeze a transfer test that
-measures end-to-end RCA rows, calls, model tokens, and elapsed time under the
-corrected affected-component and causal-dependency validity contracts.
+registration status. No paid full RCA batch was run. Do not promote these
+retrieval results into an RCA claim.
+
+The next stage is release-focused, not a broad case-expansion program. Resolve a
+publication-compatible Graph-positive source, freeze a minimal fresh end-to-end
+transfer cohort and its canonical API runner contract, then define the public
+artifact needed to reproduce that fixed scorer. Catalog broad-recall,
+multi-model report cards, powered cross-system enrollment, and additional report
+UI are deferred until that path works end to end.
 
 ## Historical development status
 
@@ -348,6 +345,16 @@ runner-specific token-accounting contract, and isolates subscription child
 processes from provider-prefixed environment configuration. No v21 RCA batch has
 been run.
 
+Protocol v22 closes the remaining citation-validity gap. Protocol v21 counted
+any issued query ID as valid evidence, including failed, truncated,
+metadata-only, duplicated, or output-mismatched calls. V22 requires a unique,
+successful, non-truncated SQL or Graph result, a matching output query ID, and a
+non-empty evidence claim. `correct_completion_tool_calls` now applies the same
+diagnosis, evidence, runner-error, and budget guard as returned rows. This is an
+execution-validity contract, not evidence entailment; the transfer cohort still
+needs case-specific deterministic evidence-support predicates. No v22 RCA batch
+has been run.
+
 The discovery v1 development protocol is now implemented separately from the
 RCA protocol. It compares only `raw` and `table_semantics`, supplies the target
 component, signal concept, and incident boundary, and scores whether the agent
@@ -397,3 +404,6 @@ holdout. No full RCA batch is authorized at this stage.
 - A generic dataset plugin framework before two concrete adapters prove the
   shared boundary.
 - Paid RCA runs before the measurement dataset and protocol are frozen.
+- Catalog broad-recall measurement and further micro-benchmark expansion.
+- Multi-model report cards or a powered cross-system effect claim.
+- Publishing raw provider trajectories as benchmark evidence.

@@ -126,19 +126,20 @@ until deterministic scoring. Each completed
 `repetition × visibility` pair is persisted, so rerunning the same output file
 resumes unfinished work.
 
-Protocol v21 gives API, Codex subscription, and Claude subscription runners the
-same system contract. The API runner sets its turn limit above the visible
-tool-call cap and records turn exhaustion as a failed run instead of aborting
-the batch. The supported subscription CLIs do not expose a turn-limit option;
-their broker enforces the same database-tool cap, and the process timeout bounds
-the session. A taxonomy violation is a scored incorrect answer in every runner.
-Protocol v21 retains returned rows and calls through a correct diagnosis with at
-least one valid evidence citation as the RCA efficiency metrics. Both metrics
+Protocol v21 established the same system contract for API, Codex subscription,
+and Claude subscription runners. Protocol v22 retains that runner contract. The
+API runner sets its turn limit above the visible tool-call cap and records turn
+exhaustion as a failed run instead of aborting the batch. The supported
+subscription CLIs do not expose a turn-limit option; their broker enforces the
+same database-tool cap, and the process timeout bounds the session. A taxonomy
+violation is a scored incorrect answer in every runner. Protocol v22 retains
+returned rows and calls through a correct diagnosis with at least one
+execution-valid evidence citation as the RCA efficiency metrics. Both metrics
 use the same eligibility guardrail. Each case contributes the median eligible
 run-pair delta to inference; repetitions remain descriptive, and Holm adjustment
-covers the four primary tests. It gives the agent the selected dataset's fault
-taxonomy and requires one canonical fault mechanism from that taxonomy. The
-evaluator scores the mechanism by normalized equality. The diagnosis reports
+covers the four primary tests. The protocol gives the agent the selected
+dataset's fault taxonomy and requires one canonical fault mechanism from that
+taxonomy. The evaluator scores the mechanism by normalized equality. The diagnosis reports
 the directly affected workload or infrastructure component separately from an
 optional causal dependency. Component scoring is unavailable when a dataset
 publishes conflicting structured component labels. A predicted causal
@@ -170,9 +171,9 @@ calls. Each run records requested calls and whether the cap rejected any call.
 The 48-call default is a safety cap, not the measured budget. The initial prompt
 and every tool-result turn tell the agent how many calls remain. Completion
 efficiency is reported only when the cap is non-binding and the diagnosis is
-jointly correct with at least one valid evidence citation. Reports also show
-discovery calls, failed and exact repeated calls, and calls to a correct
-diagnosis.
+jointly correct with at least one execution-valid evidence citation. Reports
+also show discovery calls, failed and exact repeated calls, and calls to a
+correct diagnosis.
 
 Table profiles return the complete schema and semantic metadata. Sample rows are
 opt-in because wide OTLP tables can otherwise dominate model input without
@@ -211,12 +212,25 @@ uv run python -m semantic_rca_bench.measurement_summary
 ```
 
 The hashes make a retained local cohort auditable but are not sufficient for
-independent public reproduction. The current formal reports have not been
-published as release artifacts. Before 1.0, every report behind a public
-headline must pass dataset-license and sensitive-content review and ship as an
-immutable release artifact whose filename, byte size, and SHA-256 match the
-tracked summary. Until then, the measurement conclusion is an internal formal
-result, not a completed public reproducibility claim.
+independent public reproduction. The current formal reports are raw working
+trajectories and are not the 1.0 release contract. Before 1.0, freeze a legally
+usable reference cohort and a public artifact from which a third party can
+reproduce scoring and primary metrics without exposing provider payloads,
+credentials, or local machine data.
+
+Benchmark 1.0 targets one canonical API runner and a small fixed public cohort
+covering Table-positive, Graph-positive, and Graph-negative roles, plus a fresh
+end-to-end RCA transfer demonstration. Subscription runners, multiple-model
+report cards, catalog broad-recall, and a powered cross-system effect estimate
+remain post-1.0 work.
+
+For end-to-end RCA, protocol v22 counts a citation as execution-valid only when
+it uniquely identifies a successful, non-truncated SQL or Graph query result,
+the result carries the same query ID, and the evidence claim is non-empty.
+Catalog and schema discovery are not incident evidence. This check prevents
+failed or fabricated references from unlocking efficiency metrics, but it does
+not prove that the cited rows support the diagnosis. A formal transfer case must
+add a deterministic evidence-support predicate before selection and model runs.
 
 Token fields are runner-specific. The API runner sums provider usage over all
 responses; `run.usage.input_tokens` excludes cache creation and cache reads,
@@ -238,6 +252,10 @@ The separate [`GRAPH.md`](GRAPH.md) protocol compares Table Semantics with
 Table Semantics plus Semantic Graph on witnessed service-call retrieval. Its
 `graph-audit` command independently reconstructs calls from raw spans and
 requires exact equality with the Graph edge set before any model run.
+
+The benchmark code and harness are licensed under Apache-2.0. Dataset licenses
+remain independent and are recorded in [`DATASETS.md`](DATASETS.md); external
+telemetry is not relicensed by this repository.
 
 Import and validate RCA100 `t001` without calling a model:
 

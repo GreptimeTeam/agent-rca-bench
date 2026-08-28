@@ -64,6 +64,11 @@
   `evaluation.correct_completion_tool_calls`。两者都必须通过正确 diagnosis、
   至少一条 citation、全部 citation 有效、无 runner error、无 budget hit 的
   eligibility guardrail。
+- 端到端 execution-valid citation 必须唯一对应一次成功、非截断的
+  `execute_sql` 或 `query_semantic_graph` `QueryResult`，且 output query ID 与 citation
+  一致。Schema/catalog discovery 和空 claim 不构成 evidence。这个检查只证明引用了
+  真实执行结果，不证明结果支持 diagnosis；正式 transfer case 还必须在模型运行前
+  冻结 deterministic evidence-support predicate。
 - Discovery 与 Graph micro-benchmark 的预注册主要效率字段是
   `rows_returned_through_evidence` 和 `tool_calls_through_evidence`。它们只统计到
   cited canonical evidence，不得与端到端 RCA 字段混用。
@@ -93,18 +98,23 @@
 - 启动临时实例前确认 endpoint、进程和数据目录。只停止本任务启动的精确进程，不得修改或停止用户已有的 `localhost:4000` 或其他实例。
 - 未经用户明确授权，不运行付费全量 RCA、批量模型实验或会消耗大量 subscription quota 的任务。先执行 no-model gate 和最小验证。
 
-## 开源 benchmark 的完成标准
+## Benchmark 1.0 与研究结论边界
 
-第一个公开版本至少需要交付：
+第一个公开版本是可执行、可审计的 benchmark 产品，不以证明跨系统普遍效果为
+完成条件。1.0 至少需要交付：
 
-1. 冻结且版本化的 benchmark specification、treatments、runner contract、scorer 和统计方法。
-2. 第三方可执行的数据下载、ingestion、no-model audit、agent run 和 report generation workflow。
-3. 覆盖多个独立 system families、telemetry shapes、fault families，以及 Table-positive、Graph-positive 和 Graph-negative 场景的 dataset portfolio。
-4. 从 micro-benchmark 到完整 RCA 的 efficiency transfer evidence，并公开 effect size、负结果和 applicability boundary。
-5. 在统一协议下生成的多模型 RCA report cards；semantic uplift 在每个模型内部配对估计。
-6. Machine-readable result summary、formal report hashes、reproduction commands、英文与中文报告，以及已知限制。
+1. 冻结且版本化的 benchmark specification、nested treatments、canonical API runner contract、deterministic scorer 和 case-level 统计方法。
+2. 第三方可执行的数据获取、ingestion、no-model audit、agent run、public audit artifact export 和 report generation workflow。
+3. 一个小型、固定且可合法公开复现的 reference cohort，覆盖 Table-positive、Graph-positive 和 Graph-negative applicability roles；不要求用 case 数量证明总体效果。
+4. 从 retrieval micro-benchmark 到完整 RCA 的 correctness-preserving transfer demonstration，并公开每个 case 的 effect size、负结果和 applicability boundary。
+5. Machine-readable public summary、sanitized audit-artifact hashes、reproduction commands、英文与中文报告，以及已知限制。
 
-样本量和 effect threshold 必须在正式运行前通过 power analysis 或明确的最小效应要求冻结。不要把「跑过若干模型和 case」本身视为完成。
+多模型 report cards、跨多个独立 system families 的 powered effect estimate、
+correctness-efficiency Pareto frontier 和 catalog broad-recall study 是后续研究交付，
+不是 1.0 发布门槛。要发布宽泛的 semantic-layer effect claim，必须先冻结 practical
+effect threshold、power analysis、multiplicity policy 和独立 case enrollment；
+repetitions 不能计入样本量。不要把一个可运行的 1.0 benchmark 表述成已经完成的
+confirmatory study。
 
 ## Source of truth 与仓库地图
 
@@ -179,10 +189,10 @@ uv run python -m semantic_rca_bench.measurement_summary
 
 生成后比较 `fixtures/measurement/results-summary.json`，确认 report hashes、selection manifest 和统计结果一致。`.cache/`、`.data/`、`.instances/`、`.runs/` 和 `.reports/` 是本地 ignored artifacts，不得提交 telemetry、credentials 或未审计的模型 trajectories。
 
-Ignored formal reports 只有 hash 时不能满足公开复现要求。1.0 headline 所依赖的
-report 必须通过 license 和敏感内容审计，并作为 immutable release artifact 公开；
-tracked summary 必须记录可下载文件的名称、大小和 SHA-256。正式 end-to-end batch
-前还必须提交并冻结 power-analysis artifact。当前缺口和验收条件以 `PLAN.md` 的
-“Public-release and statistical-power gates”为准。
+Ignored raw reports 只有 hash 时不能满足公开复现要求，也不得直接作为发布合同。
+1.0 headline 所依赖的 run 必须有可合法发布、可独立复算 scorer 和主要指标的审计
+artifact，并删除 provider raw responses、credentials 和本机信息。Artifact contract
+只在 public cohort 和 transfer scorer 冻结后定义，不能从当前内部 report 格式反推。
+当前缺口和验收条件以 `PLAN.md` 为准。
 
 验证从覆盖改动的最窄测试开始，再根据影响范围扩展到完整测试。只报告实际执行过的命令和真实结果。

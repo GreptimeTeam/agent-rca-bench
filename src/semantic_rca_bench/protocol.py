@@ -3,14 +3,14 @@ from __future__ import annotations
 
 def benchmark_protocol() -> dict[str, object]:
     return {
-        "version": 21,
+        "version": 22,
         "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-v2",
         "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
         "semantic_graph": "half-open-window-key-deduplicated-query-tool-v6",
         "semantic_context": "benchmark-preflight-v1",
         "sql_contract": "greptimedb-basic-v1",
-        "citation": "compact-run-local-query-id-v1",
-        "evaluator": "joint-correct-all-citations-valid-efficiency-gate-v7",
+        "citation": "unique-successful-nonmetadata-query-result-v2",
+        "evaluator": "joint-correct-all-execution-valid-citations-efficiency-gate-v8",
         "primary_metrics": "case-median-rows-and-calls-holm-sign-test-v2",
         "repetition_schedule": "seeded-rotating-order-with-position-v2",
         "tool_budget": "shared-visible-cap-api-turn-limit-subscription-timeout-v5",

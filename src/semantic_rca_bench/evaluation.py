@@ -4,7 +4,10 @@ import json
 import re
 from datetime import datetime
 
-from semantic_rca_bench.contracts import AgentRun, Evaluation, GroundTruth
+import sqlglot
+from sqlglot import exp
+
+from semantic_rca_bench.contracts import AgentRun, Evaluation, GroundTruth, QueryResult, ToolTrace
 
 
 def _normalize(value: str) -> str:
@@ -61,13 +64,20 @@ def evaluate(run: AgentRun, truth: GroundTruth) -> Evaluation:
     )
     fault_category_match = predicted_fault_category == expected_fault_category
     evidence = diagnosis.evidence if diagnosis is not None else []
-    query_ids = {trace.query_id for trace in run.tool_calls if trace.query_id is not None}
-    valid_evidence_count = sum(item.query_id in query_ids for item in evidence)
+    traces_by_query_id: dict[str, list[ToolTrace]] = {}
+    for trace in run.tool_calls:
+        if trace.query_id is not None:
+            traces_by_query_id.setdefault(trace.query_id, []).append(trace)
+    valid_evidence_count = sum(
+        bool(item.claim.strip())
+        and _is_valid_evidence_trace(traces_by_query_id.get(item.query_id, []))
+        for item in evidence
+    )
     onset_error = _onset_error(diagnosis.onset_time, truth.inject_time) if diagnosis else None
     discovery_calls = sum(
         _is_discovery_call(trace.tool_name, trace.input) for trace in run.tool_calls
     )
-    cited_query_ids = {item.query_id for item in evidence if item.query_id in query_ids}
+    cited_query_ids = {item.query_id for item in evidence if item.query_id in traces_by_query_id}
     first_cited_index = next(
         (index for index, trace in enumerate(run.tool_calls) if trace.query_id in cited_query_ids),
         None,
@@ -90,6 +100,14 @@ def evaluate(run: AgentRun, truth: GroundTruth) -> Evaluation:
         affected_component_match and fault_type_match
         if affected_component_match is not None
         else None
+    )
+    valid_completion = (
+        joint_match is True
+        and diagnosis is not None
+        and len(evidence) > 0
+        and valid_evidence_count == len(evidence)
+        and run.error is None
+        and not run.tool_budget_exhausted
     )
     return Evaluation(
         affected_component_match=affected_component_match,
@@ -115,8 +133,55 @@ def evaluate(run: AgentRun, truth: GroundTruth) -> Evaluation:
             sum(trace.error is not None for trace in run.tool_calls) + len(run.rejected_tool_calls)
         ),
         exact_repeated_calls=exact_repeated_calls,
-        correct_completion_tool_calls=len(run.tool_calls) if joint_match is True else None,
+        correct_completion_tool_calls=len(run.tool_calls) if valid_completion else None,
     )
+
+
+def _is_valid_evidence_trace(matches: list[ToolTrace]) -> bool:
+    if len(matches) != 1:
+        return False
+    trace = matches[0]
+    if trace.error is not None or trace.tool_name not in {"execute_sql", "query_semantic_graph"}:
+        return False
+    if trace.tool_name == "execute_sql":
+        query = str(trace.input.get("query") or trace.input.get("sql") or "")
+        if not _is_evidence_sql(query):
+            return False
+    if not isinstance(trace.output, dict):
+        return False
+    try:
+        result = QueryResult.model_validate(trace.output)
+    except ValueError:
+        return False
+    return result.query_id == trace.query_id and not result.truncated
+
+
+def _is_evidence_sql(query: str) -> bool:
+    statement = None
+    for dialect in ("postgres", "mysql"):
+        try:
+            statements = sqlglot.parse(query, read=dialect)
+        except sqlglot.errors.ParseError:
+            continue
+        if len(statements) == 1 and isinstance(statements[0], (exp.Select, exp.Union)):
+            statement = statements[0]
+            break
+    if statement is None:
+        return False
+    tables = list(statement.find_all(exp.Table))
+    if not tables:
+        return False
+    for table in tables:
+        schema = table.db.lower()
+        name = table.name.lower()
+        if schema in {"information_schema", "pg_catalog"}:
+            return False
+        if schema == "greptime_private" and name not in {
+            "semantic_entities",
+            "semantic_relationships",
+        }:
+            return False
+    return True
 
 
 def _is_discovery_call(tool_name: str, arguments: dict[str, object]) -> bool:
@@ -125,7 +190,13 @@ def _is_discovery_call(tool_name: str, arguments: dict[str, object]) -> bool:
     if tool_name != "execute_sql":
         return False
     query = str(arguments.get("query") or arguments.get("sql") or "").lower()
-    return bool(re.search(r"\b(show\s+tables|describe|desc\s+|information_schema\.)", query))
+    return bool(
+        re.search(
+            r"\b(show\s+(?:full\s+)?(?:databases|schemas|tables)|describe|desc\s+|"
+            r"information_schema\.|pg_catalog\.)",
+            query,
+        )
+    )
 
 
 def _onset_error(value: str | None, expected_epoch: int | None) -> float | None:
