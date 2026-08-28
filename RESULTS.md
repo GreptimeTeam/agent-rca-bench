@@ -17,6 +17,15 @@ describe model variation within the frozen cases but are not independent cases.
 The tables below report both levels and use the case-level result for the broad
 conclusion.
 
+The formal micro-benchmarks use the Codex subscription runner. Its reported
+input is the single cumulative `turn.completed` value and includes cached input;
+the CLI does not expose a persisted cache breakdown. Reported output includes
+reasoning output without a separate reasoning count. Codex runner context, MCP
+schemas and results, and output-schema handling are within the provider context,
+but their individual token contributions are unavailable. These token results
+are exploratory and comparable only within the same Codex CLI, model, protocol,
+and case; they are not comparable to API or Claude subscription token fields.
+
 ## Discovery v2 formal measurement
 
 The formal cohort contains six trajectory-blind OpenRCA windows selected from
@@ -507,17 +516,24 @@ same number of paired runs. They are not pooled correctness scores.
 
 | Treatment | Runs | Tools | Discovery calls | DB queries | Rows returned | Failed queries | Cost | Agent time |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Raw | 24 | 979 | 250 | 1,066 | 48,758 | 60 | $0.262 | 3,851 s |
-| Table Semantics | 24 | 956 | 293 | 1,162 | 67,252 | 57 | $0.275 | 4,065 s |
-| Table Semantics + Graph | 24 | 942 | 273 | 1,077 | 31,200 | 47 | $0.262 | 3,845 s |
-| Total | 72 | 2,877 | 816 | 3,305 | 147,210 | 164 | $0.799 | 11,761 s |
+| Raw | 24 | 979 | 250 | 1,066 | 48,758 | 60 | $0.297 | 3,851 s |
+| Table Semantics | 24 | 956 | 293 | 1,162 | 67,252 | 57 | $0.313 | 4,065 s |
+| Table Semantics + Graph | 24 | 942 | 273 | 1,077 | 31,200 | 47 | $0.298 | 3,845 s |
+| Total | 72 | 2,877 | 816 | 3,305 | 147,210 | 164 | $0.908 | 11,761 s |
 
 Table Semantics did not reduce paired discovery calls or database load. Its
 RCA100 aggregate of 43,742 returned rows is dominated by one 36,120-row run;
 the other five runs returned 1,039–2,287 rows, so the total cannot support a
 treatment conclusion. Graph reduced aggregate returned rows by 36% versus Raw
-and 54% versus Table Semantics. The paired Graph-versus-Raw row result is the
-only tested efficiency comparison below `p<0.05`.
+and 54% versus Table Semantics, but those totals are not correctness-gated
+effects. Under the current guardrail, only Hotel and RCAEval contribute eligible
+case medians. Table Semantics versus Raw has one better and one worse row case
+(median case delta `-173.75`, exact `p=1.0`). Graph versus Table Semantics has
+two better row cases (median `-168.5`, exact `p=0.5`). The corresponding call
+comparison also has two better Graph cases (median `-1.5`, exact `p=0.5`). Holm
+adjustment across the four primary tests yields `p=1.0` throughout. The old
+pooled Graph-versus-Raw `p=0.00661075` treated repetitions as independent and
+included incorrect or invalid-evidence completions; it is retracted.
 
 Two previously reported trajectory metrics are invalid as efficiency evidence.
 The old “first correct component turn” counted any substring mention, including
@@ -525,9 +541,10 @@ service-list dumps and false matches such as `geo` inside `range of`. The old
 “discovery calls before first evidence” stopped at the first tool not classified
 as discovery, so an opening Graph query improved the metric by definition. The
 Hotel tool-call medians were also unpaired noise: Graph was lower in three
-repetitions and Raw in three (`p=1.0`). None of these values supports “faster
-entity localization.” Protocol v17 keeps component mention exploratory,
-uses token-safe matching, and anchors discovery ordering to cited query IDs.
+repetitions and Raw in three. None of these values supports “faster entity
+localization.” Protocol v21 removes component-mention timing because runner
+response artifacts do not expose the same semantic event. Discovery ordering
+remains exploratory and is anchored to cited query IDs.
 
 The 48-call cap was reached in six runs: four OpenRCA Bank runs, one RCA100
 Table Semantics run, and one RCAEval Graph run. A run that used exactly 48 calls
@@ -537,12 +554,15 @@ conditioning on the runs that happened to finish early. The Bank Table
 Semantics cell itself hit the cap in two of six runs, further weakening its
 single correct diagnosis.
 
-Across all runs, the model used 2,885,952 input tokens and 1,410,685 output
-tokens. Cost uses the registered DeepSeek cache-miss rates of $0.14/MTok input
-and $0.28/MTok output. Four case runners were concurrent, while maximum database
-query concurrency within each agent remained one. Position was balanced, but
-wall-clock latency remains secondary because provider load varied as runners
-finished.
+Across all runs, `run.usage` stored 2,885,952 uncached input tokens and 1,410,685
+output tokens; raw provider events additionally contain 38,805,760 cache-read
+input tokens and no cache-creation input. The original `$0.799` estimate omitted
+cache reads. Applying the registered `$0.14/MTok` uncached-input,
+`$0.0028/MTok` cache-read, and `$0.28/MTok` output rates gives `$0.908` after
+rounding the treatment subtotals. Four case runners were concurrent, while
+maximum database query concurrency within each agent remained one. Position was
+balanced, but wall-clock latency remains secondary because provider load varied
+as runners finished.
 
 ## Decision
 

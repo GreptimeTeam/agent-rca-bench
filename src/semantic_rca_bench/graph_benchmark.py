@@ -81,7 +81,6 @@ class GraphEvaluation(BaseModel):
     evidence_result_match: bool
     unique_winner: bool
     failure_reasons: list[str]
-    evidence_tool_call: int | None
     tool_calls_through_evidence: int | None
     rows_returned_through_evidence: int | None
 
@@ -123,7 +122,6 @@ DEVELOPMENT_GRAPH_FIXTURES = {
 }
 
 GRAPH_MAX_TOOL_CALLS = 12
-GRAPH_API_MAX_TURNS = 22
 
 
 def fixture_for_source_case(
@@ -253,6 +251,8 @@ def failed_graph_run(
     runner: AgentRunner,
     model: str,
     error: str,
+    *,
+    max_tool_calls: int = GRAPH_MAX_TOOL_CALLS,
 ) -> GraphAgentRun:
     return GraphAgentRun(
         run_id=uuid.uuid4().hex,
@@ -266,7 +266,7 @@ def failed_graph_run(
         usage=AgentUsage(),
         elapsed_seconds=0,
         responses=[],
-        turn_limit=GRAPH_API_MAX_TURNS if runner is AgentRunner.API else None,
+        turn_limit=max_tool_calls + 10 if runner is AgentRunner.API else None,
         turn_limit_enforced=runner is AgentRunner.API,
     )
 
@@ -452,7 +452,6 @@ def evaluate_graph_run(
         evidence_result_match=evidence_result_match,
         unique_winner=unique_winner,
         failure_reasons=failure_reasons,
-        evidence_tool_call=evidence_index + 1 if evidence_index is not None else None,
         tool_calls_through_evidence=evidence_index + 1 if evidence_index is not None else None,
         rows_returned_through_evidence=rows_through_evidence,
     )

@@ -1,5 +1,6 @@
 import json
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 
@@ -7,16 +8,23 @@ import semantic_rca_bench.cli as cli_module
 from semantic_rca_bench.cli import (
     _assert_neutral_database_name,
     _batch_output,
-    _discovery_paired_summary,
-    _graph_paired_summary,
+    _discovery_output,
+    _discovery_run_pair_descriptive,
+    _graph_output,
+    _graph_run_pair_descriptive,
     _ground_truth_from_report,
-    _is_graph_scorer_only_upgrade,
     _parser,
     _run_orders,
     _validate_microbenchmark_fixture_args,
     discovery_run,
 )
-from semantic_rca_bench.contracts import DatabaseLoad, GroundTruth, QueryResult, Visibility
+from semantic_rca_bench.contracts import (
+    AgentRunner,
+    DatabaseLoad,
+    GroundTruth,
+    QueryResult,
+    Visibility,
+)
 from semantic_rca_bench.discovery import DiscoveryAudit
 from semantic_rca_bench.protocol import benchmark_protocol, discovery_protocol, graph_protocol
 
@@ -44,7 +52,7 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v20-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v21-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
 
 
@@ -154,14 +162,6 @@ def test_graph_cli_freezes_balanced_two_treatment_schedule() -> None:
     assert "graph_micro_benchmark" not in benchmark_protocol()
 
 
-def test_graph_report_allows_only_the_known_scorer_correction() -> None:
-    corrected = graph_protocol()
-    original = {**corrected, "scorer": "treatment-specific-citation-canonical-edge-set-v1"}
-
-    assert _is_graph_scorer_only_upgrade(original, corrected)
-    assert not _is_graph_scorer_only_upgrade({**original, "tool_budget": 13}, corrected)
-
-
 def test_discovery_runner_persists_failed_cells_and_continues(monkeypatch, tmp_path) -> None:
     source = tmp_path / "market-smoke.json"
     output = tmp_path / "discovery.json"
@@ -236,13 +236,18 @@ def test_discovery_runner_persists_failed_cells_and_continues(monkeypatch, tmp_p
     assert len(report["runs"]) == 4
     assert all(item["run"]["answer"] is None for item in report["runs"])
     assert all(item["evaluation"]["success"] is False for item in report["runs"])
-    assert report["paired_summary"]["task_success"] == {
+    assert report["discovery_report_schema_version"] == 2
+    assert (
+        report["token_accounting"]["cached_input"]
+        == "separate raw response fields; omitted from legacy run.usage"
+    )
+    assert report["run_pair_descriptive"]["task_success"] == {
         "paired_observations": 2,
         "improvements": 0,
         "regressions": 0,
         "ties": 2,
-        "sign_test_p_value": None,
     }
+    assert report["run_pair_descriptive"]["inference_role"].startswith("descriptive only")
 
 
 def test_discovery_summary_pairs_success_and_efficiency_by_repetition() -> None:
@@ -258,7 +263,7 @@ def test_discovery_summary_pairs_success_and_efficiency_by_repetition() -> None:
             },
         }
 
-    summary = _discovery_paired_summary(
+    summary = _discovery_run_pair_descriptive(
         [
             item(0, "raw", False, None, None, None),
             item(0, "table_semantics", True, 4, 10, 2),
@@ -272,7 +277,6 @@ def test_discovery_summary_pairs_success_and_efficiency_by_repetition() -> None:
         "improvements": 1,
         "regressions": 0,
         "ties": 1,
-        "sign_test_p_value": 1.0,
     }
     efficiency = {item["metric"]: item for item in summary["successful_pair_efficiency"]}
     assert efficiency["tool_calls_through_evidence"] == {
@@ -282,8 +286,9 @@ def test_discovery_summary_pairs_success_and_efficiency_by_repetition() -> None:
         "worse": 0,
         "ties": 0,
         "median_delta": -2.0,
-        "sign_test_p_value": 1.0,
     }
+    assert summary["statistical_unit"] == "run pair within one case"
+    assert "sign_test_p_value" not in json.dumps(summary)
 
 
 def test_graph_summary_pairs_semantic_graph_against_table_semantics() -> None:
@@ -298,7 +303,7 @@ def test_graph_summary_pairs_semantic_graph_against_table_semantics() -> None:
             },
         }
 
-    summary = _graph_paired_summary(
+    summary = _graph_run_pair_descriptive(
         [
             item(0, "table_semantics", False, None, None),
             item(0, "semantic_graph", True, 2, 10),
@@ -312,7 +317,15 @@ def test_graph_summary_pairs_semantic_graph_against_table_semantics() -> None:
         "improvements": 1,
         "regressions": 0,
         "ties": 1,
-        "sign_test_p_value": 1.0,
     }
     efficiency = {item["metric"]: item for item in summary["successful_pair_efficiency"]}
     assert efficiency["rows_returned_through_evidence"]["median_delta"] == -30.0
+
+
+def test_microbenchmark_default_outputs_use_protocol_versions() -> None:
+    assert _discovery_output("case", AgentRunner.API, "test-model") == (
+        Path(".reports") / f"discovery-v{discovery_protocol()['version']}-api-test-model-case.json"
+    )
+    assert _graph_output("case", AgentRunner.API, "test-model") == (
+        Path(".reports") / f"graph-v{graph_protocol()['version']}-api-test-model-case.json"
+    )

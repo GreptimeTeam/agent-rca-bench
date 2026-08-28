@@ -4,23 +4,44 @@ import pytest
 
 from semantic_rca_bench.report import (
     MODEL_PRICING,
+    _estimated_api_cost,
     _exact_sign_p_value,
     _load_case_report,
     _paired_primary_comparisons,
     _primary_metric_value,
+    _runner_reported_token_total,
     case_context,
     render_report,
     render_reports,
 )
 
 
-def test_deepseek_pricing_uses_cache_miss_rate() -> None:
+def test_deepseek_pricing_separates_uncached_and_cache_read_input() -> None:
     pricing = MODEL_PRICING["deepseek-v4-flash"]
 
     assert pricing["input_per_million"] == 0.14
     assert pricing["input_cache_hit_per_million"] == 0.0028
     assert pricing["output_per_million"] == 0.28
-    assert "cache misses" in pricing["note"]
+    assert "priced separately" in pricing["note"]
+
+
+def test_api_usage_reconstructs_cached_tokens_and_cost_from_raw_events() -> None:
+    run = {
+        "usage": {"input_tokens": 120, "output_tokens": 150},
+        "responses": [
+            {
+                "usage": {
+                    "cache_creation_input_tokens": 40,
+                    "cache_read_input_tokens": 2_176,
+                }
+            }
+        ],
+    }
+
+    assert _runner_reported_token_total(run, {"cached_input": "separate"}) == 2_486
+    assert _estimated_api_cost(run, MODEL_PRICING["deepseek-v4-flash"]) == pytest.approx(
+        ((120 + 40) * 0.14 + 2_176 * 0.0028 + 150 * 0.28) / 1_000_000
+    )
 
 
 def test_render_report_embeds_data_and_escapes_script_end(tmp_path) -> None:
@@ -118,6 +139,24 @@ def test_render_reports_rejects_mixed_protocols(tmp_path) -> None:
         raise AssertionError("mixed protocols should be rejected")
 
 
+def test_render_reports_rejects_duplicate_case_identity(tmp_path) -> None:
+    source = tmp_path / "pilot.json"
+    source.write_text(
+        json.dumps(
+            {
+                "model": "test-model",
+                "protocol": {"version": 1},
+                "case": {"dataset": "dataset-a", "source_case": "case-a"},
+                "ground_truth": {},
+                "runs": [],
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="duplicate case identities"):
+        render_reports([source, source], tmp_path / "combined.html")
+
+
 def test_case_context_distinguishes_alert_history_from_known_baseline() -> None:
     unknown = case_context(
         {
@@ -184,32 +223,43 @@ def test_legacy_report_derives_budget_exhaustion_and_execution_position(tmp_path
     assert item["run"]["tool_budget_exhausted"] is True
 
 
-def test_primary_metrics_use_paired_directions_and_exact_sign_test() -> None:
+def _primary_item(repetition: int, visibility: str, rows: int, calls: int) -> dict:
+    return {
+        "repetition": repetition,
+        "run": {
+            "visibility": visibility,
+            "tool_budget_exhausted": False,
+            "diagnosis": {},
+        },
+        "evaluation": {
+            "joint_match": True,
+            "cited_evidence_count": 1,
+            "valid_evidence_count": 1,
+            "correct_completion_tool_calls": calls,
+        },
+        "database_load": {"rows_returned": rows},
+    }
+
+
+def test_primary_metrics_infer_over_case_medians_not_run_pairs() -> None:
     reports = [
         {
             "runs": [
-                {
-                    "repetition": 0,
-                    "run": {
-                        "visibility": "raw",
-                        "tool_budget_exhausted": False,
-                        "diagnosis": {},
-                    },
-                    "evaluation": {"joint_match": True, "correct_completion_tool_calls": 12},
-                    "database_load": {"rows_returned": 100},
-                },
-                {
-                    "repetition": 0,
-                    "run": {
-                        "visibility": "semantic_graph",
-                        "tool_budget_exhausted": False,
-                        "diagnosis": {},
-                    },
-                    "evaluation": {"joint_match": True, "correct_completion_tool_calls": 8},
-                    "database_load": {"rows_returned": 40},
-                },
+                _primary_item(0, "raw", 100, 12),
+                _primary_item(0, "table_semantics", 70, 10),
+                _primary_item(0, "semantic_graph", 40, 8),
+                _primary_item(1, "raw", 100, 12),
+                _primary_item(1, "table_semantics", 80, 10),
+                _primary_item(1, "semantic_graph", 60, 8),
             ]
-        }
+        },
+        {
+            "runs": [
+                _primary_item(0, "raw", 100, 12),
+                _primary_item(0, "table_semantics", 130, 14),
+                _primary_item(0, "semantic_graph", 100, 12),
+            ]
+        },
     ]
 
     comparisons = _paired_primary_comparisons(reports)
@@ -218,12 +268,29 @@ def test_primary_metrics_use_paired_directions_and_exact_sign_test() -> None:
         for item in comparisons
         if item["metric"] == "rows_returned"
         and item["candidate"] == "semantic_graph"
-        and item["baseline"] == "raw"
+        and item["baseline"] == "table_semantics"
     )
 
-    assert graph_rows["better"] == 1
-    assert graph_rows["worse"] == 0
-    assert graph_rows["median_delta"] == -60
+    assert graph_rows["run_pair_descriptive"] == {
+        "observations": 3,
+        "better": 3,
+        "worse": 0,
+        "ties": 0,
+        "median_delta": -30.0,
+    }
+    assert graph_rows["case_level_inference"] == {
+        "observations": 2,
+        "better": 2,
+        "worse": 0,
+        "ties": 0,
+        "median_delta": -27.5,
+        "exact_two_sided_sign_test_p_value": 0.5,
+        "holm_adjusted_p_value": 1.0,
+        "multiplicity_family_size": 4,
+    }
+    assert not any(
+        item["candidate"] == "semantic_graph" and item["baseline"] == "raw" for item in comparisons
+    )
     assert _exact_sign_p_value(19, 5) == pytest.approx(0.00661075)
 
 
@@ -242,3 +309,23 @@ def test_failed_run_is_excluded_from_rows_returned_efficiency(run) -> None:
     }
 
     assert _primary_metric_value(item, "rows_returned") is None
+
+
+@pytest.mark.parametrize(
+    "evaluation",
+    [
+        {"joint_match": False, "cited_evidence_count": 1, "valid_evidence_count": 1},
+        {"joint_match": True, "cited_evidence_count": 0, "valid_evidence_count": 0},
+        {"joint_match": True, "cited_evidence_count": 2, "valid_evidence_count": 1},
+        {"joint_match": True, "cited_evidence_count": True, "valid_evidence_count": True},
+    ],
+)
+def test_rows_and_calls_require_joint_correct_valid_evidence(evaluation) -> None:
+    item = {
+        "run": {"diagnosis": {}, "tool_budget_exhausted": False},
+        "evaluation": {**evaluation, "correct_completion_tool_calls": 3},
+        "database_load": {"rows_returned": 10},
+    }
+
+    assert _primary_metric_value(item, "rows_returned") is None
+    assert _primary_metric_value(item, "correct_completion_tool_calls") is None

@@ -134,8 +134,8 @@ the same deterministic rule to a replacement.
   prompt protocol, telemetry counts, query counts, returned rows, concurrency,
   elapsed time, tokens, and cost.
 - Record calls to a correct diagnosis, discovery calls before evidence queries,
-  failed calls, exact repeated calls, and the first model turn mentioning the
-  correct component. Cost-to-correct is defined only for jointly correct runs.
+  failed calls, and exact repeated calls. Cost-to-correct is defined only for
+  jointly correct runs with at least one valid evidence citation.
 - Do not mix results from different protocol versions.
 - Label cases as `development` or `measurement`. Never use a case for formal
   measurement after its failures influenced the protocol or prompt.
@@ -146,11 +146,75 @@ the same deterministic rule to a replacement.
   heterogeneous labels into one accuracy number.
 - Freeze the dataset set, case-selection rules, and protocol before paid runs.
 
-The pre-registered primary efficiency metrics are paired GreptimeDB rows returned
-and tool calls to a jointly correct diagnosis. Report paired directions and an
-exact two-sided sign test per comparison; use medians for long-tailed quantities.
-All other trajectory metrics, including first component mention and discovery
-ordering, are exploratory and cannot support headline claims.
+The pre-registered primary efficiency metrics are GreptimeDB rows returned and
+tool calls through a jointly correct diagnosis with at least one valid evidence
+citation. Apply the same eligibility guardrail to both metrics. For each case,
+take the median eligible run-pair delta; use the case medians for the exact
+two-sided sign test and adjust the four primary tests with Holm's method. Run-pair
+directions are descriptive only. Discovery ordering and other trajectory metrics
+are exploratory and cannot support headline claims.
+
+The two benchmark lines use different report fields:
+
+- End-to-end RCA uses `database_load.rows_returned`, exposed by the combined
+  report as `rows_returned`, and
+  `evaluation.correct_completion_tool_calls`.
+- Discovery and Graph micro-benchmarks use
+  `rows_returned_through_evidence` and `tool_calls_through_evidence` from their
+  task-specific evaluations. Discovery calls through evidence are secondary.
+
+These names are not interchangeable. The RCA fields cover the complete run to a
+jointly valid diagnosis; the micro-benchmark fields stop at the cited canonical
+evidence result.
+
+Reported model tokens remain exploratory until a runner-specific accounting
+contract is frozen. API usage sums provider response usage and stores uncached
+input in `run.usage`; cache creation and cache reads remain in the raw response
+events. Codex uses one cumulative `turn.completed` usage event and does not
+persist a cache breakdown. Claude aggregates input, cache creation, and cache
+reads into `input_tokens`. System prompts, tool schemas, prior tool or MCP
+results, and structured output are present in the provider context, but the
+runners do not expose a comparable component-level breakdown. Token deltas may
+therefore be compared only within the same model, runner, protocol, and case.
+
+## Public-release and statistical-power gates
+
+The current Discovery v2 and Graph v3 measurements are mechanism evidence, not
+powered estimates of a broad semantic-layer effect. Discovery contributes five
+eligible case medians and Graph contributes two, both below any defensible
+cross-system sample-size claim. No current artifact freezes a minimum practical
+effect, tie rate, valid-completion rate, or required independent case count.
+Therefore the open-benchmark completion standard is not yet satisfied, and no
+new paid RCA batch is authorized by the existing measurements.
+
+Before an end-to-end measurement batch, add a tracked power-analysis artifact
+that freezes, for each Table-minus-Raw and Graph-minus-Table primary endpoint:
+
+- the minimum practically meaningful row and call reduction;
+- the exact-sign-test direction probability under the target effect;
+- family-wise alpha and multiplicity procedure;
+- expected tie and validity-gate exclusion rates;
+- required eligible independent cases and enrollment allowance;
+- required coverage across independent system families.
+
+The calculation must treat the case as the independent unit and must not count
+repetitions toward sample size. For scale only, an exact two-sided sign test with
+80% power to detect a `0.75` favorable-direction probability needs 30 non-tied
+cases at unadjusted `alpha=0.05`, or 44 under the conservative
+`alpha=0.05/4` bound for the four-test family. These are reference calculations,
+not the frozen design; practical effect and exclusion assumptions still need an
+explicit product/research decision.
+
+Ignored `.reports/` files are working artifacts, not a public evidence channel.
+Before a result can support a 1.0 headline, every formal report contributing to
+that result must be audited for dataset redistribution terms and provider or
+credential material, exported without changing metric-bearing fields, and
+published as an immutable versioned release artifact. The tracked summary must
+record its release filename, byte size, and SHA-256, and the release must include
+commands that regenerate the summary from those exact reports. A hash without
+the corresponding downloadable artifact is insufficient. If a report cannot be
+published lawfully, its result remains internal and cannot support the public
+reproducibility claim.
 
 ## Delivery stages
 
@@ -273,6 +337,16 @@ Protocol v20 corrects the benchmark Graph window to the half-open
 `[start, end)` contract implemented by GreptimeDB's computed tables. The earlier
 `<= end` wrapper, coverage queries, and isolation gate could include a bucket
 whose start equaled the exclusive upper bound. No v20 RCA batch has been run.
+
+Protocol v21 applies one completion-efficiency guardrail to returned rows and
+tool calls: joint diagnosis correctness, at least one citation, all citation IDs
+valid, no runner error, and no budget hit. It makes case medians the inferential
+unit, limits primary comparisons to Table-minus-Raw and Graph-minus-Table, and
+uses Holm adjustment across the four primary tests. It removes the
+runner-dependent component-mention trajectory field, records the actual
+runner-specific token-accounting contract, and isolates subscription child
+processes from provider-prefixed environment configuration. No v21 RCA batch has
+been run.
 
 The discovery v1 development protocol is now implemented separately from the
 RCA protocol. It compares only `raw` and `table_semantics`, supplies the target

@@ -38,13 +38,11 @@ SUBSCRIPTION_RUN_TIMEOUT_SECONDS = 30 * 60
 _MCP_SERVER_NAME = "semantic_rca"
 _PROVIDER_ENV_PREFIXES = (
     "ANTHROPIC_",
-    "CLAUDE_CODE_USE_",
+    "CLAUDE_",
+    "CODEX_",
     "DEEPSEEK_",
+    "OPENAI_",
 )
-_PROVIDER_ENV_NAMES = {
-    "CODEX_API_KEY",
-    "OPENAI_API_KEY",
-}
 
 
 class _ToolBroker:
@@ -295,8 +293,7 @@ def _subscription_environment() -> dict[str, str]:
     return {
         key: value
         for key, value in os.environ.items()
-        if key not in _PROVIDER_ENV_NAMES
-        and not any(key.startswith(prefix) for prefix in _PROVIDER_ENV_PREFIXES)
+        if not any(key.startswith(prefix) for prefix in _PROVIDER_ENV_PREFIXES)
     }
 
 
@@ -622,10 +619,17 @@ def _codex_responses(events: list[dict[str, object]]) -> list[dict[str, object]]
 
 
 def _codex_usage(events: list[dict[str, object]]) -> AgentUsage:
-    usage: dict[str, object] = {}
-    for event in events:
-        if event.get("type") == "turn.completed" and isinstance(event.get("usage"), dict):
-            usage = event["usage"]
+    completed = [
+        event["usage"]
+        for event in events
+        if event.get("type") == "turn.completed" and isinstance(event.get("usage"), dict)
+    ]
+    if len(completed) != 1:
+        raise AgentError(
+            "Codex must return exactly one cumulative turn.completed usage event, "
+            f"got {len(completed)}"
+        )
+    usage = completed[0]
     return AgentUsage(
         input_tokens=int(usage.get("input_tokens", 0)),
         output_tokens=int(usage.get("output_tokens", 0)),

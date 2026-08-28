@@ -3,22 +3,23 @@ from __future__ import annotations
 
 def benchmark_protocol() -> dict[str, object]:
     return {
-        "version": 20,
+        "version": 21,
         "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-v2",
         "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
         "semantic_graph": "half-open-window-key-deduplicated-query-tool-v6",
         "semantic_context": "benchmark-preflight-v1",
         "sql_contract": "greptimedb-basic-v1",
         "citation": "compact-run-local-query-id-v1",
-        "evaluator": "scoreable-affected-component-with-failed-run-efficiency-gate-v6",
-        "primary_metrics": "paired-rows-and-correct-completion-calls-sign-test-v1",
+        "evaluator": "joint-correct-all-citations-valid-efficiency-gate-v7",
+        "primary_metrics": "case-median-rows-and-calls-holm-sign-test-v2",
         "repetition_schedule": "seeded-rotating-order-with-position-v2",
         "tool_budget": "shared-visible-cap-api-turn-limit-subscription-timeout-v5",
         "case_role": "explicit-development-or-measurement-v1",
         "case_context": "baseline-availability-v1",
         "database_load": "client-query-boundary-v1",
         "alert": "dataset-native-when-available-v1",
-        "agent_runner": "prompt-equivalent-runner-capability-recorded-v4",
+        "agent_runner": "prompt-equivalent-isolated-provider-environment-v5",
+        "model_usage": "runner-specific-exploratory-accounting-v1",
         "diagnosis": "affected-component-plus-optional-causal-dependency-v1",
     }
 

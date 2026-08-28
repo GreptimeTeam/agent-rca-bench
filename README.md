@@ -31,8 +31,9 @@ uv run semantic-rca doctor \
   --greptimedb-repo /Users/dennis/programming/rust/greptimedb
 ```
 
-Dataset downloads, prepared data, database files, trajectories, and reports are
-kept under ignored local directories.
+Dataset downloads and prepared data under `.cache/` and `.data/`, database files
+under `.instances/`, run state under `.runs/`, and trajectories and reports under
+`.reports/` are ignored local artifacts.
 
 API credentials are read from the process environment or macOS Keychain. Never
 put them in a tracked configuration file or command-line argument.
@@ -125,14 +126,17 @@ until deterministic scoring. Each completed
 `repetition × visibility` pair is persisted, so rerunning the same output file
 resumes unfinished work.
 
-Protocol v20 gives API, Codex subscription, and Claude subscription runners the
+Protocol v21 gives API, Codex subscription, and Claude subscription runners the
 same system contract. The API runner sets its turn limit above the visible
 tool-call cap and records turn exhaustion as a failed run instead of aborting
 the batch. The supported subscription CLIs do not expose a turn-limit option;
 their broker enforces the same database-tool cap, and the process timeout bounds
 the session. A taxonomy violation is a scored incorrect answer in every runner.
-Protocol v20 retains paired returned rows and calls to a correct diagnosis as
-the RCA efficiency metrics. It gives the agent the selected dataset's fault
+Protocol v21 retains returned rows and calls through a correct diagnosis with at
+least one valid evidence citation as the RCA efficiency metrics. Both metrics
+use the same eligibility guardrail. Each case contributes the median eligible
+run-pair delta to inference; repetitions remain descriptive, and Holm adjustment
+covers the four primary tests. It gives the agent the selected dataset's fault
 taxonomy and requires one canonical fault mechanism from that taxonomy. The
 evaluator scores the mechanism by normalized equality. The diagnosis reports
 the directly affected workload or infrastructure component separately from an
@@ -166,8 +170,8 @@ calls. Each run records requested calls and whether the cap rejected any call.
 The 48-call default is a safety cap, not the measured budget. The initial prompt
 and every tool-result turn tell the agent how many calls remain. Completion
 efficiency is reported only when the cap is non-binding and the diagnosis is
-jointly correct. Reports also show discovery calls, failed and exact repeated
-calls, the first turn mentioning the correct component, and calls to a correct
+jointly correct with at least one valid evidence citation. Reports also show
+discovery calls, failed and exact repeated calls, and calls to a correct
 diagnosis.
 
 Table profiles return the complete schema and semantic metadata. Sample rows are
@@ -205,6 +209,25 @@ reports with:
 ```bash
 uv run python -m semantic_rca_bench.measurement_summary
 ```
+
+The hashes make a retained local cohort auditable but are not sufficient for
+independent public reproduction. The current formal reports have not been
+published as release artifacts. Before 1.0, every report behind a public
+headline must pass dataset-license and sensitive-content review and ship as an
+immutable release artifact whose filename, byte size, and SHA-256 match the
+tracked summary. Until then, the measurement conclusion is an internal formal
+result, not a completed public reproducibility claim.
+
+Token fields are runner-specific. The API runner sums provider usage over all
+responses; `run.usage.input_tokens` excludes cache creation and cache reads,
+which remain available in raw response events. Codex reads exactly one cumulative
+`turn.completed` event and persists input including cache without a cache
+breakdown. Claude adds input, cache creation, and cache reads into
+`input_tokens`. Provider context includes system prompts, tool schemas, prior
+tool or MCP results, and structured output, but no runner exposes a comparable
+component-level split. Compare token deltas only within the same model, runner,
+protocol, and case. API cost rendering uses separate cache-read pricing when raw
+usage provides that split.
 
 The implemented `discovery-audit` command checks the frozen evidence query and
 catalog top-five gate without calling a model. `discovery-run` is a separate,

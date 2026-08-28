@@ -130,18 +130,6 @@ def test_evaluation_records_discovery_and_completion_efficiency() -> None:
                 evidence=[{"query_id": "q03", "claim": "latency increased"}],
                 explanation="test diagnosis",
             ),
-            "responses": [
-                {"content": [{"type": "text", "text": "Inspecting the schema."}]},
-                {
-                    "content": [
-                        {
-                            "type": "tool_use",
-                            "name": "execute_sql",
-                            "input": {"query": "SELECT * FROM checkoutservice_latency"},
-                        }
-                    ]
-                },
-            ],
         }
     )
 
@@ -155,26 +143,7 @@ def test_evaluation_records_discovery_and_completion_efficiency() -> None:
     assert result.semantic_calls == 1
     assert result.failed_calls == 1
     assert result.exact_repeated_calls == 1
-    assert result.first_component_mention_turn == 2
     assert result.correct_completion_tool_calls == 4
-
-
-def test_short_component_mention_does_not_match_inside_another_word() -> None:
-    run = _run(FaultCategory.DELAY, "delay").model_copy(
-        update={
-            "responses": [
-                {"content": [{"type": "text", "text": "The range of values changed."}]},
-                {"content": [{"type": "text", "text": "The geo service is anomalous."}]},
-            ]
-        }
-    )
-
-    result = evaluate(
-        run,
-        GroundTruth(affected_component="geo", fault_type="delay", inject_time=0),
-    )
-
-    assert result.first_component_mention_turn == 2
 
 
 def test_unscoreable_component_excludes_joint_accuracy() -> None:

@@ -20,6 +20,7 @@ from semantic_rca_bench.graph_benchmark import (
     canonical_trace_query,
     edge_results_match,
     evaluate_graph_run,
+    failed_graph_run,
     fixture_for_source_case,
     graph_task_prompt,
     run_graph_agent,
@@ -27,6 +28,19 @@ from semantic_rca_bench.graph_benchmark import (
 )
 
 RCA100 = DEVELOPMENT_GRAPH_FIXTURES["rca100-t002-frontend-callee-errors"]
+
+
+def test_failed_graph_run_records_configured_api_turn_limit() -> None:
+    run = failed_graph_run(
+        Visibility.SEMANTIC_GRAPH,
+        AgentRunner.API,
+        "test-model",
+        "provider unavailable",
+        max_tool_calls=3,
+    )
+
+    assert run.turn_limit == 13
+    assert run.turn_limit_enforced
 
 
 def _canonical_result() -> QueryResult:

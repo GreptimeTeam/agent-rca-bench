@@ -20,11 +20,25 @@ from semantic_rca_bench.discovery import (
     discovery_task_prompt,
     evaluate_discovery_run,
     evidence_predicate_matches,
+    failed_discovery_run,
     fixture_for_source_case,
     run_discovery_agent,
 )
 
 MARKET = DEVELOPMENT_FIXTURES["openrca-market-node-write-io"]
+
+
+def test_failed_discovery_run_records_configured_api_turn_limit() -> None:
+    run = failed_discovery_run(
+        Visibility.RAW,
+        AgentRunner.API,
+        "test-model",
+        "provider unavailable",
+        max_tool_calls=3,
+    )
+
+    assert run.turn_limit == 13
+    assert run.turn_limit_enforced
 
 
 def _canonical_result() -> QueryResult:

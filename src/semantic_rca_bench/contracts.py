@@ -230,5 +230,4 @@ class Evaluation(BaseModel):
     semantic_calls: int
     failed_calls: int
     exact_repeated_calls: int
-    first_component_mention_turn: int | None
     correct_completion_tool_calls: int | None

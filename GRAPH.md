@@ -105,10 +105,12 @@ Invalid output, a missing citation, truncation, runner failure, or tool-cap
 rejection counts as an unsuccessful run. No LLM judge is used.
 
 The primary outcome is paired task success for `semantic_graph` versus
-`table_semantics`. For pairs in which both treatments succeed, report tool calls
-and GreptimeDB rows returned through the cited evidence query. These development
-fixtures can validate the mechanism and accounting but cannot support an effect
-claim.
+`table_semantics`. Within one case, run-pair directions and efficiency are
+descriptive only and carry no inferential p-value. Cross-case inference first
+takes the median jointly successful run-pair delta per case. For pairs in which
+both treatments succeed, report tool calls and GreptimeDB rows returned through
+the cited evidence query. These development fixtures can validate the mechanism
+and accounting but cannot support an effect claim.
 
 ## Execution
 
@@ -174,6 +176,10 @@ new-source, non-hybrid, single-root cases with a causal path of at least three.
 Selection is stratified by system and consumes manifest-ranked candidates until
 two Hotel Reservation cases, two OTel Demo cases, and one Train Ticket case pass
 the no-model gate.
+
+The selection JSON is a frozen offline artifact. `selection.deterministic_rank`
+supports its reproducible construction and audit; `graph-run` consumes the
+selected fixture and never reranks cases from live telemetry.
 
 Six Hotel candidates failed because manifest and injection roots disagreed or
 the conclusion had no observable alert. The next two passed:

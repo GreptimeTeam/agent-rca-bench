@@ -1,0 +1,188 @@
+# Semantic RCA Bench agent guide
+
+本文件适用于整个仓库。开始工作前先读取本文件，以及目标路径下可能存在的更具体 `AGENTS.md`。
+
+## 项目定位
+
+本项目要建设一个可开源、可公开复现、允许证伪的 Agent RCA benchmark。核心问题是：GreptimeDB 的 semantic layer 能否在真实故障 telemetry 上，为 LLM agent 的 RCA 调查带来效率提升。
+
+项目不以证明 semantic layer 必然有效为目标。正结果、负结果和适用边界都是有效产出。不得为了得到正结果而修补数据、放宽 scorer、选择已知有利 case 或补造语义关系。
+
+项目北极星是：
+
+> GreptimeDB 不替 LLM 做 RCA。数据库提供准确、结构化、可追溯、便于查询的事实、实体和关系，让强 LLM 在固定诊断有效性要求下，用更少的调查资源完成 RCA。
+
+数据库负责 telemetry 存储与执行、schema 和 signal semantics、stable entity identity、source-proven relationships、provenance，以及 token-efficient query surfaces。调查策略、证据权衡和因果推理由 LLM 完成。不要在数据库或 benchmark 中实现面向具体故障的 RCA 专家规则。
+
+## 两条评估主线
+
+### Semantic layer causal measurement
+
+这是项目的主要研究问题。对同一个模型、case 和 telemetry，比较三个嵌套 treatment：
+
+- `raw`
+- `table_semantics`
+- `semantic_graph`
+
+分别估计：
+
+- `table_semantics - raw`
+- `semantic_graph - table_semantics`
+
+同一比较中的模型、prompt、case window、runner contract、工具预算、turn/timeout policy 和数据库内容必须一致。不同模型的能力差异不能混入 semantic-layer effect。
+
+主要目标是 correctness-preserving investigation efficiency：
+
+- GreptimeDB rows returned to valid evidence
+- tool calls to valid evidence or diagnosis
+- model input/output tokens
+- elapsed time
+- cost
+- valid-completion rate under a fixed resource budget
+
+正确 diagnosis 和有效 evidence citation 是 efficiency comparison 的 validity guardrail。不得把「少查数据但答错」计为效率提升。准确率变化可以作为次要观察，但不是 semantic layer 必须产生的效果。
+
+### Model RCA report cards
+
+这是 benchmark 的附带产物。模型只能在相同 case、protocol、treatment 和 runner contract 下比较。分别报告：
+
+- RCA validity：affected component、fault mechanism、evidence citation，以及有 canonical truth 时的 onset 和 causal dependency
+- Investigation efficiency：rows、calls、tokens、time 和可比较时的 cost
+- Agent reliability：runner failure、invalid tool call、budget exhaustion、repeated call 和 structured-output failure
+- Semantic utilization：catalog、table profile、Graph 使用方式，以及每个模型的 Table/Graph uplift
+
+不要把异构 taxonomy、不同 treatment 或不同 runner 的结果压成一个不透明总分。优先发布 valid-completion rate、分层结果和 correctness-efficiency Pareto frontier。
+
+## 实验与统计契约
+
+- Case 是跨 incident 推断的主要独立统计单位。
+- Repetitions 用于描述同一 case 上的模型随机性，不能冒充独立 cases。
+- 每个 case 先取 jointly successful run-pair deltas 的 median，再跨 case 做 effect summary 和预注册检验。
+- Run-pair statistics 可以保留，但必须明确标为 descriptive。
+- 端到端 RCA 的预注册主要效率字段是
+  `database_load.rows_returned`（combined report 中为 `rows_returned`）和
+  `evaluation.correct_completion_tool_calls`。两者都必须通过正确 diagnosis、
+  至少一条 citation、全部 citation 有效、无 runner error、无 budget hit 的
+  eligibility guardrail。
+- Discovery 与 Graph micro-benchmark 的预注册主要效率字段是
+  `rows_returned_through_evidence` 和 `tool_calls_through_evidence`。它们只统计到
+  cited canonical evidence，不得与端到端 RCA 字段混用。
+- Model token 结果在 runner accounting contract 完成审计和预注册前属于 exploratory metric。必须说明 cached input、system prompt、tool schema、tool results 和 structured output 的计量范围。
+- Latency 只有在 treatment execution position 平衡、服务器负载可比时才能跨 treatment 解释。
+- Dataset taxonomy 不同的 correctness 结果分 corpus 报告，除非存在经过论证的共同 scoring contract。
+- 优先使用 deterministic scorer。不得为了得到目标结论引入 LLM judge。
+- Protocol、prompt、scorer、selection、runner representation 或主要指标发生实质变化时，升级 protocol，并禁止与旧 protocol 混合统计。
+
+## Dataset 与 source fidelity
+
+- 使用 authoritative、public failure datasets；记录 revision、license、provenance 和下载文件 hash。
+- Adapter 必须保留源 schema、timestamp、identity、metric type、span role 和 source defect。不得静默修复或合成缺失事实。
+- 不根据名字相似度补造 topology、entity identity、client/server role、relationship 或 causal dependency。
+- Graph treatment 只适用于源数据或正式声明能够证明 entity 和 relationship 的 case。数据不支持时明确记录 graph-negative/empty，而不是制造覆盖。
+- Reference topology、causal graph 和 ground truth 只用于 selection gate、validation 或 scoring，除非 protocol 明确规定，否则不得暴露给 agent 或作为 telemetry ingest。
+- `development` case 可以用于修复工具、prompt 和 scorer；受其行为影响的 case 不得再标成 fresh measurement holdout。
+- `measurement` case 必须在查看 agent trajectory 前冻结。记录 eligible set、exclusions、deterministic ranking、replacement 和所有 no-model rejection。
+- Public benchmark 的 harness 可以开源；许可证不允许再分发的数据只能通过 pinned downloader 获取，不能提交到仓库。
+
+## Runner 与隔离要求
+
+- API、Codex subscription 和 Claude subscription 必须表达同一 system contract，并记录 runner capability 差异。
+- Subscription runner 不能静默回退到 API billing。Provider credentials 和 endpoint overrides 不得传入 subscription child process。
+- Tool-call cap 必须对 agent 可见；未知工具和 cap rejection 分开记录。Turn exhaustion 或 runner failure 应持久化为可评分失败，不能中断整个 batch。
+- 一个正式 case 使用独占 GreptimeDB instance。Semantic Graph 会枚举实例中的 user schemas，单纯使用不同 database 不能保证隔离。
+- 启动临时实例前确认 endpoint、进程和数据目录。只停止本任务启动的精确进程，不得修改或停止用户已有的 `localhost:4000` 或其他实例。
+- 未经用户明确授权，不运行付费全量 RCA、批量模型实验或会消耗大量 subscription quota 的任务。先执行 no-model gate 和最小验证。
+
+## 开源 benchmark 的完成标准
+
+第一个公开版本至少需要交付：
+
+1. 冻结且版本化的 benchmark specification、treatments、runner contract、scorer 和统计方法。
+2. 第三方可执行的数据下载、ingestion、no-model audit、agent run 和 report generation workflow。
+3. 覆盖多个独立 system families、telemetry shapes、fault families，以及 Table-positive、Graph-positive 和 Graph-negative 场景的 dataset portfolio。
+4. 从 micro-benchmark 到完整 RCA 的 efficiency transfer evidence，并公开 effect size、负结果和 applicability boundary。
+5. 在统一协议下生成的多模型 RCA report cards；semantic uplift 在每个模型内部配对估计。
+6. Machine-readable result summary、formal report hashes、reproduction commands、英文与中文报告，以及已知限制。
+
+样本量和 effect threshold 必须在正式运行前通过 power analysis 或明确的最小效应要求冻结。不要把「跑过若干模型和 case」本身视为完成。
+
+## Source of truth 与仓库地图
+
+- `PLAN.md`：canonical objective、experiment design、milestones 和当前阶段。
+- `src/semantic_rca_bench/protocol.py`：当前机器可读 protocol identifiers。
+- `DISCOVERY.md`：Table Semantics discovery micro-benchmark contract。
+- `GRAPH.md`：Semantic Graph micro-benchmark contract。
+- `DATASETS.md`：dataset provenance、fidelity、license、selection 和 rejection audit。
+- `RESULTS.md`、`RESULTS.zh-CN.md`：英文历史结果和中文结论报告。
+- `fixtures/measurement/`：冻结的 measurement fixtures、selection manifests 和 tracked aggregate。
+- `src/semantic_rca_bench/cli.py`：smoke、audit、run、batch 和 render 命令入口，以及 report resume contract。
+- `src/semantic_rca_bench/discovery.py`：Discovery task、fixture、runner 和 deterministic scorer。
+- `src/semantic_rca_bench/graph_benchmark.py`：Graph task、raw-edge audit、runner 和 deterministic scorer。
+- `src/semantic_rca_bench/evaluation.py`：端到端 RCA correctness、evidence validity 和 trajectory metrics。
+- `src/semantic_rca_bench/report.py`、`assets/report.html`：combined report、case-level inference、token/cost accounting 和 report card UI。
+- `src/semantic_rca_bench/measurement_summary.py`：从 ignored formal reports 生成 case-level aggregate 和 report hashes。
+- `src/semantic_rca_bench/selection.py`：离线构造和审计 selection manifest 的 deterministic ranking primitive；运行时 CLI 不重新选 case。
+- `src/semantic_rca_bench/datasets/`：dataset adapters 和 source audits。
+- `src/semantic_rca_bench/agent.py`、`subscription.py`：API 与 subscription runner contracts。
+- `src/semantic_rca_bench/greptimedb/`：query visibility、semantic profile 和 GreptimeDB client boundary。
+- `tests/`：scorer、runner、adapter、protocol 和 regression tests。
+
+实现与文档不一致时，不要凭文档猜测。读取代码、正式 report JSON、selection manifest 和测试，确定事实后修复 source of truth 的漂移。
+
+## 工作流程
+
+1. 编辑前运行 `git status --short`，保留用户和其他进程的无关修改。
+2. 复杂实验先明确 main use case、estimand、统计单位、selection、no-model gates、验收条件和不在范围内的工作。
+3. 先完成 source/data audit 和 deterministic gates，再调用模型。
+4. 使用 development cases 修复实现；冻结协议后再选择未受 trajectory 影响的 measurement cases。
+5. 每个结论引用实际 report、query result、source artifact 或测试。不能确认时明确标记未知，不要猜测。
+6. 结果不支持原假设时直接报告，不调 scorer、删 case 或扩大解释范围。
+7. Commit、push、PR 和外部发布只在用户明确要求时执行。Commit 使用 conventional title 和 `git commit -s`，不添加 AI 署名。
+
+## 常用命令
+
+项目使用 Python 3.11 和 `uv`。
+
+```bash
+uv sync --extra dev
+uv run pytest -q
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv lock --check
+```
+
+查看 benchmark 主流程入口：
+
+```bash
+uv run semantic-rca smoke --help
+uv run semantic-rca smoke-rca100 --help
+uv run semantic-rca smoke-openrca --help
+uv run semantic-rca smoke-openrca2 --help
+uv run semantic-rca discovery-audit --help
+uv run semantic-rca discovery-run --help
+uv run semantic-rca graph-audit --help
+uv run semantic-rca graph-run --help
+uv run semantic-rca run --help
+uv run semantic-rca batch --help
+uv run semantic-rca render --help
+```
+
+参数、隔离要求和完整 workflow 以 `README.md`、`DISCOVERY.md` 和 `GRAPH.md`
+为准。`*-run`、`run` 和 `batch` 会调用模型；未通过 no-model gate 或未经授权时
+不得执行。
+
+从保留在 `.reports/` 的正式 micro-benchmark reports 重新生成 tracked summary：
+
+```bash
+uv run python -m semantic_rca_bench.measurement_summary
+```
+
+生成后比较 `fixtures/measurement/results-summary.json`，确认 report hashes、selection manifest 和统计结果一致。`.cache/`、`.data/`、`.instances/`、`.runs/` 和 `.reports/` 是本地 ignored artifacts，不得提交 telemetry、credentials 或未审计的模型 trajectories。
+
+Ignored formal reports 只有 hash 时不能满足公开复现要求。1.0 headline 所依赖的
+report 必须通过 license 和敏感内容审计，并作为 immutable release artifact 公开；
+tracked summary 必须记录可下载文件的名称、大小和 SHA-256。正式 end-to-end batch
+前还必须提交并冻结 power-analysis artifact。当前缺口和验收条件以 `PLAN.md` 的
+“Public-release and statistical-power gates”为准。
+
+验证从覆盖改动的最窄测试开始，再根据影响范围扩展到完整测试。只报告实际执行过的命令和真实结果。

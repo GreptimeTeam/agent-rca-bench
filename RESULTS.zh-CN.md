@@ -24,7 +24,7 @@ Semantic layer 在满足数据契约的场景中可以提高 RCA 调查效率。
 
 正式 case 在模型运行前完成冻结和 no-model gate。selection manifest 记录 eligible set、hash ranking、既有 agent 轨迹排除项、候选消耗顺序和拒绝原因。正式 32 个 cells 均无 runner error、tool budget hit 或 rejected tool call。
 
-效率统计采用 treatment 减 baseline 的 paired delta。负数表示 semantic treatment 使用的资源更少。跨 incident 推断以 case 为主要独立单位；同一 case 的重复运行只用于描述模型随机性。每个 case 先取共同成功 run-pair delta 的 median，再跨 case 计算方向和 sign test。模型 token 指报告中的 `input_tokens + output_tokens`，不等同于 API 账单金额，也不是本轮预注册的主要指标。
+效率统计采用 treatment 减 baseline 的 paired delta。负数表示 semantic treatment 使用的资源更少。跨 incident 推断以 case 为主要独立单位；同一 case 的重复运行只用于描述模型随机性。每个 case 先取共同成功 run-pair delta 的 median，再跨 case 计算方向和 sign test。模型 token 指 Codex 唯一一条累计 `turn.completed` 中的 `input_tokens + output_tokens`：input 包含 cached input，但 CLI 没有保留 cache breakdown；output 包含 reasoning，但没有独立 reasoning 计数。Codex runner context、MCP schema/result 和 output-schema handling 都在 provider context 内，无法拆分各自贡献。该字段只能在同一 Codex CLI、模型、protocol 和 case 内比较，不等同于 API 账单金额，也不能与 API 或 Claude subscription 字段横向比较；它不是本轮预注册的主要指标。
 
 ## Discovery v2：Table Semantics
 
@@ -123,7 +123,9 @@ OpenRCA 2.0 artifact 的 paper 与 dataset card 对许可证声明不一致，ar
 - Codex subscription runner 接收与 API、Claude 相同的 system contract。
 - Taxonomy 外答案在所有 runner 中统一记为错误答案。
 - 未知工具调用统一记录为 `rejected_tool_calls`，但不触发 `tool_budget_exhausted`。
-- 失败或无 diagnosis 的 run 不进入 `rows_returned` 完成效率配对。
+- `rows_returned` 和完成调用数采用同一 eligibility guardrail：runner 无错误、未触发 budget、joint diagnosis 正确，并且至少有一条 citation 且全部 citation 有效。
+- 单 case 的 repetition 只输出 descriptive run-pair summary，不再附 sign-test p 值；端到端 RCA 推断按 case median 进行，并对四个主检验做 Holm 校正。
+- 删除跨 runner 含义不一致的 `first_component_mention_turn`；Codex 工具结果不再被误记为模型首次想到组件。
 - Graph observation window 在 isolation、coverage 和 query path 中统一为半开区间 `[start, end)`。
 - `information_schema` scope 改为检查解析后的 `table_schema = current_database` conjunct，不再使用字符串包含判断。
 - Semantic catalog 将 `I/O` 规范化为 `io`，过滤单字符和停用词，并识别 `io_w`、`io_r` 的方向语义。
@@ -139,7 +141,7 @@ OpenRCA 2.0 artifact 的 paper 与 dataset card 对许可证声明不一致，ar
 - 正式 32 个 cells 中，runner error、tool budget hit 和 rejected tool call 均为 0。
 - 两个 Graph no-model audits 的 raw span edge set 与 Graph edge set 完全一致。
 - 17 个带上游 SHA-256 的 OpenRCA source artifacts 共 19,713,341,344 bytes，校验结果为 0 missing、0 mismatch；下载目录没有 `.part` 文件。
-- 测试结果为 `172 passed`。
+- 测试结果为 `182 passed`。
 - Ruff lint、Ruff format check、`git diff --check`、Python compileall 和 `uv lock --check` 均通过。
 - 临时 GreptimeDB `127.0.0.1:4100` 已停止；既有 `127.0.0.1:4000` 实例未被本轮实验修改。
 

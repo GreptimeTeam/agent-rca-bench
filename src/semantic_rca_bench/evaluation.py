@@ -115,11 +115,6 @@ def evaluate(run: AgentRun, truth: GroundTruth) -> Evaluation:
             sum(trace.error is not None for trace in run.tool_calls) + len(run.rejected_tool_calls)
         ),
         exact_repeated_calls=exact_repeated_calls,
-        first_component_mention_turn=(
-            _first_component_mention_turn(run, truth.affected_component)
-            if truth.component_scoreable
-            else None
-        ),
         correct_completion_tool_calls=len(run.tool_calls) if joint_match is True else None,
     )
 
@@ -131,40 +126,6 @@ def _is_discovery_call(tool_name: str, arguments: dict[str, object]) -> bool:
         return False
     query = str(arguments.get("query") or arguments.get("sql") or "").lower()
     return bool(re.search(r"\b(show\s+tables|describe|desc\s+|information_schema\.)", query))
-
-
-def _first_component_mention_turn(run: AgentRun, component: str) -> int | None:
-    if not _component_key(component):
-        return None
-    for index, response in enumerate(run.responses, start=1):
-        content = response.get("content")
-        if not isinstance(content, list):
-            continue
-        text = " ".join(_response_strings(block) for block in content if isinstance(block, dict))
-        if _contains_component_mention(text, component):
-            return index
-    return None
-
-
-def _contains_component_mention(text: str, component: str) -> bool:
-    tokens = re.findall(r"[a-z0-9]+", text.lower())
-    expected_tokens = re.findall(r"[a-z0-9]+", component.lower())
-    if expected_tokens and any(
-        tokens[index : index + len(expected_tokens)] == expected_tokens
-        for index in range(len(tokens) - len(expected_tokens) + 1)
-    ):
-        return True
-    return any(component_matches(token, component) for token in tokens)
-
-
-def _response_strings(value: object) -> str:
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        return " ".join(_response_strings(item) for item in value.values())
-    if isinstance(value, list):
-        return " ".join(_response_strings(item) for item in value)
-    return ""
 
 
 def _onset_error(value: str | None, expected_epoch: int | None) -> float | None:

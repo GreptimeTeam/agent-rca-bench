@@ -90,7 +90,6 @@ class DiscoveryEvaluation(BaseModel):
     canonical_result_match: bool
     predicate_match: bool
     failure_reasons: list[str]
-    evidence_tool_call: int | None
     tool_calls_through_evidence: int | None
     rows_returned_through_evidence: int | None
     discovery_calls_through_evidence: int | None
@@ -142,7 +141,6 @@ DEVELOPMENT_FIXTURES = {
 }
 
 DISCOVERY_MAX_TOOL_CALLS = 12
-DISCOVERY_API_MAX_TURNS = 22
 
 
 def run_discovery_agent(
@@ -241,6 +239,8 @@ def failed_discovery_run(
     runner: AgentRunner,
     model: str,
     error: str,
+    *,
+    max_tool_calls: int = DISCOVERY_MAX_TOOL_CALLS,
 ) -> DiscoveryAgentRun:
     return DiscoveryAgentRun(
         run_id=uuid.uuid4().hex,
@@ -254,7 +254,7 @@ def failed_discovery_run(
         usage=AgentUsage(),
         elapsed_seconds=0,
         responses=[],
-        turn_limit=DISCOVERY_API_MAX_TURNS if runner is AgentRunner.API else None,
+        turn_limit=max_tool_calls + 10 if runner is AgentRunner.API else None,
         turn_limit_enforced=runner is AgentRunner.API,
     )
 
@@ -461,7 +461,6 @@ def evaluate_discovery_run(
         canonical_result_match=canonical_result_match,
         predicate_match=predicate_match,
         failure_reasons=failure_reasons,
-        evidence_tool_call=evidence_index + 1 if evidence_index is not None else None,
         tool_calls_through_evidence=evidence_index + 1 if evidence_index is not None else None,
         rows_returned_through_evidence=rows_through_evidence,
         discovery_calls_through_evidence=(

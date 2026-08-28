@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import random
 import re
@@ -110,7 +109,7 @@ from semantic_rca_bench.inspect import (
     summarize_semantic_surfaces,
 )
 from semantic_rca_bench.protocol import benchmark_protocol, discovery_protocol, graph_protocol
-from semantic_rca_bench.report import case_context, render_reports
+from semantic_rca_bench.report import TOKEN_ACCOUNTING, case_context, render_reports
 from semantic_rca_bench.subscription import run_subscription_agent
 
 DEFAULT_GREPTIMEDB_REPO = Path("/Users/dennis/programming/rust/greptimedb")
@@ -513,6 +512,7 @@ def discovery_run(args: argparse.Namespace) -> int:
     orders = _run_orders(levels, args.repetitions, args.seed)
     output = args.output or _discovery_output(fixture.fixture_id, runner, args.model)
     expected = {
+        "discovery_report_schema_version": 2,
         "source_report": str(args.report),
         "runner": runner.value,
         "model": args.model,
@@ -520,6 +520,7 @@ def discovery_run(args: argparse.Namespace) -> int:
         "max_tool_calls": DISCOVERY_MAX_TOOL_CALLS,
         "repetitions": args.repetitions,
         "protocol": discovery_protocol(),
+        "token_accounting": TOKEN_ACCOUNTING[runner.value],
         "fixture": fixture.model_dump(mode="json"),
         "case_role": args.case_role,
     }
@@ -534,7 +535,6 @@ def discovery_run(args: argparse.Namespace) -> int:
             raise ValueError(f"cannot resume incompatible discovery report: {mismatches}")
     else:
         result = {
-            "discovery_report_schema_version": 1,
             "mode": f"{args.case_role}-run",
             **expected,
             "source_case": fixture.source_case,
@@ -583,7 +583,7 @@ def discovery_run(args: argparse.Namespace) -> int:
                 audit.canonical_result,
                 database=database,
             ).model_dump(mode="json")
-        result["paired_summary"] = _discovery_paired_summary(runs)
+        result["run_pair_descriptive"] = _discovery_run_pair_descriptive(runs)
         write_json(output, result)
         for repetition, order in enumerate(orders):
             for position, level in enumerate(order):
@@ -604,6 +604,7 @@ def discovery_run(args: argparse.Namespace) -> int:
                             runner,
                             args.model,
                             f"runner failed: {error}",
+                            max_tool_calls=DISCOVERY_MAX_TOOL_CALLS,
                         )
                 runs.append(
                     {
@@ -619,7 +620,7 @@ def discovery_run(args: argparse.Namespace) -> int:
                         "database_load": database_load.model_dump(mode="json"),
                     }
                 )
-                result["paired_summary"] = _discovery_paired_summary(runs)
+                result["run_pair_descriptive"] = _discovery_run_pair_descriptive(runs)
                 write_json(output, result)
     print(output)
     return 0
@@ -669,6 +670,7 @@ def graph_run(args: argparse.Namespace) -> int:
     orders = _run_orders(levels, args.repetitions, args.seed)
     output = args.output or _graph_output(fixture.fixture_id, runner, args.model)
     expected = {
+        "graph_report_schema_version": 2,
         "source_report": str(args.report),
         "runner": runner.value,
         "model": args.model,
@@ -676,24 +678,12 @@ def graph_run(args: argparse.Namespace) -> int:
         "max_tool_calls": GRAPH_MAX_TOOL_CALLS,
         "repetitions": args.repetitions,
         "protocol": graph_protocol(),
+        "token_accounting": TOKEN_ACCOUNTING[runner.value],
         "fixture": fixture.model_dump(mode="json"),
         "case_role": args.case_role,
     }
     if output.exists():
         result = json.loads(output.read_text())
-        previous_protocol = result.get("protocol")
-        if _is_graph_scorer_only_upgrade(previous_protocol, expected["protocol"]):
-            history = result.setdefault("rescoring_history", [])
-            if not isinstance(history, list):
-                raise ValueError("graph report rescoring_history must be a list")
-            history.append(
-                {
-                    "from": previous_protocol,
-                    "to": expected["protocol"],
-                    "reason": "destination type is proven by the exact canonical edge set",
-                }
-            )
-            result["protocol"] = expected["protocol"]
         mismatches = {
             key: (result.get(key), value)
             for key, value in expected.items()
@@ -703,7 +693,6 @@ def graph_run(args: argparse.Namespace) -> int:
             raise ValueError(f"cannot resume incompatible graph report: {mismatches}")
     else:
         result = {
-            "graph_report_schema_version": 1,
             "mode": f"{args.case_role}-run",
             **expected,
             "source_case": fixture.source_case,
@@ -755,7 +744,7 @@ def graph_run(args: argparse.Namespace) -> int:
                 audit.graph_result,
                 database=database,
             ).model_dump(mode="json")
-        result["paired_summary"] = _graph_paired_summary(runs)
+        result["run_pair_descriptive"] = _graph_run_pair_descriptive(runs)
         write_json(output, result)
         for repetition, order in enumerate(orders):
             for position, level in enumerate(order):
@@ -777,6 +766,7 @@ def graph_run(args: argparse.Namespace) -> int:
                             runner,
                             args.model,
                             f"runner failed: {error}",
+                            max_tool_calls=GRAPH_MAX_TOOL_CALLS,
                         )
                 runs.append(
                     {
@@ -792,13 +782,13 @@ def graph_run(args: argparse.Namespace) -> int:
                         "database_load": database_load.model_dump(mode="json"),
                     }
                 )
-                result["paired_summary"] = _graph_paired_summary(runs)
+                result["run_pair_descriptive"] = _graph_run_pair_descriptive(runs)
                 write_json(output, result)
     print(output)
     return 0
 
 
-def _discovery_paired_summary(runs: list[object]) -> dict[str, object]:
+def _discovery_run_pair_descriptive(runs: list[object]) -> dict[str, object]:
     by_key: dict[tuple[int, str], dict[str, object]] = {}
     for item in runs:
         if not isinstance(item, dict):
@@ -856,17 +846,17 @@ def _discovery_paired_summary(runs: list[object]) -> dict[str, object]:
                 "worse": worse,
                 "ties": metric_ties,
                 "median_delta": median(deltas) if deltas else None,
-                "sign_test_p_value": _exact_sign_p_value(better, worse),
             }
         )
 
     return {
+        "statistical_unit": "run pair within one case",
+        "inference_role": "descriptive only; repetitions are not independent cases",
         "task_success": {
             "paired_observations": len(paired),
             "improvements": improvements,
             "regressions": regressions,
             "ties": ties,
-            "sign_test_p_value": _exact_sign_p_value(improvements, regressions),
         },
         "successful_pair_efficiency": efficiency,
     }
@@ -885,7 +875,7 @@ def _discovery_metric(item: dict[str, object], metric: str) -> float | None:
     return float(value) if isinstance(value, (int, float)) else None
 
 
-def _graph_paired_summary(runs: list[object]) -> dict[str, object]:
+def _graph_run_pair_descriptive(runs: list[object]) -> dict[str, object]:
     by_key: dict[tuple[int, str], dict[str, object]] = {}
     for item in runs:
         if not isinstance(item, dict):
@@ -939,17 +929,17 @@ def _graph_paired_summary(runs: list[object]) -> dict[str, object]:
                 "worse": worse,
                 "ties": metric_ties,
                 "median_delta": median(deltas) if deltas else None,
-                "sign_test_p_value": _exact_sign_p_value(better, worse),
             }
         )
 
     return {
+        "statistical_unit": "run pair within one case",
+        "inference_role": "descriptive only; repetitions are not independent cases",
         "task_success": {
             "paired_observations": len(paired),
             "improvements": improvements,
             "regressions": regressions,
             "ties": ties,
-            "sign_test_p_value": _exact_sign_p_value(improvements, regressions),
         },
         "successful_pair_efficiency": efficiency,
     }
@@ -966,14 +956,6 @@ def _graph_metric(item: dict[str, object], metric: str) -> float | None:
         return None
     value = evaluation.get(metric)
     return float(value) if isinstance(value, (int, float)) else None
-
-
-def _exact_sign_p_value(wins: int, losses: int) -> float | None:
-    observations = wins + losses
-    if observations == 0:
-        return None
-    tail = sum(math.comb(observations, value) for value in range(min(wins, losses) + 1))
-    return min(1.0, 2 * tail / (2**observations))
 
 
 def _discovery_source(
@@ -1011,7 +993,8 @@ def _validate_microbenchmark_fixture_args(
 
 def _discovery_output(fixture_id: str, runner: AgentRunner, model: str) -> Path:
     slug = re.sub(r"[^a-z0-9]+", "-", f"{runner.value}-{model}".lower()).strip("-")
-    return Path(".reports") / f"discovery-v1-{slug}-{fixture_id}.json"
+    version = discovery_protocol()["version"]
+    return Path(".reports") / f"discovery-v{version}-{slug}-{fixture_id}.json"
 
 
 def _graph_source(
@@ -1059,19 +1042,8 @@ def _require_graph_audit(audit: GraphAudit) -> None:
 
 def _graph_output(fixture_id: str, runner: AgentRunner, model: str) -> Path:
     slug = re.sub(r"[^a-z0-9]+", "-", f"{runner.value}-{model}".lower()).strip("-")
-    return Path(".reports") / f"graph-v1-{slug}-{fixture_id}.json"
-
-
-def _is_graph_scorer_only_upgrade(actual: object, expected: object) -> bool:
-    if not isinstance(actual, dict) or not isinstance(expected, dict):
-        return False
-    if actual.get("scorer") != "treatment-specific-citation-canonical-edge-set-v1":
-        return False
-    if expected.get("scorer") != "result-proven-destination-type-canonical-edge-set-v2":
-        return False
-    return {key: value for key, value in actual.items() if key != "scorer"} == {
-        key: value for key, value in expected.items() if key != "scorer"
-    }
+    version = graph_protocol()["version"]
+    return Path(".reports") / f"graph-v{version}-{slug}-{fixture_id}.json"
 
 
 def run(args: argparse.Namespace) -> int:
@@ -1116,6 +1088,7 @@ def run(args: argparse.Namespace) -> int:
             "repetitions": args.repetitions,
             "case_role": args.case_role,
             "protocol": benchmark_protocol(),
+            "token_accounting": TOKEN_ACCOUNTING[args.runner],
         }
         if "runner_jobs" in result:
             expected["runner_jobs"] = runner_jobs
@@ -1128,12 +1101,13 @@ def run(args: argparse.Namespace) -> int:
             raise ValueError(f"cannot resume incompatible report: {mismatches}")
     else:
         result = {
-            "report_schema_version": 4,
+            "report_schema_version": 5,
             "source_report": str(args.report),
             "case": source["case"],
             "ingest": source.get("ingest", {}),
             "semantic_coverage": semantic_coverage,
             "protocol": benchmark_protocol(),
+            "token_accounting": TOKEN_ACCOUNTING[args.runner],
             "runner": args.runner,
             "model": args.model,
             "seed": args.seed,
@@ -1153,7 +1127,8 @@ def run(args: argparse.Namespace) -> int:
             "runs": [],
         }
     runs = result["runs"]
-    assert isinstance(runs, list)
+    if not isinstance(runs, list):
+        raise ValueError("report runs must be a list")
     result["ground_truth"] = truth.model_dump(mode="json")
     for item in runs:
         recorded_run = AgentRun.model_validate(item["run"])

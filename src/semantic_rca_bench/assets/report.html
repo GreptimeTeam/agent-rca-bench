@@ -175,8 +175,8 @@
       <div class="data-table" id="summary-table"></div>
       <div class="muted" id="pricing-note" style="margin-top:8px;font-size:12px"></div>
       <div class="section-head" style="margin-top:24px">
-        <h3>Pre-registered paired metrics</h3>
-        <span class="muted">Lower is better. Ties are excluded from the exact two-sided sign test.</span>
+        <h3>Case-level paired efficiency</h3>
+        <span class="muted">Each case contributes its median jointly valid run-pair delta. Lower is better.</span>
       </div>
       <div class="case-matrix" id="paired-metrics"></div>
     </section>
@@ -197,7 +197,6 @@
       <div class="case-picker"><label for="case-select">Dataset case</label><select id="case-select"></select></div>
       <div class="muted" id="case-context" style="margin:-12px 0 14px;font-size:12px"></div>
       <div class="data-table" id="case-summary"></div>
-      <div class="muted" style="margin-top:8px;font-size:12px">* First component mention is exploratory. A schema or service-list enumeration can trigger it; it is not localization time.</div>
       <div class="section-head" style="margin-top:32px"><h3>Session traces</h3><span class="muted">Every model turn, tool call, result, error, and evidence citation.</span></div>
       <div class="tabs" id="tabs" role="tablist" aria-label="Visibility level"></div>
       <div id="sessions"></div>
@@ -261,9 +260,35 @@
       const errorCount = run => tracesOf(run).filter(t => t.error).length + (run.rejected_tool_calls || []).length + (run.error ? 1 : 0);
       const requestedToolCount = run => run.tool_calls_requested == null ? tracesOf(run).length : Number(run.tool_calls_requested);
       const budgetHit = run => Boolean(run.tool_budget_exhausted);
+      const jointlyValid = item => {
+        const run = runOf(item);
+        const evaluation = evaluationOf(item);
+        const cited = Number(evaluation.cited_evidence_count || 0);
+        return !run.error && !budgetHit(run) && run.diagnosis != null
+          && evaluation.joint_match === true && cited > 0
+          && Number(evaluation.valid_evidence_count || 0) === cited;
+      };
+      const rawUsageTotals = run => (run.responses || []).reduce((total, response) => {
+        const usage = response.usage || {};
+        total.cacheRead += Number(usage.cache_read_input_tokens || 0);
+        total.cacheCreate += Number(usage.cache_creation_input_tokens || 0);
+        return total;
+      }, {cacheRead: 0, cacheCreate: 0});
+      const tokenTotalOf = run => {
+        if (run.runner_reported_token_total != null) return Number(run.runner_reported_token_total);
+        const raw = rawUsageTotals(run);
+        const cachedAlreadyIncluded = report.token_accounting?.cached_input === 'included in input_tokens';
+        const cached = cachedAlreadyIncluded ? 0 : raw.cacheRead + raw.cacheCreate;
+        return Number(run.usage?.input_tokens || 0) + cached + Number(run.usage?.output_tokens || 0);
+      };
       const costOf = run => {
         if (!report.pricing) return null;
-        return (Number(run.usage?.input_tokens || 0) * report.pricing.input_per_million + Number(run.usage?.output_tokens || 0) * report.pricing.output_per_million) / 1_000_000;
+        if (run.estimated_api_cost != null) return Number(run.estimated_api_cost);
+        const raw = rawUsageTotals(run);
+        const uncachedInput = Number(run.usage?.input_tokens || 0) + raw.cacheCreate;
+        const cacheReadRate = report.pricing.input_cache_hit_per_million;
+        if (raw.cacheRead && cacheReadRate == null) return null;
+        return (uncachedInput * report.pricing.input_per_million + raw.cacheRead * Number(cacheReadRate || 0) + Number(run.usage?.output_tokens || 0) * report.pricing.output_per_million) / 1_000_000;
       };
       const caseLabel = (item, index) => {
         const info = item.case || {};
@@ -328,10 +353,12 @@
           const fault = count(item => evaluationOf(item).fault_type_match);
           const budgetHits = count(item => budgetHit(runOf(item)));
           const evaluations = items.map(evaluationOf);
-          const correctItems = items.filter(item => !budgetHit(runOf(item)) && evaluationOf(item).joint_match);
+          const correctItems = items.filter(jointlyValid);
           const requestedTools = items.reduce((sum, item) => sum + requestedToolCount(runOf(item)), 0);
-          const estimatedCost = report.pricing ? items.reduce((sum, item) => sum + costOf(runOf(item)), 0) : null;
-          const medianCost = report.pricing ? median(items.map(item => costOf(runOf(item)))) : null;
+          const costs = report.pricing ? items.map(item => costOf(runOf(item))) : [];
+          const costsAvailable = Boolean(report.pricing) && costs.every(value => value != null);
+          const estimatedCost = costsAvailable ? costs.reduce((sum, value) => sum + value, 0) : null;
+          const medianCost = costsAvailable ? median(costs) : null;
           const elapsed = items.map(item => Number(runOf(item).elapsed_seconds || 0));
           const measuredLoads = items.map(databaseLoadOf).filter(Boolean);
           const databaseLoad = measuredLoads.length ? {
@@ -350,7 +377,7 @@
             <td class="numeric api-cost">${money(medianCost)}</td>
             <td class="numeric"><b>${duration(elapsed.reduce((sum, value) => sum + value, 0))}</b></td>
             <td class="numeric">${duration(median(elapsed))}</td>
-            <td class="numeric">${num(total(run => Number(run.usage?.input_tokens || 0) + Number(run.usage?.output_tokens || 0)))}</td>
+            <td class="numeric">${num(total(tokenTotalOf))}</td>
             <td class="numeric">${num(items.reduce((sum, item) => sum + tracesOf(runOf(item)).length, 0))} / ${num(requestedTools)}</td>
             <td class="numeric aggregate-correctness">${correctItems.length ? num(median(correctItems.map(item => evaluationOf(item).correct_completion_tool_calls))) : '—'}</td>
             <td class="numeric">${num(evaluations.reduce((sum, value) => sum + Number(value.discovery_calls || 0), 0))}</td>
@@ -360,9 +387,10 @@
             <td class="numeric">${num(items.reduce((sum, item) => sum + errorCount(runOf(item)), 0))}</td>
           </tr>`;
         }).join('');
-        document.getElementById('summary-table').innerHTML = `<table><thead><tr><th>Visibility</th><th class="numeric">Runs</th><th class="numeric aggregate-correctness">Joint</th><th class="numeric aggregate-correctness">Affected component</th><th class="numeric aggregate-correctness">Mechanism</th><th class="numeric api-cost">Cost total</th><th class="numeric api-cost">Cost/run p50</th><th class="numeric">Elapsed total${report.latency_comparable ? '' : '*'}</th><th class="numeric">Elapsed/run p50${report.latency_comparable ? '' : '*'}</th><th class="numeric">Tokens</th><th class="numeric">Tools executed / requested</th><th class="numeric aggregate-correctness">Non-binding correct-run tools p50</th><th class="numeric">Discovery</th><th class="numeric">Exact repeats</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
+        document.getElementById('summary-table').innerHTML = `<table><thead><tr><th>Visibility</th><th class="numeric">Runs</th><th class="numeric aggregate-correctness">Joint</th><th class="numeric aggregate-correctness">Affected component</th><th class="numeric aggregate-correctness">Mechanism</th><th class="numeric api-cost">Cost total</th><th class="numeric api-cost">Cost/run p50</th><th class="numeric">Elapsed total${report.latency_comparable ? '' : '*'}</th><th class="numeric">Elapsed/run p50${report.latency_comparable ? '' : '*'}</th><th class="numeric">Tokens</th><th class="numeric">Tools executed / requested</th><th class="numeric aggregate-correctness">Jointly valid tools p50</th><th class="numeric">Discovery</th><th class="numeric">Exact repeats</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
         const note = document.getElementById('pricing-note');
         const limitations = [];
+        if (report.token_accounting) limitations.push(`Token accounting: ${report.token_accounting.scope}; ${report.token_accounting.input_tokens}; ${report.token_accounting.comparability}.`);
         if (!report.correctness_aggregation_comparable) limitations.push('Correctness totals are hidden because the report combines datasets with different answer taxonomies; use the case matrix.');
         if (!report.latency_comparable) limitations.push('Treatment order is not position-balanced, so elapsed-time values are descriptive and cannot support a treatment comparison.');
         if (report.pricing) {
@@ -372,24 +400,30 @@
           const pricingDetail = report.pricing.note ? ` · ${esc(report.pricing.note)}` : '';
           note.innerHTML = `Estimated API cost at ${rateMoney(report.pricing.input_per_million)}/MTok input and ${rateMoney(report.pricing.output_per_million)}/MTok output · ${pricingDate}${pricingDetail} · <a href="${esc(report.pricing.source)}">source</a>${limitations.length ? `<br>${limitations.map(esc).join('<br>')}` : ''}`;
         } else if (runner.endsWith('-subscription')) {
-          note.innerHTML = `This pilot used ${esc(runner)} plan usage. Token counts are recorded, but API dollar pricing does not apply.${limitations.length ? `<br>${limitations.map(esc).join('<br>')}` : ''}`;
+          note.innerHTML = `This pilot used ${esc(runner)} plan usage. API dollar pricing does not apply.${limitations.length ? `<br>${limitations.map(esc).join('<br>')}` : ''}`;
         } else {
-          note.innerHTML = `No pricing snapshot is registered for this model; token counts remain authoritative.${limitations.length ? `<br>${limitations.map(esc).join('<br>')}` : ''}`;
+          note.innerHTML = `No pricing snapshot is registered for this model.${limitations.length ? `<br>${limitations.map(esc).join('<br>')}` : ''}`;
         }
       }
 
       function renderPairedMetrics() {
         const comparisons = report.paired_primary_comparisons || [];
-        const metricLabel = value => value === 'rows_returned' ? 'GreptimeDB rows returned' : 'Calls to joint-correct diagnosis';
-        const rows = comparisons.map(item => `<tr>
+        const metricLabel = value => value === 'rows_returned' ? 'Rows to jointly valid diagnosis' : 'Calls to jointly valid diagnosis';
+        const rows = comparisons.map(item => {
+          const inference = item.case_level_inference || {};
+          const descriptive = item.run_pair_descriptive || {};
+          return `<tr>
           <td>${esc(metricLabel(item.metric))}</td>
           <td>${esc(labels[item.candidate] || item.candidate)} vs ${esc(labels[item.baseline] || item.baseline)}</td>
-          <td class="numeric">${num(item.paired_observations)}</td>
-          <td class="numeric">${num(item.better)} / ${num(item.worse)} / ${num(item.ties)}</td>
-          <td class="numeric">${item.median_delta == null ? '—' : num(item.median_delta)}</td>
-          <td class="numeric">${item.sign_test_p_value == null ? '—' : Number(item.sign_test_p_value).toFixed(4)}</td>
-        </tr>`).join('');
-        document.getElementById('paired-metrics').innerHTML = `<table><thead><tr><th>Metric</th><th>Comparison</th><th class="numeric">Pairs</th><th class="numeric">Better / worse / ties</th><th class="numeric">Median delta</th><th class="numeric">Sign-test p</th></tr></thead><tbody>${rows || '<tr><td colspan="6">No eligible pairs.</td></tr>'}</tbody></table>`;
+          <td class="numeric">${num(inference.observations)}</td>
+          <td class="numeric">${num(inference.better)} / ${num(inference.worse)} / ${num(inference.ties)}</td>
+          <td class="numeric">${inference.median_delta == null ? '—' : num(inference.median_delta)}</td>
+          <td class="numeric">${inference.exact_two_sided_sign_test_p_value == null ? '—' : Number(inference.exact_two_sided_sign_test_p_value).toFixed(4)}</td>
+          <td class="numeric">${inference.holm_adjusted_p_value == null ? '—' : Number(inference.holm_adjusted_p_value).toFixed(4)}</td>
+          <td class="numeric">${num(descriptive.observations)} · ${num(descriptive.better)} / ${num(descriptive.worse)} / ${num(descriptive.ties)} · Δ ${descriptive.median_delta == null ? '—' : num(descriptive.median_delta)}</td>
+        </tr>`;
+        }).join('');
+        document.getElementById('paired-metrics').innerHTML = `<table><thead><tr><th>Metric</th><th>Comparison</th><th class="numeric">Cases</th><th class="numeric">Better / worse / ties</th><th class="numeric">Median case delta</th><th class="numeric">Exact p</th><th class="numeric">Holm p</th><th class="numeric">Run pairs (descriptive)</th></tr></thead><tbody>${rows || '<tr><td colspan="8">No eligible cases.</td></tr>'}</tbody></table>`;
       }
 
       function renderCaseSummary(runs) {
@@ -401,7 +435,7 @@
           const mechanism = items.filter(item => evaluationOf(item).fault_type_match).length;
           const budgetHits = items.filter(item => budgetHit(runOf(item))).length;
           const requestedTools = items.reduce((sum, item) => sum + requestedToolCount(runOf(item)), 0);
-          const correctItems = items.filter(item => !budgetHit(runOf(item)) && evaluationOf(item).joint_match);
+          const correctItems = items.filter(jointlyValid);
           const componentCorrectItems = items.filter(item => !budgetHit(runOf(item)) && evaluationField(evaluationOf(item), 'affected_component_match') === true);
           const predictions = new Map();
           items.forEach(item => {
@@ -429,13 +463,12 @@
             <td class="numeric">${correctItems.length ? num(median(correctItems.map(item => evaluationOf(item).correct_completion_tool_calls))) : '—'}</td>
             <td class="numeric">${componentCorrectItems.length ? num(median(componentCorrectItems.map(item => evaluationOf(item).tool_calls_executed))) : '—'}</td>
             <td class="numeric">${num(median(items.map(item => evaluationOf(item).discovery_calls)))}</td>
-            <td class="numeric">${median(items.map(item => evaluationOf(item).first_component_mention_turn)) == null ? '—' : num(median(items.map(item => evaluationOf(item).first_component_mention_turn)))}</td>
             <td class="numeric ${budgetHits ? 'miss' : ''}">${budgetHits}/${items.length}</td>
             <td class="numeric">${databaseLoad}</td>
             <td class="numeric">${num(items.reduce((sum, item) => sum + errorCount(runOf(item)), 0))}</td>
           </tr>`;
         }).join('');
-        return `<table><thead><tr><th>Visibility</th><th>Predictions</th><th>Joint</th><th>Affected component</th><th>Mechanism</th><th class="numeric">Onset p50</th><th class="numeric api-cost">Cost total</th><th class="numeric">Elapsed p50</th><th class="numeric">Tools executed / requested</th><th class="numeric">Non-binding joint-correct tools p50</th><th class="numeric">Non-binding component-correct tools p50</th><th class="numeric">Discovery p50</th><th class="numeric">First component mention p50*</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
+        return `<table><thead><tr><th>Visibility</th><th>Predictions</th><th>Joint</th><th>Affected component</th><th>Mechanism</th><th class="numeric">Onset p50</th><th class="numeric api-cost">Cost total</th><th class="numeric">Elapsed p50</th><th class="numeric">Tools executed / requested</th><th class="numeric">Jointly valid tools p50</th><th class="numeric">Non-binding component-correct tools p50</th><th class="numeric">Discovery p50</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
       }
 
       function renderCase(index) {
@@ -533,7 +566,7 @@
         const evidenceHtml = evidence.map(e => `<li><span class="qid">${esc(e.query_id)}</span><span>${esc(e.claim)}</span></li>`).join('') || '<li class="muted">No cited evidence.</li>';
         const runTokens = run.usage?.input_tokens == null && run.usage?.output_tokens == null
           ? 'run usage unavailable'
-          : `${num(Number(run.usage?.input_tokens || 0) + Number(run.usage?.output_tokens || 0))} run tokens`;
+          : `${num(tokenTotalOf(run))} runner-reported tokens`;
         return `<article class="session-panel" id="${esc(id)}" role="tabpanel" aria-labelledby="${esc(tabId)}" ${hidden ? 'hidden' : ''}>
           <div class="session-header"><div class="session-diagnosis"><h3>${esc(predictionOf(run))} · ${esc(d.fault_type || 'no diagnosis')}</h3><div class="confidence">Run ${Number(item.repetition || 0) + 1} · position ${item.position == null ? 'unknown' : Number(item.position) + 1} · confidence ${num((d.confidence || 0) * 100)}% · mechanism ${esc(ev.predicted_fault_type || d.fault_type || 'none')} / truth ${esc(ev.expected_fault_type || 'legacy')} · category ${esc(ev.predicted_fault_category || 'none')} / truth ${esc(ev.expected_fault_category || 'legacy')} · ${ev.valid_evidence_count || 0}/${ev.cited_evidence_count || 0} evidence IDs valid · tools ${num(traces.length)}/${num(requestedToolCount(run))}${budgetHit(run) ? ' · budget reached' : ''} · ${runTokens} · ${esc(d.onset_time || 'onset not submitted')}${run.error ? ` · failed: ${esc(run.error)}` : ''}${databaseLoad ? ` · DB ${num(databaseLoad.query_count)} queries / ${num(databaseLoad.rows_returned)} rows / max concurrency ${num(databaseLoad.max_concurrency)}` : ''}</div><p>${esc(d.explanation || '')}</p></div>
           <div class="actions"><button type="button" class="small-action" data-action="expand" data-target="${esc(id)}">Expand all</button><button type="button" class="small-action" data-action="collapse" data-target="${esc(id)}">Collapse all</button></div></div>

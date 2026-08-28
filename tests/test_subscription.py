@@ -37,7 +37,10 @@ def test_subscription_environment_removes_usage_billed_credentials(monkeypatch) 
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://example.invalid")
     monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-secret")
     monkeypatch.setenv("OPENAI_API_KEY", "openai-secret")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://example.invalid")
     monkeypatch.setenv("CODEX_API_KEY", "codex-secret")
+    monkeypatch.setenv("CODEX_HOME", "/tmp/untrusted-codex-home")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/tmp/untrusted-claude-config")
     monkeypatch.setenv("PATH", "/usr/bin")
     monkeypatch.setenv("https_proxy", "http://127.0.0.1:7890")
 
@@ -49,7 +52,10 @@ def test_subscription_environment_removes_usage_billed_credentials(monkeypatch) 
     assert "ANTHROPIC_BASE_URL" not in environment
     assert "DEEPSEEK_API_KEY" not in environment
     assert "OPENAI_API_KEY" not in environment
+    assert "OPENAI_BASE_URL" not in environment
     assert "CODEX_API_KEY" not in environment
+    assert "CODEX_HOME" not in environment
+    assert "CLAUDE_CONFIG_DIR" not in environment
 
 
 def test_subscription_prompt_names_the_only_allowed_mcp_surface() -> None:
@@ -287,6 +293,20 @@ def test_codex_runner_records_unconfigured_mcp_attempt(monkeypatch, tmp_path) ->
 
     assert len(rejected) == 1
     assert rejected[0].tool_name == "mcp__semantic_rca__list_mcp_resources"
+
+
+@pytest.mark.parametrize("event_count", [0, 2])
+def test_codex_usage_requires_one_cumulative_turn_event(event_count) -> None:
+    events = [
+        {
+            "type": "turn.completed",
+            "usage": {"input_tokens": 120, "output_tokens": 30},
+        }
+        for _ in range(event_count)
+    ]
+
+    with pytest.raises(AgentError, match="exactly one cumulative"):
+        subscription._codex_usage(events)
 
 
 def test_claude_runner_disables_builtin_tools_and_parses_structured_output(

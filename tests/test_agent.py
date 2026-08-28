@@ -311,6 +311,64 @@ def test_agent_records_requested_calls_rejected_by_the_tool_budget(monkeypatch) 
     assert any(text.startswith("Investigation budget: 0 tool calls remain") for text in budget_text)
 
 
+def test_valid_final_output_records_same_response_investigation_calls_as_rejected(
+    monkeypatch,
+) -> None:
+    diagnosis = {
+        "affected_component": "checkout",
+        "fault_category": "cpu",
+        "fault_type": "cpu",
+        "confidence": 0.7,
+        "evidence": [],
+        "alternative_candidates": [],
+        "explanation": "CPU saturation is the most likely cause.",
+    }
+
+    class Response:
+        content = [
+            SimpleNamespace(
+                type="tool_use",
+                name="execute_sql",
+                input={"query": "SELECT 1"},
+                id="tool-1",
+            ),
+            SimpleNamespace(
+                type="tool_use",
+                name="submit_diagnosis",
+                input=diagnosis,
+                id="tool-2",
+            ),
+        ]
+        usage = SimpleNamespace(input_tokens=10, output_tokens=5)
+
+        def model_dump(self, *, mode: str) -> dict[str, object]:
+            assert mode == "json"
+            return {
+                "content": [
+                    {"type": block.type, "name": block.name, "input": block.input}
+                    for block in self.content
+                ],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+
+    provider = SimpleNamespace(messages=SimpleNamespace(create=lambda **_: Response()))
+    monkeypatch.setattr(agent_module, "_anthropic_client", lambda _: provider)
+
+    result = run_agent(
+        SimpleNamespace(client=SimpleNamespace()),  # type: ignore[arg-type]
+        CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
+        Visibility.RAW,
+        model="test-model",
+        max_tool_calls=2,
+    )
+
+    assert result.diagnosis is not None
+    assert result.tool_calls == []
+    assert result.tool_calls_requested == 1
+    assert len(result.rejected_tool_calls) == 1
+    assert result.rejected_tool_calls[0].tool_name == "execute_sql"
+
+
 def test_agent_turn_limit_tracks_tool_budget_and_records_failure(monkeypatch) -> None:
     class Response:
         content: list[object] = []
@@ -387,7 +445,7 @@ def test_investigation_trace_records_database_load_delta() -> None:
         database = "benchmark_db"
 
         def __init__(self) -> None:
-            self.load = DatabaseLoad()
+            self.load = DatabaseLoad(max_concurrency=7)
 
         def query_load_snapshot(self) -> DatabaseLoad:
             return self.load.model_copy(deep=True)
@@ -403,7 +461,6 @@ def test_investigation_trace_records_database_load_delta() -> None:
             client.load.query_count = 1
             client.load.rows_returned = 3
             client.load.query_elapsed_seconds = 0.2
-            client.load.max_concurrency = 1
             return QueryResult(
                 query_id="provider-id",
                 columns=["value"],

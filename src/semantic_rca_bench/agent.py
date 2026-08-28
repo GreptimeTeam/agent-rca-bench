@@ -271,6 +271,12 @@ class InvestigationSession:
                 remaining=self.remaining,
             )
 
+    def reject_unexecuted(self, tool_name: str, arguments: dict[str, object], error: str) -> None:
+        self.tool_calls_requested += 1
+        self.rejected_tool_calls.append(
+            RejectedToolCall(tool_name=tool_name, input=arguments, error=error)
+        )
+
     @property
     def remaining(self) -> int:
         return max(0, self.max_tool_calls - len(self.tool_calls))
@@ -314,7 +320,7 @@ def _database_load_delta(
         failed_query_count=after.failed_query_count - before.failed_query_count,
         rows_returned=after.rows_returned - before.rows_returned,
         query_elapsed_seconds=after.query_elapsed_seconds - before.query_elapsed_seconds,
-        max_concurrency=after.max_concurrency if query_count else 0,
+        max_concurrency=1 if query_count else 0,
     )
 
 
@@ -448,6 +454,13 @@ def run_structured_api_agent(
             except (ValidationError, ValueError, TypeError) as error:
                 output_error = str(error)
             else:
+                for tool_use in tool_uses:
+                    if tool_use.name != output_tool_name:
+                        session.reject_unexecuted(
+                            tool_use.name,
+                            dict(tool_use.input),
+                            "not executed because the same response submitted valid final output",
+                        )
                 return _structured_result(
                     session,
                     usage,

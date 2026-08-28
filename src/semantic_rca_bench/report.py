@@ -22,7 +22,7 @@ MODEL_PRICING = {
         "input_cache_hit_per_million": 0.0028,
         "output_per_million": 0.28,
         "checked_at": "2026-08-27",
-        "note": "Input cost assumes cache misses; cache-hit discounts are not subtracted.",
+        "note": "Uncached and cache-read input are priced separately when raw usage is available.",
         "source": "https://api-docs.deepseek.com/quick_start/pricing/",
     },
     "deepseek-v4-pro": {
@@ -31,10 +31,84 @@ MODEL_PRICING = {
         "input_cache_hit_per_million": 0.003625,
         "output_per_million": 0.87,
         "checked_at": "2026-08-27",
-        "note": "Input cost assumes cache misses; cache-hit discounts are not subtracted.",
+        "note": "Uncached and cache-read input are priced separately when raw usage is available.",
         "source": "https://api-docs.deepseek.com/quick_start/pricing/",
     },
 }
+
+TOKEN_ACCOUNTING = {
+    "api": {
+        "scope": "sum of provider usage across all responses in one run",
+        "input_tokens": "uncached input only",
+        "cached_input": "separate raw response fields; omitted from legacy run.usage",
+        "context": "system prompt, tool schemas, and prior tool results are sent to the provider",
+        "output_tokens": "provider-reported output including structured tool output",
+        "comparability": "paired comparisons only within the same provider and runner contract",
+    },
+    "codex-subscription": {
+        "scope": "the single cumulative codex exec turn.completed usage event",
+        "input_tokens": "includes cached input; cached breakdown is not persisted",
+        "cached_input": "included in input_tokens",
+        "context": "includes Codex runner context, MCP schemas/results, and output-schema handling",
+        "output_tokens": "includes reasoning output; reasoning breakdown is not persisted",
+        "comparability": "paired comparisons only within the same Codex CLI and runner contract",
+    },
+    "claude-subscription": {
+        "scope": "Claude result usage for one CLI run",
+        "input_tokens": "input plus cache creation plus cache reads",
+        "cached_input": "included in input_tokens after runner aggregation",
+        "context": "includes Claude runner context, MCP schemas/results, and structured output",
+        "output_tokens": "Claude result output_tokens",
+        "comparability": "paired comparisons only within the same Claude CLI and runner contract",
+    },
+}
+
+
+def _raw_cached_input(run: Mapping[str, object]) -> tuple[int, int]:
+    cache_read = 0
+    cache_creation = 0
+    responses = run.get("responses")
+    for response in responses if isinstance(responses, list) else []:
+        if not isinstance(response, Mapping):
+            continue
+        usage = response.get("usage")
+        if not isinstance(usage, Mapping):
+            continue
+        cache_read += int(usage.get("cache_read_input_tokens", 0) or 0)
+        cache_creation += int(usage.get("cache_creation_input_tokens", 0) or 0)
+    return cache_read, cache_creation
+
+
+def _runner_reported_token_total(
+    run: Mapping[str, object], accounting: Mapping[str, object] | None
+) -> int:
+    usage = run.get("usage")
+    usage = usage if isinstance(usage, Mapping) else {}
+    cache_read, cache_creation = _raw_cached_input(run)
+    cached_input = 0
+    if not accounting or accounting.get("cached_input") != "included in input_tokens":
+        cached_input = cache_read + cache_creation
+    return (
+        int(usage.get("input_tokens", 0) or 0)
+        + cached_input
+        + int(usage.get("output_tokens", 0) or 0)
+    )
+
+
+def _estimated_api_cost(run: Mapping[str, object], pricing: Mapping[str, object]) -> float | None:
+    usage = run.get("usage")
+    usage = usage if isinstance(usage, Mapping) else {}
+    cache_read, cache_creation = _raw_cached_input(run)
+    cache_read_rate = pricing.get("input_cache_hit_per_million")
+    if cache_read and cache_read_rate is None:
+        return None
+    uncached_input = int(usage.get("input_tokens", 0) or 0) + cache_creation
+    output = int(usage.get("output_tokens", 0) or 0)
+    return (
+        uncached_input * float(pricing["input_per_million"])
+        + cache_read * float(cache_read_rate or 0)
+        + output * float(pricing["output_per_million"])
+    ) / 1_000_000
 
 
 def _strip_signatures(value: object) -> object:
@@ -155,6 +229,18 @@ def _load_case_report(source: Path) -> dict[str, object]:
     return report
 
 
+def _case_identity(report: Mapping[str, object]) -> tuple[str, str]:
+    case = report.get("case")
+    if isinstance(case, Mapping):
+        source_case = case.get("source_case")
+        if isinstance(source_case, str) and source_case:
+            return str(case.get("dataset", "")), source_case
+    source_report = report.get("source_report")
+    if isinstance(source_report, str) and source_report:
+        return "source_report", source_report
+    return "eval_report", str(report.get("eval_report", ""))
+
+
 def _exact_sign_p_value(wins: int, losses: int) -> float | None:
     observations = wins + losses
     if observations == 0:
@@ -168,16 +254,28 @@ def _primary_metric_value(item: Mapping[str, object], metric: str) -> float | No
     evaluation = item.get("evaluation")
     if not isinstance(run, Mapping) or not isinstance(evaluation, Mapping):
         return None
+    cited = evaluation.get("cited_evidence_count")
+    valid = evaluation.get("valid_evidence_count")
+    valid_completion = (
+        not run.get("error")
+        and not run.get("tool_budget_exhausted")
+        and run.get("diagnosis") is not None
+        and evaluation.get("joint_match") is True
+        and isinstance(cited, int)
+        and not isinstance(cited, bool)
+        and cited > 0
+        and isinstance(valid, int)
+        and not isinstance(valid, bool)
+        and valid == cited
+    )
+    if not valid_completion:
+        return None
     if metric == "rows_returned":
-        if run.get("error") or run.get("diagnosis") is None:
-            return None
         load = item.get("database_load")
         if not isinstance(load, Mapping) or load.get("rows_returned") is None:
             return None
         return float(load["rows_returned"])
     if metric == "correct_completion_tool_calls":
-        if run.get("tool_budget_exhausted") or not evaluation.get("joint_match"):
-            return None
         value = evaluation.get("correct_completion_tool_calls")
         return float(value) if value is not None else None
     raise ValueError(f"unknown primary metric: {metric}")
@@ -191,10 +289,9 @@ def _paired_primary_comparisons(
         for candidate, baseline in (
             ("table_semantics", "raw"),
             ("semantic_graph", "table_semantics"),
-            ("semantic_graph", "raw"),
         ):
-            deltas = []
-            wins = losses = ties = 0
+            run_pair_deltas = []
+            case_deltas = []
             for report in case_reports:
                 by_key = {}
                 for item in report.get("runs", []):
@@ -203,8 +300,8 @@ def _paired_primary_comparisons(
                     run = item.get("run")
                     if isinstance(run, Mapping):
                         by_key[(int(item.get("repetition", 0)), str(run.get("visibility")))] = item
-                repetitions = {key[0] for key in by_key}
-                for repetition in repetitions:
+                per_case = []
+                for repetition in sorted({key[0] for key in by_key}):
                     candidate_item = by_key.get((repetition, candidate))
                     baseline_item = by_key.get((repetition, baseline))
                     if candidate_item is None or baseline_item is None:
@@ -214,27 +311,58 @@ def _paired_primary_comparisons(
                     if candidate_value is None or baseline_value is None:
                         continue
                     delta = candidate_value - baseline_value
-                    deltas.append(delta)
-                    if delta < 0:
-                        wins += 1
-                    elif delta > 0:
-                        losses += 1
-                    else:
-                        ties += 1
+                    run_pair_deltas.append(delta)
+                    per_case.append(delta)
+                if per_case:
+                    case_deltas.append(median(per_case))
             output.append(
                 {
                     "metric": metric,
                     "candidate": candidate,
                     "baseline": baseline,
-                    "paired_observations": len(deltas),
-                    "better": wins,
-                    "worse": losses,
-                    "ties": ties,
-                    "median_delta": median(deltas) if deltas else None,
-                    "sign_test_p_value": _exact_sign_p_value(wins, losses),
+                    "run_pair_descriptive": _direction_summary(run_pair_deltas, inference=False),
+                    "case_level_inference": _direction_summary(case_deltas, inference=True),
                 }
             )
+    _add_holm_adjustment(output)
     return output
+
+
+def _direction_summary(deltas: list[float], *, inference: bool) -> dict[str, object]:
+    better = sum(delta < 0 for delta in deltas)
+    worse = sum(delta > 0 for delta in deltas)
+    ties = sum(delta == 0 for delta in deltas)
+    summary: dict[str, object] = {
+        "observations": len(deltas),
+        "better": better,
+        "worse": worse,
+        "ties": ties,
+        "median_delta": median(deltas) if deltas else None,
+    }
+    if inference:
+        summary["exact_two_sided_sign_test_p_value"] = _exact_sign_p_value(better, worse)
+    return summary
+
+
+def _add_holm_adjustment(comparisons: list[dict[str, object]]) -> None:
+    observed = []
+    for index, comparison in enumerate(comparisons):
+        inference = comparison["case_level_inference"]
+        if not isinstance(inference, dict):
+            continue
+        value = inference.get("exact_two_sided_sign_test_p_value")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            observed.append((float(value), index))
+    previous = 0.0
+    family_size = len(comparisons)
+    for rank, (value, index) in enumerate(sorted(observed), start=1):
+        adjusted = max(previous, min(1.0, value * (family_size - rank + 1)))
+        inference = comparisons[index]["case_level_inference"]
+        if not isinstance(inference, dict):
+            raise TypeError("case-level inference must be an object")
+        inference["holm_adjusted_p_value"] = adjusted
+        inference["multiplicity_family_size"] = family_size
+        previous = adjusted
 
 
 def render_reports(sources: list[Path], output: Path) -> None:
@@ -249,6 +377,11 @@ def render_reports(sources: list[Path], output: Path) -> None:
     }
     repetitions = {int(report.get("repetitions", 1)) for report in case_reports}
     case_roles = {str(report.get("case_role", "development")) for report in case_reports}
+    token_accounting_contracts = {
+        json.dumps(report["token_accounting"], sort_keys=True)
+        for report in case_reports
+        if isinstance(report.get("token_accounting"), Mapping)
+    }
     if len(runners) != 1:
         raise ValueError(f"pilot reports use different runners: {sorted(runners)}")
     if len(models) != 1:
@@ -261,6 +394,11 @@ def render_reports(sources: list[Path], output: Path) -> None:
         raise ValueError("pilot reports use different repetition counts")
     if len(case_roles) != 1:
         raise ValueError("pilot reports mix development and measurement cases")
+    if len(token_accounting_contracts) > 1:
+        raise ValueError("pilot reports use different token-accounting contracts")
+    case_identities = [_case_identity(report) for report in case_reports]
+    if len(set(case_identities)) != len(case_identities):
+        raise ValueError("pilot reports contain duplicate case identities")
     datasets = {
         str(report.get("case", {}).get("dataset", ""))
         for report in case_reports
@@ -273,18 +411,36 @@ def render_reports(sources: list[Path], output: Path) -> None:
     }
     runner = next(iter(runners))
     model = next(iter(models))
+    token_accounting = (
+        json.loads(next(iter(token_accounting_contracts)))
+        if token_accounting_contracts
+        else TOKEN_ACCOUNTING.get(runner)
+    )
+    pricing = MODEL_PRICING.get(model) if runner == "api" else None
+    for case_report in case_reports:
+        for item in case_report.get("runs", []):
+            if not isinstance(item, dict) or not isinstance(item.get("run"), dict):
+                continue
+            run = item["run"]
+            run["runner_reported_token_total"] = _runner_reported_token_total(run, token_accounting)
+            if pricing is not None:
+                run["estimated_api_cost"] = _estimated_api_cost(run, pricing)
     report = {
-        "report_schema_version": 4,
+        "report_schema_version": 5,
         "pilot_id": output.stem,
         "runner": runner,
         "model": model,
         "protocol": case_reports[0].get("protocol", {}),
         "max_tool_calls": next(iter(budgets)),
-        "pricing": MODEL_PRICING.get(model) if runner == "api" else None,
+        "pricing": pricing,
+        "token_accounting": token_accounting,
         "case_role": next(iter(case_roles)),
         "latency_comparable": all(_position_balanced(item) for item in case_reports),
         "correctness_aggregation_comparable": len(datasets) == 1 and len(taxonomies) == 1,
         "paired_primary_comparisons": _paired_primary_comparisons(case_reports),
+        "primary_multiplicity": (
+            "Holm adjustment across all available primary metric and treatment comparisons"
+        ),
         "cases": case_reports,
     }
     template = (

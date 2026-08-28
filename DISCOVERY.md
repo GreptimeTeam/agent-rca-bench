@@ -101,8 +101,11 @@ result, a call rejected by the cap, or a runner failure counts as an
 unsuccessful run.
 
 The primary outcome is paired task success for `table_semantics` versus `raw`.
-Report improvements, regressions, ties, and an exact paired test. For pairs in
-which both treatments succeed, report these secondary efficiency metrics:
+Within one case, report run-pair improvements, regressions, ties, and efficiency
+only as descriptive model variation; do not attach an inferential p-value to
+repetitions. Cross-case inference first takes the median jointly successful
+run-pair delta per case. For pairs in which both treatments succeed, report these
+secondary efficiency metrics:
 
 - tool calls through the cited evidence query;
 - GreptimeDB rows returned through the cited evidence query;
@@ -214,6 +217,10 @@ The final six formal fixtures are:
 
 Every replacement, rejection, eligible-set digest, and consumed rank is recorded
 in `fixtures/measurement/discovery-selection.json`.
+
+Selection manifests are frozen offline artifacts. `selection.deterministic_rank`
+is the reproducible offline ranking primitive used to construct and audit them;
+`discovery-run` consumes the frozen fixture and does not rerank cases.
 
 Repeated run pairs describe model variation within the frozen cases. Cross-case
 inference uses the median jointly successful delta per case. Table Semantics
