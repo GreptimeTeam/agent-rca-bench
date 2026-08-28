@@ -14,7 +14,7 @@ but it must record every lossy or synthetic protocol field.
 | OpenRCA 1.0 Bank | OpenRCA Bank | Wide enterprise metric schema and legacy multimodal telemetry | Included | Not applicable: no standard entity identity or span roles |
 | OpenRCA 1.0 Market | OpenRCA Market | Multi-level node, pod, and service failures over wide legacy telemetry | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
 | OpenRCA 1.0 Telecom | OpenRCA Telecom | Independent telecom/database system with metrics and traces but no logs | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
-| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Selected for the 1.0 transfer ingestion gate; no model run | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
+| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | 1.0 ingestion gate; protocol v24 model pilot, now development | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
 | OpenRCA 2.0 ops-lite | Hotel Reservation | Native OTel and verified causal paths | Provisional; internal protocol-formal measurement only | Positive when standard client/server spans witness service calls |
 | Amazon PetShop | Amazon PetShop | Component-level causal RCA over service metrics | Rejected | Metric-only; no incident-local mechanism label or continuous baseline |
 | AnoMod TrainTicket | TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
@@ -309,9 +309,11 @@ therefore rejected rather than repaired.
   canonical API runner contract. The agent-facing case exposes neither the
   source case name nor the source fault taxonomy. Raw SQL retains the publisher
   half-open window. Agent-facing Semantic Graph queries use the exact audited
-  whole-minute envelope required by `observed_at` binning. The frozen test-stage
-  model is `deepseek-v4-flash`, whose context cache is automatic. No model has
-  run.
+  whole-minute envelope required by `observed_at` binning. The protocol v24
+  `deepseek-v4-flash` pilot completed all nine cells with no runner error or budget exhaustion,
+  but none met the joint diagnosis and evidence predicate. Its trajectories informed the generic
+  protocol v25 hypothesis-triage prompt, so this case is development rather than a fresh
+  measurement case under v25. DeepSeek context caching is automatic.
 
 ## OpenRCA 2.0 ops-lite
 

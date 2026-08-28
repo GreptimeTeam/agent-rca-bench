@@ -52,7 +52,7 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v24-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v25-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
 
 

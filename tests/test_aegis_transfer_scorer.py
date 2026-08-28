@@ -261,6 +261,7 @@ def test_source_audit_binding_excludes_instance_lifecycle_metadata() -> None:
 def test_scorer_fixture_runner_contract_is_bound_to_code() -> None:
     fixture = load_transfer_scorer_fixture()
 
+    assert fixture.case_role == "development"
     assert fixture.canonical_api_runner.model_dump(mode="json") == canonical_api_runner_contract()
 
 

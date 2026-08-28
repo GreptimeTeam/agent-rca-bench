@@ -122,8 +122,8 @@ def load_transfer_scorer_fixture(path: Path = DEFAULT_SCORER_FIXTURE) -> AegisTr
         raise ValueError("unsupported Aegis transfer scorer fixture revision")
     if fixture.agent_case_id != TRANSFER_AGENT_CASE_ID:
         raise ValueError("Aegis transfer scorer fixture uses the wrong opaque case ID")
-    if fixture.case_role != "measurement":
-        raise ValueError("Aegis transfer scorer fixture must use the measurement case role")
+    if fixture.case_role != "development":
+        raise ValueError("Aegis transfer scorer fixture must use the development case role")
     if fixture.canonical_api_runner.model_dump(mode="json") != canonical_api_runner_contract():
         raise ValueError("Aegis transfer canonical API runner contract drifted")
     if not fixture.ground_truth.accepted_fault_type_normalizations:

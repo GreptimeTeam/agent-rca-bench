@@ -200,7 +200,7 @@ It does not require multiple models, many system families, or statistical power
 for a population claim. Results must be labeled as evidence over the fixed
 cohort rather than a general effect.
 
-The pinned Aegis FSE 2026 reviewer cohort supplies the Graph-positive source for
+The pinned Aegis FSE 2026 reviewer cohort supplies the Graph-positive ingestion source for
 the downloader-backed 1.0 path. Its source dataset record declares CC BY 4.0,
 but the reviewer artifact's Apache-2.0 grant does not explicitly cover the
 reduced telemetry subset. Do not redistribute the telemetry. Source-faithful
@@ -210,10 +210,15 @@ two-service answer, deterministic method-replacement evidence predicate, and
 canonical API runner contract. Its real no-model scorer audit passes. The
 dedicated runner now binds the same source and scorer gates, preserves the
 publisher window for Raw SQL, and applies the audited minute envelope only to
-Semantic Graph queries. The frozen test-stage model is `deepseek-v4-flash`.
-DeepSeek uses its automatic context cache; the shared API loop enables explicit
-prompt caching for Anthropic models. The remaining blocker is an explicitly
-approved fresh model run.
+Semantic Graph queries. The protocol v24 `deepseek-v4-flash` pilot completed all nine cells
+without runner or budget failure, but none passed the joint diagnosis and mechanism-evidence
+predicate. The model usually stopped at the downstream NPE and did not compare the normal and
+abnormal traced operation. Those trajectories informed protocol v25's generic
+provisional-hypothesis triage and discriminating-query strategy. Under the experiment invariant
+above, Aegis is therefore a development case for v25 and cannot supply the fresh 1.0 measurement
+demonstration. DeepSeek uses its automatic context cache; the shared API loop enables explicit
+prompt caching for Anthropic models. The remaining 1.0 gate is a separately frozen transfer case
+whose behavior has not influenced its prompt, followed by an explicitly approved model run.
 Raw `.reports/` trajectories are not the release contract because they contain
 provider payloads and local metadata.
 
@@ -285,12 +290,12 @@ retrieval results into an RCA claim.
 The next stage is release-focused, not a broad case-expansion program. The
 pinned Aegis downloader, source-only selection audit, production-protocol
 adapter, exact raw-span versus Graph edge-set audit, and stored method-replacement
-evidence gate are complete. The selected transfer scorer and canonical API
-runner contract are frozen in an evaluator-side fixture, and the scorer passes
-against a fresh real no-model transfer audit. The dedicated run command is wired
-and requires explicit paid-API confirmation. Execute the fresh model run only
-after cost approval, then produce the sanitized release artifact. The local
-no-model reports are implementation audits, not yet the public release artifact.
+evidence gate are complete. The selected transfer scorer and canonical API runner contract are
+frozen in an evaluator-side development fixture, and the scorer passes against a fresh real
+no-model transfer audit. The protocol v24 paid pilot is retained as a negative development result;
+do not rerun it as if it were a fresh measurement. Freeze an independent transfer case before the
+next paid model run, then produce the sanitized release artifact. The local no-model and provider
+reports are implementation audits, not yet the public release artifact.
 Catalog
 broad-recall, multi-model report cards, powered cross-system enrollment, and
 additional report UI are deferred until that path works end to end.

@@ -948,10 +948,20 @@ point from telemetry rather than the alert time. Discover the schema before rely
 names, and use semantic capabilities explicitly exposed by the tools when available. Stay inside
 the named incident database.
 
-When semantic catalog search is available and the alert is generic, search concrete resource or
-signal mechanisms from the allowed fault taxonomy early. A zero-result catalog search is not
-evidence that no relevant metric exists: retry with another concrete concept. Do not exhaust the
-tool budget on traces or logs before checking plausible resource metrics.
+Before broad health checks, establish the change point and the failing request or operation. Form
+two or three provisional causal hypotheses across the relevant classes, such as resource pressure,
+transport failure, a dependency contract or semantics failure, or an application, data, or
+configuration fault. Prefer the next query that best distinguishes those hypotheses, and revise
+the classification when evidence contradicts it. When traces are available, compare the same
+operation before and after onset, including its parent-child path, service identity, span role, and
+relevant attributes. A recorded successful request or span does not by itself prove that the
+intended operation ran or returned semantically correct data. Run broad resource health checks only
+when an active hypothesis makes resource pressure plausible.
+
+When semantic catalog search is available and the alert is generic, use it to test a concrete
+resource or signal hypothesis from the allowed fault taxonomy. A zero-result catalog search is not
+evidence that no relevant metric exists: retry with another concrete concept when that hypothesis
+remains plausible.
 
 GreptimeDB SQL notes:
 - Compare Timestamp columns with timestamp string literals, not integer Unix epochs.

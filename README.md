@@ -127,8 +127,11 @@ until deterministic scoring. Each completed
 resumes unfinished work.
 
 Protocol v21 established the same system contract for API, Codex subscription,
-and Claude subscription runners. Protocol v24 adds provider-specific API prompt
-caching and native cache-usage accounting. The
+and Claude subscription runners. Protocol v24 added provider-specific API prompt
+caching and native cache-usage accounting. Protocol v25 adds provisional causal-hypothesis
+triage: the agent establishes the failing operation, uses discriminating queries instead of
+unconditional resource sweeps, and compares the same traced operation across the change point.
+The
 API runner sets its turn limit above the visible tool-call cap and records turn
 exhaustion as a failed run instead of aborting the batch. The supported
 subscription CLIs do not expose a turn-limit option; their broker enforces the
@@ -290,7 +293,10 @@ the audit. The agent input contains the opaque case ID and no fault taxonomy.
 `aegis-transfer-run` is the only model-invoking Aegis command. Its frozen model
 is `deepseek-v4-flash`. It executes nine paid API trajectories: three
 position-balanced repetitions across Raw, Table Semantics, and Semantic Graph.
-Do not run it without explicit cost approval.
+Do not run it without explicit cost approval. The protocol v24 pilot completed all nine
+trajectories but produced no jointly correct diagnosis. Because those trajectories informed the
+protocol v25 prompt, the fixture now marks this case as development; another run cannot be reported
+as a fresh measurement cell.
 After approval, start the canonical run with:
 
 ```bash
@@ -313,7 +319,7 @@ the agent prompt retain the publisher half-open window. The Semantic Graph tool
 uses the audited minute envelope because `observed_at` is minute-binned. The
 local run report contains provider responses and is not a release artifact.
 
-For end-to-end RCA, protocol v24 counts a citation as execution-valid only when
+Since protocol v24, end-to-end RCA counts a citation as execution-valid only when
 it uniquely identifies a successful, non-truncated SQL or Graph query result,
 the result carries the same query ID, and the evidence claim is non-empty.
 Catalog and schema discovery are not incident evidence. This check prevents

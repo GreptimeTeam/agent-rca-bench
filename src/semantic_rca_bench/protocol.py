@@ -25,7 +25,7 @@ def run_orders(
 
 def benchmark_protocol() -> dict[str, object]:
     return {
-        "version": 24,
+        "version": 25,
         "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-v2",
         "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
         "semantic_graph": "half-open-window-key-deduplicated-query-tool-v6",
@@ -43,6 +43,7 @@ def benchmark_protocol() -> dict[str, object]:
         "agent_runner": "provider-specific-prompt-cache-and-partial-audit-preserved-v7",
         "model_usage": "typed-cache-inclusion-and-provider-native-breakdown-v3",
         "diagnosis": "affected-component-plus-optional-causal-dependency-v1",
+        "investigation_prompt": "provisional-hypothesis-triage-v1",
     }
 
 

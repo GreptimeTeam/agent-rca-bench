@@ -2,7 +2,7 @@
   "version": 1,
   "scorer_revision": "aegis-transfer-method-replacement-v3",
   "agent_case_id": "aegis-transfer-001",
-  "case_role": "measurement",
+  "case_role": "development",
   "ground_truth": {
     "affected_component": "ts-security-service",
     "causal_dependency": "ts-order-other-service",
@@ -40,7 +40,7 @@
   "canonical_api_runner": {
     "runner": "api",
     "model": "deepseek-v4-flash",
-    "benchmark_protocol_version": 24,
+    "benchmark_protocol_version": 25,
     "visibility_levels": [
       "raw",
       "table_semantics",

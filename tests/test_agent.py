@@ -120,6 +120,21 @@ def test_system_prompt_only_requires_baseline_comparison_when_known() -> None:
     assert "when the telemetry window contains a known baseline" in prompt
 
 
+def test_system_prompt_uses_generic_hypothesis_triage_without_case_clues() -> None:
+    prompt = " ".join(_system_prompt().split())
+    lowered = prompt.lower()
+
+    assert "two or three provisional causal hypotheses" in prompt
+    assert "dependency contract or semantics failure" in prompt
+    assert "compare the same operation before and after onset" in prompt
+    assert "does not by itself prove" in prompt
+    assert "broad resource health checks only" in prompt
+    assert "do not exhaust the tool budget on traces or logs" not in lowered
+    assert "ts-security-service" not in lowered
+    assert "ts-order-other-service" not in lowered
+    assert "method replacement" not in lowered
+
+
 def test_diagnosis_requires_canonical_fault_category() -> None:
     schema = SUBMIT_TOOL["input_schema"]
 
