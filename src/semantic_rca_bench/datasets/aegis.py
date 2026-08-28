@@ -154,6 +154,8 @@ def _validate_frozen_selection(audit: dict[str, object], selection_path: Path) -
     manifest = json.loads(selection_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
         raise AegisAuditError("frozen selection manifest must be an object")
+    if manifest.get("selection_strategy") == "next-unconsumed-from-parent-v1":
+        return _validate_sequential_selection(audit, selection_path, manifest)
     selection = audit["selection"]
     if not isinstance(selection, dict):
         raise AegisAuditError("source audit selection must be an object")
@@ -229,6 +231,135 @@ def _validate_frozen_selection(audit: dict[str, object], selection_path: Path) -
         "observed": observed,
         "expected": expected,
         "pass": True,
+    }
+
+
+def _validate_sequential_selection(
+    audit: dict[str, object],
+    selection_path: Path,
+    manifest: dict[str, object],
+) -> dict[str, object]:
+    parent_name = manifest.get("parent_manifest")
+    parent_sha256 = manifest.get("parent_manifest_sha256")
+    if not isinstance(parent_name, str) or Path(parent_name).name != parent_name:
+        raise AegisAuditError("sequential selection has an invalid parent manifest name")
+    parent_path = selection_path.parent / parent_name
+    if not parent_path.is_file() or not isinstance(parent_sha256, str):
+        raise AegisAuditError("sequential selection parent manifest is missing")
+    observed_parent_sha256 = hashlib.sha256(parent_path.read_bytes()).hexdigest()
+    if observed_parent_sha256 != parent_sha256:
+        raise AegisAuditError("sequential selection parent manifest checksum drifted")
+    parent = _read_json(parent_path)
+    parent_eligibility = parent.get("eligibility")
+    if not isinstance(parent_eligibility, dict):
+        raise AegisAuditError("sequential selection parent eligibility is missing")
+    unconsumed = parent_eligibility.get("unconsumed_candidates")
+    selected = manifest.get("selected_case")
+    if (
+        not isinstance(unconsumed, list)
+        or not unconsumed
+        or not isinstance(selected, dict)
+        or selected.get("source_case") != unconsumed[0]
+    ):
+        raise AegisAuditError("sequential selection is not the first parent-unconsumed candidate")
+
+    selection = audit.get("selection")
+    source = audit.get("source")
+    cases = audit.get("cases")
+    if (
+        not isinstance(selection, dict)
+        or not isinstance(source, dict)
+        or not isinstance(cases, list)
+    ):
+        raise AegisAuditError("source audit is incomplete for sequential selection")
+    matching = [case for case in cases if case.get("source_case") == selected.get("source_case")]
+    if len(matching) != 1:
+        raise AegisAuditError("sequential selection source case is not unique")
+    case = matching[0]
+    mechanism = case.get("mechanism_evidence")
+    trace_windows = case.get("trace_windows")
+    if (
+        case.get("directed_graph_candidate") is not True
+        or not isinstance(mechanism, dict)
+        or mechanism.get("predicate_match") is not True
+        or not isinstance(trace_windows, dict)
+    ):
+        raise AegisAuditError("sequential selection candidate is not source-scoreable")
+
+    observed_selected = {
+        "source_case": case.get("source_case"),
+        "fault_type": case.get("fault_type"),
+        "ground_truth_services": case.get("ground_truth_services"),
+        "normal_window": case.get("source_windows", {}).get("normal"),
+        "abnormal_window": case.get("source_windows", {}).get("abnormal"),
+        "declared_edge": case.get("declared_edge"),
+        "mechanism_evidence": {
+            key: mechanism.get(key)
+            for key in (
+                "predicate",
+                "span_name",
+                "declared_delay_ns",
+                "normal_count",
+                "normal_max_duration_ns",
+                "abnormal_count",
+                "abnormal_max_duration_ns",
+            )
+        },
+        "normal_raw_edge_set": _edge_set_summary(trace_windows.get("normal")),
+        "abnormal_raw_edge_set": _edge_set_summary(trace_windows.get("abnormal")),
+    }
+    frozen_source = manifest.get("source")
+    observed = {
+        "source": {
+            "artifact_record": source.get("artifact_record"),
+            "artifact_filename": source.get("artifact_filename"),
+            "artifact_md5": source.get("expected_artifact_md5"),
+            "source_dataset_record": source.get("source_dataset_record"),
+            "data_redistributed": source.get("data_redistributed"),
+        },
+        "selection_strategy": manifest.get("selection_strategy"),
+        "selection_seed": selection.get("seed"),
+        "parent_manifest": parent_name,
+        "parent_manifest_sha256": observed_parent_sha256,
+        "parent_ranked_candidates": selection.get("ranked_candidates"),
+        "parent_unconsumed_candidates": unconsumed,
+        "agent_case_id": manifest.get("agent_case_id"),
+        "selected_case": observed_selected,
+    }
+    expected = {
+        "source": frozen_source,
+        "selection_strategy": "next-unconsumed-from-parent-v1",
+        "selection_seed": manifest.get("selection_seed"),
+        "parent_manifest": parent_name,
+        "parent_manifest_sha256": parent_sha256,
+        "parent_ranked_candidates": manifest.get("parent_ranked_candidates"),
+        "parent_unconsumed_candidates": manifest.get("parent_unconsumed_candidates"),
+        "agent_case_id": manifest.get("agent_case_id"),
+        "selected_case": selected,
+    }
+    if observed != expected:
+        mismatches = sorted(key for key in expected if observed[key] != expected[key])
+        raise AegisAuditError(f"frozen sequential selection drift: {mismatches}")
+    if observed["agent_case_id"] == parent.get("agent_case_id"):
+        raise AegisAuditError("sequential selection must use a new opaque agent case ID")
+    return {
+        "manifest_name": selection_path.name,
+        "observed": observed,
+        "expected": expected,
+        "pass": True,
+    }
+
+
+def _edge_set_summary(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    edge_set = value.get("edge_set")
+    if not isinstance(edge_set, list):
+        return None
+    return {
+        "edge_count": len(edge_set),
+        "witness_count": value.get("client_server_witness_count"),
+        "sha256": value.get("edge_set_sha256"),
     }
 
 

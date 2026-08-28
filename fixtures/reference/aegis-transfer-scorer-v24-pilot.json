@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "scorer_revision": "aegis-transfer-method-replacement-v3",
+  "agent_case_id": "aegis-transfer-001",
+  "case_role": "measurement",
+  "ground_truth": {
+    "affected_component": "ts-security-service",
+    "causal_dependency": "ts-order-other-service",
+    "fault_category": "other",
+    "source_fault_type": "HTTPRequestReplaceMethod",
+    "accepted_fault_type_normalizations": [
+      "httprequestreplacemethod",
+      "httprequestmethodreplacement",
+      "httpmethodreplacement",
+      "requestmethodreplacement"
+    ]
+  },
+  "normal_window": [
+    1752918758,
+    1752918998
+  ],
+  "abnormal_window": [
+    1752918998,
+    1752919238
+  ],
+  "mechanism_evidence": {
+    "predicate": "source_declared_http_method_replacement",
+    "expected_result": {
+      "normal_server_methods": {
+        "GET": 57
+      },
+      "abnormal_client_methods": {
+        "GET": 758
+      },
+      "abnormal_server_methods": {
+        "OPTIONS": 758
+      }
+    }
+  },
+  "canonical_api_runner": {
+    "runner": "api",
+    "model": "deepseek-v4-flash",
+    "benchmark_protocol_version": 24,
+    "visibility_levels": [
+      "raw",
+      "table_semantics",
+      "semantic_graph"
+    ],
+    "max_tool_calls": 48,
+    "max_turns": 58,
+    "max_tokens": 4096,
+    "repetitions": 3,
+    "treatment_order_seed": 0,
+    "parallel_runs": 1,
+    "sampling": "provider-default; no seed sent",
+    "prompt_cache": "deepseek-automatic-prefix-v1"
+  }
+}

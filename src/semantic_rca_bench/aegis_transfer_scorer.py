@@ -24,12 +24,17 @@ from semantic_rca_bench.contracts import (
     Visibility,
 )
 from semantic_rca_bench.datasets.aegis import TRANSFER_AGENT_CASE_ID
-from semantic_rca_bench.datasets.aegis_transfer import normalize_mechanism_evidence
+from semantic_rca_bench.datasets.aegis_transfer import (
+    normalize_delay_evidence,
+    normalize_mechanism_evidence,
+)
 from semantic_rca_bench.evaluation import component_matches, is_valid_evidence_trace
 from semantic_rca_bench.protocol import benchmark_protocol
 
 SCORER_REVISION = "aegis-transfer-method-replacement-v3"
+DELAY_SCORER_REVISION = "aegis-transfer-request-delay-v1"
 DEFAULT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-scorer.json")
+DELAY_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v25-scorer.json")
 
 
 class TransferScorerGroundTruth(BaseModel):
@@ -47,6 +52,8 @@ class TransferMechanismEvidence(BaseModel):
 
     predicate: str
     expected_result: dict[str, dict[str, int]]
+    threshold_ns: int | None = None
+    span_name: str | None = None
 
 
 class CanonicalApiRunner(BaseModel):
@@ -118,12 +125,17 @@ def canonical_api_runner_contract() -> dict[str, object]:
 
 def load_transfer_scorer_fixture(path: Path = DEFAULT_SCORER_FIXTURE) -> AegisTransferScorerFixture:
     fixture = AegisTransferScorerFixture.model_validate_json(path.read_text())
-    if fixture.version != 1 or fixture.scorer_revision != SCORER_REVISION:
+    supported = {
+        SCORER_REVISION: (TRANSFER_AGENT_CASE_ID, "development"),
+        DELAY_SCORER_REVISION: ("aegis-transfer-002", "measurement"),
+    }
+    expected_identity = supported.get(fixture.scorer_revision)
+    if fixture.version != 1 or expected_identity is None:
         raise ValueError("unsupported Aegis transfer scorer fixture revision")
-    if fixture.agent_case_id != TRANSFER_AGENT_CASE_ID:
+    if fixture.agent_case_id != expected_identity[0]:
         raise ValueError("Aegis transfer scorer fixture uses the wrong opaque case ID")
-    if fixture.case_role != "development":
-        raise ValueError("Aegis transfer scorer fixture must use the development case role")
+    if fixture.case_role != expected_identity[1]:
+        raise ValueError("Aegis transfer scorer fixture uses the wrong case role")
     if fixture.canonical_api_runner.model_dump(mode="json") != canonical_api_runner_contract():
         raise ValueError("Aegis transfer canonical API runner contract drifted")
     if not fixture.ground_truth.accepted_fault_type_normalizations:
@@ -140,18 +152,40 @@ def load_transfer_scorer_fixture(path: Path = DEFAULT_SCORER_FIXTURE) -> AegisTr
         raise ValueError("Aegis transfer source fault type is not accepted by its scorer")
     if fixture.normal_window[1] != fixture.abnormal_window[0]:
         raise ValueError("Aegis transfer scorer windows must be contiguous")
+    predicate = fixture.mechanism_evidence.predicate
+    if predicate == "source_declared_http_method_replacement":
+        if (
+            fixture.mechanism_evidence.threshold_ns is not None
+            or fixture.mechanism_evidence.span_name is not None
+        ):
+            raise ValueError("method replacement scorer must not define delay fields")
+    elif predicate == "source_declared_http_delay_threshold":
+        expected = fixture.mechanism_evidence.expected_result
+        threshold = fixture.mechanism_evidence.threshold_ns
+        if (
+            threshold is None
+            or not fixture.mechanism_evidence.span_name
+            or set(expected) != {"normal", "abnormal"}
+            or expected["normal"].get("max_duration_ns", threshold) >= threshold
+            or expected["abnormal"].get("max_duration_ns", -1) < threshold
+        ):
+            raise ValueError("delay scorer does not prove the frozen threshold transition")
+    else:
+        raise ValueError("unsupported Aegis transfer mechanism evidence predicate")
     return fixture
 
 
 def evaluate_aegis_transfer_run(
     run: AgentRun,
     fixture: AegisTransferScorerFixture,
+    *,
+    expected_model: str | None = None,
 ) -> AegisTransferEvaluation:
     diagnosis = run.diagnosis
     truth = fixture.ground_truth
     runner_contract_match = (
         run.runner is fixture.canonical_api_runner.runner
-        and run.model == fixture.canonical_api_runner.model
+        and run.model == (expected_model or fixture.canonical_api_runner.model)
         and run.visibility in fixture.canonical_api_runner.visibility_levels
     )
     tool_budget_contract_match = (
@@ -201,7 +235,7 @@ def evaluate_aegis_transfer_run(
             support_query_ids.append(item.query_id)
             support_indexes.append(run.tool_calls.index(trace))
             mechanism_parts.append(normalized)
-    merged_mechanism = _merge_mechanism_evidence(mechanism_parts)
+    merged_mechanism = _merge_mechanism_evidence(mechanism_parts, fixture)
     mechanism_evidence_match = merged_mechanism == fixture.mechanism_evidence.expected_result
     support_index = max(support_indexes) if mechanism_evidence_match else None
 
@@ -211,14 +245,12 @@ def evaluate_aegis_transfer_run(
         "affected component does not match the declared edge source": affected_match,
         "causal dependency does not match the declared edge destination": dependency_match,
         "submitted directed edge does not match the frozen declared edge": declared_edge_match,
-        "fault category is not other": category_match,
-        "fault mechanism is not an accepted HTTP request method replacement label": (
-            mechanism_match
-        ),
+        "fault category does not match the frozen source mechanism": category_match,
+        "fault mechanism is not accepted by the frozen scorer": mechanism_match,
         "evidence citations are missing, duplicated, failed, truncated, or invalid": (
             citations_execution_valid
         ),
-        "no cited SQL result proves the complete frozen GET-to-OPTIONS predicate": (
+        "no cited SQL result proves the complete frozen mechanism predicate": (
             mechanism_evidence_match
         ),
         "runner reported an error": run.error is None,
@@ -277,12 +309,16 @@ def audit_transfer_scorer(
             _replace_diagnosis(canonical_run, causal_dependency=None),
             False,
         ),
-        "wrong_mechanism": (
-            _replace_diagnosis(canonical_run, fault_type="HTTP response body replacement"),
-            False,
-        ),
+        "wrong_mechanism": (_replace_diagnosis(canonical_run, fault_type="memory leak"), False),
         "wrong_fault_category": (
-            _replace_diagnosis(canonical_run, fault_category=FaultCategory.DELAY),
+            _replace_diagnosis(
+                canonical_run,
+                fault_category=(
+                    FaultCategory.OTHER
+                    if fixture.ground_truth.fault_category is FaultCategory.DELAY
+                    else FaultCategory.DELAY
+                ),
+            ),
             False,
         ),
         "invalid_citation": (_replace_evidence_query_id(canonical_run, "missing"), False),
@@ -325,11 +361,7 @@ def audit_transfer_scorer(
             False,
         ),
     }
-    for row_name in (
-        "normal_server_methods",
-        "abnormal_client_methods",
-        "abnormal_server_methods",
-    ):
+    for row_name in fixture.mechanism_evidence.expected_result:
         cases[f"missing_{row_name}"] = (_remove_mechanism_row(canonical_run, row_name), False)
 
     results = {}
@@ -345,12 +377,14 @@ def audit_transfer_scorer(
     case = transfer_audit.get("case")
     agent_facing = case.get("agent_facing", {}) if isinstance(case, dict) else {}
     agent_payload = json.dumps(agent_facing, sort_keys=True)
+    source_mapping = case.get("source_mapping", {}) if isinstance(case, dict) else {}
+    source_case = source_mapping.get("source_case") if isinstance(source_mapping, dict) else None
     opaque_case_gate = (
         isinstance(agent_facing, dict)
         and agent_facing.get("case_id") == fixture.agent_case_id
         and agent_facing.get("fault_taxonomy") == []
         and fixture.ground_truth.source_fault_type not in agent_payload
-        and "ts0-ts-security-service-request-replace-method-j6gpxx" not in agent_payload
+        and (not isinstance(source_case, str) or source_case not in agent_payload)
     )
     gates = {
         "source_transfer_audit_match": source_gate_match,
@@ -390,8 +424,11 @@ def _mechanism_evidence_from_trace(
     except ValueError:
         return None
     query = str(trace.input.get("query") or trace.input.get("sql") or "")
-    normalized = normalize_mechanism_evidence(result)
-    populated_groups = {key for key, methods in (normalized or {}).items() if methods}
+    if fixture.mechanism_evidence.predicate == "source_declared_http_delay_threshold":
+        normalized = normalize_delay_evidence(result)
+    else:
+        normalized = normalize_mechanism_evidence(result)
+    populated_groups = {key for key, values in (normalized or {}).items() if values}
     if (
         result.query_id != trace.query_id
         or result.truncated
@@ -427,13 +464,27 @@ def _valid_mechanism_query_scope(
         fixture.ground_truth.causal_dependency.lower(),
         "span_kind_client",
         "span_kind_server",
-        "span_attributes.http.request.method",
     }
-    window_epochs = []
-    if "normal_server_methods" in populated_groups:
-        window_epochs.extend(fixture.normal_window)
-    if populated_groups & {"abnormal_client_methods", "abnormal_server_methods"}:
-        window_epochs.extend(fixture.abnormal_window)
+    predicate = fixture.mechanism_evidence.predicate
+    if predicate == "source_declared_http_delay_threshold":
+        required_text.update(
+            (
+                "duration_nano",
+                "span_name",
+                str(fixture.mechanism_evidence.span_name).lower(),
+            )
+        )
+        window_epochs = [
+            *(fixture.normal_window if "normal" in populated_groups else ()),
+            *(fixture.abnormal_window if "abnormal" in populated_groups else ()),
+        ]
+    else:
+        required_text.add("span_attributes.http.request.method")
+        window_epochs = []
+        if "normal_server_methods" in populated_groups:
+            window_epochs.extend(fixture.normal_window)
+        if populated_groups & {"abnormal_client_methods", "abnormal_server_methods"}:
+            window_epochs.extend(fixture.abnormal_window)
     if not all(_time_text(epoch) in lowered or str(epoch) in lowered for epoch in window_epochs):
         return False
     if not all(value in lowered for value in required_text):
@@ -448,12 +499,9 @@ def _valid_mechanism_query_scope(
 
 def _merge_mechanism_evidence(
     parts: list[dict[str, dict[str, int]]],
+    fixture: AegisTransferScorerFixture,
 ) -> dict[str, dict[str, int]] | None:
-    merged = {
-        "normal_server_methods": {},
-        "abnormal_client_methods": {},
-        "abnormal_server_methods": {},
-    }
+    merged = {key: {} for key in fixture.mechanism_evidence.expected_result}
     for part in parts:
         for group, methods in part.items():
             if group not in merged or set(merged[group]) & set(methods):
@@ -486,6 +534,14 @@ def _transfer_audit_matches_fixture(
         case = audit["case"]
         mechanism = audit["mechanism_evidence"]
         gates = audit["no_model_gates"]
+        if not isinstance(mechanism, dict):
+            return False
+        mechanism_details_match = True
+        if fixture.mechanism_evidence.predicate == "source_declared_http_delay_threshold":
+            mechanism_details_match = (
+                mechanism.get("declared_delay_ns") == fixture.mechanism_evidence.threshold_ns
+                and mechanism.get("span_name") == fixture.mechanism_evidence.span_name
+            )
         return (
             audit["mode"] == "aegis-transfer-no-model-audit"
             and isinstance(case, dict)
@@ -503,6 +559,7 @@ def _transfer_audit_matches_fixture(
             and mechanism["normalized_result"] == fixture.mechanism_evidence.expected_result
             and mechanism["expected_result"] == fixture.mechanism_evidence.expected_result
             and mechanism["pass"] is True
+            and mechanism_details_match
             and isinstance(gates, dict)
             and gates["all_passed"] is True
         )
@@ -532,10 +589,10 @@ def _canonical_synthetic_run(
             affected_component=truth.affected_component,
             causal_dependency=truth.causal_dependency,
             fault_category=truth.fault_category,
-            fault_type="HTTP request method replacement",
+            fault_type=truth.source_fault_type,
             confidence=1,
-            evidence=[Evidence(query_id="q01", claim="GET became OPTIONS on the paired edge")],
-            explanation="The stored paired spans prove the declared method replacement.",
+            evidence=[Evidence(query_id="q01", claim="paired spans prove the source mechanism")],
+            explanation="The stored paired spans prove the frozen source mechanism.",
         ),
         tool_calls=[
             ToolTrace(
@@ -584,16 +641,21 @@ def _replace_trace_query(run: AgentRun, query: str) -> AgentRun:
 def _remove_mechanism_row(run: AgentRun, key: str) -> AgentRun:
     trace = _canonical_trace(run)
     result = QueryResult.model_validate(trace.output)
-    period, side = {
-        "normal_server_methods": ("normal", "server"),
-        "abnormal_client_methods": ("abnormal", "client"),
-        "abnormal_server_methods": ("abnormal", "server"),
-    }[key]
     period_index = result.columns.index("period")
-    side_index = result.columns.index("side")
-    rows = [
-        row for row in result.rows if not (row[period_index] == period and row[side_index] == side)
-    ]
+    if "side" in result.columns:
+        period, side = {
+            "normal_server_methods": ("normal", "server"),
+            "abnormal_client_methods": ("abnormal", "client"),
+            "abnormal_server_methods": ("abnormal", "server"),
+        }[key]
+        side_index = result.columns.index("side")
+        rows = [
+            row
+            for row in result.rows
+            if not (row[period_index] == period and row[side_index] == side)
+        ]
+    else:
+        rows = [row for row in result.rows if row[period_index] != key]
     changed_result = result.model_copy(update={"rows": rows})
     changed_trace = trace.model_copy(update={"output": changed_result.model_dump(mode="json")})
     return run.model_copy(update={"tool_calls": [changed_trace]})

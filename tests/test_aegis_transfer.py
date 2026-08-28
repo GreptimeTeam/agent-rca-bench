@@ -6,6 +6,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from semantic_rca_bench.contracts import QueryResult
+from semantic_rca_bench.datasets.aegis import AegisAuditError
 from semantic_rca_bench.datasets.aegis_transfer import (
     AGENT_CASE_ID,
     SELECTED_SOURCE_CASE,
@@ -17,6 +18,7 @@ from semantic_rca_bench.datasets.aegis_transfer import (
     load_selected_case,
     mechanism_evidence_matches,
     no_model_gates,
+    normalize_delay_evidence,
     normalize_mechanism_evidence,
 )
 
@@ -26,7 +28,10 @@ def _write_table(path: Path, values: dict[str, list[object]], schema: pa.Schema)
     pq.write_table(pa.Table.from_pydict(values, schema=schema), path)
 
 
-def _selected_case_fixture(tmp_path: Path):
+def _selected_case_fixture(
+    tmp_path: Path,
+    selection_path: Path = Path("fixtures/reference/aegis-selection.json"),
+):
     cases_dir = tmp_path / "cases"
     meta_dir = tmp_path / "meta"
     root = cases_dir / SELECTED_SOURCE_CASE
@@ -112,7 +117,7 @@ def _selected_case_fixture(tmp_path: Path):
     return load_selected_case(
         cases_dir,
         meta_dir,
-        Path("fixtures/reference/aegis-selection.json"),
+        selection_path,
         database="case_01",
     )
 
@@ -152,6 +157,16 @@ def test_selected_loader_keeps_dual_truth_opaque_and_never_reads_causal_graph(
         "ts-security-service",
         "ts-order-other-service",
     )
+
+
+def test_selected_loader_rejects_unfrozen_opaque_case_mapping(tmp_path: Path) -> None:
+    selection = json.loads(Path("fixtures/reference/aegis-selection.json").read_text())
+    selection["agent_case_id"] = "aegis-transfer-003"
+    selection_path = tmp_path / "selection.json"
+    selection_path.write_text(json.dumps(selection))
+
+    with pytest.raises(AegisAuditError, match="invalid agent case ID"):
+        _selected_case_fixture(tmp_path, selection_path)
 
 
 def test_trace_replay_keeps_http_500_separate_from_source_span_status(tmp_path: Path) -> None:
@@ -277,6 +292,27 @@ def test_method_replacement_gate_requires_every_frozen_method_condition() -> Non
     ):
         changed = {**expected, key: wrong}
         assert not mechanism_evidence_matches(observed, changed)
+
+
+def test_delay_gate_requires_exact_counts_and_both_sides_of_threshold() -> None:
+    expected = {
+        "normal": {"count": 37, "max_duration_ns": 846_092_899},
+        "abnormal": {"count": 25, "max_duration_ns": 3_252_068_825},
+    }
+    result = QueryResult(
+        query_id="q",
+        columns=["period", "span_count", "max_duration_ns"],
+        rows=[["abnormal", 25, 3_252_068_825], ["normal", 37, 846_092_899]],
+        elapsed_seconds=0,
+    )
+
+    observed = normalize_delay_evidence(result)
+
+    assert observed == expected
+    assert mechanism_evidence_matches(observed, expected)
+    assert not mechanism_evidence_matches(observed, {**expected, "abnormal": {"count": 24}})
+    missing_normal = result.model_copy(update={"rows": [result.rows[0]]})
+    assert not mechanism_evidence_matches(normalize_delay_evidence(missing_normal), expected)
 
 
 def test_id_remap_and_source_identity_mismatch_fail_no_model_gate(tmp_path: Path) -> None:

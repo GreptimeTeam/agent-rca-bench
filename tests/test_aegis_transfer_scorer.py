@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from semantic_rca_bench.aegis_transfer_scorer import (
+    DELAY_SCORER_FIXTURE,
     audit_transfer_scorer,
     canonical_api_runner_contract,
     evaluate_aegis_transfer_run,
@@ -145,6 +146,74 @@ def _transfer_audit() -> dict[str, object]:
     }
 
 
+def _delay_transfer_audit() -> dict[str, object]:
+    query = """WITH paired AS (
+  SELECT CASE
+           WHEN c.timestamp >= '2025-07-20 12:32:50'
+            AND c.timestamp < '2025-07-20 12:36:50' THEN 'normal'
+           WHEN c.timestamp >= '2025-07-20 12:36:50'
+            AND c.timestamp < '2025-07-20 12:40:49' THEN 'abnormal'
+         END AS period,
+         s.duration_nano AS server_duration_ns
+  FROM traces c
+  JOIN traces s
+    ON c.trace_id = s.trace_id
+   AND s.parent_span_id = c.span_id
+  WHERE c.span_kind = 'SPAN_KIND_CLIENT'
+    AND s.span_kind = 'SPAN_KIND_SERVER'
+    AND c.service_name = 'ts-route-plan-service'
+    AND s.service_name = 'ts-travel2-service'
+    AND s.span_name = 'POST /api/v1/travel2service/trips/left'
+    AND c.timestamp >= '2025-07-20 12:32:50'
+    AND c.timestamp < '2025-07-20 12:40:49'
+)
+SELECT period, COUNT(*) AS span_count, MAX(server_duration_ns) AS max_duration_ns
+FROM paired
+GROUP BY period
+ORDER BY period"""
+    result = QueryResult(
+        query_id="q01",
+        columns=["period", "span_count", "max_duration_ns"],
+        rows=[["abnormal", 25, 3_252_068_825], ["normal", 37, 846_092_899]],
+        elapsed_seconds=0,
+    )
+    expected = {
+        "normal": {"count": 37, "max_duration_ns": 846_092_899},
+        "abnormal": {"count": 25, "max_duration_ns": 3_252_068_825},
+    }
+    return {
+        "mode": "aegis-transfer-no-model-audit",
+        "case": {
+            "agent_facing": {
+                "case_id": "aegis-transfer-002",
+                "time_start": 1753014770,
+                "time_end": 1753015249,
+                "alert_time": 1753015010,
+                "fault_taxonomy": [],
+            },
+            "source_mapping": {
+                "agent_case_id": "aegis-transfer-002",
+                "source_case": "ts8-ts-route-plan-service-request-delay-5dmjfm",
+            },
+            "normal_window": [1753014770, 1753015010],
+            "abnormal_window": [1753015010, 1753015249],
+            "declared_edge": ["ts-route-plan-service", "ts-travel2-service"],
+            "fault_type": "HTTPRequestDelay",
+        },
+        "mechanism_evidence": {
+            "predicate": "source_declared_http_delay_threshold",
+            "declared_delay_ns": 3_070_000_000,
+            "span_name": "POST /api/v1/travel2service/trips/left",
+            "query": query,
+            "result": result.model_dump(mode="json"),
+            "normalized_result": expected,
+            "expected_result": expected,
+            "pass": True,
+        },
+        "no_model_gates": {"all_passed": True},
+    }
+
+
 def test_frozen_scorer_accepts_only_complete_directed_mechanism_evidence() -> None:
     fixture = load_transfer_scorer_fixture()
 
@@ -154,6 +223,27 @@ def test_frozen_scorer_accepts_only_complete_directed_mechanism_evidence() -> No
     assert evaluation.declared_edge_match
     assert evaluation.mechanism_evidence_match
     assert evaluation.rows_returned_through_evidence == 3
+
+
+def test_delay_scorer_requires_both_windows_and_threshold_transition() -> None:
+    fixture = load_transfer_scorer_fixture(DELAY_SCORER_FIXTURE)
+    audit = audit_transfer_scorer(_delay_transfer_audit(), fixture)
+
+    assert audit["case_role"] == "measurement"
+    assert audit["no_model_gates"]["all_passed"]
+    assert audit["synthetic_regressions"]["canonical_positive"]["observed_success"]
+    assert not audit["synthetic_regressions"]["missing_normal"]["observed_success"]
+    assert not audit["synthetic_regressions"]["missing_abnormal"]["observed_success"]
+
+
+def test_delay_scorer_fixture_rejects_nontransitioning_threshold(tmp_path: Path) -> None:
+    fixture = json.loads(DELAY_SCORER_FIXTURE.read_text())
+    fixture["mechanism_evidence"]["threshold_ns"] = 4_000_000_000
+    path = tmp_path / "scorer.json"
+    path.write_text(json.dumps(fixture))
+
+    with pytest.raises(ValueError, match="threshold transition"):
+        load_transfer_scorer_fixture(path)
 
 
 def test_frozen_scorer_accepts_complete_mechanism_across_multiple_citations() -> None:

@@ -18,8 +18,18 @@ from semantic_rca_bench.aegis_transfer_benchmark import (
     execute_transfer_runs,
     prepare_transfer_environment,
 )
+from semantic_rca_bench.aegis_transfer_protocol import (
+    DEFAULT_PROTOCOL_FIXTURE,
+    audit_transfer_protocol,
+    load_transfer_protocol_fixture,
+)
+from semantic_rca_bench.aegis_transfer_release import (
+    DEFAULT_PILOT_SCORER_FIXTURE,
+    build_release_artifact_from_files,
+)
 from semantic_rca_bench.aegis_transfer_scorer import (
     DEFAULT_SCORER_FIXTURE,
+    DELAY_SCORER_FIXTURE,
     audit_transfer_scorer,
     load_transfer_scorer_fixture,
 )
@@ -210,6 +220,21 @@ def _parser() -> argparse.ArgumentParser:
     )
     aegis_transfer_scorer.add_argument("--output", type=Path, required=True)
 
+    aegis_transfer_protocol = subparsers.add_parser("aegis-transfer-protocol-audit")
+    aegis_transfer_protocol.add_argument("--source-audit", type=Path, required=True)
+    aegis_transfer_protocol.add_argument("--scorer-audit", type=Path, required=True)
+    aegis_transfer_protocol.add_argument(
+        "--scorer",
+        type=Path,
+        default=DELAY_SCORER_FIXTURE,
+    )
+    aegis_transfer_protocol.add_argument(
+        "--protocol",
+        type=Path,
+        default=DEFAULT_PROTOCOL_FIXTURE,
+    )
+    aegis_transfer_protocol.add_argument("--output", type=Path, required=True)
+
     aegis_transfer_run = subparsers.add_parser("aegis-transfer-run")
     _add_aegis_transfer_environment_arguments(aegis_transfer_run)
     aegis_transfer_run.add_argument(
@@ -226,6 +251,17 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         help="acknowledge that the command executes the frozen paid API run",
     )
+
+    aegis_transfer_export = subparsers.add_parser("aegis-transfer-export")
+    aegis_transfer_export.add_argument("--run-report", type=Path, required=True)
+    aegis_transfer_export.add_argument("--source-audit", type=Path, required=True)
+    aegis_transfer_export.add_argument("--scorer-audit", type=Path, required=True)
+    aegis_transfer_export.add_argument(
+        "--scorer",
+        type=Path,
+        default=DEFAULT_PILOT_SCORER_FIXTURE,
+    )
+    aegis_transfer_export.add_argument("--output", type=Path, required=True)
 
     smoke = subparsers.add_parser("smoke")
     smoke.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
@@ -379,6 +415,25 @@ def aegis_transfer_scorer_audit(args: argparse.Namespace) -> int:
     return 0 if report["no_model_gates"]["all_passed"] else 1
 
 
+def aegis_transfer_protocol_audit(args: argparse.Namespace) -> int:
+    protocol = load_transfer_protocol_fixture(args.protocol)
+    scorer = load_transfer_scorer_fixture(args.scorer)
+    source_audit = json.loads(args.source_audit.read_text())
+    scorer_audit = json.loads(args.scorer_audit.read_text())
+    if not isinstance(source_audit, dict) or not isinstance(scorer_audit, dict):
+        raise ValueError("Aegis transfer protocol inputs must be JSON objects")
+    report = audit_transfer_protocol(
+        protocol,
+        scorer,
+        args.scorer,
+        source_audit,
+        scorer_audit,
+    )
+    write_json(args.output, report)
+    print(args.output)
+    return 0 if report["no_model_gates"]["all_passed"] else 1
+
+
 def aegis_transfer_run(args: argparse.Namespace) -> int:
     if args.confirm_paid_api is not True:
         raise ValueError("Aegis transfer run requires explicit paid API confirmation")
@@ -431,6 +486,20 @@ def aegis_transfer_run(args: argparse.Namespace) -> int:
         )
         else 1
     )
+
+
+def aegis_transfer_export(args: argparse.Namespace) -> int:
+    if args.output.exists():
+        raise ValueError(f"refusing to overwrite Aegis transfer release artifact: {args.output}")
+    artifact = build_release_artifact_from_files(
+        args.run_report,
+        args.source_audit,
+        args.scorer_audit,
+        args.scorer,
+    )
+    write_json(args.output, artifact)
+    print(args.output)
+    return 0
 
 
 def _transfer_environment_config(args: argparse.Namespace) -> TransferEnvironmentConfig:
@@ -1514,8 +1583,12 @@ def main() -> None:
             code = aegis_transfer_audit(args)
         elif args.command == "aegis-transfer-scorer-audit":
             code = aegis_transfer_scorer_audit(args)
+        elif args.command == "aegis-transfer-protocol-audit":
+            code = aegis_transfer_protocol_audit(args)
         elif args.command == "aegis-transfer-run":
             code = aegis_transfer_run(args)
+        elif args.command == "aegis-transfer-export":
+            code = aegis_transfer_export(args)
         elif args.command == "smoke":
             code = smoke(args)
         elif args.command == "smoke-rca100":

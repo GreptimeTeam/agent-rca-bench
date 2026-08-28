@@ -14,7 +14,7 @@ but it must record every lossy or synthetic protocol field.
 | OpenRCA 1.0 Bank | OpenRCA Bank | Wide enterprise metric schema and legacy multimodal telemetry | Included | Not applicable: no standard entity identity or span roles |
 | OpenRCA 1.0 Market | OpenRCA Market | Multi-level node, pod, and service failures over wide legacy telemetry | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
 | OpenRCA 1.0 Telecom | OpenRCA Telecom | Independent telecom/database system with metrics and traces but no logs | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
-| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | 1.0 ingestion gate; protocol v24 model pilot, now development | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
+| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v24 development pilot plus frozen protocol v25 measurement case | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
 | OpenRCA 2.0 ops-lite | Hotel Reservation | Native OTel and verified causal paths | Provisional; internal protocol-formal measurement only | Positive when standard client/server spans witness service calls |
 | Amazon PetShop | Amazon PetShop | Component-level causal RCA over service metrics | Rejected | Metric-only; no incident-local mechanism label or continuous baseline |
 | AnoMod TrainTicket | TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
@@ -313,7 +313,32 @@ therefore rejected rather than repaired.
   `deepseek-v4-flash` pilot completed all nine cells with no runner error or budget exhaustion,
   but none met the joint diagnosis and evidence predicate. Its trajectories informed the generic
   protocol v25 hypothesis-triage prompt, so this case is development rather than a fresh
-  measurement case under v25. DeepSeek context caching is automatic.
+  measurement case under v25. DeepSeek context caching is automatic. The sanitized development
+  result is tracked at `artifacts/development/aegis-transfer-v24-deepseek.json`; it contains only
+  normalized aggregates, parsed predictions, scoring outputs, and private-input hashes.
+- Protocol v25 consumes the first and only candidate left in the original frozen
+  `unconsumed_candidates` list:
+  `ts8-ts-route-plan-service-request-delay-5dmjfm`. This is a sequential cohort extension, not a
+  replacement selected from model behavior. Its opaque agent ID is `aegis-transfer-002`; its
+  source-declared edge is `ts-route-plan-service -> ts-travel2-service`. The publisher declares a
+  3.07-second delay on `POST /api/v1/travel2service/trips/left`.
+- The fresh case's isolated production-protocol replay accepted all 271,100 metric points, 42,947
+  logs, and 80,312 spans with zero protocol rejection and zero trace/span ID remapping. GreptimeDB
+  stored 231,580 metric rows after the source's duplicate/conflicting primary-key identities,
+  42,947 logs, and all 80,312 spans.
+- The complete combined-window raw and Graph edge sets each contain 41 edges and have the same
+  normalized SHA-256
+  `a251c201c117d583c6f50e243c9626e5f9105022ae5424726b1284d809c13c33`.
+  The non-minute source window `[1753014770, 1753015249)` maps to the minimal Graph envelope
+  `[1753014720, 1753015260)`; the source audit proves that this transformation adds no source span.
+- Stored paired spans reproduce the frozen delay predicate exactly: the normal window has 37
+  matching server spans with maximum duration 846,092,899 ns; the abnormal window has 25 with
+  maximum duration 3,252,068,825 ns. The normal maximum is below the declared 3.07-second delay,
+  and the abnormal maximum reaches it. The scorer rejects either missing window, a wrong directed
+  edge, a wrong parent relation, or an aggregate that does not exactly match the frozen result.
+- `fixtures/reference/aegis-transfer-v25-three-model-protocol.json` freezes three API models,
+  provider-specific prompt caching, identical budgets, and position-balanced treatment order.
+  Model runs remain unauthorized until an explicit paid-API approval.
 
 ## OpenRCA 2.0 ops-lite
 

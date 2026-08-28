@@ -83,6 +83,25 @@ def test_run_accepts_subscription_runners() -> None:
     assert claude.runner == "claude-subscription"
 
 
+def test_aegis_transfer_export_is_no_model_and_uses_historical_fixture() -> None:
+    args = _parser().parse_args(
+        [
+            "aegis-transfer-export",
+            "--run-report",
+            "run.json",
+            "--source-audit",
+            "source.json",
+            "--scorer-audit",
+            "scorer.json",
+            "--output",
+            "release.json",
+        ]
+    )
+
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-scorer-v24-pilot.json"
+    assert not hasattr(args, "confirm_paid_api")
+
+
 def test_case_role_defaults_to_development_and_accepts_measurement() -> None:
     default = _parser().parse_args(["run", "--report", "source.json"])
     measurement = _parser().parse_args(
@@ -163,6 +182,24 @@ def test_aegis_transfer_scorer_audit_uses_frozen_fixture_by_default() -> None:
     )
 
     assert str(args.scorer) == "fixtures/reference/aegis-transfer-scorer.json"
+
+
+def test_aegis_transfer_protocol_audit_uses_measurement_fixtures_without_paid_flag() -> None:
+    args = _parser().parse_args(
+        [
+            "aegis-transfer-protocol-audit",
+            "--source-audit",
+            "source.json",
+            "--scorer-audit",
+            "scorer.json",
+            "--output",
+            "protocol.json",
+        ]
+    )
+
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v25-scorer.json"
+    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v25-three-model-protocol.json")
+    assert not hasattr(args, "confirm_paid_api")
 
 
 def test_aegis_transfer_run_requires_explicit_paid_api_confirmation() -> None:

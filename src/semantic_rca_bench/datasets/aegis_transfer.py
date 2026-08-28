@@ -37,6 +37,12 @@ from semantic_rca_bench.protocols.prometheus import prometheus_metric_name
 
 AGENT_CASE_ID = TRANSFER_AGENT_CASE_ID
 SELECTED_SOURCE_CASE = "ts0-ts-security-service-request-replace-method-j6gpxx"
+DELAY_AGENT_CASE_ID = "aegis-transfer-002"
+DELAY_SOURCE_CASE = "ts8-ts-route-plan-service-request-delay-5dmjfm"
+FROZEN_TRANSFER_CASES = {
+    AGENT_CASE_ID: SELECTED_SOURCE_CASE,
+    DELAY_AGENT_CASE_ID: DELAY_SOURCE_CASE,
+}
 DATASET_REVISION = "aegis-fse-2026-reviewer@zenodo-19522409"
 ADAPTER_REVISION = "aegis-transfer-v1"
 PERIODS = ("normal", "abnormal")
@@ -143,8 +149,9 @@ def load_selected_case(
     database: str,
 ) -> AegisTransferCase:
     selection = _read_json(selection_path)
-    if selection.get("agent_case_id") != AGENT_CASE_ID:
-        raise AegisAuditError("frozen selection has an unexpected agent case ID")
+    agent_case_id = str(selection.get("agent_case_id") or "")
+    if agent_case_id not in FROZEN_TRANSFER_CASES:
+        raise AegisAuditError("frozen selection has an invalid agent case ID")
     frozen_source = selection.get("source")
     if not isinstance(frozen_source, dict) or any(
         (
@@ -160,31 +167,32 @@ def load_selected_case(
     ):
         raise AegisAuditError("frozen selection has unexpected source provenance")
     selected = selection.get("selected_case")
-    if not isinstance(selected, dict) or selected.get("source_case") != SELECTED_SOURCE_CASE:
-        raise AegisAuditError("frozen selection does not name the selected Aegis source case")
+    if not isinstance(selected, dict) or not isinstance(selected.get("source_case"), str):
+        raise AegisAuditError("frozen selection does not name an Aegis source case")
+    source_case = str(selected["source_case"])
+    if source_case != FROZEN_TRANSFER_CASES[agent_case_id]:
+        raise AegisAuditError("frozen selection case mapping is not supported")
 
     index_rows = _meta_rows(meta_dir / "index.parquet")
     matching_index = [
         row
         for row in index_rows
-        if row.get("dataset") == "rcabench" and row.get("datapack") == SELECTED_SOURCE_CASE
+        if row.get("dataset") == "rcabench" and row.get("datapack") == source_case
     ]
     if len(matching_index) != 1:
         raise AegisAuditError("publisher index does not uniquely identify the selected case")
-    attributes = _unique_meta_row(meta_dir / "attributes.parquet", SELECTED_SOURCE_CASE)
+    attributes = _unique_meta_row(meta_dir / "attributes.parquet", source_case)
     label_rows = [
-        row
-        for row in _meta_rows(meta_dir / "labels.parquet")
-        if row.get("datapack") == SELECTED_SOURCE_CASE
+        row for row in _meta_rows(meta_dir / "labels.parquet") if row.get("datapack") == source_case
     ]
     if not label_rows or any(row.get("gt.level") != "service" for row in label_rows):
         raise AegisAuditError("publisher labels are missing or are not service labels")
     published_services = {str(row.get("gt.name") or "") for row in label_rows}
 
-    root = cases_dir / SELECTED_SOURCE_CASE
+    root = cases_dir / source_case
     env = _read_json(root / "env.json")
     injection = _read_json(root / "injection.json")
-    if injection.get("injection_name") != SELECTED_SOURCE_CASE:
+    if injection.get("injection_name") != source_case:
         raise AegisAuditError("injection identity disagrees with the frozen selection")
     if injection.get("status") != 2 or not (root / ".finished").is_file():
         raise AegisAuditError("selected injection is not publisher-complete")
@@ -224,12 +232,7 @@ def load_selected_case(
     frozen_edge = tuple(str(item) for item in selected.get("declared_edge") or [])
     if declared_edge != frozen_edge or len(frozen_edge) != 2:
         raise AegisAuditError("source-declared endpoint disagrees with the frozen edge")
-    frozen_mechanism = selected.get("mechanism_evidence")
-    if not isinstance(frozen_mechanism, dict) or (
-        frozen_mechanism.get("original_method") != injection_point.get("method")
-        or frozen_mechanism.get("replacement_method") != display_config.get("replace_method")
-    ):
-        raise AegisAuditError("source injection methods disagree with frozen evidence")
+    _validate_frozen_mechanism(fault_type, display_config, injection_point, selected)
 
     paths = {
         kind: tuple(root / f"{period}_{suffix}" for period in PERIODS)
@@ -254,13 +257,13 @@ def load_selected_case(
             raise AegisAuditError(f"source {field} disagrees with the frozen selection")
 
     return AegisTransferCase(
-        agent_case_id=AGENT_CASE_ID,
-        source_case=SELECTED_SOURCE_CASE,
+        agent_case_id=agent_case_id,
+        source_case=source_case,
         dataset=DATASET_REVISION,
         system="Train Ticket",
         root=root,
         input=CaseInput(
-            case_token=AGENT_CASE_ID,
+            case_token=agent_case_id,
             time_start=normal_window[0],
             time_end=abnormal_window[1],
             alert_time=abnormal_window[0],
@@ -281,6 +284,35 @@ def load_selected_case(
         trace_paths=paths["trace"],
         selected_manifest=selected,
     )
+
+
+def _validate_frozen_mechanism(
+    fault_type: str,
+    display_config: dict[str, object],
+    injection_point: dict[str, object],
+    selected: dict[str, object],
+) -> None:
+    frozen = selected.get("mechanism_evidence")
+    if not isinstance(frozen, dict):
+        raise AegisAuditError("frozen mechanism evidence is missing")
+    if fault_type == "HTTPRequestReplaceMethod":
+        valid = (
+            frozen.get("predicate") == "source_declared_http_method_replacement"
+            and frozen.get("original_method") == injection_point.get("method")
+            and frozen.get("replacement_method") == display_config.get("replace_method")
+        )
+    elif fault_type == "HTTPRequestDelay":
+        declared_delay_ns = int(display_config.get("delay_duration") or 0) * 1_000_000
+        valid = (
+            frozen.get("predicate") == "source_declared_http_delay_threshold"
+            and frozen.get("span_name")
+            == f"{injection_point.get('method')} {injection_point.get('route')}"
+            and frozen.get("declared_delay_ns") == declared_delay_ns
+        )
+    else:
+        raise AegisAuditError(f"unsupported frozen Aegis transfer mechanism: {fault_type}")
+    if not valid:
+        raise AegisAuditError("source injection disagrees with frozen mechanism evidence")
 
 
 def source_audit(case: AegisTransferCase) -> dict[str, object]:
@@ -646,26 +678,48 @@ def mechanism_evidence_audit(
 ) -> dict[str, object]:
     query = canonical_mechanism_evidence_query(case)
     result = client.query(query, max_rows=None)
-    normalized = normalize_mechanism_evidence(result)
     expected = case.selected_manifest.get("mechanism_evidence")
     if not isinstance(expected, dict):
         raise AegisAuditError("frozen mechanism evidence is missing")
-    expected_result = {
-        "normal_server_methods": expected.get("normal_server_methods"),
-        "abnormal_client_methods": expected.get("abnormal_client_methods"),
-        "abnormal_server_methods": expected.get("abnormal_server_methods"),
-    }
-    declared_edge_match = case.ground_truth.declared_edge == (
-        "ts-security-service",
-        "ts-order-other-service",
+    predicate = expected.get("predicate")
+    if predicate == "source_declared_http_method_replacement":
+        normalized = normalize_mechanism_evidence(result)
+        expected_result = {
+            "normal_server_methods": expected.get("normal_server_methods"),
+            "abnormal_client_methods": expected.get("abnormal_client_methods"),
+            "abnormal_server_methods": expected.get("abnormal_server_methods"),
+        }
+        mechanism_fields = {
+            "original_method": expected.get("original_method"),
+            "replacement_method": expected.get("replacement_method"),
+        }
+    elif predicate == "source_declared_http_delay_threshold":
+        normalized = normalize_delay_evidence(result)
+        expected_result = {
+            "normal": {
+                "count": expected.get("normal_count"),
+                "max_duration_ns": expected.get("normal_max_duration_ns"),
+            },
+            "abnormal": {
+                "count": expected.get("abnormal_count"),
+                "max_duration_ns": expected.get("abnormal_max_duration_ns"),
+            },
+        }
+        mechanism_fields = {
+            "span_name": expected.get("span_name"),
+            "declared_delay_ns": expected.get("declared_delay_ns"),
+        }
+    else:
+        raise AegisAuditError(f"unsupported stored mechanism evidence predicate: {predicate}")
+    declared_edge_match = list(case.ground_truth.declared_edge) == case.selected_manifest.get(
+        "declared_edge"
     )
     evidence_match = mechanism_evidence_matches(normalized, expected_result)
     return {
-        "predicate": "source_declared_http_method_replacement",
+        "predicate": predicate,
         "declared_edge": list(case.ground_truth.declared_edge),
         "declared_edge_match": declared_edge_match,
-        "original_method": expected.get("original_method"),
-        "replacement_method": expected.get("replacement_method"),
+        **mechanism_fields,
         "query": query,
         "result": result.model_dump(mode="json"),
         "normalized_result": normalized,
@@ -682,6 +736,34 @@ def canonical_mechanism_evidence_query(case: AegisTransferCase) -> str:
     abnormal_end = _time_literal(case.abnormal_window[1])
     source = _literal(case.ground_truth.declared_edge[0])
     destination = _literal(case.ground_truth.declared_edge[1])
+    evidence = case.selected_manifest.get("mechanism_evidence")
+    if not isinstance(evidence, dict):
+        raise AegisAuditError("frozen mechanism evidence is missing")
+    if evidence.get("predicate") == "source_declared_http_delay_threshold":
+        span_name = _literal(str(evidence.get("span_name") or ""))
+        return f"""WITH paired AS (
+  SELECT CASE
+           WHEN c.timestamp >= {normal_start} AND c.timestamp < {normal_end} THEN 'normal'
+           WHEN c.timestamp >= {abnormal_start} AND c.timestamp < {abnormal_end} THEN 'abnormal'
+         END AS period,
+         s.duration_nano AS server_duration_ns
+  FROM traces c
+  JOIN traces s
+    ON c.trace_id = s.trace_id
+   AND s.parent_span_id = c.span_id
+  WHERE c.span_kind = 'SPAN_KIND_CLIENT'
+    AND s.span_kind = 'SPAN_KIND_SERVER'
+    AND c.service_name = {source}
+    AND s.service_name = {destination}
+    AND s.span_name = {span_name}
+    AND c.timestamp >= {normal_start} AND c.timestamp < {abnormal_end}
+)
+SELECT period, COUNT(*) AS span_count, MAX(server_duration_ns) AS max_duration_ns
+FROM paired
+GROUP BY period
+ORDER BY period"""
+    if evidence.get("predicate") != "source_declared_http_method_replacement":
+        raise AegisAuditError("unsupported canonical mechanism evidence predicate")
     return f"""WITH paired AS (
   SELECT CASE
            WHEN c.timestamp >= {normal_start} AND c.timestamp < {normal_end} THEN 'normal'
@@ -734,6 +816,31 @@ def normalize_mechanism_evidence(result: QueryResult) -> dict[str, dict[str, int
     return {key: dict(sorted(value.items())) for key, value in normalized.items()}
 
 
+def normalize_delay_evidence(result: QueryResult) -> dict[str, dict[str, int]] | None:
+    required = ("period", "span_count", "max_duration_ns")
+    columns = [column.lower() for column in result.columns]
+    if result.truncated or any(columns.count(column) != 1 for column in required):
+        return None
+    indexes = [columns.index(column) for column in required]
+    normalized = {}
+    for row in result.rows:
+        period, count, max_duration = (row[index] for index in indexes)
+        if (
+            period not in PERIODS
+            or period in normalized
+            or not isinstance(count, int)
+            or isinstance(count, bool)
+            or not isinstance(max_duration, int)
+            or isinstance(max_duration, bool)
+        ):
+            return None
+        normalized[str(period)] = {
+            "count": count,
+            "max_duration_ns": max_duration,
+        }
+    return {period: normalized[period] for period in PERIODS if period in normalized}
+
+
 def mechanism_evidence_matches(
     observed: dict[str, dict[str, int]] | None,
     expected: dict[str, object],
@@ -783,7 +890,7 @@ def no_model_gates(
         "raw_graph_exact_edge_set_equality": equality.get("exact_edge_set_equality") is True,
         "mechanism_evidence": mechanism.get("pass") is True,
         "opaque_agent_case_id": (
-            case.input.case_token == AGENT_CASE_ID
+            case.input.case_token == case.agent_case_id
             and case.source_case not in case.input.model_dump_json()
             and case.ground_truth.fault_type not in case.input.model_dump_json()
             and not case.input.fault_taxonomy

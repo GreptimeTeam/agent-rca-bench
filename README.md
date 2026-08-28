@@ -319,6 +319,58 @@ the agent prompt retain the publisher half-open window. The Semantic Graph tool
 uses the audited minute envelope because `observed_at` is minute-binned. The
 local run report contains provider responses and is not a release artifact.
 
+Protocol v25 uses the next candidate that was already frozen as unconsumed in
+the original trajectory-blind ranking. It does not replace or discard the v24
+negative result. Run the fresh request-delay case and its scorer with explicit
+fixtures:
+
+```bash
+uv run semantic-rca aegis-transfer-audit \
+  --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
+  --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
+  --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
+  --selection fixtures/reference/aegis-transfer-v25-selection.json \
+  --run-dir .instances/aegis-transfer-002 \
+  --database case_02 \
+  --output .reports/aegis-transfer-v25-source-audit.json
+
+uv run semantic-rca aegis-transfer-scorer-audit \
+  --transfer-audit .reports/aegis-transfer-v25-source-audit.json \
+  --scorer fixtures/reference/aegis-transfer-v25-scorer.json \
+  --output .reports/aegis-transfer-v25-scorer-audit.json
+
+uv run semantic-rca aegis-transfer-protocol-audit \
+  --source-audit .reports/aegis-transfer-v25-source-audit.json \
+  --scorer-audit .reports/aegis-transfer-v25-scorer-audit.json \
+  --output .reports/aegis-transfer-v25-protocol-audit.json
+```
+
+The last command is no-model. It freezes the API roster to
+`deepseek-v4-flash`, `deepseek-v4-pro`, and `claude-sonnet-5`, with three
+position-balanced repetitions over all three treatments for each model. DeepSeek uses automatic
+prefix caching; Claude uses ephemeral request cache control. Semantic-layer effects remain paired
+within a model, and correctness is not pooled across models. The 27 model trajectories are not
+authorized by this audit and require a new explicit API-cost approval.
+
+Export a deterministic development artifact from the retained private reports without calling a
+model or database:
+
+```bash
+uv run semantic-rca aegis-transfer-export \
+  --run-report .reports/aegis-transfer-v24-deepseek-run.json \
+  --source-audit .reports/aegis-transfer-v24-deepseek-source-audit.json \
+  --scorer-audit .reports/aegis-transfer-v24-deepseek-scorer-audit.json \
+  --output artifacts/development/aegis-transfer-v24-deepseek.json
+```
+
+The exporter verifies the historical protocol v24 fixture bindings and deterministically rescores
+all nine runs. The public artifact retains normalized edge sets, canonical mechanism aggregates,
+parsed diagnosis fields, scorer outcomes, database-load counts, token totals, and private input
+hashes. It excludes provider responses, free-form evidence text, non-mechanism query results,
+query and run IDs, timings, process metadata, local paths, and source telemetry rows. The source
+semantic hash excludes run-local metadata; the exact private file hashes remain separate. See
+[`artifacts/README.md`](artifacts/README.md) for the code and data license boundary.
+
 Since protocol v24, end-to-end RCA counts a citation as execution-valid only when
 it uniquely identifies a successful, non-truncated SQL or Graph query result,
 the result carries the same query ID, and the evidence claim is non-empty.

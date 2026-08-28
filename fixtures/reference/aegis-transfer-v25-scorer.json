@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "scorer_revision": "aegis-transfer-request-delay-v1",
+  "agent_case_id": "aegis-transfer-002",
+  "case_role": "measurement",
+  "ground_truth": {
+    "affected_component": "ts-route-plan-service",
+    "causal_dependency": "ts-travel2-service",
+    "fault_category": "delay",
+    "source_fault_type": "HTTPRequestDelay",
+    "accepted_fault_type_normalizations": [
+      "httprequestdelay",
+      "requestdelay"
+    ]
+  },
+  "normal_window": [
+    1753014770,
+    1753015010
+  ],
+  "abnormal_window": [
+    1753015010,
+    1753015249
+  ],
+  "mechanism_evidence": {
+    "predicate": "source_declared_http_delay_threshold",
+    "threshold_ns": 3070000000,
+    "span_name": "POST /api/v1/travel2service/trips/left",
+    "expected_result": {
+      "normal": {
+        "count": 37,
+        "max_duration_ns": 846092899
+      },
+      "abnormal": {
+        "count": 25,
+        "max_duration_ns": 3252068825
+      }
+    }
+  },
+  "canonical_api_runner": {
+    "runner": "api",
+    "model": "deepseek-v4-flash",
+    "benchmark_protocol_version": 25,
+    "visibility_levels": [
+      "raw",
+      "table_semantics",
+      "semantic_graph"
+    ],
+    "max_tool_calls": 48,
+    "max_turns": 58,
+    "max_tokens": 4096,
+    "repetitions": 3,
+    "treatment_order_seed": 0,
+    "parallel_runs": 1,
+    "sampling": "provider-default; no seed sent",
+    "prompt_cache": "deepseek-automatic-prefix-v1"
+  }
+}

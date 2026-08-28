@@ -215,10 +215,18 @@ without runner or budget failure, but none passed the joint diagnosis and mechan
 predicate. The model usually stopped at the downstream NPE and did not compare the normal and
 abnormal traced operation. Those trajectories informed protocol v25's generic
 provisional-hypothesis triage and discriminating-query strategy. Under the experiment invariant
-above, Aegis is therefore a development case for v25 and cannot supply the fresh 1.0 measurement
-demonstration. DeepSeek uses its automatic context cache; the shared API loop enables explicit
-prompt caching for Anthropic models. The remaining 1.0 gate is a separately frozen transfer case
-whose behavior has not influenced its prompt, followed by an explicitly approved model run.
+above, that case is therefore a development case for v25 and cannot supply the fresh 1.0
+measurement demonstration. The next candidate from the original frozen unconsumed list is now
+frozen separately as `aegis-transfer-002`. Its source-declared request-delay predicate, isolated
+production-protocol replay, exact 41-edge raw/Graph equality, deterministic scorer, and no-model
+protocol audit all pass. No trajectory from this case influenced the prompt or selection.
+
+The optional three-model formal protocol freezes `deepseek-v4-flash`, `deepseek-v4-pro`, and
+`claude-sonnet-5`, three repetitions per treatment and model, provider-specific prompt caching,
+and within-model semantic-layer comparisons. Correctness is not pooled across models. This exceeds
+the minimum one-model 1.0 gate but does not turn one case into a population estimate. The remaining
+transfer gate is the explicitly approved 27-run execution and a sanitized public measurement
+artifact.
 Raw `.reports/` trajectories are not the release contract because they contain
 provider payloads and local metadata.
 
@@ -289,16 +297,16 @@ retrieval results into an RCA claim.
 
 The next stage is release-focused, not a broad case-expansion program. The
 pinned Aegis downloader, source-only selection audit, production-protocol
-adapter, exact raw-span versus Graph edge-set audit, and stored method-replacement
-evidence gate are complete. The selected transfer scorer and canonical API runner contract are
-frozen in an evaluator-side development fixture, and the scorer passes against a fresh real
-no-model transfer audit. The protocol v24 paid pilot is retained as a negative development result;
-do not rerun it as if it were a fresh measurement. Freeze an independent transfer case before the
-next paid model run, then produce the sanitized release artifact. The local no-model and provider
-reports are implementation audits, not yet the public release artifact.
-Catalog
-broad-recall, multi-model report cards, powered cross-system enrollment, and
-additional report UI are deferred until that path works end to end.
+adapter, exact raw-span versus Graph edge-set audit, and both stored mechanism gates are complete.
+The protocol v24 paid pilot is retained as a negative development result; do not rerun it as if it
+were fresh measurement. The sequentially frozen `aegis-transfer-002` delay case is the fresh v25
+measurement case. Its selection, scorer, raw/Graph equality, stored threshold evidence, and
+three-model execution protocol pass their no-model audits. The sanitized v24 development artifact is tracked at
+`artifacts/development/aegis-transfer-v24-deepseek.json`; it is a release-format regression, not the
+fresh 1.0 measurement result. Private no-model reports remain local audit inputs. The next action
+is an explicitly approved 27-run API execution followed by sanitized measurement export and final
+release reporting. Catalog broad-recall, powered cross-system enrollment, and additional report UI
+remain deferred.
 
 ## Historical development status
 

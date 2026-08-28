@@ -1,0 +1,2500 @@
+{
+  "analysis_role": "development",
+  "artifact_schema_version": 1,
+  "artifact_type": "aegis-transfer-development-result",
+  "experiment": {
+    "canonical_api_runner": {
+      "benchmark_protocol_version": 24,
+      "max_tokens": 4096,
+      "max_tool_calls": 48,
+      "max_turns": 58,
+      "model": "deepseek-v4-flash",
+      "parallel_runs": 1,
+      "prompt_cache": "deepseek-automatic-prefix-v1",
+      "repetitions": 3,
+      "runner": "api",
+      "sampling": "provider-default; no seed sent",
+      "treatment_order_seed": 0,
+      "visibility_levels": [
+        "raw",
+        "table_semantics",
+        "semantic_graph"
+      ]
+    },
+    "case": {
+      "alert_text": null,
+      "alert_time": 1752918998,
+      "case_id": "aegis-transfer-001",
+      "database": "case_01",
+      "fault_taxonomy": [],
+      "time_end": 1752919238,
+      "time_start": 1752918758
+    },
+    "descriptive_summary": {
+      "inference_role": "descriptive only; no run passed the valid-completion guardrail",
+      "successful_runs": 0,
+      "total_runs": 9,
+      "treatments": {
+        "raw": {
+          "median_rows_returned": 2326,
+          "median_tool_calls_executed": 47,
+          "runs": 3,
+          "successful_runs": 0
+        },
+        "semantic_graph": {
+          "median_rows_returned": 788,
+          "median_tool_calls_executed": 45,
+          "runs": 3,
+          "successful_runs": 0
+        },
+        "table_semantics": {
+          "median_rows_returned": 1982,
+          "median_tool_calls_executed": 47,
+          "runs": 3,
+          "successful_runs": 0
+        }
+      }
+    },
+    "execution": {
+      "budget_exhaustions": 0,
+      "complete": true,
+      "completed_runs": 9,
+      "expected_runs": 9,
+      "runner_errors": 0
+    },
+    "graph_window_contract": {
+      "raw_sql_window": [
+        1752918758,
+        1752919238
+      ],
+      "reason": "Semantic Graph observed_at is minute-binned; the source audit proves the minimal whole-minute envelope adds no source spans",
+      "semantic_graph_window": [
+        1752918720,
+        1752919260
+      ],
+      "source_window": [
+        1752918758,
+        1752919238
+      ]
+    },
+    "orders": [
+      {
+        "levels": [
+          "raw",
+          "semantic_graph",
+          "table_semantics"
+        ],
+        "repetition": 0
+      },
+      {
+        "levels": [
+          "semantic_graph",
+          "table_semantics",
+          "raw"
+        ],
+        "repetition": 1
+      },
+      {
+        "levels": [
+          "table_semantics",
+          "raw",
+          "semantic_graph"
+        ],
+        "repetition": 2
+      }
+    ],
+    "protocol": {
+      "agent_runner": "provider-specific-prompt-cache-and-partial-audit-preserved-v7",
+      "alert": "dataset-native-when-available-v1",
+      "case_context": "baseline-availability-v1",
+      "case_role": "explicit-development-or-measurement-v1",
+      "citation": "unique-successful-nonmetadata-query-result-v2",
+      "database_load": "client-query-boundary-v1",
+      "diagnosis": "affected-component-plus-optional-causal-dependency-v1",
+      "evaluator": "canonical-valid-completion-and-rejection-disposition-v9",
+      "model_usage": "typed-cache-inclusion-and-provider-native-breakdown-v3",
+      "primary_metrics": "case-median-rows-and-calls-holm-sign-test-v2",
+      "repetition_schedule": "seeded-rotating-order-with-position-v2",
+      "semantic_context": "benchmark-preflight-v1",
+      "semantic_graph": "half-open-window-key-deduplicated-query-tool-v6",
+      "sql_contract": "greptimedb-basic-v1",
+      "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
+      "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-v2",
+      "tool_budget": "shared-visible-cap-api-turn-limit-subscription-timeout-v5",
+      "version": 24
+    },
+    "runs": [
+      {
+        "citations": [
+          {
+            "execution_valid": true,
+            "ordinal": 1,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 2,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 3,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 4,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": false,
+            "ordinal": 5,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 6,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 7,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": false,
+            "ordinal": 8,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 9,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 10,
+            "supports_mechanism": false
+          }
+        ],
+        "diagnosis": {
+          "affected_component": "ts-security-service",
+          "causal_dependency": null,
+          "confidence": 0.7,
+          "fault_category": "other",
+          "fault_type": "Application exception: ts-security-service request handlers began throwing java.lang.NullPointerException, returning HTTP 500 on /api/v1/securityservice/securityConfigs/{accountId}; the resulting failures and retries collapsed the ticket-booking (preserve) flow",
+          "onset_time": "2025-07-19T09:56:43Z"
+        },
+        "evaluation": {
+          "affected_component_match": true,
+          "causal_dependency_match": false,
+          "citations_execution_valid": false,
+          "cited_evidence_count": 10,
+          "declared_edge_match": false,
+          "failure_reasons": [
+            "causal dependency does not match the declared edge destination",
+            "submitted directed edge does not match the frozen declared edge",
+            "fault mechanism is not an accepted HTTP request method replacement label",
+            "evidence citations are missing, duplicated, failed, truncated, or invalid",
+            "no cited SQL result proves the complete frozen GET-to-OPTIONS predicate"
+          ],
+          "fault_category_match": true,
+          "fault_mechanism_match": false,
+          "mechanism_evidence_match": false,
+          "rows_returned_through_evidence": null,
+          "runner_contract_match": true,
+          "success": false,
+          "supporting_evidence_ordinals": [],
+          "tool_budget_contract_match": true,
+          "tool_calls_through_evidence": null,
+          "valid_evidence_count": 8
+        },
+        "execution": {
+          "database_load": {
+            "failed_query_count": 6,
+            "max_concurrency": 1,
+            "query_count": 48,
+            "rows_returned": 2727
+          },
+          "rejected_tool_calls": {},
+          "runner_error": null,
+          "tool_budget_exhausted": false,
+          "tool_calls_executed": 48,
+          "tool_calls_requested": 48
+        },
+        "model": "deepseek-v4-flash",
+        "position": 0,
+        "repetition": 0,
+        "runner": "api",
+        "supporting_mechanism_queries": [],
+        "usage": {
+          "cache_breakdown_complete": true,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 1824384,
+          "estimated_peak_usd": 0.127549656,
+          "output_tokens": 46646,
+          "uncached_input_tokens": 91899
+        },
+        "visibility": "raw"
+      },
+      {
+        "citations": [
+          {
+            "execution_valid": true,
+            "ordinal": 1,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 2,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 3,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 4,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 5,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 6,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 7,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 8,
+            "supports_mechanism": false
+          }
+        ],
+        "diagnosis": {
+          "affected_component": "ts-security-service",
+          "causal_dependency": null,
+          "confidence": 0.72,
+          "fault_category": "other",
+          "fault_type": "Application-level NullPointerException in SecurityController.check (GET /api/v1/securityservice/securityConfigs/{accountId}) returning HTTP 500; code defect, not resource saturation",
+          "onset_time": "2025-07-19T09:56:43Z"
+        },
+        "evaluation": {
+          "affected_component_match": true,
+          "causal_dependency_match": false,
+          "citations_execution_valid": true,
+          "cited_evidence_count": 8,
+          "declared_edge_match": false,
+          "failure_reasons": [
+            "causal dependency does not match the declared edge destination",
+            "submitted directed edge does not match the frozen declared edge",
+            "fault mechanism is not an accepted HTTP request method replacement label",
+            "no cited SQL result proves the complete frozen GET-to-OPTIONS predicate"
+          ],
+          "fault_category_match": true,
+          "fault_mechanism_match": false,
+          "mechanism_evidence_match": false,
+          "rows_returned_through_evidence": null,
+          "runner_contract_match": true,
+          "success": false,
+          "supporting_evidence_ordinals": [],
+          "tool_budget_contract_match": true,
+          "tool_calls_through_evidence": null,
+          "valid_evidence_count": 8
+        },
+        "execution": {
+          "database_load": {
+            "failed_query_count": 1,
+            "max_concurrency": 1,
+            "query_count": 41,
+            "rows_returned": 751
+          },
+          "rejected_tool_calls": {},
+          "runner_error": null,
+          "tool_budget_exhausted": false,
+          "tool_calls_executed": 33,
+          "tool_calls_requested": 33
+        },
+        "model": "deepseek-v4-flash",
+        "position": 1,
+        "repetition": 0,
+        "runner": "api",
+        "supporting_mechanism_queries": [],
+        "usage": {
+          "cache_breakdown_complete": true,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 344064,
+          "estimated_peak_usd": 0.04194145600000001,
+          "output_tokens": 18836,
+          "uncached_input_tokens": 27866
+        },
+        "visibility": "semantic_graph"
+      },
+      {
+        "citations": [
+          {
+            "execution_valid": true,
+            "ordinal": 1,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 2,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 3,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 4,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 5,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 6,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 7,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 8,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 9,
+            "supports_mechanism": false
+          }
+        ],
+        "diagnosis": {
+          "affected_component": "ts-security-service",
+          "causal_dependency": null,
+          "confidence": 0.62,
+          "fault_category": "other",
+          "fault_type": "Application-level NullPointerException in the security-config check handler: SecurityController.check fails because its security-config data lookup (SecurityRepository.findByName/SELECT ts.security_config) stopped returning data at onset; every subsequent check request returns 500. No CPU, memory, disk, network-loss, or socket-exhaustion mechanism is evidenced.",
+          "onset_time": "2025-07-19T09:56:00+00:00"
+        },
+        "evaluation": {
+          "affected_component_match": true,
+          "causal_dependency_match": false,
+          "citations_execution_valid": true,
+          "cited_evidence_count": 9,
+          "declared_edge_match": false,
+          "failure_reasons": [
+            "causal dependency does not match the declared edge destination",
+            "submitted directed edge does not match the frozen declared edge",
+            "fault mechanism is not an accepted HTTP request method replacement label",
+            "no cited SQL result proves the complete frozen GET-to-OPTIONS predicate"
+          ],
+          "fault_category_match": true,
+          "fault_mechanism_match": false,
+          "mechanism_evidence_match": false,
+          "rows_returned_through_evidence": null,
+          "runner_contract_match": true,
+          "success": false,
+          "supporting_evidence_ordinals": [],
+          "tool_budget_contract_match": true,
+          "tool_calls_through_evidence": null,
+          "valid_evidence_count": 9
+        },
+        "execution": {
+          "database_load": {
+            "failed_query_count": 4,
+            "max_concurrency": 1,
+            "query_count": 54,
+            "rows_returned": 2071
+          },
+          "rejected_tool_calls": {},
+          "runner_error": null,
+          "tool_budget_exhausted": false,
+          "tool_calls_executed": 47,
+          "tool_calls_requested": 47
+        },
+        "model": "deepseek-v4-flash",
+        "position": 2,
+        "repetition": 0,
+        "runner": "api",
+        "supporting_mechanism_queries": [],
+        "usage": {
+          "cache_breakdown_complete": true,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 556160,
+          "estimated_peak_usd": 0.05648764,
+          "output_tokens": 19695,
+          "uncached_input_tokens": 51600
+        },
+        "visibility": "table_semantics"
+      },
+      {
+        "citations": [
+          {
+            "execution_valid": true,
+            "ordinal": 1,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 2,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 3,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 4,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 5,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 6,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 7,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 8,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 9,
+            "supports_mechanism": false
+          }
+        ],
+        "diagnosis": {
+          "affected_component": "ts-security-service",
+          "causal_dependency": null,
+          "confidence": 0.78,
+          "fault_category": "other",
+          "fault_type": "Application exception (NullPointerException) in SecurityController.check returning HTTP 500 on every securityConfigs request",
+          "onset_time": "2025-07-19T09:56:43+00:00"
+        },
+        "evaluation": {
+          "affected_component_match": true,
+          "causal_dependency_match": false,
+          "citations_execution_valid": true,
+          "cited_evidence_count": 9,
+          "declared_edge_match": false,
+          "failure_reasons": [
+            "causal dependency does not match the declared edge destination",
+            "submitted directed edge does not match the frozen declared edge",
+            "fault mechanism is not an accepted HTTP request method replacement label",
+            "no cited SQL result proves the complete frozen GET-to-OPTIONS predicate"
+          ],
+          "fault_category_match": true,
+          "fault_mechanism_match": false,
+          "mechanism_evidence_match": false,
+          "rows_returned_through_evidence": null,
+          "runner_contract_match": true,
+          "success": false,
+          "supporting_evidence_ordinals": [],
+          "tool_budget_contract_match": true,
+          "tool_calls_through_evidence": null,
+          "valid_evidence_count": 9
+        },
+        "execution": {
+          "database_load": {
+            "failed_query_count": 4,
+            "max_concurrency": 1,
+            "query_count": 51,
+            "rows_returned": 842
+          },
+          "rejected_tool_calls": {},
+          "runner_error": null,
+          "tool_budget_exhausted": false,
+          "tool_calls_executed": 45,
+          "tool_calls_requested": 45
+        },
+        "model": "deepseek-v4-flash",
+        "position": 0,
+        "repetition": 1,
+        "runner": "api",
+        "supporting_mechanism_queries": [],
+        "usage": {
+          "cache_breakdown_complete": true,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 663552,
+          "estimated_peak_usd": 0.07174376800000001,
+          "output_tokens": 37541,
+          "uncached_input_tokens": 29318
+        },
+        "visibility": "semantic_graph"
+      },
+      {
+        "citations": [
+          {
+            "execution_valid": true,
+            "ordinal": 1,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 2,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 3,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 4,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 5,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 6,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 7,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 8,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 9,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 10,
+            "supports_mechanism": false
+          }
+        ],
+        "diagnosis": {
+          "affected_component": "ts-security-service",
+          "causal_dependency": null,
+          "confidence": 0.62,
+          "fault_category": "other",
+          "fault_type": "Application-level NullPointerException in SecurityController.check on GET /api/v1/securityservice/securityConfigs/{accountId}, returning HTTP 500s; the resulting retry/error storm saturated the pod CPU and multiplied outbound requests",
+          "onset_time": "2025-07-19T09:56:42.995Z"
+        },
+        "evaluation": {
+          "affected_component_match": true,
+          "causal_dependency_match": false,
+          "citations_execution_valid": true,
+          "cited_evidence_count": 10,
+          "declared_edge_match": false,
+          "failure_reasons": [
+            "causal dependency does not match the declared edge destination",
+            "submitted directed edge does not match the frozen declared edge",
+            "fault mechanism is not an accepted HTTP request method replacement label",
+            "no cited SQL result proves the complete frozen GET-to-OPTIONS predicate"
+          ],
+          "fault_category_match": true,
+          "fault_mechanism_match": false,
+          "mechanism_evidence_match": false,
+          "rows_returned_through_evidence": null,
+          "runner_contract_match": true,
+          "success": false,
+          "supporting_evidence_ordinals": [],
+          "tool_budget_contract_match": true,
+          "tool_calls_through_evidence": null,
+          "valid_evidence_count": 10
+        },
+        "execution": {
+          "database_load": {
+            "failed_query_count": 1,
+            "max_concurrency": 1,
+            "query_count": 53,
+            "rows_returned": 1982
+          },
+          "rejected_tool_calls": {},
+          "runner_error": null,
+          "tool_budget_exhausted": false,
+          "tool_calls_executed": 47,
+          "tool_calls_requested": 47
+        },
+        "model": "deepseek-v4-flash",
+        "position": 1,
+        "repetition": 1,
+        "runner": "api",
+        "supporting_mechanism_queries": [],
+        "usage": {
+          "cache_breakdown_complete": true,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 850816,
+          "estimated_peak_usd": 0.070852064,
+          "output_tokens": 25883,
+          "uncached_input_tokens": 56307
+        },
+        "visibility": "table_semantics"
+      },
+      {
+        "citations": [
+          {
+            "execution_valid": true,
+            "ordinal": 1,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 2,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 3,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 4,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 5,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 6,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 7,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 8,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 9,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 10,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 11,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 12,
+            "supports_mechanism": false
+          }
+        ],
+        "diagnosis": {
+          "affected_component": "ts-security-service",
+          "causal_dependency": "ts-order-other-service",
+          "confidence": 0.62,
+          "fault_category": "other",
+          "fault_type": "ts-security-service SecurityController.check throws NullPointerException because its downstream call to ts-order-other-service's checkSecurityAboutOrder endpoint stopped reaching the real handler (only the empty OPTIONS/* preflight response was returned), so every security check returned HTTP 500",
+          "onset_time": "2025-07-19T09:56:43+00:00"
+        },
+        "evaluation": {
+          "affected_component_match": true,
+          "causal_dependency_match": true,
+          "citations_execution_valid": true,
+          "cited_evidence_count": 12,
+          "declared_edge_match": true,
+          "failure_reasons": [
+            "fault mechanism is not an accepted HTTP request method replacement label",
+            "no cited SQL result proves the complete frozen GET-to-OPTIONS predicate"
+          ],
+          "fault_category_match": true,
+          "fault_mechanism_match": false,
+          "mechanism_evidence_match": false,
+          "rows_returned_through_evidence": null,
+          "runner_contract_match": true,
+          "success": false,
+          "supporting_evidence_ordinals": [],
+          "tool_budget_contract_match": true,
+          "tool_calls_through_evidence": null,
+          "valid_evidence_count": 12
+        },
+        "execution": {
+          "database_load": {
+            "failed_query_count": 4,
+            "max_concurrency": 1,
+            "query_count": 48,
+            "rows_returned": 1396
+          },
+          "rejected_tool_calls": {},
+          "runner_error": null,
+          "tool_budget_exhausted": false,
+          "tool_calls_executed": 45,
+          "tool_calls_requested": 45
+        },
+        "model": "deepseek-v4-flash",
+        "position": 2,
+        "repetition": 1,
+        "runner": "api",
+        "supporting_mechanism_queries": [],
+        "usage": {
+          "cache_breakdown_complete": true,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 1179264,
+          "estimated_peak_usd": 0.087258616,
+          "output_tokens": 33454,
+          "uncached_input_tokens": 60431
+        },
+        "visibility": "raw"
+      },
+      {
+        "citations": [
+          {
+            "execution_valid": true,
+            "ordinal": 1,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 2,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 3,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 4,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 5,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 6,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 7,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 8,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 9,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 10,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 11,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 12,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 13,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 14,
+            "supports_mechanism": false
+          }
+        ],
+        "diagnosis": {
+          "affected_component": "ts-security-service",
+          "causal_dependency": null,
+          "confidence": 0.78,
+          "fault_category": "other",
+          "fault_type": "Application-level NullPointerException in SecurityController.check on GET /api/v1/securityservice/securityConfigs/{accountId}; all requests failed with HTTP 500 starting 09:56:42.995Z, with no preceding resource or dependency fault",
+          "onset_time": "2025-07-19T09:56:42.995Z"
+        },
+        "evaluation": {
+          "affected_component_match": true,
+          "causal_dependency_match": false,
+          "citations_execution_valid": true,
+          "cited_evidence_count": 14,
+          "declared_edge_match": false,
+          "failure_reasons": [
+            "causal dependency does not match the declared edge destination",
+            "submitted directed edge does not match the frozen declared edge",
+            "fault mechanism is not an accepted HTTP request method replacement label",
+            "no cited SQL result proves the complete frozen GET-to-OPTIONS predicate"
+          ],
+          "fault_category_match": true,
+          "fault_mechanism_match": false,
+          "mechanism_evidence_match": false,
+          "rows_returned_through_evidence": null,
+          "runner_contract_match": true,
+          "success": false,
+          "supporting_evidence_ordinals": [],
+          "tool_budget_contract_match": true,
+          "tool_calls_through_evidence": null,
+          "valid_evidence_count": 14
+        },
+        "execution": {
+          "database_load": {
+            "failed_query_count": 4,
+            "max_concurrency": 1,
+            "query_count": 58,
+            "rows_returned": 813
+          },
+          "rejected_tool_calls": {},
+          "runner_error": null,
+          "tool_budget_exhausted": false,
+          "tool_calls_executed": 42,
+          "tool_calls_requested": 42
+        },
+        "model": "deepseek-v4-flash",
+        "position": 0,
+        "repetition": 2,
+        "runner": "api",
+        "supporting_mechanism_queries": [],
+        "usage": {
+          "cache_breakdown_complete": true,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 569728,
+          "estimated_peak_usd": 0.048975392,
+          "output_tokens": 20311,
+          "uncached_input_tokens": 32247
+        },
+        "visibility": "table_semantics"
+      },
+      {
+        "citations": [
+          {
+            "execution_valid": true,
+            "ordinal": 1,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 2,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 3,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 4,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 5,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 6,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 7,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 8,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 9,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 10,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 11,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 12,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 13,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 14,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 15,
+            "supports_mechanism": false
+          }
+        ],
+        "diagnosis": {
+          "affected_component": "ts-security-service",
+          "causal_dependency": null,
+          "confidence": 0.6,
+          "fault_category": "other",
+          "fault_type": "Deterministic application exception (NullPointerException) in SecurityController.check: after successfully retrieving order info from ts-order-service, the check dereferences a null value, throwing NPE on 100% of requests and returning HTTP 500",
+          "onset_time": "2025-07-19T09:56:42.966Z"
+        },
+        "evaluation": {
+          "affected_component_match": true,
+          "causal_dependency_match": false,
+          "citations_execution_valid": true,
+          "cited_evidence_count": 15,
+          "declared_edge_match": false,
+          "failure_reasons": [
+            "causal dependency does not match the declared edge destination",
+            "submitted directed edge does not match the frozen declared edge",
+            "fault mechanism is not an accepted HTTP request method replacement label",
+            "no cited SQL result proves the complete frozen GET-to-OPTIONS predicate"
+          ],
+          "fault_category_match": true,
+          "fault_mechanism_match": false,
+          "mechanism_evidence_match": false,
+          "rows_returned_through_evidence": null,
+          "runner_contract_match": true,
+          "success": false,
+          "supporting_evidence_ordinals": [],
+          "tool_budget_contract_match": true,
+          "tool_calls_through_evidence": null,
+          "valid_evidence_count": 15
+        },
+        "execution": {
+          "database_load": {
+            "failed_query_count": 7,
+            "max_concurrency": 1,
+            "query_count": 50,
+            "rows_returned": 2326
+          },
+          "rejected_tool_calls": {},
+          "runner_error": null,
+          "tool_budget_exhausted": false,
+          "tool_calls_executed": 47,
+          "tool_calls_requested": 47
+        },
+        "model": "deepseek-v4-flash",
+        "position": 1,
+        "repetition": 2,
+        "runner": "api",
+        "supporting_mechanism_queries": [],
+        "usage": {
+          "cache_breakdown_complete": true,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 992512,
+          "estimated_peak_usd": 0.073747928,
+          "output_tokens": 28006,
+          "uncached_input_tokens": 52011
+        },
+        "visibility": "raw"
+      },
+      {
+        "citations": [
+          {
+            "execution_valid": true,
+            "ordinal": 1,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 2,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 3,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 4,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 5,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 6,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 7,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 8,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 9,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 10,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 11,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 12,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 13,
+            "supports_mechanism": false
+          },
+          {
+            "execution_valid": true,
+            "ordinal": 14,
+            "supports_mechanism": false
+          }
+        ],
+        "diagnosis": {
+          "affected_component": "ts-security-service",
+          "causal_dependency": null,
+          "confidence": 0.65,
+          "fault_category": "other",
+          "fault_type": "Application code defect: SecurityController.check throws unhandled NullPointerException while processing the security-check flow, returning HTTP 500 for ~93% of requests from ts-preserve-service",
+          "onset_time": "2025-07-19T09:56:00+00:00"
+        },
+        "evaluation": {
+          "affected_component_match": true,
+          "causal_dependency_match": false,
+          "citations_execution_valid": true,
+          "cited_evidence_count": 14,
+          "declared_edge_match": false,
+          "failure_reasons": [
+            "causal dependency does not match the declared edge destination",
+            "submitted directed edge does not match the frozen declared edge",
+            "fault mechanism is not an accepted HTTP request method replacement label",
+            "no cited SQL result proves the complete frozen GET-to-OPTIONS predicate"
+          ],
+          "fault_category_match": true,
+          "fault_mechanism_match": false,
+          "mechanism_evidence_match": false,
+          "rows_returned_through_evidence": null,
+          "runner_contract_match": true,
+          "success": false,
+          "supporting_evidence_ordinals": [],
+          "tool_budget_contract_match": true,
+          "tool_calls_through_evidence": null,
+          "valid_evidence_count": 14
+        },
+        "execution": {
+          "database_load": {
+            "failed_query_count": 3,
+            "max_concurrency": 1,
+            "query_count": 52,
+            "rows_returned": 788
+          },
+          "rejected_tool_calls": {},
+          "runner_error": null,
+          "tool_budget_exhausted": false,
+          "tool_calls_executed": 47,
+          "tool_calls_requested": 47
+        },
+        "model": "deepseek-v4-flash",
+        "position": 2,
+        "repetition": 2,
+        "runner": "api",
+        "supporting_mechanism_queries": [],
+        "usage": {
+          "cache_breakdown_complete": true,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 621056,
+          "estimated_peak_usd": 0.051073384000000006,
+          "output_tokens": 24314,
+          "uncached_input_tokens": 23373
+        },
+        "visibility": "semantic_graph"
+      }
+    ],
+    "semantic_coverage": {
+      "graph": {
+        "distinct_entity_count": 30,
+        "distinct_relationship_count": 41,
+        "entity_types": {
+          "service": 30
+        },
+        "errors": [],
+        "relationship_observation_count": 296,
+        "relationship_types": {
+          "calls": 41
+        },
+        "status": "relational"
+      },
+      "table_semantics": {
+        "groups": [
+          {
+            "signal_type": "log",
+            "source": "loki",
+            "table_count": 1
+          },
+          {
+            "signal_type": "metric",
+            "source": "opentelemetry",
+            "table_count": 98
+          },
+          {
+            "signal_type": "trace",
+            "source": "opentelemetry",
+            "table_count": 1
+          }
+        ],
+        "table_count": 100
+      }
+    },
+    "usage_summary": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_rate": 0.9470444976121859,
+      "cache_read_input_tokens": 7601536,
+      "estimated_off_peak_usd": 0.31481495200000004,
+      "estimated_peak_usd": 0.6296299040000001,
+      "output_tokens": 254686,
+      "pricing": {
+        "checked_at": "2026-08-28",
+        "currency": "USD",
+        "input_cache_hit_per_million": 0.014,
+        "input_cache_write_per_million": 0.44,
+        "input_per_million": 0.44,
+        "note": "Peak-rate upper bound; off-peak rates are half. Context caching is automatic. Cost is unavailable unless the provider returns a cache breakdown.",
+        "output_per_million": 1.32,
+        "source": "https://api-docs.deepseek.com/quick_start/pricing/"
+      },
+      "uncached_input_tokens": 425052
+    }
+  },
+  "historical_run_case_role": "measurement",
+  "integrity": {
+    "private_input_sha256": {
+      "run_report": "bb0799384a457a26cf82b66c42dbf494c5a800138792eee57beb9e7c9cb901ef",
+      "scorer_audit": "0c8aca7478a6ffba9fbaef9e95c4b934e659599f16239f26d9f8700517be2245",
+      "scorer_fixture": "f082b9f769c67545265a6bdaccc1f23820ffab11ca9772f506f3ef3ef525edf2",
+      "source_audit": "f64988f3bd00e394dd4bfbd048985f721cfc833d451f418e21900fa16eb5d9e8"
+    },
+    "private_run_bindings": {
+      "scorer_audit_sha256": "7df5b70355b1d064d9c1f0c75adf11ae8106dc6f3a6f37fa7e86ff573cbdec3e",
+      "scorer_fixture_sha256": "e6695b6f29ba6e5b5072dc86ac96a9c5648248c7ddf794679d3ac19c3c688519",
+      "source_transfer_audit_sha256": "212c5098f0d6be299aa097fa321f43139fcfac02f63a4b1fb2b9c3580fc51ea4"
+    },
+    "semantic_hash_scope": "all artifact fields except integrity; excludes private file hashes and run-local IDs, timings, ports, processes, and paths",
+    "semantic_payload_sha256": "d730b016bd9a1b041975116bee57b011573f29d3a1afa567d669d70d4543feba",
+    "source_semantic_sha256": "17bec6ba374e4654b26f025939bc02ff605ec6c0e886ddc0f21be194dfe1556e"
+  },
+  "license": {
+    "artifact_schema_and_benchmark_metadata": "Apache-2.0",
+    "benchmark_code": "Apache-2.0",
+    "derived_source_facts": "Source dataset record declares CC-BY-4.0; reviewer artifact data coverage remains unclear.",
+    "publication_mode": "pinned-downloader; telemetry not redistributed",
+    "reviewer_artifact_data_license": "not explicitly covered by root Apache-2.0",
+    "source_dataset_record": "CC-BY-4.0",
+    "source_telemetry_redistributed": false
+  },
+  "publication_status": "sanitized development result; contains no source telemetry rows or provider payloads",
+  "reclassification_reason": "The protocol v24 pilot trajectories informed the protocol v25 investigation prompt.",
+  "sanitization": {
+    "excluded": [
+      "provider responses and thinking",
+      "run IDs and provider tool-call IDs",
+      "free-form explanations, alternatives, and evidence claims",
+      "non-mechanism SQL result rows",
+      "query IDs and elapsed timings",
+      "local paths, ports, process metadata, and environment data",
+      "source telemetry rows, label files, and archives"
+    ],
+    "included_derived_data": [
+      "normalized service-call edge sets and counts",
+      "canonical mechanism aggregates",
+      "parsed diagnosis fields and deterministic scorer outputs",
+      "query and row counts plus aggregate token usage"
+    ]
+  },
+  "scorer": {
+    "abnormal_window": [
+      1752918998,
+      1752919238
+    ],
+    "agent_case_id": "aegis-transfer-001",
+    "ground_truth": {
+      "accepted_fault_type_normalizations": [
+        "httprequestreplacemethod",
+        "httprequestmethodreplacement",
+        "httpmethodreplacement",
+        "requestmethodreplacement"
+      ],
+      "affected_component": "ts-security-service",
+      "causal_dependency": "ts-order-other-service",
+      "fault_category": "other",
+      "source_fault_type": "HTTPRequestReplaceMethod"
+    },
+    "mechanism_evidence": {
+      "expected_result": {
+        "abnormal_client_methods": {
+          "GET": 758
+        },
+        "abnormal_server_methods": {
+          "OPTIONS": 758
+        },
+        "normal_server_methods": {
+          "GET": 57
+        }
+      },
+      "predicate": "source_declared_http_method_replacement"
+    },
+    "no_model_gates": {
+      "all_passed": true,
+      "canonical_runner_contract_match": true,
+      "opaque_agent_input": true,
+      "scorer_regressions": true,
+      "source_transfer_audit_match": true
+    },
+    "normal_window": [
+      1752918758,
+      1752918998
+    ],
+    "revision": "aegis-transfer-method-replacement-v3",
+    "synthetic_regressions": {
+      "budget_exhausted": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "canonical_positive": {
+        "expected_success": true,
+        "observed_success": true,
+        "pass": true
+      },
+      "duplicated_citation": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "invalid_citation": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "invalid_rejected_call": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "missing_abnormal_client_methods": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "missing_abnormal_server_methods": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "missing_dependency": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "missing_normal_server_methods": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "reversed_edge": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "runner_error": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "tool_budget_contract_violation": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "wrong_fault_category": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "wrong_mechanism": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      },
+      "wrong_parent_relation": {
+        "expected_success": false,
+        "observed_success": false,
+        "pass": true
+      }
+    }
+  },
+  "source": {
+    "adapter_revision": "aegis-transfer-v1",
+    "case": {
+      "abnormal_window": [
+        1752918998,
+        1752919238
+      ],
+      "agent_facing": {
+        "alert_time": 1752918998,
+        "case_id": "aegis-transfer-001",
+        "fault_taxonomy": [],
+        "time_end": 1752919238,
+        "time_start": 1752918758
+      },
+      "declared_edge": [
+        "ts-security-service",
+        "ts-order-other-service"
+      ],
+      "fault_type": "HTTPRequestReplaceMethod",
+      "ground_truth_services": [
+        "ts-order-other-service",
+        "ts-security-service"
+      ],
+      "normal_window": [
+        1752918758,
+        1752918998
+      ],
+      "source_mapping": {
+        "agent_case_id": "aegis-transfer-001",
+        "source_case": "ts0-ts-security-service-request-replace-method-j6gpxx"
+      }
+    },
+    "dataset_revision": "aegis-fse-2026-reviewer@zenodo-19522409",
+    "edge_equality": {
+      "exact_edge_set_equality": true,
+      "graph_edge_query": "SELECT src_type, src_id, dst_type, dst_id, rel_type, provenance,\n       SUM(request_count) AS request_count,\n       SUM(error_count) AS error_count\nFROM greptime_private.semantic_relationships\nWHERE observed_at >= '2025-07-19 09:52:00' AND observed_at < '2025-07-19 10:01:00'\n  AND src_type = 'service' AND dst_type = 'service'\n  AND rel_type = 'calls' AND provenance = 'trace'\nGROUP BY src_type, src_id, dst_type, dst_id, rel_type, provenance\nORDER BY src_id, dst_id",
+      "graph_edge_set_sha256": "c468db671b63cfa480c4a12b6539e692aee6cdc94f953b62cbf116aa66f6724a",
+      "normalized_graph_edges": [
+        {
+          "dst_id": "ts-ui-dashboard",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 3771,
+          "src_id": "loadgenerator",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-verification-code-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 591,
+          "src_id": "ts-auth-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-price-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 413,
+          "src_id": "ts-basic-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-route-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 525,
+          "src_id": "ts-basic-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-station-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 736,
+          "src_id": "ts-basic-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-train-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 525,
+          "src_id": "ts-basic-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-inside-payment-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 1,
+          "src_id": "ts-cancel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 3,
+          "src_id": "ts-cancel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-user-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 1,
+          "src_id": "ts-cancel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-consign-price-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 9,
+          "src_id": "ts-consign-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-station-food-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 83,
+          "src_id": "ts-food-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-train-food-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 239,
+          "src_id": "ts-food-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-travel-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 83,
+          "src_id": "ts-food-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 60,
+          "src_id": "ts-inside-payment-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-payment-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 4,
+          "src_id": "ts-inside-payment-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-assurance-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 31,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-basic-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 57,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-contacts-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 57,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-food-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 31,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 57,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-seat-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 57,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-security-service",
+          "dst_type": "service",
+          "error_count": 759,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 816,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-travel-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 57,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-user-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 31,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-route-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 143,
+          "src_id": "ts-route-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-travel-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 210,
+          "src_id": "ts-route-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-travel2-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 220,
+          "src_id": "ts-route-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-config-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 1438,
+          "src_id": "ts-seat-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-other-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 684,
+          "src_id": "ts-seat-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 811,
+          "src_id": "ts-seat-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-other-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 815,
+          "src_id": "ts-security-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 815,
+          "src_id": "ts-security-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-route-plan-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 106,
+          "src_id": "ts-travel-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-seat-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 436,
+          "src_id": "ts-travel-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-train-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 218,
+          "src_id": "ts-travel-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-basic-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 254,
+          "src_id": "ts-travel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-route-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 141,
+          "src_id": "ts-travel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-seat-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 546,
+          "src_id": "ts-travel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-basic-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 214,
+          "src_id": "ts-travel2-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-route-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 63,
+          "src_id": "ts-travel2-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-seat-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 456,
+          "src_id": "ts-travel2-service",
+          "src_type": "service"
+        }
+      ],
+      "normalized_raw_edges": [
+        {
+          "dst_id": "ts-ui-dashboard",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 3771,
+          "src_id": "loadgenerator",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-verification-code-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 591,
+          "src_id": "ts-auth-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-price-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 413,
+          "src_id": "ts-basic-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-route-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 525,
+          "src_id": "ts-basic-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-station-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 736,
+          "src_id": "ts-basic-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-train-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 525,
+          "src_id": "ts-basic-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-inside-payment-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 1,
+          "src_id": "ts-cancel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 3,
+          "src_id": "ts-cancel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-user-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 1,
+          "src_id": "ts-cancel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-consign-price-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 9,
+          "src_id": "ts-consign-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-station-food-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 83,
+          "src_id": "ts-food-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-train-food-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 239,
+          "src_id": "ts-food-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-travel-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 83,
+          "src_id": "ts-food-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 60,
+          "src_id": "ts-inside-payment-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-payment-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 4,
+          "src_id": "ts-inside-payment-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-assurance-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 31,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-basic-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 57,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-contacts-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 57,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-food-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 31,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 57,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-seat-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 57,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-security-service",
+          "dst_type": "service",
+          "error_count": 759,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 816,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-travel-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 57,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-user-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 31,
+          "src_id": "ts-preserve-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-route-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 143,
+          "src_id": "ts-route-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-travel-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 210,
+          "src_id": "ts-route-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-travel2-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 220,
+          "src_id": "ts-route-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-config-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 1438,
+          "src_id": "ts-seat-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-other-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 684,
+          "src_id": "ts-seat-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 811,
+          "src_id": "ts-seat-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-other-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 815,
+          "src_id": "ts-security-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-order-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 815,
+          "src_id": "ts-security-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-route-plan-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 106,
+          "src_id": "ts-travel-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-seat-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 436,
+          "src_id": "ts-travel-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-train-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 218,
+          "src_id": "ts-travel-plan-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-basic-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 254,
+          "src_id": "ts-travel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-route-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 141,
+          "src_id": "ts-travel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-seat-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 546,
+          "src_id": "ts-travel-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-basic-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 214,
+          "src_id": "ts-travel2-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-route-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 63,
+          "src_id": "ts-travel2-service",
+          "src_type": "service"
+        },
+        {
+          "dst_id": "ts-seat-service",
+          "dst_type": "service",
+          "error_count": 0,
+          "provenance": "trace",
+          "rel_type": "calls",
+          "request_count": 456,
+          "src_id": "ts-travel2-service",
+          "src_type": "service"
+        }
+      ],
+      "raw_edge_query": "SELECT 'service' AS src_type, c.service_name AS src_id,\n       'service' AS dst_type, s.service_name AS dst_id,\n       'calls' AS rel_type, 'trace' AS provenance,\n       COUNT(*) AS request_count,\n       SUM(CASE WHEN s.span_status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END) AS error_count\nFROM traces c\nJOIN traces s\n  ON c.trace_id = s.trace_id\n AND s.parent_span_id = c.span_id\n AND s.timestamp >= c.timestamp - INTERVAL '5 minutes'\n AND s.timestamp <= c.timestamp + INTERVAL '1 hour'\nWHERE c.span_kind = 'SPAN_KIND_CLIENT'\n  AND s.span_kind = 'SPAN_KIND_SERVER'\n  AND c.service_name <> s.service_name\n  AND c.timestamp >= '2025-07-19 09:52:00' AND c.timestamp < '2025-07-19 10:01:00'\n  AND s.timestamp >= '2025-07-19 09:47:00' AND s.timestamp < '2025-07-19 11:01:00'\nGROUP BY c.service_name, s.service_name\nORDER BY src_id, dst_id",
+      "raw_edge_set_sha256": "c468db671b63cfa480c4a12b6539e692aee6cdc94f953b62cbf116aa66f6724a",
+      "window_contract": {
+        "boundary_proof": "source audit requires every stored source span timestamp to remain inside the publisher half-open envelope, so floor/ceil adds no source rows",
+        "client_scan_window": [
+          1752918720,
+          1752919260
+        ],
+        "graph_observed_window": [
+          1752918720,
+          1752919260
+        ],
+        "join_time_bounds": "server.timestamp >= client.timestamp - 5m and <= client.timestamp + 1h",
+        "observed_at_bin": "date_bin(60s, client.timestamp)",
+        "server_scan_window": [
+          1752918420,
+          1752922860
+        ],
+        "source_window": [
+          1752918758,
+          1752919238
+        ],
+        "source_window_semantics": "publisher half-open normal+abnormal envelope",
+        "transform": "minimal whole-minute envelope containing the complete source window"
+      }
+    },
+    "frozen_selection_gate_passed": true,
+    "greptimedb": {
+      "binary_version": "GreptimeDB \nbranch: feat/semantic-graph-declaration-visibility\ncommit: 75cd53243e2c645621ae62202ec9413797bc98aa\nclean: false\nversion: 1.3.0",
+      "branch": "feat/semantic-graph-declaration-visibility",
+      "head": "75cd53243e2c645621ae62202ec9413797bc98aa"
+    },
+    "ingestion": {
+      "expected_stored_row_counts": {
+        "log_rows": 50789,
+        "metric_rows": 260740,
+        "trace_rows": 105867
+      },
+      "id_remapping": {
+        "pass": true,
+        "span_ids": 0,
+        "trace_ids": 0
+      },
+      "protocol_counts": {
+        "logs": {
+          "accepted_rows": 50789,
+          "rejected_rows": 0,
+          "source_rows": 50789,
+          "submitted_rows": 50789
+        },
+        "metrics": {
+          "accepted_points": 330036,
+          "conflicting_source_identities": 39731,
+          "duplicate_source_rows": 82504,
+          "rejected_points": 0,
+          "represented_rows_after_primary_key_semantics": 260740,
+          "source_rows": 330036,
+          "submitted_points": 330036,
+          "unique_source_identities": 247532
+        },
+        "traces": {
+          "accepted_rows": 105867,
+          "rejected_rows": 0,
+          "source_rows": 105867,
+          "submitted_rows": 105867
+        }
+      },
+      "protocol_rejections_zero": true,
+      "source_identity": {
+        "service_counts_match": true,
+        "source_span_kind_counts": {
+          "SPAN_KIND_CLIENT": 39324,
+          "SPAN_KIND_INTERNAL": 46926,
+          "SPAN_KIND_SERVER": 19617
+        },
+        "source_status_code_counts": {
+          "STATUS_CODE_ERROR": 1679,
+          "STATUS_CODE_OK": 3762,
+          "STATUS_CODE_UNSET": 100426
+        },
+        "span_kind_counts_match": true,
+        "status_code_counts_match": true,
+        "stored_span_kind_counts": {
+          "SPAN_KIND_CLIENT": 39324,
+          "SPAN_KIND_INTERNAL": 46926,
+          "SPAN_KIND_SERVER": 19617
+        },
+        "stored_status_code_counts": {
+          "STATUS_CODE_ERROR": 1679,
+          "STATUS_CODE_OK": 3762,
+          "STATUS_CODE_UNSET": 100426
+        }
+      },
+      "source_row_counts": {
+        "log_rows": 50789,
+        "metric_rows": 330036,
+        "trace_rows": 105867
+      },
+      "stored_row_counts": {
+        "log_rows": 50789,
+        "metric_rows": 260740,
+        "trace_rows": 105867
+      },
+      "stored_row_counts_match": true
+    },
+    "mechanism_evidence": {
+      "declared_edge": [
+        "ts-security-service",
+        "ts-order-other-service"
+      ],
+      "declared_edge_match": true,
+      "evidence_match": true,
+      "expected_result": {
+        "abnormal_client_methods": {
+          "GET": 758
+        },
+        "abnormal_server_methods": {
+          "OPTIONS": 758
+        },
+        "normal_server_methods": {
+          "GET": 57
+        }
+      },
+      "normalized_result": {
+        "abnormal_client_methods": {
+          "GET": 758
+        },
+        "abnormal_server_methods": {
+          "OPTIONS": 758
+        },
+        "normal_server_methods": {
+          "GET": 57
+        }
+      },
+      "original_method": "GET",
+      "pass": true,
+      "predicate": "source_declared_http_method_replacement",
+      "query": "WITH paired AS (\n  SELECT CASE\n           WHEN c.timestamp >= '2025-07-19 09:52:38' AND c.timestamp < '2025-07-19 09:56:38' THEN 'normal'\n           WHEN c.timestamp >= '2025-07-19 09:56:38' AND c.timestamp < '2025-07-19 10:00:38' THEN 'abnormal'\n         END AS period,\n         c.\"span_attributes.http.request.method\" AS client_method,\n         s.\"span_attributes.http.request.method\" AS server_method\n  FROM traces c\n  JOIN traces s\n    ON c.trace_id = s.trace_id\n   AND s.parent_span_id = c.span_id\n  WHERE c.span_kind = 'SPAN_KIND_CLIENT'\n    AND s.span_kind = 'SPAN_KIND_SERVER'\n    AND c.service_name = 'ts-security-service'\n    AND s.service_name = 'ts-order-other-service'\n    AND c.timestamp >= '2025-07-19 09:52:38' AND c.timestamp < '2025-07-19 10:00:38'\n)\nSELECT period, side, method, COUNT(*) AS span_count\nFROM (\n  SELECT period, 'server' AS side, server_method AS method FROM paired WHERE period = 'normal'\n  UNION ALL\n  SELECT period, 'client' AS side, client_method AS method FROM paired WHERE period = 'abnormal'\n  UNION ALL\n  SELECT period, 'server' AS side, server_method AS method FROM paired WHERE period = 'abnormal'\n) evidence\nGROUP BY period, side, method\nORDER BY period, side, method",
+      "replacement_method": "OPTIONS"
+    },
+    "no_model_gates": {
+      "all_passed": true,
+      "exclusive_graph_source": true,
+      "frozen_selection_match": true,
+      "frozen_source_edge_sets_match": true,
+      "id_remapping_zero": true,
+      "mechanism_evidence": true,
+      "opaque_agent_case_id": true,
+      "pinned_archive_verified": true,
+      "protocol_rejections_zero": true,
+      "raw_graph_exact_edge_set_equality": true,
+      "reference_causal_graph_excluded": true,
+      "source_identity_valid": true,
+      "source_window_boundaries_accounted": true,
+      "stored_row_counts_match": true,
+      "stored_source_identity_match": true,
+      "trace_windows_exact": true
+    },
+    "pinned_source": {
+      "artifact_filename": "FSE_26_RCA_dataset_study_reviewer.tar.gz",
+      "artifact_record": "https://zenodo.org/records/19522409",
+      "data_redistributed": false,
+      "expected_md5": "16f0743b6feb20838f856d6e441e0c7b",
+      "expected_size": 91418171,
+      "md5_match": true,
+      "observed_md5": "16f0743b6feb20838f856d6e441e0c7b",
+      "observed_size": 91418171,
+      "segment_count": 32,
+      "segment_sequence_valid": true,
+      "size_match": true,
+      "source_dataset_record": "https://zenodo.org/records/17105974",
+      "verified": true
+    },
+    "selection": {
+      "consumed_candidates": [
+        "ts3-ts-food-service-response-replace-body-skvngv",
+        "ts0-ts-security-service-request-replace-method-j6gpxx"
+      ],
+      "eligible_set": [
+        "ts0-ts-security-service-request-replace-method-j6gpxx",
+        "ts3-ts-food-service-response-replace-body-skvngv",
+        "ts8-ts-route-plan-service-request-delay-5dmjfm"
+      ],
+      "ranked_candidates": [
+        "ts3-ts-food-service-response-replace-body-skvngv",
+        "ts0-ts-security-service-request-replace-method-j6gpxx",
+        "ts8-ts-route-plan-service-request-delay-5dmjfm"
+      ],
+      "seed": "semantic-rca-v1-aegis-transfer",
+      "selected_case": "ts0-ts-security-service-request-replace-method-j6gpxx"
+    },
+    "semantic_coverage": {
+      "graph": {
+        "distinct_entity_count": 30,
+        "distinct_relationship_count": 41,
+        "entity_types": {
+          "service": 30
+        },
+        "errors": [],
+        "relationship_observation_count": 296,
+        "relationship_types": {
+          "calls": 41
+        },
+        "status": "relational"
+      },
+      "table_semantics": {
+        "groups": [
+          {
+            "signal_type": "log",
+            "source": "loki",
+            "table_count": 1
+          },
+          {
+            "signal_type": "metric",
+            "source": "opentelemetry",
+            "table_count": 98
+          },
+          {
+            "signal_type": "trace",
+            "source": "opentelemetry",
+            "table_count": 1
+          }
+        ],
+        "table_count": 100
+      }
+    }
+  }
+}
