@@ -274,7 +274,12 @@ class InvestigationSession:
     def reject_unexecuted(self, tool_name: str, arguments: dict[str, object], error: str) -> None:
         self.tool_calls_requested += 1
         self.rejected_tool_calls.append(
-            RejectedToolCall(tool_name=tool_name, input=arguments, error=error)
+            RejectedToolCall(
+                tool_name=tool_name,
+                input=arguments,
+                error=error,
+                reason_code="superseded_by_final_output",
+            )
         )
 
     @property
@@ -315,6 +320,8 @@ def _database_load_delta(
     if before is None or after is None:
         return None
     query_count = after.query_count - before.query_count
+    # A tool invocation executes synchronously in the API loop and under the
+    # subscription broker lock. Run-level load measurement retains the actual peak.
     return DatabaseLoad(
         query_count=query_count,
         failed_query_count=after.failed_query_count - before.failed_query_count,

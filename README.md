@@ -127,12 +127,12 @@ until deterministic scoring. Each completed
 resumes unfinished work.
 
 Protocol v21 established the same system contract for API, Codex subscription,
-and Claude subscription runners. Protocol v22 retains that runner contract. The
+and Claude subscription runners. Protocol v23 retains that runner contract. The
 API runner sets its turn limit above the visible tool-call cap and records turn
 exhaustion as a failed run instead of aborting the batch. The supported
 subscription CLIs do not expose a turn-limit option; their broker enforces the
 same database-tool cap, and the process timeout bounds the session. A taxonomy
-violation is a scored incorrect answer in every runner. Protocol v22 retains
+violation is a scored incorrect answer in every runner. Protocol v23 retains
 returned rows and calls through a correct diagnosis with at least one
 execution-valid evidence citation as the RCA efficiency metrics. Both metrics
 use the same eligibility guardrail. Each case contributes the median eligible
@@ -242,13 +242,56 @@ parent-child spans. The audit applies the frozen selection gate in
 license boundary, exclusions, and selected case. Use `aegis-audit` instead when
 you already have a verified, extracted artifact.
 
-For end-to-end RCA, protocol v22 counts a citation as execution-valid only when
+After the source audit passes, run the selected-case production-protocol and
+Graph equality gate in a fresh managed instance:
+
+```bash
+uv run semantic-rca aegis-transfer-audit \
+  --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
+  --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
+  --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
+  --run-dir .instances/aegis-transfer-001 \
+  --database case_01 \
+  --output .reports/aegis-transfer-audit.json
+```
+
+The command starts and stops only its own loopback GreptimeDB process. The run
+directory must not already exist. It replays metrics and traces through OTLP
+and logs through Loki, rejects protocol loss or identifier remapping, and writes
+the complete normalized raw and Graph edge sets plus their hashes. Because the
+publisher windows start at second 38, equality uses one minimal minute-aligned
+envelope around the complete normal-plus-abnormal source window. The source
+audit proves that the envelope adds no telemetry rows. Frozen normal and
+abnormal method evidence continues to use the original publisher half-open
+windows. This is a no-model gate; it does not run or authorize the transfer
+experiment.
+
+After the transfer audit passes, validate the frozen transfer scorer without
+calling a model:
+
+```bash
+uv run semantic-rca aegis-transfer-scorer-audit \
+  --transfer-audit .reports/aegis-transfer-audit.json \
+  --output .reports/aegis-transfer-scorer-audit.json
+```
+
+The command binds the source audit to
+`fixtures/reference/aegis-transfer-scorer.json`. The fixture freezes the
+directed two-service answer, accepted HTTP method-replacement labels, complete
+`GET`/`OPTIONS` evidence predicate, and canonical API runner contract. The
+scorer requires a cited, successful SQL result from a Client-to-Server
+parent-child join. A single-service answer, reversed edge, invalid citation,
+wrong parent relation, or missing evidence row fails the audit. The agent input
+contains the opaque case ID and no fault taxonomy.
+
+For end-to-end RCA, protocol v23 counts a citation as execution-valid only when
 it uniquely identifies a successful, non-truncated SQL or Graph query result,
 the result carries the same query ID, and the evidence claim is non-empty.
 Catalog and schema discovery are not incident evidence. This check prevents
 failed or fabricated references from unlocking efficiency metrics, but it does
-not prove that the cited rows support the diagnosis. A formal transfer case must
-add a deterministic evidence-support predicate before selection and model runs.
+not prove that the cited rows support the diagnosis. The Aegis transfer scorer
+adds its source-specific deterministic evidence-support predicate; the generic
+RCA scorer does not infer evidence entailment.
 
 Token fields are runner-specific. The API runner sums provider usage over all
 responses; `run.usage.input_tokens` excludes cache creation and cache reads,

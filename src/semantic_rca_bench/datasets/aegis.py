@@ -23,6 +23,7 @@ ARTIFACT_URL = (
 )
 SOURCE_DATASET_RECORD = "https://zenodo.org/records/17105974"
 SELECTION_SEED = "semantic-rca-v1-aegis-transfer"
+TRANSFER_AGENT_CASE_ID = "aegis-transfer-001"
 _ARCHIVE_DATASET_PREFIX = (
     "FSE_26_RCA_dataset_study_artifact_clean/reproduction/data/rcabench-platform-v2/"
 )
@@ -97,6 +98,7 @@ def audit_cohort(
     meta_dir: Path,
     *,
     archive_checksum_verified: bool = False,
+    selection_path: Path | None = None,
 ) -> dict[str, object]:
     index = _meta_rows(meta_dir / "index.parquet")
     attributes = _rows_by_case(_meta_rows(meta_dir / "attributes.parquet"))
@@ -125,7 +127,7 @@ def audit_cohort(
         None,
     )
     consumed = ranked[: ranked.index(selected) + 1] if selected is not None else ranked
-    return {
+    audit = {
         "source": {
             "artifact_record": ARTIFACT_RECORD,
             "artifact_filename": ARTIFACT_FILENAME,
@@ -142,6 +144,91 @@ def audit_cohort(
             "selected_case": selected,
         },
         "cases": cases,
+    }
+    if selection_path is not None:
+        audit["frozen_selection_gate"] = _validate_frozen_selection(audit, selection_path)
+    return audit
+
+
+def _validate_frozen_selection(audit: dict[str, object], selection_path: Path) -> dict[str, object]:
+    manifest = json.loads(selection_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise AegisAuditError("frozen selection manifest must be an object")
+    selection = audit["selection"]
+    if not isinstance(selection, dict):
+        raise AegisAuditError("source audit selection must be an object")
+    source = audit["source"]
+    if not isinstance(source, dict):
+        raise AegisAuditError("source audit provenance must be an object")
+    frozen_source = manifest.get("source")
+    eligibility = manifest.get("eligibility")
+    selected_case = manifest.get("selected_case")
+    if (
+        not isinstance(frozen_source, dict)
+        or not isinstance(eligibility, dict)
+        or not isinstance(selected_case, dict)
+    ):
+        raise AegisAuditError("frozen selection manifest is incomplete")
+
+    consumed = eligibility.get("consumed_candidates")
+    if not isinstance(consumed, list) or any(not isinstance(item, dict) for item in consumed):
+        raise AegisAuditError("frozen consumed candidates must be objects")
+    consumed_projection = [
+        {"source_case": item.get("source_case"), "decision": item.get("decision")}
+        for item in consumed
+    ]
+    observed_consumed = [
+        {
+            "source_case": source_case,
+            "decision": "selected" if source_case == selection["selected_case"] else "rejected",
+        }
+        for source_case in selection["consumed_candidates"]
+    ]
+    ranked = selection["ranked_candidates"]
+    consumed_names = selection["consumed_candidates"]
+    observed = {
+        "source": {
+            "artifact_record": source["artifact_record"],
+            "artifact_filename": source["artifact_filename"],
+            "artifact_md5": source["expected_artifact_md5"],
+            "source_dataset_record": source["source_dataset_record"],
+            "data_redistributed": source["data_redistributed"],
+        },
+        "selection_seed": selection["seed"],
+        "agent_case_id": TRANSFER_AGENT_CASE_ID,
+        "eligible_directed_graph_cases": selection["eligible_set"],
+        "ranked_candidates": ranked,
+        "consumed_candidates": observed_consumed,
+        "unconsumed_candidates": ranked[len(consumed_names) :],
+        "selected_case": selection["selected_case"],
+    }
+    expected = {
+        "source": {
+            key: frozen_source.get(key)
+            for key in (
+                "artifact_record",
+                "artifact_filename",
+                "artifact_md5",
+                "source_dataset_record",
+                "data_redistributed",
+            )
+        },
+        "selection_seed": manifest.get("selection_seed"),
+        "agent_case_id": manifest.get("agent_case_id"),
+        "eligible_directed_graph_cases": eligibility.get("eligible_directed_graph_cases"),
+        "ranked_candidates": eligibility.get("ranked_candidates"),
+        "consumed_candidates": consumed_projection,
+        "unconsumed_candidates": eligibility.get("unconsumed_candidates"),
+        "selected_case": selected_case.get("source_case"),
+    }
+    if observed != expected:
+        mismatches = sorted(key for key in expected if observed[key] != expected[key])
+        raise AegisAuditError(f"frozen selection drift: {mismatches}")
+    return {
+        "manifest_name": selection_path.name,
+        "observed": observed,
+        "expected": expected,
+        "pass": True,
     }
 
 
@@ -296,6 +383,7 @@ def _audit_case(
         display_config,
         declared_edge,
         observations,
+        {field for window in windows.values() for field in window["observed_nonempty_body_fields"]},
     )
     return {
         "source_case": root.name,
@@ -322,12 +410,18 @@ def _audit_case(
 def _trace_window_audit(
     path: Path,
 ) -> tuple[dict[str, object], dict[tuple[str, str], list[dict[str, object]]]]:
-    schema_names = set(pq.read_schema(path).names)
+    source_schema_columns = pq.read_schema(path).names
+    schema_names = set(source_schema_columns)
     missing = _REQUIRED_TRACE_COLUMNS - schema_names
     if missing:
         raise AegisAuditError(f"missing trace columns in {path}: {sorted(missing)}")
+    body_columns = sorted(column for column in source_schema_columns if "body" in column.lower())
     columns = [column for column in _TRACE_COLUMNS if column in schema_names]
+    columns.extend(column for column in body_columns if column not in columns)
     rows = pq.read_table(path, columns=columns).to_pylist()
+    nonempty_body_fields = sorted(
+        column for column in body_columns if any(row.get(column) not in (None, "") for row in rows)
+    )
     identities = [(row["trace_id"], row["span_id"]) for row in rows]
     identity_complete = all(
         row[field] not in (None, "")
@@ -374,6 +468,9 @@ def _trace_window_audit(
     return (
         {
             "source_rows": len(rows),
+            "source_schema_columns": source_schema_columns,
+            "observed_body_columns": body_columns,
+            "observed_nonempty_body_fields": nonempty_body_fields,
             "identity_complete": identity_complete,
             "span_identity_unique": len(identities) == len(set(identities)),
             "native_roles_and_statuses_valid": kinds <= _SPAN_KINDS and statuses <= _STATUS_CODES,
@@ -394,6 +491,7 @@ def _mechanism_evidence(
     display_config: dict[str, object],
     edge: tuple[str, str] | None,
     observations: dict[str, dict[tuple[str, str], list[dict[str, object]]]],
+    nonempty_body_fields: set[str],
 ) -> dict[str, object]:
     if edge is None:
         return {
@@ -480,19 +578,17 @@ def _mechanism_evidence(
         }
 
     if fault_type == "HTTPResponseReplaceBody":
-        body_fields = {
-            key
-            for item in (*normal, *abnormal)
-            for side in ("client", "server")
-            for key, value in item[side].items()
-            if "body" in key.lower() and value not in (None, "")
-        }
+        if nonempty_body_fields:
+            raise AegisAuditError(
+                "response body values are now present; the frozen transfer predicate must be "
+                "reviewed before selecting a case"
+            )
         return {
             "predicate": "source_declared_http_response_body_replacement",
             "scoreable": False,
             "predicate_match": False,
             "reason": "source traces do not retain a response body value",
-            "observed_nonempty_body_fields": sorted(body_fields),
+            "observed_nonempty_body_fields": sorted(nonempty_body_fields),
         }
 
     return {

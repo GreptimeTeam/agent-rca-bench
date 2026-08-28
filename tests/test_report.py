@@ -22,7 +22,7 @@ def test_deepseek_pricing_separates_uncached_and_cache_read_input() -> None:
     assert pricing["input_per_million"] == 0.14
     assert pricing["input_cache_hit_per_million"] == 0.0028
     assert pricing["output_per_million"] == 0.28
-    assert "priced separately" in pricing["note"]
+    assert "Cost is unavailable unless" in pricing["note"]
 
 
 def test_api_usage_reconstructs_cached_tokens_and_cost_from_raw_events() -> None:
@@ -42,6 +42,36 @@ def test_api_usage_reconstructs_cached_tokens_and_cost_from_raw_events() -> None
     assert _estimated_api_cost(run, MODEL_PRICING["deepseek-v4-flash"]) == pytest.approx(
         ((120 + 40) * 0.14 + 2_176 * 0.0028 + 150 * 0.28) / 1_000_000
     )
+
+
+def test_deepseek_cost_is_unavailable_without_provider_cache_breakdown() -> None:
+    run = {
+        "usage": {"input_tokens": 120, "output_tokens": 20},
+        "responses": [{"usage": {"input_tokens": 120, "output_tokens": 20}}],
+    }
+
+    assert _estimated_api_cost(run, MODEL_PRICING["deepseek-v4-flash"]) is None
+
+
+def test_claude_subscription_does_not_double_count_cached_input() -> None:
+    run = {
+        "usage": {"input_tokens": 280, "output_tokens": 20},
+        "responses": [
+            {
+                "usage": {
+                    "input_tokens": 80,
+                    "cache_creation_input_tokens": 40,
+                    "cache_read_input_tokens": 160,
+                    "output_tokens": 20,
+                }
+            }
+        ],
+    }
+    accounting = {
+        "cached_input_included_in_input_tokens": True,
+    }
+
+    assert _runner_reported_token_total(run, accounting) == 300
 
 
 def test_render_report_embeds_data_and_escapes_script_end(tmp_path) -> None:
@@ -112,6 +142,7 @@ def test_subscription_combined_report_hides_inapplicable_summary_columns(tmp_pat
     document = output.read_text()
     assert ".aggregate-correctness { display: none; }" in document
     assert ".api-cost { display: none; }" in document
+    assert "hasOwnProperty.call(run, 'estimated_api_cost')" in document
     assert "__REPORT_COLUMN_CSS__" not in document
 
 
@@ -232,6 +263,7 @@ def _primary_item(repetition: int, visibility: str, rows: int, calls: int) -> di
             "diagnosis": {},
         },
         "evaluation": {
+            "valid_completion": True,
             "joint_match": True,
             "cited_evidence_count": 1,
             "valid_evidence_count": 1,
@@ -311,21 +343,20 @@ def test_failed_run_is_excluded_from_rows_returned_efficiency(run) -> None:
     assert _primary_metric_value(item, "rows_returned") is None
 
 
-@pytest.mark.parametrize(
-    "evaluation",
-    [
-        {"joint_match": False, "cited_evidence_count": 1, "valid_evidence_count": 1},
-        {"joint_match": True, "cited_evidence_count": 0, "valid_evidence_count": 0},
-        {"joint_match": True, "cited_evidence_count": 2, "valid_evidence_count": 1},
-        {"joint_match": True, "cited_evidence_count": True, "valid_evidence_count": True},
-    ],
-)
-def test_rows_and_calls_require_joint_correct_valid_evidence(evaluation) -> None:
+def test_primary_metrics_consume_canonical_valid_completion() -> None:
     item = {
         "run": {"diagnosis": {}, "tool_budget_exhausted": False},
-        "evaluation": {**evaluation, "correct_completion_tool_calls": 3},
+        "evaluation": {
+            "valid_completion": False,
+            "correct_completion_tool_calls": 3,
+        },
         "database_load": {"rows_returned": 10},
     }
 
     assert _primary_metric_value(item, "rows_returned") is None
     assert _primary_metric_value(item, "correct_completion_tool_calls") is None
+
+    item["evaluation"]["valid_completion"] = True
+
+    assert _primary_metric_value(item, "rows_returned") == 10
+    assert _primary_metric_value(item, "correct_completion_tool_calls") == 3

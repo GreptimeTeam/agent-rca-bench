@@ -52,7 +52,7 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v22-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v23-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
 
 
@@ -109,6 +109,60 @@ def test_openrca2_smoke_defaults_to_the_frozen_measurement_case() -> None:
 
     assert args.case == "hs1-geo-pod-failure-drdmjj"
     assert str(args.cache_dir) == ".data/openrca2"
+
+
+def test_aegis_transfer_audit_requires_exclusive_run_directory() -> None:
+    args = _parser().parse_args(
+        [
+            "aegis-transfer-audit",
+            "--cases-dir",
+            "cases",
+            "--meta-dir",
+            "meta",
+            "--archive",
+            "segments",
+            "--run-dir",
+            "instance",
+            "--output",
+            "audit.json",
+        ]
+    )
+
+    assert args.database == "case_01"
+    assert str(args.selection) == "fixtures/reference/aegis-selection.json"
+    assert str(args.run_dir) == "instance"
+
+
+def test_aegis_source_commands_default_to_frozen_selection() -> None:
+    audit = _parser().parse_args(
+        [
+            "aegis-audit",
+            "--cases-dir",
+            "cases",
+            "--meta-dir",
+            "meta",
+            "--output",
+            "audit.json",
+        ]
+    )
+    fetch = _parser().parse_args(["aegis-fetch", "--output", "audit.json"])
+
+    assert str(audit.selection) == "fixtures/reference/aegis-selection.json"
+    assert str(fetch.selection) == "fixtures/reference/aegis-selection.json"
+
+
+def test_aegis_transfer_scorer_audit_uses_frozen_fixture_by_default() -> None:
+    args = _parser().parse_args(
+        [
+            "aegis-transfer-scorer-audit",
+            "--transfer-audit",
+            "transfer.json",
+            "--output",
+            "scorer.json",
+        ]
+    )
+
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-scorer.json"
 
 
 def test_measurement_database_name_cannot_leak_ground_truth() -> None:

@@ -230,7 +230,13 @@ def run_structured_subscription_agent(
             )
             mcp_config.chmod(0o600)
             if runner is AgentRunner.CODEX_SUBSCRIPTION:
-                output_data, responses, usage, rejected_tool_calls = _run_codex(
+                (
+                    output_data,
+                    responses,
+                    usage,
+                    rejected_tool_calls,
+                    usage_error,
+                ) = _run_codex(
                     root,
                     mcp_config,
                     output_schema,
@@ -239,6 +245,8 @@ def run_structured_subscription_agent(
                     environment,
                     session.allowed_tools,
                 )
+                if usage_error is not None:
+                    raise AgentError(usage_error)
             else:
                 output_data, responses, usage, rejected_tool_calls = _run_claude(
                     root,
@@ -308,7 +316,14 @@ def _require_codex_subscription(environment: dict[str, str]) -> None:
     )
     status = result.stdout + result.stderr
     if result.returncode != 0 or "ChatGPT" not in status:
-        raise AgentError("codex-subscription requires `codex login` with ChatGPT, not an API key")
+        hint = (
+            "; CODEX_HOME is intentionally ignored for subscription isolation"
+            if "CODEX_HOME" in os.environ and "CODEX_HOME" not in environment
+            else ""
+        )
+        raise AgentError(
+            "codex-subscription requires `codex login` with ChatGPT, not an API key" + hint
+        )
 
 
 def _require_claude_subscription(environment: dict[str, str]) -> None:
@@ -326,8 +341,13 @@ def _require_claude_subscription(environment: dict[str, str]) -> None:
         raise AgentError("unable to read Claude Code authentication status") from error
     method = str(status.get("authMethod", "")).lower()
     if result.returncode != 0 or not status.get("loggedIn"):
+        hint = (
+            "; CLAUDE_CONFIG_DIR is intentionally ignored for subscription isolation"
+            if "CLAUDE_CONFIG_DIR" in os.environ and "CLAUDE_CONFIG_DIR" not in environment
+            else ""
+        )
         raise AgentError(
-            "claude-subscription requires `claude auth login` with a Claude subscription"
+            "claude-subscription requires `claude auth login` with a Claude subscription" + hint
         )
     if method not in {"oauth", "oauth_token", "claude.ai", "subscription"}:
         raise AgentError(
@@ -348,6 +368,7 @@ def _run_codex(
     list[dict[str, object]],
     AgentUsage,
     list[RejectedToolCall],
+    str | None,
 ]:
     schema_path = root / "output.schema.json"
     output_path = root / "output.json"
@@ -391,8 +412,14 @@ def _run_codex(
         raise AgentError("Codex did not write the structured output")
     output = _json_object(output_path.read_text(encoding="utf-8"), "Codex output")
     responses = _codex_responses(events)
-    usage = _codex_usage(events)
-    return output, responses, usage, rejected_tool_calls
+    try:
+        usage = _codex_usage(events)
+    except AgentError as error:
+        usage = AgentUsage()
+        usage_error = str(error)
+    else:
+        usage_error = None
+    return output, responses, usage, rejected_tool_calls, usage_error
 
 
 def _run_claude(

@@ -13,6 +13,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from statistics import median
 
+from semantic_rca_bench.aegis_transfer_scorer import (
+    DEFAULT_SCORER_FIXTURE,
+    audit_transfer_scorer,
+    load_transfer_scorer_fixture,
+)
 from semantic_rca_bench.agent import run_agent
 from semantic_rca_bench.contracts import (
     AgentRun,
@@ -24,6 +29,26 @@ from semantic_rca_bench.contracts import (
 )
 from semantic_rca_bench.datasets.aegis import AegisRepository
 from semantic_rca_bench.datasets.aegis import audit_cohort as audit_aegis_cohort
+from semantic_rca_bench.datasets.aegis_transfer import (
+    ADAPTER_REVISION as AEGIS_TRANSFER_ADAPTER_REVISION,
+)
+from semantic_rca_bench.datasets.aegis_transfer import (
+    DATASET_REVISION as AEGIS_TRANSFER_DATASET_REVISION,
+)
+from semantic_rca_bench.datasets.aegis_transfer import (
+    archive_checksum_status,
+    exact_edge_equality_audit,
+    load_selected_case,
+    mechanism_evidence_audit,
+    no_model_gates,
+    validate_stored_rows,
+)
+from semantic_rca_bench.datasets.aegis_transfer import (
+    ingest_case as ingest_aegis_transfer_case,
+)
+from semantic_rca_bench.datasets.aegis_transfer import (
+    source_audit as source_audit_aegis_transfer,
+)
 from semantic_rca_bench.datasets.openrca import (
     DATASET_REVISION as OPENRCA_DATASET_REVISION,
 )
@@ -102,7 +127,7 @@ from semantic_rca_bench.graph_benchmark import (
     fixture_for_source_case as graph_fixture_for_source_case,
 )
 from semantic_rca_bench.greptimedb.client import GreptimeClient
-from semantic_rca_bench.greptimedb.server import inspect_checkout, write_json
+from semantic_rca_bench.greptimedb.server import ManagedGreptime, inspect_checkout, write_json
 from semantic_rca_bench.greptimedb.visibility import QueryGateway
 from semantic_rca_bench.inspect import (
     assert_semantic_graph_isolated,
@@ -150,11 +175,44 @@ def _parser() -> argparse.ArgumentParser:
     aegis_audit = subparsers.add_parser("aegis-audit")
     aegis_audit.add_argument("--cases-dir", type=Path, required=True)
     aegis_audit.add_argument("--meta-dir", type=Path, required=True)
+    aegis_audit.add_argument(
+        "--selection",
+        type=Path,
+        default=Path("fixtures/reference/aegis-selection.json"),
+    )
     aegis_audit.add_argument("--output", type=Path, required=True)
 
     aegis_fetch = subparsers.add_parser("aegis-fetch")
     aegis_fetch.add_argument("--cache-dir", type=Path, default=Path(".data/aegis"))
+    aegis_fetch.add_argument(
+        "--selection",
+        type=Path,
+        default=Path("fixtures/reference/aegis-selection.json"),
+    )
     aegis_fetch.add_argument("--output", type=Path, required=True)
+
+    aegis_transfer = subparsers.add_parser("aegis-transfer-audit")
+    aegis_transfer.add_argument("--cases-dir", type=Path, required=True)
+    aegis_transfer.add_argument("--meta-dir", type=Path, required=True)
+    aegis_transfer.add_argument("--archive", type=Path, required=True)
+    aegis_transfer.add_argument(
+        "--selection",
+        type=Path,
+        default=Path("fixtures/reference/aegis-selection.json"),
+    )
+    aegis_transfer.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
+    aegis_transfer.add_argument("--run-dir", type=Path, required=True)
+    aegis_transfer.add_argument("--database", default="case_01")
+    aegis_transfer.add_argument("--output", type=Path, required=True)
+
+    aegis_transfer_scorer = subparsers.add_parser("aegis-transfer-scorer-audit")
+    aegis_transfer_scorer.add_argument("--transfer-audit", type=Path, required=True)
+    aegis_transfer_scorer.add_argument(
+        "--scorer",
+        type=Path,
+        default=DEFAULT_SCORER_FIXTURE,
+    )
+    aegis_transfer_scorer.add_argument("--output", type=Path, required=True)
 
     smoke = subparsers.add_parser("smoke")
     smoke.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
@@ -266,7 +324,11 @@ def doctor(repo: Path) -> int:
 
 
 def aegis_audit(args: argparse.Namespace) -> int:
-    output = audit_aegis_cohort(args.cases_dir, args.meta_dir)
+    output = audit_aegis_cohort(
+        args.cases_dir,
+        args.meta_dir,
+        selection_path=args.selection,
+    )
     write_json(args.output, output)
     print(args.output)
     return 0
@@ -278,10 +340,144 @@ def aegis_fetch(args: argparse.Namespace) -> int:
         cases_dir,
         meta_dir,
         archive_checksum_verified=True,
+        selection_path=args.selection,
     )
     write_json(args.output, output)
     print(args.output)
     return 0
+
+
+def aegis_transfer_audit(args: argparse.Namespace) -> int:
+    if args.run_dir.exists():
+        raise ValueError(f"exclusive GreptimeDB run directory already exists: {args.run_dir}")
+    archive = archive_checksum_status(args.archive)
+    cohort_audit = audit_aegis_cohort(
+        args.cases_dir,
+        args.meta_dir,
+        selection_path=args.selection,
+    )
+    checkout = inspect_checkout(
+        args.greptimedb_repo,
+        expected_branch="feat/semantic-graph-declaration-visibility",
+    )
+    case = load_selected_case(
+        args.cases_dir,
+        args.meta_dir,
+        args.selection,
+        database=args.database,
+    )
+    database_text = args.database.lower()
+    forbidden = {
+        case.source_case.lower(),
+        case.ground_truth.fault_type.lower(),
+        *(service.lower() for service in case.ground_truth.services),
+    }
+    if any(value and value in database_text for value in forbidden):
+        raise ValueError("Aegis transfer database name leaks source labels")
+    source = source_audit_aegis_transfer(case)
+    managed = ManagedGreptime(Path(str(checkout["binary"])), args.run_dir)
+    try:
+        managed.start()
+        with GreptimeClient(managed.endpoint, database=args.database, timeout=120) as client:
+            server_status = client.status()
+            client.create_database(args.database)
+            assert_semantic_graph_isolated(client, args.database)
+            empty_before_ingest = assert_semantic_graph_window_empty(client, case.input)
+            counts = ingest_aegis_transfer_case(client, case, source)
+            stored = validate_stored_rows(client, case, counts, source)
+            equality = exact_edge_equality_audit(client, case)
+            mechanism = mechanism_evidence_audit(client, case)
+        ports = {
+            "http": managed.http_port,
+            "grpc": managed.grpc_port,
+            "mysql": managed.mysql_port,
+            "postgres": managed.postgres_port,
+        }
+    finally:
+        managed.stop()
+    process_stopped = managed.process is not None and managed.process.poll() is not None
+    sanitized_server_status = {
+        key: server_status[key]
+        for key in ("version", "branch", "commit", "rustc_version")
+        if key in server_status
+    }
+    gates = no_model_gates(
+        case,
+        archive,
+        source,
+        stored,
+        equality,
+        mechanism,
+        isolated=True,
+        frozen_selection=cohort_audit["frozen_selection_gate"]["pass"] is True,
+    )
+    report = {
+        "audit_schema_version": 1,
+        "mode": "aegis-transfer-no-model-audit",
+        "dataset_revision": AEGIS_TRANSFER_DATASET_REVISION,
+        "adapter_revision": AEGIS_TRANSFER_ADAPTER_REVISION,
+        "license": {
+            "benchmark_code": "Apache-2.0",
+            "source_dataset_record": "CC-BY-4.0",
+            "reviewer_artifact_data_license": "not explicitly covered by root Apache-2.0",
+            "publication_mode": "pinned-downloader; telemetry not redistributed",
+        },
+        "pinned_source": archive,
+        "selection_audit": {
+            "selection": cohort_audit["selection"],
+            "frozen_selection_gate": cohort_audit["frozen_selection_gate"],
+        },
+        "case": {
+            "agent_facing": {
+                "case_id": case.agent_case_id,
+                "time_start": case.input.time_start,
+                "time_end": case.input.time_end,
+                "alert_time": case.input.alert_time,
+                "fault_taxonomy": case.input.fault_taxonomy,
+            },
+            "source_mapping": {
+                "agent_case_id": case.agent_case_id,
+                "source_case": case.source_case,
+            },
+            "normal_window": list(case.normal_window),
+            "abnormal_window": list(case.abnormal_window),
+            "ground_truth_services": list(case.ground_truth.services),
+            "declared_edge": list(case.ground_truth.declared_edge),
+            "fault_type": case.ground_truth.fault_type,
+        },
+        "greptimedb": {
+            "branch": checkout["branch"],
+            "head": checkout["head"],
+            "binary_version": checkout["binary_version"],
+        },
+        "exclusive_instance": {
+            "loopback_only": True,
+            "ports": ports,
+            "database": args.database,
+            "empty_before_ingest": empty_before_ingest,
+            "status": sanitized_server_status,
+            "process_stopped_by_command": process_stopped,
+        },
+        "source_audit": source,
+        "ingestion": stored,
+        "edge_equality": equality,
+        "mechanism_evidence": mechanism,
+        "no_model_gates": gates,
+    }
+    write_json(args.output, report)
+    print(args.output)
+    return 0 if gates["all_passed"] else 1
+
+
+def aegis_transfer_scorer_audit(args: argparse.Namespace) -> int:
+    fixture = load_transfer_scorer_fixture(args.scorer)
+    transfer_audit = json.loads(args.transfer_audit.read_text())
+    if not isinstance(transfer_audit, dict):
+        raise ValueError("Aegis transfer audit must be a JSON object")
+    report = audit_transfer_scorer(transfer_audit, fixture)
+    write_json(args.output, report)
+    print(args.output)
+    return 0 if report["no_model_gates"]["all_passed"] else 1
 
 
 def smoke(args: argparse.Namespace) -> int:
@@ -1363,6 +1559,10 @@ def main() -> None:
             code = aegis_audit(args)
         elif args.command == "aegis-fetch":
             code = aegis_fetch(args)
+        elif args.command == "aegis-transfer-audit":
+            code = aegis_transfer_audit(args)
+        elif args.command == "aegis-transfer-scorer-audit":
+            code = aegis_transfer_scorer_audit(args)
         elif args.command == "smoke":
             code = smoke(args)
         elif args.command == "smoke-rca100":

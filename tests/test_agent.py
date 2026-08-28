@@ -367,6 +367,7 @@ def test_valid_final_output_records_same_response_investigation_calls_as_rejecte
     assert result.tool_calls_requested == 1
     assert len(result.rejected_tool_calls) == 1
     assert result.rejected_tool_calls[0].tool_name == "execute_sql"
+    assert result.rejected_tool_calls[0].reason_code == "superseded_by_final_output"
 
 
 def test_agent_turn_limit_tracks_tool_budget_and_records_failure(monkeypatch) -> None:

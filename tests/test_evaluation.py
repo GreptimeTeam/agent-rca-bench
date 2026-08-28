@@ -7,6 +7,7 @@ from semantic_rca_bench.contracts import (
     FaultCategory,
     GroundTruth,
     QueryResult,
+    RejectedToolCall,
     ToolTrace,
     Visibility,
 )
@@ -326,7 +327,41 @@ def test_successful_graph_query_is_execution_valid_evidence() -> None:
     )
 
     assert result.valid_evidence_count == 1
+    assert result.valid_completion is True
     assert result.correct_completion_tool_calls == 1
+
+
+def test_parenthesized_select_is_execution_valid_evidence() -> None:
+    result = evaluate(
+        _run_with_evidence([_sql_trace("(SELECT * FROM checkout_latency)")]),
+        GroundTruth(affected_component="checkoutservice", fault_type="delay", inject_time=0),
+    )
+
+    assert result.valid_evidence_count == 1
+    assert result.valid_completion is True
+
+
+def test_final_output_superseded_call_is_not_a_failed_call() -> None:
+    run = _run_with_evidence([_sql_trace()]).model_copy(
+        update={
+            "rejected_tool_calls": [
+                RejectedToolCall(
+                    tool_name="execute_sql",
+                    input={"query": "SELECT 1"},
+                    error="final output won",
+                    reason_code="superseded_by_final_output",
+                )
+            ]
+        }
+    )
+
+    result = evaluate(
+        run,
+        GroundTruth(affected_component="checkoutservice", fault_type="delay", inject_time=0),
+    )
+
+    assert result.valid_completion is True
+    assert result.failed_calls == 0
 
 
 def test_unscoreable_component_excludes_joint_accuracy() -> None:

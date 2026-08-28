@@ -58,6 +58,18 @@ def test_subscription_environment_removes_usage_billed_credentials(monkeypatch) 
     assert "CLAUDE_CONFIG_DIR" not in environment
 
 
+def test_codex_auth_failure_explains_filtered_custom_home(monkeypatch) -> None:
+    monkeypatch.setenv("CODEX_HOME", "/tmp/custom-codex-home")
+    monkeypatch.setattr(
+        subscription.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, "", "not logged in"),
+    )
+
+    with pytest.raises(AgentError, match="CODEX_HOME is intentionally ignored"):
+        subscription._require_codex_subscription({})
+
+
 def test_subscription_prompt_names_the_only_allowed_mcp_surface() -> None:
     prompt = subscription._subscription_prompt(
         CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
@@ -232,7 +244,7 @@ def test_codex_runner_uses_isolated_config_and_parses_usage(monkeypatch, tmp_pat
     config = tmp_path / "mcp.json"
     config.write_text("{}")
 
-    diagnosis, responses, usage, rejected = subscription._run_codex(
+    diagnosis, responses, usage, rejected, usage_error = subscription._run_codex(
         tmp_path,
         config,
         {"type": "object"},
@@ -244,6 +256,7 @@ def test_codex_runner_uses_isolated_config_and_parses_usage(monkeypatch, tmp_pat
 
     assert diagnosis == DIAGNOSIS
     assert rejected == []
+    assert usage_error is None
     assert usage == AgentUsage(input_tokens=120, output_tokens=30)
     assert responses[0]["content"][0]["type"] == "mcp_tool_call"
     assert "--ignore-user-config" in captured["command"]
@@ -281,7 +294,7 @@ def test_codex_runner_records_unconfigured_mcp_attempt(monkeypatch, tmp_path) ->
     config = tmp_path / "mcp.json"
     config.write_text("{}")
 
-    _, _, _, rejected = subscription._run_codex(
+    _, _, _, rejected, usage_error = subscription._run_codex(
         tmp_path,
         config,
         {"type": "object"},
@@ -292,6 +305,7 @@ def test_codex_runner_records_unconfigured_mcp_attempt(monkeypatch, tmp_path) ->
     )
 
     assert len(rejected) == 1
+    assert usage_error is None
     assert rejected[0].tool_name == "mcp__semantic_rca__list_mcp_resources"
 
 
@@ -450,6 +464,7 @@ def test_subscription_agent_records_runner_without_api_client(monkeypatch) -> No
             [],
             AgentUsage(input_tokens=10, output_tokens=5),
             [],
+            None,
         )
 
     monkeypatch.setattr(subscription, "_run_codex", fake_run_codex)
@@ -476,6 +491,40 @@ def test_subscription_agent_records_runner_without_api_client(monkeypatch) -> No
     assert "The only MCP server is named semantic_rca" in captured["prompt"]
 
 
+def test_codex_usage_failure_preserves_parsed_responses(monkeypatch) -> None:
+    session = SimpleNamespace(
+        allowed_tools={"execute_sql"},
+        tool_calls=[],
+        rejected_tool_calls=[],
+        tool_calls_requested=1,
+        tool_budget_exhausted=False,
+    )
+    monkeypatch.setattr(subscription, "_require_codex_subscription", lambda _: None)
+    monkeypatch.setattr(subscription, "InvestigationSession", lambda *args, **kwargs: session)
+    monkeypatch.setattr(
+        subscription,
+        "_run_codex",
+        lambda *args, **kwargs: (
+            DIAGNOSIS,
+            [{"content": [{"type": "agent_message", "text": "answer"}]}],
+            AgentUsage(),
+            [],
+            "Codex must return exactly one cumulative turn.completed usage event, got 0",
+        ),
+    )
+
+    run = subscription.run_subscription_agent(
+        SimpleNamespace(client=SimpleNamespace()),  # type: ignore[arg-type]
+        CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
+        Visibility.RAW,
+        runner=AgentRunner.CODEX_SUBSCRIPTION,
+        model="gpt-5.6-luna",
+    )
+
+    assert run.error == "Codex must return exactly one cumulative turn.completed usage event, got 0"
+    assert run.responses == [{"content": [{"type": "agent_message", "text": "answer"}]}]
+
+
 def test_subscription_taxonomy_violation_is_a_recorded_answer(monkeypatch) -> None:
     session = SimpleNamespace(
         allowed_tools={"execute_sql"},
@@ -489,7 +538,7 @@ def test_subscription_taxonomy_violation_is_a_recorded_answer(monkeypatch) -> No
     monkeypatch.setattr(
         subscription,
         "_run_codex",
-        lambda *args, **kwargs: (diagnosis, [], AgentUsage(), []),
+        lambda *args, **kwargs: (diagnosis, [], AgentUsage(), [], None),
     )
 
     run = subscription.run_subscription_agent(
@@ -525,7 +574,7 @@ def test_rejected_tools_do_not_exhaust_investigation_budget(monkeypatch) -> None
     monkeypatch.setattr(
         subscription,
         "_run_codex",
-        lambda *args, **kwargs: (DIAGNOSIS, [], AgentUsage(), rejected),
+        lambda *args, **kwargs: (DIAGNOSIS, [], AgentUsage(), rejected, None),
     )
 
     run = subscription.run_subscription_agent(
@@ -557,6 +606,7 @@ def test_subscription_agent_records_failure_without_investigation(monkeypatch) -
             [],
             AgentUsage(input_tokens=10, output_tokens=5),
             [],
+            None,
         ),
     )
 

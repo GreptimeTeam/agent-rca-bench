@@ -22,7 +22,10 @@ MODEL_PRICING = {
         "input_cache_hit_per_million": 0.0028,
         "output_per_million": 0.28,
         "checked_at": "2026-08-27",
-        "note": "Uncached and cache-read input are priced separately when raw usage is available.",
+        "note": (
+            "Cost is unavailable unless the provider response exposes the Anthropic-compatible "
+            "cache creation and cache-read fields."
+        ),
         "source": "https://api-docs.deepseek.com/quick_start/pricing/",
     },
     "deepseek-v4-pro": {
@@ -31,7 +34,10 @@ MODEL_PRICING = {
         "input_cache_hit_per_million": 0.003625,
         "output_per_million": 0.87,
         "checked_at": "2026-08-27",
-        "note": "Uncached and cache-read input are priced separately when raw usage is available.",
+        "note": (
+            "Cost is unavailable unless the provider response exposes the Anthropic-compatible "
+            "cache creation and cache-read fields."
+        ),
         "source": "https://api-docs.deepseek.com/quick_start/pricing/",
     },
 }
@@ -41,6 +47,7 @@ TOKEN_ACCOUNTING = {
         "scope": "sum of provider usage across all responses in one run",
         "input_tokens": "uncached input only",
         "cached_input": "separate raw response fields; omitted from legacy run.usage",
+        "cached_input_included_in_input_tokens": False,
         "context": "system prompt, tool schemas, and prior tool results are sent to the provider",
         "output_tokens": "provider-reported output including structured tool output",
         "comparability": "paired comparisons only within the same provider and runner contract",
@@ -49,6 +56,7 @@ TOKEN_ACCOUNTING = {
         "scope": "the single cumulative codex exec turn.completed usage event",
         "input_tokens": "includes cached input; cached breakdown is not persisted",
         "cached_input": "included in input_tokens",
+        "cached_input_included_in_input_tokens": True,
         "context": "includes Codex runner context, MCP schemas/results, and output-schema handling",
         "output_tokens": "includes reasoning output; reasoning breakdown is not persisted",
         "comparability": "paired comparisons only within the same Codex CLI and runner contract",
@@ -57,6 +65,7 @@ TOKEN_ACCOUNTING = {
         "scope": "Claude result usage for one CLI run",
         "input_tokens": "input plus cache creation plus cache reads",
         "cached_input": "included in input_tokens after runner aggregation",
+        "cached_input_included_in_input_tokens": True,
         "context": "includes Claude runner context, MCP schemas/results, and structured output",
         "output_tokens": "Claude result output_tokens",
         "comparability": "paired comparisons only within the same Claude CLI and runner contract",
@@ -86,7 +95,7 @@ def _runner_reported_token_total(
     usage = usage if isinstance(usage, Mapping) else {}
     cache_read, cache_creation = _raw_cached_input(run)
     cached_input = 0
-    if not accounting or accounting.get("cached_input") != "included in input_tokens":
+    if not accounting or accounting.get("cached_input_included_in_input_tokens") is not True:
         cached_input = cache_read + cache_creation
     return (
         int(usage.get("input_tokens", 0) or 0)
@@ -100,6 +109,17 @@ def _estimated_api_cost(run: Mapping[str, object], pricing: Mapping[str, object]
     usage = usage if isinstance(usage, Mapping) else {}
     cache_read, cache_creation = _raw_cached_input(run)
     cache_read_rate = pricing.get("input_cache_hit_per_million")
+    responses = run.get("responses")
+    response_items = responses if isinstance(responses, list) else []
+    cache_breakdown_available = any(
+        isinstance(response, Mapping)
+        and isinstance((response_usage := response.get("usage")), Mapping)
+        and "cache_read_input_tokens" in response_usage
+        and "cache_creation_input_tokens" in response_usage
+        for response in response_items
+    )
+    if cache_read_rate is not None and not cache_breakdown_available:
+        return None
     if cache_read and cache_read_rate is None:
         return None
     uncached_input = int(usage.get("input_tokens", 0) or 0) + cache_creation
@@ -254,21 +274,7 @@ def _primary_metric_value(item: Mapping[str, object], metric: str) -> float | No
     evaluation = item.get("evaluation")
     if not isinstance(run, Mapping) or not isinstance(evaluation, Mapping):
         return None
-    cited = evaluation.get("cited_evidence_count")
-    valid = evaluation.get("valid_evidence_count")
-    valid_completion = (
-        not run.get("error")
-        and not run.get("tool_budget_exhausted")
-        and run.get("diagnosis") is not None
-        and evaluation.get("joint_match") is True
-        and isinstance(cited, int)
-        and not isinstance(cited, bool)
-        and cited > 0
-        and isinstance(valid, int)
-        and not isinstance(valid, bool)
-        and valid == cited
-    )
-    if not valid_completion:
+    if evaluation.get("valid_completion") is not True:
         return None
     if metric == "rows_returned":
         load = item.get("database_load")
@@ -426,7 +432,7 @@ def render_reports(sources: list[Path], output: Path) -> None:
             if pricing is not None:
                 run["estimated_api_cost"] = _estimated_api_cost(run, pricing)
     report = {
-        "report_schema_version": 5,
+        "report_schema_version": 6,
         "pilot_id": output.stem,
         "runner": runner,
         "model": model,
@@ -439,7 +445,9 @@ def render_reports(sources: list[Path], output: Path) -> None:
         "correctness_aggregation_comparable": len(datasets) == 1 and len(taxonomies) == 1,
         "paired_primary_comparisons": _paired_primary_comparisons(case_reports),
         "primary_multiplicity": (
-            "Holm adjustment across all available primary metric and treatment comparisons"
+            "Holm adjustment over the fixed family of four planned primary comparisons: "
+            "two metrics by two adjacent treatment contrasts, including hypotheses without "
+            "an observed p-value"
         ),
         "cases": case_reports,
     }

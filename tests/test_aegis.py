@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from semantic_rca_bench.datasets import aegis
 from semantic_rca_bench.datasets.aegis import AegisAuditError, AegisRepository, audit_cohort
@@ -30,6 +31,7 @@ def _write_case(
     display_config: dict[str, object],
     *,
     invalid: bool = False,
+    response_body: str | None = None,
 ) -> None:
     root = cases_dir / name
     root.mkdir(parents=True)
@@ -68,22 +70,23 @@ def _write_case(
         )
     )
 
-    trace_schema = pa.schema(
-        [
-            ("trace_id", pa.large_string()),
-            ("span_id", pa.large_string()),
-            ("parent_span_id", pa.large_string()),
-            ("span_name", pa.large_string()),
-            ("attr.span_kind", pa.large_string()),
-            ("service_name", pa.large_string()),
-            ("duration", pa.uint64()),
-            ("attr.status_code", pa.large_string()),
-            ("attr.http.request.content_length", pa.int64()),
-            ("attr.http.response.content_length", pa.int64()),
-            ("attr.http.request.method", pa.large_string()),
-            ("attr.http.response.status_code", pa.int64()),
-        ]
-    )
+    trace_fields = [
+        ("trace_id", pa.large_string()),
+        ("span_id", pa.large_string()),
+        ("parent_span_id", pa.large_string()),
+        ("span_name", pa.large_string()),
+        ("attr.span_kind", pa.large_string()),
+        ("service_name", pa.large_string()),
+        ("duration", pa.uint64()),
+        ("attr.status_code", pa.large_string()),
+        ("attr.http.request.content_length", pa.int64()),
+        ("attr.http.response.content_length", pa.int64()),
+        ("attr.http.request.method", pa.large_string()),
+        ("attr.http.response.status_code", pa.int64()),
+    ]
+    if response_body is not None:
+        trace_fields.append(("attr.http.response.body", pa.large_string()))
+    trace_schema = pa.schema(trace_fields)
     for period in ("normal", "abnormal"):
         original = "GET" if fault_type == "HTTPRequestReplaceMethod" else "POST"
         server_method = (
@@ -97,22 +100,25 @@ def _write_case(
             else 1_000_000_000
         )
         trace_id = f"{name}-{period}"
+        values = {
+            "trace_id": [trace_id, trace_id],
+            "span_id": ["client", "server"],
+            "parent_span_id": ["", "client"],
+            "span_name": [original, f"{server_method} /fault"],
+            "attr.span_kind": ["Client", "Server"],
+            "service_name": [source, destination],
+            "duration": [duration, duration],
+            "attr.status_code": ["Unset", "Unset"],
+            "attr.http.request.content_length": [None, None],
+            "attr.http.response.content_length": [None, None],
+            "attr.http.request.method": [original, server_method],
+            "attr.http.response.status_code": [500, 500],
+        }
+        if response_body is not None:
+            values["attr.http.response.body"] = [None, response_body]
         _write_parquet(
             root / f"{period}_traces.parquet",
-            {
-                "trace_id": [trace_id, trace_id],
-                "span_id": ["client", "server"],
-                "parent_span_id": ["", "client"],
-                "span_name": [original, f"{server_method} /fault"],
-                "attr.span_kind": ["Client", "Server"],
-                "service_name": [source, destination],
-                "duration": [duration, duration],
-                "attr.status_code": ["Unset", "Unset"],
-                "attr.http.request.content_length": [None, None],
-                "attr.http.response.content_length": [None, None],
-                "attr.http.request.method": [original, server_method],
-                "attr.http.response.status_code": [500, 500],
-            },
+            values,
             trace_schema,
         )
 
@@ -195,6 +201,7 @@ def test_aegis_audit_selects_first_source_scoreable_ranked_case(tmp_path: Path) 
     assert audit["selection"]["consumed_candidates"] == [cases[0][0], cases[1][0]]
     assert audit["selection"]["selected_case"] == cases[1][0]
     assert reports[cases[0][0]]["mechanism_evidence"]["scoreable"] is False
+    assert reports[cases[0][0]]["trace_windows"]["normal"]["observed_body_columns"] == []
     assert reports[cases[1][0]]["mechanism_evidence"]["predicate_match"] is True
     assert reports[cases[2][0]]["mechanism_evidence"]["predicate_match"] is True
 
@@ -222,6 +229,61 @@ def test_aegis_audit_excludes_publisher_invalid_case(tmp_path: Path) -> None:
     assert audit["selection"]["selected_case"] is None
     assert report["graph_source_eligible"] is False
     assert report["graph_source_rejection_reasons"] == ["publisher_invalid_marker"]
+
+
+def test_aegis_body_rejection_reads_source_schema(tmp_path: Path) -> None:
+    case = (
+        "ts3-ts-food-service-response-replace-body-skvngv",
+        "HTTPResponseReplaceBody",
+        "food",
+        "station-food",
+    )
+    cases_dir = tmp_path / "cases"
+    _write_case(cases_dir, *case, {"body_type": 1}, response_body="retained")
+    meta_dir = tmp_path / "meta"
+    _write_meta(meta_dir, [case])
+
+    with pytest.raises(AegisAuditError, match="body values are now present"):
+        audit_cohort(cases_dir, meta_dir)
+
+
+def test_aegis_audit_rejects_frozen_selection_drift(tmp_path: Path) -> None:
+    case = (
+        "ts0-ts-security-service-request-replace-method-j6gpxx",
+        "HTTPRequestReplaceMethod",
+        "security",
+        "order-other",
+    )
+    cases_dir = tmp_path / "cases"
+    _write_case(cases_dir, *case, {"replace_method": "OPTIONS"})
+    meta_dir = tmp_path / "meta"
+    _write_meta(meta_dir, [case])
+    manifest = tmp_path / "selection.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "selection_seed": "wrong-seed",
+                "agent_case_id": "aegis-transfer-001",
+                "source": {
+                    "artifact_record": aegis.ARTIFACT_RECORD,
+                    "artifact_filename": aegis.ARTIFACT_FILENAME,
+                    "artifact_md5": aegis.ARTIFACT_MD5,
+                    "source_dataset_record": aegis.SOURCE_DATASET_RECORD,
+                    "data_redistributed": False,
+                },
+                "eligibility": {
+                    "eligible_directed_graph_cases": [case[0]],
+                    "ranked_candidates": [case[0]],
+                    "consumed_candidates": [{"source_case": case[0], "decision": "selected"}],
+                    "unconsumed_candidates": [],
+                },
+                "selected_case": {"source_case": case[0]},
+            }
+        )
+    )
+
+    with pytest.raises(AegisAuditError, match="selection_seed"):
+        audit_cohort(cases_dir, meta_dir, selection_path=manifest)
 
 
 def test_aegis_repository_verifies_and_extracts_only_dataset(tmp_path: Path, monkeypatch) -> None:

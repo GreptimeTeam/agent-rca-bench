@@ -284,9 +284,30 @@ therefore rejected rather than repaired.
   with 11,355 and 4,453 Client-to-Server witnesses. The complete edge sets and
   SHA-256 digests come from `semantic-rca aegis-audit`. The frozen selection and
   reduced audit summary are in `fixtures/reference/aegis-selection.json`.
-- The selected case is not ready for a model run. The adapter must ingest it
-  through OTLP without changing source identity or roles, and the stored Graph
-  edge set must equal the raw edge set before the transfer protocol is frozen.
+- The selected case now passes its isolated no-model ingestion gate. OTLP
+  metrics accepted 330,036 source points and stored 260,740 rows after the
+  source's 82,504 duplicates and 39,731 conflicting identities were left to
+  protocol primary-key semantics. Loki stored 50,789 logs. OTLP traces stored
+  all 105,867 spans with zero rejection or ID remapping.
+- One record in `normal_logs.parquet` is timestamped exactly at
+  `NORMAL_END == ABNORMAL_START`. The adapter preserves both its publisher file
+  assignment and timestamp, records the half-open boundary mismatch, and does
+  not move it into the abnormal source file. All trace spans remain strictly
+  inside their declared half-open windows.
+- The complete stored raw-span and Graph service-call sets contain 41 edges.
+  Their normalized SHA-256 is
+  `c468db671b63cfa480c4a12b6539e692aee6cdc94f953b62cbf116aa66f6724a` on
+  both sides. The audit uses the minimal whole-minute envelope containing both
+  publisher windows, verifies that every source span remains inside the
+  original half-open envelope, and applies the Graph implementation's
+  client-anchored `-5m/+1h` server scan and join bounds.
+- Stored telemetry reproduces the frozen mechanism evidence exactly: 57 normal
+  paired Server `GET` spans, 758 abnormal Client `GET` spans, and 758 abnormal
+  paired Server `OPTIONS` spans on the declared edge. The evaluator-side fixture
+  `fixtures/reference/aegis-transfer-scorer.json` freezes this predicate, the
+  directed two-service answer, accepted method-replacement labels, and the
+  canonical API runner contract. The agent-facing case exposes neither the
+  source case name nor the source fault taxonomy. No model has run.
 
 ## OpenRCA 2.0 ops-lite
 

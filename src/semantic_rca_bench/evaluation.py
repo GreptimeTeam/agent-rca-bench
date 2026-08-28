@@ -70,7 +70,7 @@ def evaluate(run: AgentRun, truth: GroundTruth) -> Evaluation:
             traces_by_query_id.setdefault(trace.query_id, []).append(trace)
     valid_evidence_count = sum(
         bool(item.claim.strip())
-        and _is_valid_evidence_trace(traces_by_query_id.get(item.query_id, []))
+        and is_valid_evidence_trace(traces_by_query_id.get(item.query_id, []))
         for item in evidence
     )
     onset_error = _onset_error(diagnosis.onset_time, truth.inject_time) if diagnosis else None
@@ -130,14 +130,16 @@ def evaluate(run: AgentRun, truth: GroundTruth) -> Evaluation:
             for trace in run.tool_calls
         ),
         failed_calls=(
-            sum(trace.error is not None for trace in run.tool_calls) + len(run.rejected_tool_calls)
+            sum(trace.error is not None for trace in run.tool_calls)
+            + sum(call.reason_code == "invalid" for call in run.rejected_tool_calls)
         ),
         exact_repeated_calls=exact_repeated_calls,
+        valid_completion=valid_completion,
         correct_completion_tool_calls=len(run.tool_calls) if valid_completion else None,
     )
 
 
-def _is_valid_evidence_trace(matches: list[ToolTrace]) -> bool:
+def is_valid_evidence_trace(matches: list[ToolTrace]) -> bool:
     if len(matches) != 1:
         return False
     trace = matches[0]
@@ -163,8 +165,11 @@ def _is_evidence_sql(query: str) -> bool:
             statements = sqlglot.parse(query, read=dialect)
         except sqlglot.errors.ParseError:
             continue
-        if len(statements) == 1 and isinstance(statements[0], (exp.Select, exp.Union)):
-            statement = statements[0]
+        candidate = statements[0] if len(statements) == 1 else None
+        while isinstance(candidate, exp.Subquery):
+            candidate = candidate.this
+        if isinstance(candidate, (exp.Select, exp.Union)):
+            statement = candidate
             break
     if statement is None:
         return False

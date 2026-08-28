@@ -257,17 +257,10 @@
           output: q.result, error: q.error
         }));
       };
-      const errorCount = run => tracesOf(run).filter(t => t.error).length + (run.rejected_tool_calls || []).length + (run.error ? 1 : 0);
+      const errorCount = run => tracesOf(run).filter(t => t.error).length + (run.rejected_tool_calls || []).filter(call => (call.reason_code || 'invalid') === 'invalid').length + (run.error ? 1 : 0);
       const requestedToolCount = run => run.tool_calls_requested == null ? tracesOf(run).length : Number(run.tool_calls_requested);
       const budgetHit = run => Boolean(run.tool_budget_exhausted);
-      const jointlyValid = item => {
-        const run = runOf(item);
-        const evaluation = evaluationOf(item);
-        const cited = Number(evaluation.cited_evidence_count || 0);
-        return !run.error && !budgetHit(run) && run.diagnosis != null
-          && evaluation.joint_match === true && cited > 0
-          && Number(evaluation.valid_evidence_count || 0) === cited;
-      };
+      const jointlyValid = item => evaluationOf(item).valid_completion === true;
       const rawUsageTotals = run => (run.responses || []).reduce((total, response) => {
         const usage = response.usage || {};
         total.cacheRead += Number(usage.cache_read_input_tokens || 0);
@@ -277,13 +270,15 @@
       const tokenTotalOf = run => {
         if (run.runner_reported_token_total != null) return Number(run.runner_reported_token_total);
         const raw = rawUsageTotals(run);
-        const cachedAlreadyIncluded = report.token_accounting?.cached_input === 'included in input_tokens';
+        const cachedAlreadyIncluded = report.token_accounting?.cached_input_included_in_input_tokens === true;
         const cached = cachedAlreadyIncluded ? 0 : raw.cacheRead + raw.cacheCreate;
         return Number(run.usage?.input_tokens || 0) + cached + Number(run.usage?.output_tokens || 0);
       };
       const costOf = run => {
         if (!report.pricing) return null;
-        if (run.estimated_api_cost != null) return Number(run.estimated_api_cost);
+        if (Object.prototype.hasOwnProperty.call(run, 'estimated_api_cost')) {
+          return run.estimated_api_cost == null ? null : Number(run.estimated_api_cost);
+        }
         const raw = rawUsageTotals(run);
         const uncachedInput = Number(run.usage?.input_tokens || 0) + raw.cacheCreate;
         const cacheReadRate = report.pricing.input_cache_hit_per_million;

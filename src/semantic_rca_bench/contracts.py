@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
@@ -178,6 +178,7 @@ class RejectedToolCall(BaseModel):
     tool_name: str
     input: dict[str, Any]
     error: str
+    reason_code: Literal["invalid", "superseded_by_final_output"] = "invalid"
 
 
 class AgentUsage(BaseModel):
@@ -230,4 +231,5 @@ class Evaluation(BaseModel):
     semantic_calls: int
     failed_calls: int
     exact_repeated_calls: int
+    valid_completion: bool
     correct_completion_tool_calls: int | None

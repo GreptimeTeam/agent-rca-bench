@@ -203,9 +203,13 @@ cohort rather than a general effect.
 The pinned Aegis FSE 2026 reviewer cohort supplies the Graph-positive source for
 the downloader-backed 1.0 path. Its source dataset record declares CC BY 4.0,
 but the reviewer artifact's Apache-2.0 grant does not explicitly cover the
-reduced telemetry subset. Do not redistribute the telemetry. The remaining
-blocker is to ingest the selected case without changing source semantics, prove
-raw-span and stored Graph edge-set equality, and freeze its transfer scorer.
+reduced telemetry subset. Do not redistribute the telemetry. Source-faithful
+ingestion and the raw-span versus stored Graph exact edge-set gate now pass for
+the selected case. Its evaluator-side transfer fixture freezes the directed
+two-service answer, deterministic method-replacement evidence predicate, and
+canonical API runner contract. Its real no-model scorer audit passes. The
+remaining blocker is to wire the fresh model run without exposing evaluator
+fields to the agent.
 Raw `.reports/` trajectories are not the release contract because they contain
 provider payloads and local metadata.
 
@@ -275,10 +279,13 @@ registration status. No paid full RCA batch was run. Do not promote these
 retrieval results into an RCA claim.
 
 The next stage is release-focused, not a broad case-expansion program. The
-pinned Aegis downloader and source-only selection audit are complete. Implement
-the OTLP adapter and require exact raw-span and Graph edge-set equality, then
-freeze the selected method-replacement transfer scorer and canonical API runner
-contract. Define the public audit artifact only after those gates pass. Catalog
+pinned Aegis downloader, source-only selection audit, production-protocol
+adapter, exact raw-span versus Graph edge-set audit, and stored method-replacement
+evidence gate are complete. The selected transfer scorer and canonical API
+runner contract are frozen in an evaluator-side fixture, and the scorer passes
+against a fresh real no-model transfer audit. Wire the fresh model run next.
+The local no-model reports are implementation audits, not yet the public release
+artifact. Catalog
 broad-recall, multi-model report cards, powered cross-system enrollment, and
 additional report UI are deferred until that path works end to end.
 
@@ -359,6 +366,13 @@ diagnosis, evidence, runner-error, and budget guard as returned rows. This is an
 execution-validity contract, not evidence entailment; the transfer cohort still
 needs case-specific deterministic evidence-support predicates. No v22 RCA batch
 has been run.
+
+Protocol v23 persists the valid-completion decision once and makes both primary
+metrics and the report consume that decision. It separates final-output-
+superseded tool requests from failed calls, uses typed cache-inclusion metadata,
+requires an explicit provider cache breakdown before estimating cache-aware API
+cost, and preserves parsed Codex responses when cumulative usage validation
+fails. No v23 RCA batch has been run.
 
 The discovery v1 development protocol is now implemented separately from the
 RCA protocol. It compares only `raw` and `table_semantics`, supplies the target
