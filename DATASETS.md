@@ -14,6 +14,7 @@ but it must record every lossy or synthetic protocol field.
 | OpenRCA 1.0 Bank | OpenRCA Bank | Wide enterprise metric schema and legacy multimodal telemetry | Included | Not applicable: no standard entity identity or span roles |
 | OpenRCA 1.0 Market | OpenRCA Market | Multi-level node, pod, and service failures over wide legacy telemetry | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
 | OpenRCA 1.0 Telecom | OpenRCA Telecom | Independent telecom/database system with metrics and traces but no logs | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
+| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Selected for the 1.0 transfer ingestion gate; no model run | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
 | OpenRCA 2.0 ops-lite | Hotel Reservation | Native OTel and verified causal paths | Provisional; internal protocol-formal measurement only | Positive when standard client/server spans witness service calls |
 | Amazon PetShop | Amazon PetShop | Component-level causal RCA over service metrics | Rejected | Metric-only; no incident-local mechanism label or continuous baseline |
 | AnoMod TrainTicket | TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
@@ -29,16 +30,14 @@ needed to audit a benchmark result.
 | RCAEval | Dataset repository declares MIT | Eligible for a downloader-backed Table or Graph-negative role; individual cases still require the normal fidelity gates |
 | RCA100 v1.1 | No dataset license found; answer key asks users to contact the publisher before redistribution | Internal only until written terms or permission cover the required telemetry and labels |
 | OpenRCA 1.0 Bank / Market / Telecom | Paper appendix declares telemetry CC BY-NC 4.0 | Optional noncommercial, downloader-backed evaluation; not the unrestricted reference corpus, and raw telemetry must not be copied into release artifacts |
+| Aegis FSE 2026 reviewer cohort | The source dataset record declares CC BY 4.0. The reviewer artifact's root `LICENSE` applies Apache-2.0 to packaging and support code, but does not explicitly apply it to `reproduction/data`. | Use the pinned source download without redistributing telemetry. Obtain clearer permission before bundling any source data in a release. |
 | OpenRCA 2.0 ops-lite | Dataset card says Apache-2.0, paper says CC-BY-SA 4.0, and the artifact is not the promised archival release | Internal protocol-formal evidence until provenance and terms are reconciled |
 
-The current portfolio therefore has no Graph-positive measurement source with
-confirmed terms for public source access and publication of the required audit
-evidence. This is a concrete 1.0 release blocker. It must be resolved by
-authoritative terms for an existing source or by adding a different
-authoritative public corpus that already contains stable identity, client/server
-roles, parent-child links, independently verifiable edges, and request/error
-counts. The benchmark must not fill that gap with inferred or name-matched
-topology.
+The Aegis reviewer cohort supplies a public, pinned, downloader-backed path for
+the Graph-positive transfer case. The benchmark does not redistribute its
+telemetry or label files. The release must keep the benchmark code license and
+dataset terms separate. Bundling telemetry remains blocked until the publisher
+clarifies the reduced subset's license.
 
 ## Fresh micro-benchmark measurement audit
 
@@ -249,6 +248,45 @@ The corpus is not accepted for scored RCA:
 Correcting the clock, relabeling faults, or filling missing evidence would turn
 the benchmark into an evaluation of an edited derivative. The corpus is
 therefore rejected rather than repaired.
+
+## Aegis FSE 2026 reviewer cohort
+
+- The official project page links the reviewer artifact at Zenodo record
+  `19522409` and the source dataset at Zenodo record `17105974`. The pinned
+  reviewer archive is `FSE_26_RCA_dataset_study_reviewer.tar.gz`, 91,418,171
+  bytes, with MD5 `16f0743b6feb20838f856d6e441e0c7b`.
+- The reviewer archive contains a publisher-prepared 10-case Train Ticket
+  subset. The audit reads the publisher's `index.parquet`,
+  `attributes.parquet`, `labels.parquet`, `injection.json`, and source trace
+  Parquet files. It does not use or ingest `causal_graph.json`.
+- Every trace window has complete, unique `(trace_id, span_id)` identity and
+  native service name, span kind, parent ID, duration, and status. Eight cases
+  pass the raw relational source gate. Two cases carry a publisher `.invalid`
+  marker and are excluded.
+- The raw edge builder pairs a `Client` parent with a `Server` child only when
+  `trace_id` matches and the child's `parent_span_id` equals the parent's
+  `span_id`. `request_count` counts paired server spans. `error_count` counts
+  only paired server spans whose source status is `Error`; an HTTP 5xx value
+  does not substitute for the source span status.
+- Three cases have two service labels, a structured directed injection
+  endpoint, and that exact edge in both source windows. The fixed seed
+  `semantic-rca-v1-aegis-transfer` ranks response-body replacement first,
+  method replacement second, and request delay third.
+- The first candidate is rejected because the source traces do not retain a
+  response body value, so no deterministic evidence-support predicate can
+  verify the declared random replacement. The second candidate,
+  `ts0-ts-security-service-request-replace-method-j6gpxx`, is selected before
+  any agent trajectory. Its source-declared edge is
+  `ts-security-service -> ts-order-other-service`. All 57 normal paired server
+  spans use `GET`; all 758 abnormal client spans use `GET`, while their paired
+  server spans use the declared replacement method `OPTIONS`.
+- The selected case exposes 38 normal and 30 abnormal raw service-call edges,
+  with 11,355 and 4,453 Client-to-Server witnesses. The complete edge sets and
+  SHA-256 digests come from `semantic-rca aegis-audit`. The frozen selection and
+  reduced audit summary are in `fixtures/reference/aegis-selection.json`.
+- The selected case is not ready for a model run. The adapter must ingest it
+  through OTLP without changing source identity or roles, and the stored Graph
+  edge set must equal the raw edge set before the transfer protocol is frozen.
 
 ## OpenRCA 2.0 ops-lite
 

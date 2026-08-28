@@ -200,10 +200,14 @@ It does not require multiple models, many system families, or statistical power
 for a population claim. Results must be labeled as evidence over the fixed
 cohort rather than a general effect.
 
-The current blocker is the lack of a Graph-positive source with unambiguous
-public terms. Resolve that source and freeze the transfer scorer before defining
-the public artifact schema. Raw `.reports/` trajectories are not the release
-contract because they contain provider payloads and local metadata.
+The pinned Aegis FSE 2026 reviewer cohort supplies the Graph-positive source for
+the downloader-backed 1.0 path. Its source dataset record declares CC BY 4.0,
+but the reviewer artifact's Apache-2.0 grant does not explicitly cover the
+reduced telemetry subset. Do not redistribute the telemetry. The remaining
+blocker is to ingest the selected case without changing source semantics, prove
+raw-span and stored Graph edge-set equality, and freeze its transfer scorer.
+Raw `.reports/` trajectories are not the release contract because they contain
+provider payloads and local metadata.
 
 A later confirmatory study must pre-register practical effect thresholds,
 multiplicity, exclusion assumptions, power, and independent-case enrollment.
@@ -270,12 +274,13 @@ formal-report hashes, run-pair descriptions, case-level inference, and metric
 registration status. No paid full RCA batch was run. Do not promote these
 retrieval results into an RCA claim.
 
-The next stage is release-focused, not a broad case-expansion program. Resolve a
-publication-compatible Graph-positive source, freeze a minimal fresh end-to-end
-transfer cohort and its canonical API runner contract, then define the public
-artifact needed to reproduce that fixed scorer. Catalog broad-recall,
-multi-model report cards, powered cross-system enrollment, and additional report
-UI are deferred until that path works end to end.
+The next stage is release-focused, not a broad case-expansion program. The
+pinned Aegis downloader and source-only selection audit are complete. Implement
+the OTLP adapter and require exact raw-span and Graph edge-set equality, then
+freeze the selected method-replacement transfer scorer and canonical API runner
+contract. Define the public audit artifact only after those gates pass. Catalog
+broad-recall, multi-model report cards, powered cross-system enrollment, and
+additional report UI are deferred until that path works end to end.
 
 ## Historical development status
 

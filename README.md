@@ -224,6 +224,24 @@ end-to-end RCA transfer demonstration. Subscription runners, multiple-model
 report cards, catalog broad-recall, and a powered cross-system effect estimate
 remain post-1.0 work.
 
+The Graph-positive transfer source audit does not call a model or require a
+GreptimeDB server. Download, verify, extract, and audit the pinned artifact with:
+
+```bash
+uv run semantic-rca aegis-fetch \
+  --cache-dir .data/aegis \
+  --output .reports/aegis-source-audit.json
+```
+
+The command requires the exact archive size and MD5 from the Zenodo record. It
+extracts only `reproduction/data/rcabench-platform-v2`, rejects unsafe archive
+members, and reconstructs service-call edges only from native Client-to-Server
+parent-child spans. The audit applies the frozen selection gate in
+`fixtures/reference/aegis-selection.json`. It does not ingest
+`causal_graph.json` or redistribute source telemetry. `DATASETS.md` records the
+license boundary, exclusions, and selected case. Use `aegis-audit` instead when
+you already have a verified, extracted artifact.
+
 For end-to-end RCA, protocol v22 counts a citation as execution-valid only when
 it uniquely identifies a successful, non-truncated SQL or Graph query result,
 the result carries the same query ID, and the evidence claim is non-empty.

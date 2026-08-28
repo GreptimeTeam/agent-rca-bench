@@ -22,6 +22,8 @@ from semantic_rca_bench.contracts import (
     QueryResult,
     Visibility,
 )
+from semantic_rca_bench.datasets.aegis import AegisRepository
+from semantic_rca_bench.datasets.aegis import audit_cohort as audit_aegis_cohort
 from semantic_rca_bench.datasets.openrca import (
     DATASET_REVISION as OPENRCA_DATASET_REVISION,
 )
@@ -145,6 +147,15 @@ def _parser() -> argparse.ArgumentParser:
     doctor = subparsers.add_parser("doctor")
     doctor.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
 
+    aegis_audit = subparsers.add_parser("aegis-audit")
+    aegis_audit.add_argument("--cases-dir", type=Path, required=True)
+    aegis_audit.add_argument("--meta-dir", type=Path, required=True)
+    aegis_audit.add_argument("--output", type=Path, required=True)
+
+    aegis_fetch = subparsers.add_parser("aegis-fetch")
+    aegis_fetch.add_argument("--cache-dir", type=Path, default=Path(".data/aegis"))
+    aegis_fetch.add_argument("--output", type=Path, required=True)
+
     smoke = subparsers.add_parser("smoke")
     smoke.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
     smoke.add_argument("--cache-dir", type=Path, default=Path(".cache/datasets/rcaeval"))
@@ -251,6 +262,25 @@ def doctor(repo: Path) -> int:
         expected_branch="feat/semantic-graph-declaration-visibility",
     )
     print(json.dumps(metadata, indent=2))
+    return 0
+
+
+def aegis_audit(args: argparse.Namespace) -> int:
+    output = audit_aegis_cohort(args.cases_dir, args.meta_dir)
+    write_json(args.output, output)
+    print(args.output)
+    return 0
+
+
+def aegis_fetch(args: argparse.Namespace) -> int:
+    cases_dir, meta_dir = AegisRepository(args.cache_dir).fetch()
+    output = audit_aegis_cohort(
+        cases_dir,
+        meta_dir,
+        archive_checksum_verified=True,
+    )
+    write_json(args.output, output)
+    print(args.output)
     return 0
 
 
@@ -1329,6 +1359,10 @@ def main() -> None:
     try:
         if args.command == "doctor":
             code = doctor(args.greptimedb_repo)
+        elif args.command == "aegis-audit":
+            code = aegis_audit(args)
+        elif args.command == "aegis-fetch":
+            code = aegis_fetch(args)
         elif args.command == "smoke":
             code = smoke(args)
         elif args.command == "smoke-rca100":
