@@ -32,8 +32,7 @@ from semantic_rca_bench.protocols.prometheus import (
 DATASET_REVISION = "v1.1"
 SOURCE_REVISION = "69cf36430b43024d02530c610b1a4738b5c9a7fb"
 DATA_BASE_URL = (
-    "https://aiops-benchmark.oss-cn-hongkong.aliyuncs.com/rca/rca100/"
-    f"{DATASET_REVISION}"
+    f"https://aiops-benchmark.oss-cn-hongkong.aliyuncs.com/rca/rca100/{DATASET_REVISION}"
 )
 SOURCE_BASE_URL = (
     "https://www.aiops.cn/gitlab/aiops-live-benchmark/agenticopseval/-/raw/"
@@ -107,6 +106,10 @@ def _load_case(root: Path, answer_path: Path, taxonomy_path: Path) -> RCA100Case
         raise RCA100Error(f"{task_id} does not have one root-cause entity")
     if not isinstance(fault_types, list) or len(fault_types) != 1:
         raise RCA100Error(f"{task_id} does not have one root-cause type")
+    component_scoreable, component_alternatives = _component_contract(
+        str(components[0]),
+        ground_truth.get("raw_ground_truth"),
+    )
     fault_type = str(fault_types[0])
     return RCA100Case(
         source_case=task_id,
@@ -122,7 +125,9 @@ def _load_case(root: Path, answer_path: Path, taxonomy_path: Path) -> RCA100Case
             fault_taxonomy=_fault_taxonomy(taxonomy),
         ),
         ground_truth=GroundTruth(
-            component=str(components[0]),
+            affected_component=str(components[0]),
+            component_scoreable=component_scoreable,
+            component_alternatives=component_alternatives,
             fault_type=fault_type,
             fault_category=_fault_category(fault_type),
             inject_time=None,
@@ -193,20 +198,13 @@ def validate_ingest(
     )
     metric_tables = [str(row[0]) for row in semantics.rows if row[1] == "metric"]
     metric_stats = [
-        _database_table_stats(client, table, "greptime_timestamp")
-        for table in metric_tables
+        _database_table_stats(client, table, "greptime_timestamp") for table in metric_tables
     ]
     database_counts = {
         "metric_samples": sum(int(stats["row_count"]) for stats in metric_stats),
-        "log_records": _database_table_stats(client, "logs", "greptime_timestamp")[
-            "row_count"
-        ],
-        "event_records": _database_table_stats(client, "events", "greptime_timestamp")[
-            "row_count"
-        ],
-        "alert_records": _database_table_stats(client, "alerts", "greptime_timestamp")[
-            "row_count"
-        ],
+        "log_records": _database_table_stats(client, "logs", "greptime_timestamp")["row_count"],
+        "event_records": _database_table_stats(client, "events", "greptime_timestamp")["row_count"],
+        "alert_records": _database_table_stats(client, "alerts", "greptime_timestamp")["row_count"],
         "trace_spans": _database_table_stats(client, "traces", "timestamp")["row_count"],
     }
     expected_counts = {
@@ -343,7 +341,7 @@ def _derived_service_calls(client: GreptimeClient, case_input: CaseInput) -> set
         f"""
         SELECT DISTINCT src_id, dst_id
         FROM greptime_private.semantic_relationships
-        WHERE observed_at >= '{start}' AND observed_at <= '{end}'
+        WHERE observed_at >= '{start}' AND observed_at < '{end}'
           AND src_type = 'service' AND dst_type = 'service' AND rel_type = 'calls'
         ORDER BY src_id, dst_id
         """,
@@ -509,6 +507,30 @@ def _fault_taxonomy(taxonomy: Mapping[str, object]) -> list[str]:
     if not isinstance(definitions, Mapping):
         raise RCA100Error("invalid RCA100 taxonomy")
     return sorted({str(key).split("-", 1)[-1] for key in definitions})
+
+
+def _component_contract(component: str, raw_ground_truth: object) -> tuple[bool, list[str]]:
+    if not isinstance(raw_ground_truth, str) or not raw_ground_truth:
+        return True, []
+    raw = _parse_json_object(raw_ground_truth, "raw_ground_truth")
+    outcome = raw.get("outcome")
+    if not isinstance(outcome, Mapping):
+        return True, []
+    targets = outcome.get("target_entities")
+    if not isinstance(targets, list):
+        return True, []
+    names = [
+        str(target["entity_name"])
+        for target in targets
+        if isinstance(target, Mapping) and target.get("entity_name") not in (None, "")
+    ]
+    component_key = re.sub(r"[^a-z0-9]", "", component.lower())
+    alternatives = list(
+        dict.fromkeys(
+            name for name in names if re.sub(r"[^a-z0-9]", "", name.lower()) != component_key
+        )
+    )
+    return not alternatives, alternatives
 
 
 def _fault_category(fault_type: str) -> FaultCategory:

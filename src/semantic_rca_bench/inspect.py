@@ -39,7 +39,7 @@ def inspect_semantic_surfaces(
             SELECT entity_type, COUNT(DISTINCT entity_id) AS distinct_entity_count,
                    COUNT(*) AS observation_count
             FROM greptime_private.semantic_entities
-            WHERE observed_at >= '{start}' AND observed_at <= '{end}'
+            WHERE observed_at >= '{start}' AND observed_at < '{end}'
             GROUP BY entity_type
             ORDER BY entity_type
         """,
@@ -50,7 +50,7 @@ def inspect_semantic_surfaces(
                 SELECT src_type, src_id, dst_type, dst_id, rel_type,
                        COUNT(*) AS observation_count
                 FROM greptime_private.semantic_relationships
-                WHERE observed_at >= '{start}' AND observed_at <= '{end}'
+                WHERE observed_at >= '{start}' AND observed_at < '{end}'
                 GROUP BY src_type, src_id, dst_type, dst_id, rel_type, provenance
             ) witnessed_edges
             GROUP BY rel_type

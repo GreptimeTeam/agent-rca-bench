@@ -37,7 +37,7 @@ class QueryGateway:
         for table in tables:
             self._check_table(table)
         if isinstance(statement, (exp.Select, exp.Union)):
-            self._check_information_schema_scope(sql, tables)
+            self._check_information_schema_scope(tables)
 
         discovery = self._is_discovery_query(tables)
         result = self.client.query(sql, max_rows=None if discovery else self.max_rows)
@@ -87,16 +87,43 @@ class QueryGateway:
             if qualified.endswith("semantic_relationships_declared"):
                 raise QueryRejected("declared relationship storage is unavailable")
 
-    def _check_information_schema_scope(self, sql: str, tables: list[exp.Table]) -> None:
-        reads_rows = any(
-            (table.db or "").lower() == "information_schema"
-            and table.name.lower() in {"tables", "columns", "table_semantics"}
-            for table in tables
-        )
-        if reads_rows and self.client.database.lower() not in sql.lower():
-            raise QueryRejected(
-                f"information_schema queries must filter table_schema to '{self.client.database}'"
-            )
+    def _check_information_schema_scope(self, tables: list[exp.Table]) -> None:
+        scoped_selects: set[int] = set()
+        for table in tables:
+            if (table.db or "").lower() != "information_schema" or table.name.lower() not in {
+                "tables",
+                "columns",
+                "table_semantics",
+            }:
+                continue
+            select = table.find_ancestor(exp.Select)
+            if select is None or id(select) in scoped_selects:
+                continue
+            scoped_selects.add(id(select))
+            if not self._has_table_schema_scope(select):
+                raise QueryRejected(
+                    "information_schema queries must filter table_schema with an "
+                    f"AND-conjunctive table_schema = '{self.client.database}' predicate"
+                )
+
+    def _has_table_schema_scope(self, select: exp.Select) -> bool:
+        where = select.args.get("where")
+        if where is None:
+            return False
+        expected = self.client.database.lower()
+        for equality in where.find_all(exp.EQ):
+            if equality.find_ancestor(exp.Select) is not select or not _is_schema_equality(
+                equality, expected
+            ):
+                continue
+            node: exp.Expression | None = equality.parent
+            while node is not None and node is not select:
+                if isinstance(node, (exp.Or, exp.Not)):
+                    break
+                node = node.parent
+            else:
+                return True
+        return False
 
     def _filter_discovery_rows(self, result: QueryResult) -> QueryResult:
         lowered = [column.lower() for column in result.columns]
@@ -124,3 +151,20 @@ class QueryGateway:
                 continue
             rows.append(row)
         return result.model_copy(update={"rows": rows})
+
+
+def _is_schema_equality(equality: exp.EQ, expected: str) -> bool:
+    sides = (
+        (equality.this, equality.expression),
+        (equality.expression, equality.this),
+    )
+    for column, literal in sides:
+        if (
+            isinstance(column, exp.Column)
+            and column.name.lower() == "table_schema"
+            and isinstance(literal, exp.Literal)
+            and literal.is_string
+            and str(literal.this).lower() == expected
+        ):
+            return True
+    return False

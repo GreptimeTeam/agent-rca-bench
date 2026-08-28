@@ -4,13 +4,19 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class Visibility(StrEnum):
     RAW = "raw"
     TABLE_SEMANTICS = "table_semantics"
     SEMANTIC_GRAPH = "semantic_graph"
+
+
+class AgentRunner(StrEnum):
+    API = "api"
+    CODEX_SUBSCRIPTION = "codex-subscription"
+    CLAUDE_SUBSCRIPTION = "claude-subscription"
 
 
 class FaultCategory(StrEnum):
@@ -26,7 +32,11 @@ class FaultCategory(StrEnum):
 class GroundTruth(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    component: str
+    affected_component: str = Field(
+        validation_alias=AliasChoices("affected_component", "component")
+    )
+    component_scoreable: bool = True
+    component_alternatives: list[str] = Field(default_factory=list)
     fault_type: str
     inject_time: int | None
     fault_category: FaultCategory | None = None
@@ -84,9 +94,12 @@ class OpenRCACase(BaseModel):
     root: Path
     input: CaseInput
     ground_truth: GroundTruth
-    metric_app_path: Path
-    metric_container_path: Path
-    logs_path: Path
+    variant: str = "bank"
+    metric_paths: tuple[Path, ...] = ()
+    log_paths: tuple[Path, ...] = ()
+    metric_app_path: Path | None = None
+    metric_container_path: Path | None = None
+    logs_path: Path | None = None
     traces_path: Path
 
 
@@ -139,7 +152,10 @@ class Evidence(BaseModel):
 
 
 class Diagnosis(BaseModel):
-    root_cause_component: str
+    affected_component: str = Field(
+        validation_alias=AliasChoices("affected_component", "root_cause_component")
+    )
+    causal_dependency: str | None = None
     fault_category: FaultCategory
     fault_type: str
     onset_time: str | None = None
@@ -155,6 +171,13 @@ class ToolTrace(BaseModel):
     query_id: str | None = None
     output: Any = None
     error: str | None = None
+    database_load: DatabaseLoad | None = None
+
+
+class RejectedToolCall(BaseModel):
+    tool_name: str
+    input: dict[str, Any]
+    error: str
 
 
 class AgentUsage(BaseModel):
@@ -174,8 +197,11 @@ class AgentRun(BaseModel):
     run_id: str
     visibility: Visibility
     model: str
-    diagnosis: Diagnosis
+    runner: AgentRunner = AgentRunner.API
+    diagnosis: Diagnosis | None
+    error: str | None = None
     tool_calls: list[ToolTrace]
+    rejected_tool_calls: list[RejectedToolCall] = Field(default_factory=list)
     tool_calls_requested: int = 0
     tool_budget_exhausted: bool = False
     usage: AgentUsage
@@ -184,14 +210,25 @@ class AgentRun(BaseModel):
 
 
 class Evaluation(BaseModel):
-    component_match: bool
+    affected_component_match: bool | None = Field(
+        validation_alias=AliasChoices("affected_component_match", "component_match")
+    )
     fault_type_match: bool
     fault_category_match: bool
-    joint_match: bool
-    predicted_fault_type: str
+    joint_match: bool | None
+    predicted_fault_type: str | None
     expected_fault_type: str
-    predicted_fault_category: str
+    predicted_fault_category: str | None
     expected_fault_category: str
     onset_error_seconds: float | None
     cited_evidence_count: int
     valid_evidence_count: int
+    tool_calls_executed: int
+    tool_calls_requested: int
+    discovery_calls: int
+    discovery_calls_before_first_cited_query: int | None
+    semantic_calls: int
+    failed_calls: int
+    exact_repeated_calls: int
+    first_component_mention_turn: int | None
+    correct_completion_tool_calls: int | None

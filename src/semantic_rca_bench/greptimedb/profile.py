@@ -10,6 +10,18 @@ from semantic_rca_bench.contracts import Visibility
 from semantic_rca_bench.greptimedb.client import GreptimeClient
 
 TABLE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
+SEARCH_STOP_WORDS = {
+    "and",
+    "for",
+    "from",
+    "in",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
+}
 
 
 class TableProfileError(ValueError):
@@ -126,7 +138,7 @@ class TableProfiler:
             SELECT table_name, signal_type, source, source_version, pipeline,
                    metadata_quality, semantic_options, entity_declarations
             FROM information_schema.table_semantics
-            WHERE {' AND '.join(predicates)}
+            WHERE {" AND ".join(predicates)}
             ORDER BY table_name
             LIMIT 1000
             """,
@@ -138,7 +150,7 @@ class TableProfiler:
             options = _decode_json(item.get("semantic_options"))
             declarations = _decode_json(item.get("entity_declarations"))
             searchable = " ".join(
-                str(value).lower()
+                str(value)
                 for value in (
                     item.get("table_name"),
                     options,
@@ -146,7 +158,7 @@ class TableProfiler:
                 )
                 if value not in (None, "")
             )
-            matched_terms = [term for term in terms if term in searchable]
+            matched_terms = _matched_search_terms(terms, searchable)
             if not matched_terms:
                 continue
             candidate = {
@@ -255,8 +267,33 @@ def _decode_json(value: object) -> object:
 
 
 def _search_terms(query: str) -> list[str]:
-    normalized = query.lower().replace("_", " ")
-    return list(dict.fromkeys(re.findall(r"[\w.:-]+", normalized)))[:10]
+    normalized = _normalize_slash_abbreviations(query).lower().replace("_", " ")
+    terms = (
+        term
+        for term in re.findall(r"[a-z0-9.:-]+", normalized)
+        if len(term) > 1 and term not in SEARCH_STOP_WORDS
+    )
+    return list(dict.fromkeys(terms))[:10]
+
+
+def _matched_search_terms(terms: list[str], searchable: str) -> list[str]:
+    normalized = _normalize_slash_abbreviations(searchable).lower()
+    token_list = re.findall(r"[a-z0-9]+", normalized)
+    tokens = set(token_list)
+    pairs = set(zip(token_list, token_list[1:], strict=False))
+    if ("io", "w") in pairs:
+        tokens.add("write")
+    if ("io", "r") in pairs:
+        tokens.add("read")
+    return [
+        term
+        for term in terms
+        if (term in tokens if len(term) <= 2 else term in tokens or term in normalized)
+    ]
+
+
+def _normalize_slash_abbreviations(value: str) -> str:
+    return re.sub(r"\b([A-Za-z])\s*/\s*([A-Za-z])\b", r"\1\2", value)
 
 
 def _escape_literal(value: str) -> str:

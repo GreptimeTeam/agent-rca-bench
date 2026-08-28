@@ -1,0 +1,21 @@
+{
+  "fixture_id": "openrca-market-c2-email-write",
+  "source_case": "Market/cloudbed-2@2022-03-20T14:30",
+  "component": "node-5.emailservice-1",
+  "signal": "container filesystem write throughput",
+  "boundary": 1647757979,
+  "target_table": "container_fs_writes_MB__dev_vda",
+  "component_column": "cmdb_id",
+  "time_column": "greptime_timestamp",
+  "value_column": "greptime_value",
+  "baseline": {
+    "start": 1647757800,
+    "end": 1647757920
+  },
+  "incident": {
+    "start": 1647757980,
+    "end": 1647759600
+  },
+  "comparison_field": "mean_value",
+  "minimum_ratio": 2.0
+}

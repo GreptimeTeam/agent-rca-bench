@@ -1,0 +1,21 @@
+{
+  "fixture_id": "openrca-telecom-docker001-cpu",
+  "source_case": "Telecom@2020-05-29T03:30",
+  "component": "docker_001",
+  "signal": "container CPU usage",
+  "boundary": 1590694860,
+  "target_table": "container_cpu_used",
+  "component_column": "cmdb_id",
+  "time_column": "greptime_timestamp",
+  "value_column": "greptime_value",
+  "baseline": {
+    "start": 1590694200,
+    "end": 1590694860
+  },
+  "incident": {
+    "start": 1590694860,
+    "end": 1590696000
+  },
+  "comparison_field": "mean_value",
+  "minimum_ratio": 2.0
+}

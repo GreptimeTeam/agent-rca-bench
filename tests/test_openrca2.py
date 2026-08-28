@@ -79,6 +79,7 @@ def _fixture(root: Path) -> Path:
                         "direction": "to",
                     }
                 ],
+                "ground_truth": [{"service": ["shipping"]}],
             }
         )
     )
@@ -211,8 +212,26 @@ def test_openrca2_case_uses_system_scoped_taxonomy_and_native_alert(tmp_path: Pa
     assert case.input.alert_time - case.input.time_start == 300
     assert case.input.alert_text == "OpenTelemetry Demo alert: entrance_unreachable"
     assert case.input.fault_taxonomy == ["NetworkDelay", "PodKill"]
-    assert case.ground_truth.component == "shipping"
+    assert case.ground_truth.affected_component == "shipping"
     assert case.ground_truth.fault_type == "NetworkDelay"
+
+
+def test_openrca2_rejects_ambiguous_manifest_and_injection_roots(tmp_path: Path) -> None:
+    root = tmp_path / "cases" / "otel-demo3-shipping-delay-m6fhpx"
+    root.mkdir(parents=True)
+    manifest = _fixture(root)
+    injection_path = root / "injection.json"
+    injection = json.loads(injection_path.read_text())
+    injection["ground_truth"] = [{"service": ["shipping", "quote"]}]
+    injection_path.write_text(json.dumps(injection))
+
+    try:
+        _load_case(root, manifest)
+    except Exception as error:
+        assert "manifest roots" in str(error)
+        assert "injection ground truth" in str(error)
+    else:
+        raise AssertionError("ambiguous root-cause services must fail the no-model gate")
 
 
 def test_openrca2_audit_preserves_source_defects_and_native_trace_semantics(

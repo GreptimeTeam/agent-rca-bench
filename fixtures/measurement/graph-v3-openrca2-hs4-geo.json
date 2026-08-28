@@ -1,0 +1,11 @@
+{
+  "fixture_id": "measurement-v3-openrca2-hs4-geo",
+  "source_case": "hs4-geo-pod-failure-pdt289",
+  "window_start": 1777725840,
+  "window_end": 1777726440,
+  "caller": "frontend",
+  "trace_table": "traces",
+  "expected_callee": "search",
+  "expected_request_count": 1043,
+  "expected_error_count": 504
+}

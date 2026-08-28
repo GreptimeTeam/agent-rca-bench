@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import html
 import json
+import math
 from collections.abc import Mapping
 from importlib.resources import files
 from pathlib import Path
+from statistics import median
 
 MODEL_PRICING = {
     "claude-sonnet-5": {
@@ -63,9 +65,7 @@ def case_context(
     return {
         "window_seconds": end - start if valid_window else None,
         "telemetry_before_alert_seconds": (
-            max(0, min(alert, end) - start)
-            if valid_window and alert is not None
-            else None
+            max(0, min(alert, end) - start) if valid_window and alert is not None else None
         ),
         "known_pre_fault_seconds": inject - start if known_injection else None,
         "known_post_fault_seconds": end - inject if known_injection else None,
@@ -155,10 +155,93 @@ def _load_case_report(source: Path) -> dict[str, object]:
     return report
 
 
+def _exact_sign_p_value(wins: int, losses: int) -> float | None:
+    observations = wins + losses
+    if observations == 0:
+        return None
+    tail = sum(math.comb(observations, value) for value in range(min(wins, losses) + 1))
+    return min(1.0, 2 * tail / (2**observations))
+
+
+def _primary_metric_value(item: Mapping[str, object], metric: str) -> float | None:
+    run = item.get("run")
+    evaluation = item.get("evaluation")
+    if not isinstance(run, Mapping) or not isinstance(evaluation, Mapping):
+        return None
+    if metric == "rows_returned":
+        if run.get("error") or run.get("diagnosis") is None:
+            return None
+        load = item.get("database_load")
+        if not isinstance(load, Mapping) or load.get("rows_returned") is None:
+            return None
+        return float(load["rows_returned"])
+    if metric == "correct_completion_tool_calls":
+        if run.get("tool_budget_exhausted") or not evaluation.get("joint_match"):
+            return None
+        value = evaluation.get("correct_completion_tool_calls")
+        return float(value) if value is not None else None
+    raise ValueError(f"unknown primary metric: {metric}")
+
+
+def _paired_primary_comparisons(
+    case_reports: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    output = []
+    for metric in ("rows_returned", "correct_completion_tool_calls"):
+        for candidate, baseline in (
+            ("table_semantics", "raw"),
+            ("semantic_graph", "table_semantics"),
+            ("semantic_graph", "raw"),
+        ):
+            deltas = []
+            wins = losses = ties = 0
+            for report in case_reports:
+                by_key = {}
+                for item in report.get("runs", []):
+                    if not isinstance(item, Mapping):
+                        continue
+                    run = item.get("run")
+                    if isinstance(run, Mapping):
+                        by_key[(int(item.get("repetition", 0)), str(run.get("visibility")))] = item
+                repetitions = {key[0] for key in by_key}
+                for repetition in repetitions:
+                    candidate_item = by_key.get((repetition, candidate))
+                    baseline_item = by_key.get((repetition, baseline))
+                    if candidate_item is None or baseline_item is None:
+                        continue
+                    candidate_value = _primary_metric_value(candidate_item, metric)
+                    baseline_value = _primary_metric_value(baseline_item, metric)
+                    if candidate_value is None or baseline_value is None:
+                        continue
+                    delta = candidate_value - baseline_value
+                    deltas.append(delta)
+                    if delta < 0:
+                        wins += 1
+                    elif delta > 0:
+                        losses += 1
+                    else:
+                        ties += 1
+            output.append(
+                {
+                    "metric": metric,
+                    "candidate": candidate,
+                    "baseline": baseline,
+                    "paired_observations": len(deltas),
+                    "better": wins,
+                    "worse": losses,
+                    "ties": ties,
+                    "median_delta": median(deltas) if deltas else None,
+                    "sign_test_p_value": _exact_sign_p_value(wins, losses),
+                }
+            )
+    return output
+
+
 def render_reports(sources: list[Path], output: Path) -> None:
     if not sources:
         raise ValueError("at least one eval report is required")
     case_reports = [_load_case_report(source) for source in sources]
+    runners = {str(report.get("runner", "api")) for report in case_reports}
     models = {str(report.get("model", "")) for report in case_reports}
     protocols = {json.dumps(report.get("protocol", {}), sort_keys=True) for report in case_reports}
     budgets = {
@@ -166,6 +249,8 @@ def render_reports(sources: list[Path], output: Path) -> None:
     }
     repetitions = {int(report.get("repetitions", 1)) for report in case_reports}
     case_roles = {str(report.get("case_role", "development")) for report in case_reports}
+    if len(runners) != 1:
+        raise ValueError(f"pilot reports use different runners: {sorted(runners)}")
     if len(models) != 1:
         raise ValueError(f"pilot reports use different models: {sorted(models)}")
     if len(protocols) != 1:
@@ -186,25 +271,37 @@ def render_reports(sources: list[Path], output: Path) -> None:
         for report in case_reports
         if isinstance(report.get("case"), dict)
     }
+    runner = next(iter(runners))
+    model = next(iter(models))
     report = {
-        "report_schema_version": 2,
+        "report_schema_version": 4,
         "pilot_id": output.stem,
-        "model": next(iter(models)),
+        "runner": runner,
+        "model": model,
         "protocol": case_reports[0].get("protocol", {}),
-        "pricing": MODEL_PRICING.get(next(iter(models))),
+        "max_tool_calls": next(iter(budgets)),
+        "pricing": MODEL_PRICING.get(model) if runner == "api" else None,
         "case_role": next(iter(case_roles)),
         "latency_comparable": all(_position_balanced(item) for item in case_reports),
         "correctness_aggregation_comparable": len(datasets) == 1 and len(taxonomies) == 1,
+        "paired_primary_comparisons": _paired_primary_comparisons(case_reports),
         "cases": case_reports,
     }
     template = (
         files("semantic_rca_bench").joinpath("assets/report.html").read_text(encoding="utf-8")
     )
     title = f"Semantic RCA Bench — {output.stem}"
+    hidden_columns = []
+    if not report["correctness_aggregation_comparable"]:
+        hidden_columns.append(".aggregate-correctness { display: none; }")
+    if report["pricing"] is None:
+        hidden_columns.append(".api-cost { display: none; }")
     serialized = json.dumps(_strip_signatures(report), ensure_ascii=False, separators=(",", ":"))
     serialized = serialized.replace("</", "<\\/")
-    document = template.replace("__REPORT_TITLE__", html.escape(title)).replace(
-        "__REPORT_DATA__", serialized
+    document = (
+        template.replace("__REPORT_TITLE__", html.escape(title))
+        .replace("__REPORT_COLUMN_CSS__", "\n    ".join(hidden_columns))
+        .replace("__REPORT_DATA__", serialized)
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(document, encoding="utf-8")

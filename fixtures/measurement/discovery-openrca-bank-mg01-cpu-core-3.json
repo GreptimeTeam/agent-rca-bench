@@ -1,0 +1,21 @@
+{
+  "fixture_id": "openrca-bank-mg01-cpu-core-3",
+  "source_case": "Bank/task_5@2021-03-12T15:00",
+  "component": "MG01",
+  "signal": "CPU core 3 utilization",
+  "boundary": 1615533000,
+  "target_table": "OSLinux_CPU_CPU_3_SingleCpuUtil",
+  "component_column": "cmdb_id",
+  "time_column": "greptime_timestamp",
+  "value_column": "greptime_value",
+  "baseline": {
+    "start": 1615532400,
+    "end": 1615533000
+  },
+  "incident": {
+    "start": 1615533000,
+    "end": 1615534200
+  },
+  "comparison_field": "mean_value",
+  "minimum_ratio": 2.0
+}

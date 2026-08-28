@@ -1,0 +1,103 @@
+{
+  "selection_id": "openrca-discovery-measurement-v2",
+  "seed": "semantic-rca-v21-discovery-measurement",
+  "source_revision": "c1bd4af7f635171a1c31cdd567c07d698dff6abc",
+  "mirror_revision": "07714872ea2cec77c13f9dec17a688e9df9621d1",
+  "excluded_prior_agent_cases": [
+    "Bank/task_5@2021-03-09T09:30",
+    "Bank/task_6@2021-03-04T18:00",
+    "Market/cloudbed-1@2022-03-21T03:30",
+    "Telecom@2020-05-27T05:00"
+  ],
+  "strata": {
+    "Bank": {
+      "eligible_count": 58,
+      "eligible_case_ids_sha256": "4f1f99de297e4915cffbc2bccdceefcd7357553a2208cc981056d86626f065d7",
+      "ranked_candidates_used": [
+        "Bank/task_6@2021-03-25T09:00",
+        "Bank/task_5@2021-03-12T15:00",
+        "Bank/task_5@2021-03-04T20:00"
+      ],
+      "selected_after_source_gate": [
+        "Bank/task_6@2021-03-25T09:00",
+        "Bank/task_5@2021-03-12T15:00",
+        "Bank/task_5@2021-03-04T20:00"
+      ],
+      "catalog_gate_rejections": [
+        {
+          "source_case": "Bank/task_5@2021-03-12T15:00",
+          "reason": "The frozen CPU core 3 target ranks 14th for the supplied signal, outside the pre-registered catalog top-five gate."
+        }
+      ],
+      "selected_after_no_model_gate": [
+        "Bank/task_6@2021-03-25T09:00",
+        "Bank/task_5@2021-03-04T20:00"
+      ]
+    },
+    "Market/cloudbed-1": {
+      "eligible_count": 24,
+      "eligible_case_ids_sha256": "743ef03911574aba0c6d763aaa8299335f284bf7b77b4ce6a400db5ffa18e05f",
+      "ranked_candidates_used": [
+        "Market/cloudbed-1@2022-03-20T09:30"
+      ],
+      "selected_after_source_gate": [
+        "Market/cloudbed-1@2022-03-20T09:30"
+      ],
+      "selected_after_no_model_gate": [
+        "Market/cloudbed-1@2022-03-20T09:30"
+      ]
+    },
+    "Market/cloudbed-2": {
+      "eligible_count": 24,
+      "eligible_case_ids_sha256": "5dab26e111b0e7d954592ac494934204b30b0dd4a971cacae8342351c2d71422",
+      "ranked_candidates_used": [
+        "Market/cloudbed-2@2022-03-21T20:30",
+        "Market/cloudbed-2@2022-03-21T19:00",
+        "Market/cloudbed-2@2022-03-21T08:30",
+        "Market/cloudbed-2@2022-03-20T14:30"
+      ],
+      "source_gate_rejections": [
+        {
+          "source_case": "Market/cloudbed-2@2022-03-21T20:30",
+          "reason": "The canonical node memory-usage mean ratio is 1.03695, below the frozen 2.0 threshold."
+        },
+        {
+          "source_case": "Market/cloudbed-2@2022-03-21T19:00",
+          "reason": "The service label maps to multiple pod and service identifiers, so there is no single exact component binding for the frozen evidence query."
+        }
+      ],
+      "selected_after_source_gate": [
+        "Market/cloudbed-2@2022-03-21T08:30",
+        "Market/cloudbed-2@2022-03-20T14:30"
+      ],
+      "protocol_gate_exclusions": [
+        {
+          "source_case": "Market/cloudbed-2@2022-03-21T08:30",
+          "reason": "Its agent cells predate the mixed-case identifier prompt correction and cannot be pooled with the uniform formal cohort. The saved report remains exploratory."
+        }
+      ],
+      "selected_after_protocol_gate": [
+        "Market/cloudbed-2@2022-03-20T14:30"
+      ],
+      "selected_after_no_model_gate": [
+        "Market/cloudbed-2@2022-03-20T14:30"
+      ]
+    },
+    "Telecom": {
+      "eligible_count": 18,
+      "eligible_case_ids_sha256": "37d41310c44e27c0ba56ebc27d7eb1f506185d86f7f810c1b0f402a931fb9436",
+      "ranked_candidates_used": [
+        "Telecom@2020-05-29T03:30",
+        "Telecom@2020-05-23T04:30"
+      ],
+      "selected_after_source_gate": [
+        "Telecom@2020-05-29T03:30",
+        "Telecom@2020-05-23T04:30"
+      ],
+      "selected_after_no_model_gate": [
+        "Telecom@2020-05-29T03:30",
+        "Telecom@2020-05-23T04:30"
+      ]
+    }
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "selection_id": "openrca2-graph-measurement-v3",
+  "seed": "semantic-rca-v21-graph-measurement",
+  "manifest_revision": "9ac09981c08ab02a0b923eab7830d778934851a8",
+  "excluded_prior_agent_cases": [
+    "hs0-geo-pod-failure-f6jqlw",
+    "hs1-geo-pod-failure-drdmjj",
+    "hs8-rate-pod-failure-xkf79h",
+    "otel-demo3-payment-pod-kill-7sm7nz",
+    "otel-demo3-shipping-delay-m6fhpx",
+    "otel-demo4-currency-pod-failure-skbc9z"
+  ],
+  "strata": {
+    "hs": {
+      "eligible_count": 21,
+      "eligible_case_ids_sha256": "e6a80626a970b3fb527c75cea052166da817f1fe073bc23342652d3c8347b19a",
+      "source_gate_rejections": [
+        {
+          "source_case": "hs0-frontend-partition-j6lxxv",
+          "reason": "Manifest root frontend disagrees with injection roots frontend and profile."
+        },
+        {
+          "source_case": "hs1-search-delay-bdcn5c",
+          "reason": "Manifest root search disagrees with injection roots rate and search."
+        },
+        {
+          "source_case": "hs1-search-delay-j2swng",
+          "reason": "Manifest root search disagrees with injection roots rate and search."
+        },
+        {
+          "source_case": "hs1-geo-cpu-exhaustion-q8nln6",
+          "reason": "The conclusion has no observable alert condition."
+        },
+        {
+          "source_case": "hs10-geo-memory-exhaustion-pmtmcp",
+          "reason": "The conclusion has no observable alert condition."
+        },
+        {
+          "source_case": "hs1-frontend-delay-24srn4",
+          "reason": "Manifest root frontend disagrees with injection roots attractions and frontend."
+        }
+      ],
+      "selected_after_source_gate": [
+        "hs4-geo-pod-failure-pdt289",
+        "hs1-rate-pod-failure-vmvtxr"
+      ]
+    },
+    "otel-demo": {
+      "eligible_count": 12,
+      "eligible_case_ids_sha256": "fb81e0769ea9bc12d8fa867182ad37632f8902ffa5fc7685135e066d696f843b",
+      "source_gate_rejections": [
+        {
+          "source_case": "otel-demo3-product-catalog-pod-failure-kp7pdt",
+          "reason": "The conclusion has no observable alert condition."
+        },
+        {
+          "source_case": "otel-demo1-product-catalog-pod-kill-dk4528",
+          "reason": "The conclusion has no observable alert condition."
+        },
+        {
+          "source_case": "otel-demo2-checkout-partition-svj7dt",
+          "reason": "Manifest root checkout disagrees with injection roots checkout and currency."
+        },
+        {
+          "source_case": "otel-demo13-payment-pod-kill-9ptwmh",
+          "reason": "The conclusion has no observable alert condition."
+        },
+        {
+          "source_case": "otel-demo11-cart-container-kill-g95z77",
+          "reason": "The conclusion has no observable alert condition."
+        },
+        {
+          "source_case": "otel-demo9-payment-pod-kill-mk8jld",
+          "reason": "The conclusion has no observable alert condition."
+        },
+        {
+          "source_case": "otel-demo16-product-catalog-pod-failure-zpz9s7",
+          "reason": "The conclusion has no observable alert condition."
+        },
+        {
+          "source_case": "otel-demo7-cart-partition-frql4h",
+          "reason": "Manifest root cart disagrees with injection roots cart and valkey-cart."
+        },
+        {
+          "source_case": "otel-demo14-product-catalog-pod-failure-nw4q7w",
+          "reason": "The conclusion has no observable alert condition."
+        },
+        {
+          "source_case": "otel-demo18-checkout-partition-lwcl2j",
+          "reason": "Manifest root checkout disagrees with injection roots checkout and payment."
+        },
+        {
+          "source_case": "otel-demo0-payment-pod-failure-fn9frc",
+          "reason": "The conclusion has no observable alert condition."
+        },
+        {
+          "source_case": "otel-demo1-shipping-delay-sm2szn",
+          "reason": "Manifest root shipping disagrees with injection roots quote and shipping."
+        }
+      ],
+      "selected_after_source_gate": []
+    },
+    "ts": {
+      "eligible_count": 1,
+      "eligible_case_ids_sha256": "477d8bb8371ef9b69d331ebc476592871877b2f80b1a1be1d41e20920538a45c",
+      "source_gate_rejections": [
+        {
+          "source_case": "ts7-ts-contacts-service-duplicate-gq6nq2",
+          "reason": "Manifest root ts-contacts-service disagrees with injection roots mysql and ts-contacts-service."
+        }
+      ],
+      "selected_after_source_gate": []
+    }
+  }
+}

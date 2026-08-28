@@ -1,0 +1,11 @@
+{
+  "fixture_id": "measurement-openrca2-otel-payment",
+  "source_case": "otel-demo3-payment-pod-kill-7sm7nz",
+  "window_start": 1777721580,
+  "window_end": 1777722180,
+  "caller": "load-generator",
+  "trace_table": "traces",
+  "expected_callee": "frontend-proxy",
+  "expected_request_count": 291,
+  "expected_error_count": 26
+}

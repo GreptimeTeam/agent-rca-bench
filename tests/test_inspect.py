@@ -122,3 +122,4 @@ def test_graph_window_isolation_checks_both_surfaces_before_ingest() -> None:
     assert isolation["relationship_rows"] == 0
     assert "semantic_entities" in client.queries[0]
     assert "semantic_relationships" in client.queries[1]
+    assert all("observed_at < '1970-01-01 00:01:00'" in query for query in client.queries)

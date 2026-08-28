@@ -5,8 +5,9 @@ individual pilot findings must not replace its objective or experiment design.
 
 ## Objective
 
-Measure whether GreptimeDB's semantic surfaces improve an LLM agent's root-cause
-analysis over real, labeled failure telemetry.
+Measure whether GreptimeDB's semantic surfaces improve the investigation
+efficiency of an LLM agent performing root-cause analysis over real, labeled
+failure telemetry without reducing diagnosis validity.
 
 For every case, compare three nested treatments over identical telemetry:
 
@@ -16,6 +17,11 @@ For every case, compare three nested treatments over identical telemetry:
 
 The benchmark measures `table_semantics - raw` and
 `semantic_graph - table_semantics`. It does not assume either delta is positive.
+Returned rows, tool calls, model tokens, and elapsed time are efficiency
+outcomes. Correct task output is an eligibility guardrail for comparing
+completion efficiency, not the primary treatment effect. Accuracy changes may
+be reported as secondary observations but are not required for an efficiency
+benefit.
 
 ## Dataset strategy
 
@@ -42,14 +48,62 @@ Use this development corpus portfolio:
 3. OpenRCA 1.0 Bank as an established enterprise-telemetry corpus for measuring
    Table Semantics over a wide legacy metric schema. Its traces do not contain
    enough standard identity or span-role information to evaluate relationships.
-4. OpenRCA 2.0 ops-lite as the frozen measurement corpus. The selected OTel Demo
-   network-delay case has paired normal/abnormal windows and native relational
-   trace evidence. Its processed metric dimension loss is recorded, not repaired.
+4. OpenRCA 2.0 ops-lite as a provisional relational corpus. It has paired
+   normal/abnormal windows and native relational trace evidence, but its
+   anonymized submission artifact is not yet an archival release and its paper
+   and dataset card declare different licenses. Results from it remain
+   exploratory until provenance and licensing are resolved.
+5. OpenRCA 1.0 Market as a wide legacy, multi-level node and container corpus.
+   It tests temporal discovery across 587 semantic tables and preserves the
+   source's incompatible node, pod, service, log, and trace identifiers.
+6. OpenRCA 1.0 Telecom as an independent metrics-and-traces corpus without logs.
+   It tests delayed resource evidence across 130 semantic tables.
 
 Select additional datasets by authority, root-cause quality, telemetry fidelity,
 system and failure diversity, and non-overlap with this portfolio. Freeze the
 measurement cases before inspecting their telemetry or agent results. Record
 candidate decisions in `DATASETS.md`.
+
+The development cases were selected by a label-independent
+hash ranking. The selection is reproducible but not blinded: public case names can
+encode components or mechanisms, and the evaluator necessarily loads ground truth.
+No blinded-holdout claim is made.
+
+For each corpus, sort eligible case IDs by
+`sha256((seed + "\\0" + case_id).encode()).digest()` and choose the first case
+that passes its predeclared no-model gate. The implementation is
+`selection.deterministic_rank`.
+
+1. RCAEval seed `semantic-rca-v12-rcaeval-measurement` initially ranked
+   `re2ob_emailservice_socket_3`, but its CPU signal dominated the labeled socket
+   mechanism. The next loss case had no direct loss signal and several competing
+   resource anomalies. Both failed the telemetry-label fidelity gate. The next
+   candidate, `re2ob_currencyservice_disk_1`, has disk I/O absent in baseline and
+   about 4.5 GB/s after injection and is retained.
+2. RCA100 seed `semantic-rca-v12-rca100-measurement` selects `t002` from
+   `t002` through `t100`.
+3. OpenRCA Bank seed `semantic-rca-v12-openrca-bank-measurement` selects
+   `task_5@2021-03-09T09:30` from task windows containing exactly one official
+   root-cause record after excluding the development case.
+4. OpenRCA 2.0 seed `semantic-rca-v12-openrca2-hotel-measurement` ranks new-source,
+   non-hybrid Hotel Reservation cases with one manifest root, propagation depth
+   at least three, and a non-network fault. The first candidate had no observable
+   alert and was rejected by the predeclared gate; the next candidate,
+   `hs1-geo-pod-failure-drdmjj`, passed. The gate also requires the manifest root
+   to equal the injection ground-truth service set.
+5. OpenRCA Market seed `semantic-rca-v16-openrca-market` ranks distinct half-hour
+   windows from both cloudbeds that contain exactly one official root-cause record.
+   Before any Market telemetry was downloaded, the rule selected
+   `Market/cloudbed-1@2022-03-21T03:30` from 89 eligible windows.
+6. OpenRCA Telecom seed `semantic-rca-v16-openrca-telecom` ranks distinct half-hour
+   windows that contain exactly one official root-cause record. Before any Telecom
+   telemetry was downloaded, the rule selected `Telecom@2020-05-27T05:00` from 51
+   eligible windows.
+
+These rules used only case indexes, task metadata, and ground-truth records. Do
+not replace a case after telemetry ingestion or agent execution unless its
+predeclared no-model fidelity gate fails; record any rejection before applying
+the same deterministic rule to a replacement.
 
 ## Experiment invariants
 
@@ -64,15 +118,24 @@ candidate decisions in `DATASETS.md`.
   metadata, tool schemas, usage guides, and coverage snapshot. The measured
   treatment is the complete agent-facing semantic interface, not stored
   metadata in isolation.
-- Semantic metadata calls consume the same tool-call cap as SQL calls. A binding
-  cap measures fixed-budget investigation efficiency, not unconstrained RCA
-  capability. Record requested calls and cap exhaustion for every run.
+- Semantic metadata calls consume the same tool-call safety cap as SQL calls.
+  Formal efficiency runs use a cap high enough that exhaustion is exceptional;
+  any treatment with cap-hit runs is excluded from completion-efficiency claims.
+  Record requested calls and cap exhaustion for every run.
+- The initial prompt states the shared cap and every tool-result turn states the
+  remainder. The runner does not let an uninformed agent discover the budget only
+  after exhausting it.
 - Ground truth is unavailable to the agent and only enters deterministic scoring.
+- Database and report identifiers visible to the agent must not contain the
+  ground-truth component or fault type. Formal runs reject such identifiers.
 - Treat graph evidence coverage as an observed property of a case, not as a
   benchmark fixture.
 - Record the GreptimeDB revision, dataset revision, adapter version, model,
   prompt protocol, telemetry counts, query counts, returned rows, concurrency,
   elapsed time, tokens, and cost.
+- Record calls to a correct diagnosis, discovery calls before evidence queries,
+  failed calls, exact repeated calls, and the first model turn mentioning the
+  correct component. Cost-to-correct is defined only for jointly correct runs.
 - Do not mix results from different protocol versions.
 - Label cases as `development` or `measurement`. Never use a case for formal
   measurement after its failures influenced the protocol or prompt.
@@ -82,6 +145,12 @@ candidate decisions in `DATASETS.md`.
 - Report correctness per dataset when answer taxonomies differ. Do not sum
   heterogeneous labels into one accuracy number.
 - Freeze the dataset set, case-selection rules, and protocol before paid runs.
+
+The pre-registered primary efficiency metrics are paired GreptimeDB rows returned
+and tool calls to a jointly correct diagnosis. Report paired directions and an
+exact two-sided sign test per comparison; use medians for long-tailed quantities.
+All other trajectory metrics, including first component mention and discovery
+ordering, are exploratory and cannot support headline claims.
 
 ## Delivery stages
 
@@ -111,12 +180,48 @@ After the protocol and dataset gates pass, run a small balanced pilot across
 complementary corpora. Repeat treatments only enough to characterize model
 variance. Expand case count only after the pilot exposes no correctness issue.
 
+The protocol v17 batch used three repetitions, so every treatment occupied every
+execution position once. The same six development cases ran with Codex
+`gpt-5.6-terra` and Claude Code `sonnet` through their interactive subscriptions.
+Every treatment used the same 48-call safety cap. Correctness remains separate
+by corpus because the taxonomies are heterogeneous.
+
 ## Current status and next step
 
-RCAEval, RCA100, and OpenRCA adapters pass their no-model ingestion and semantic
-surface gates. The selected cases cover entity-only, relational, and empty graph
-surfaces. These cases are development cases because protocol versions v6 through
-v10 changed in response to their failures.
+The fresh micro-benchmark stage is complete. Discovery v2 has six formal
+trajectory-blind OpenRCA cases, 24 agent cells, and 12 paired observations.
+Table Semantics improved task success in one pair, regressed in none, and tied
+in 11. Repeated run pairs describe model variation; cross-case inference uses
+the median jointly successful delta per case. Returned rows improved in all five
+eligible cases, with median case delta `-273` and exact two-sided sign-test
+`p=0.0625`. Calls and reported model tokens were each better / worse / tied in
+`3 / 2 / 0`, with `p=1.0`. Discovery therefore shows a consistent row-retrieval
+direction, not a statistically conclusive or general token effect.
+
+Graph v3 exhausted the frozen Hotel, OTel Demo, and Train Ticket candidate
+strata and found only two eligible fresh Hotel cases. Their raw span self-joins
+and Graph edge sets match exactly. Across four agent pairs Graph improved task
+success once, regressed zero times, and returned fewer rows and used fewer calls
+in all three jointly successful pairs. The sample is too small and
+system-specific for a broad Graph effect claim. At case level, rows, calls, and
+reported model tokens improved in both cases, with median deltas `-61.25`,
+`-2.5`, and `-40,831`; each sign test has `p=0.5`.
+
+`RESULTS.md` records the case-level evidence, paired statistics, exclusions, and
+limitations. `fixtures/measurement/results-summary.json` records the exact
+formal-report hashes, run-pair descriptions, case-level inference, and metric
+registration status. No paid full RCA batch was run. Do not promote these retrieval
+results into an RCA claim. The next valid experimental stage is to add
+independent, source-faithful relational cases, then freeze a transfer test that
+measures end-to-end RCA rows, calls, model tokens, and elapsed time under the
+corrected affected-component and causal-dependency validity contracts.
+
+## Historical development status
+
+All six protocol v17 cases pass isolated no-model ingestion and semantic-surface
+gates. They cover entity-only, relational, and empty graph surfaces. They are a
+development evaluation, not a holdout. Both subscription models completed all
+54 runs under one frozen protocol, for 108 runs in total.
 
 The protocol v8 runs are diagnostics, not an effect estimate. Six of the nine
 runs requested more calls than the 18-call cap. One repetition also put Graph
@@ -125,19 +230,90 @@ execution order confound capacity and latency comparisons. The three datasets
 also use different fault taxonomies, so their correctness counts must remain
 per-dataset. `RESULTS.md` records the valid observations and limitations.
 
-Protocol v11 fixes the confirmed implementation defects and makes the
+Protocol v11 fixed the confirmed implementation defects and made the
 limitations auditable. It gates the Graph tool on the produced `empty` status,
 scopes RCAEval taxonomies by dataset, filters discovery rows before truncation,
 aligns catalog recall and ranking fields, records requested and rejected tool
 calls, records execution position and case role, and reports baseline
 availability.
 
-The OpenRCA 2.0 selection rule is frozen and its adapter is under no-model
-validation. Amazon PetShop was rejected after source inspection because its
-sparse metric snapshots and missing mechanism label do not satisfy the incident
-contract. Do not run paid RCA while adding datasets. After OpenRCA 2.0 passes its
-protocol and semantic-surface gates, decide whether one additional non-overlap
-corpus is necessary, freeze the set, and run one controlled batch.
+Protocol v12 added completion-efficiency metrics and executable hash selection.
+Calibration showed that a nominally larger cap still bound because the agent did
+not know its remainder and eventually hit the separate turn limit. Protocol v13
+makes the shared budget visible at the start and after each tool-result turn. Run
+all four selected cases through no-model gates. Protocol v14 also accepts only
+explicit service-role suffixes when normalizing component answers, so a response
+such as `geo service pod (...)` matches `geo` without accepting dependency paths.
+Protocol v17 adds controlled Codex and Claude subscription runners, pre-registers
+paired returned rows and calls to a correct diagnosis, and fixes the trajectory
+metrics that previously favored Graph by construction. The v17 results do not
+replicate the v14 Graph row reduction and do not establish an RCA benefit for
+either semantic layer. Table Semantics has a promising but non-significant
+Telecom result, while Market exposes poor catalog precision for `I/O` searches.
+
+A post-v17 audit found a runner-level protocol divergence: Codex subscription
+did not receive the system prompt used by Claude subscription and API runs. The
+API runner also capped interactions at 30 turns while advertising a 48-call
+tool budget. Protocol v19 supplies the same contract to every runner, sets the
+API turn limit to `max_tool_calls + 10`, persists runner failures, and treats
+taxonomy violations as incorrect answers rather than invalid runs. The
+supported subscription CLIs do not expose a turn-limit option; their broker
+enforces the shared database-tool cap, and a process timeout bounds the session.
+Rejected calls to unavailable tools remain audit events but do not consume the
+investigation budget.
+
+The RCA100 `t002` answer file conflicts across structured component fields and
+does not publish a canonical Redis/Valkey dependency entity. Protocol v19
+disables component and joint scoring for that case, retains mechanism scoring,
+and records causal-dependency predictions without adding unreachable truth or
+evaluation fields. Add dependency scoring only when a source provides a frozen
+canonical label.
+
+Protocol v20 corrects the benchmark Graph window to the half-open
+`[start, end)` contract implemented by GreptimeDB's computed tables. The earlier
+`<= end` wrapper, coverage queries, and isolation gate could include a bucket
+whose start equaled the exclusive upper bound. No v20 RCA batch has been run.
+
+The discovery v1 development protocol is now implemented separately from the
+RCA protocol. It compares only `raw` and `table_semantics`, supplies the target
+component, signal concept, and incident boundary, and scores whether the agent
+finds the hidden table and executes a valid baseline/incident evidence query.
+The catalog tokenizer now preserves `I/O`, removes low-information terms, and
+maps adjacent `io_w`/`io_r` identifier tokens to their direction concepts.
+Market and Telecom remain regression fixtures, not measurement cases.
+
+Both live fixture databases pass `discovery-audit`: the canonical telemetry
+predicates hold, Market ranks the target table second, and Telecom ranks it
+first. The paired discovery development pilot is complete: all eight cells
+succeeded after scorer v2 accepted current-database qualification and typed
+timestamp literals. Table Semantics did not change success, but reduced rows
+returned through evidence in all four pairs. Market used catalog search instead
+of Raw's schema enumeration, then made one additional describe call; Telecom
+used the same number of calls.
+
+The separate Graph v1 development protocol is implemented for witnessed
+service-call retrieval. It compares `table_semantics` with `semantic_graph` and
+does not reuse RCA100's disputed component or dependency labels. Its no-model
+gate executes both a raw client/server span self-join and the Graph aggregation
+over minute-aligned half-open windows. RCA100 `t002` and OpenRCA 2.0 Hotel both
+pass exact edge-set equality, unique-winner, and frozen-winner checks. They
+remain development fixtures because their telemetry and earlier trajectories
+influenced the task.
+
+The position-balanced Graph development pilot is complete. All eight cells
+succeeded. Graph reduced calls through evidence from three to one and reduced
+rows returned in all four pairs; the combined median deltas were `-2` calls and
+`-157.5` rows, with exact two-sided sign-test `p=0.125` for each metric. A
+scorer-only correction accepted destination type proven by the exact canonical
+result instead of requiring a redundant query argument; saved trajectories were
+rescored without rerunning a model. These results validate the retrieval
+mechanism but are not an RCA or measurement effect.
+
+The fresh trajectory-blind Discovery and Graph selection described here was the
+next stage at that point and is now complete. Its results and current limitations
+are recorded above and in `RESULTS.md`.
+Do not tune and rerun the six v17 RCA development cases as if they were a
+holdout. No full RCA batch is authorized at this stage.
 
 ## Out of scope for the current stage
 

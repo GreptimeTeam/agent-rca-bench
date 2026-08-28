@@ -35,7 +35,7 @@ from semantic_rca_bench.protocols.prometheus import prometheus_metric_name
 REPOSITORY_ID = "anon-ops/ops-lite"
 SOURCE_REVISION = "9ac09981c08ab02a0b923eab7830d778934851a8"
 DATASET_REVISION = f"ops-lite@{SOURCE_REVISION}"
-DEFAULT_CASE = "otel-demo3-shipping-delay-m6fhpx"
+DEFAULT_CASE = "hs1-geo-pod-failure-drdmjj"
 PERIODS = ("normal", "abnormal")
 CASE_FILES = tuple(
     f"{period}_{suffix}"
@@ -116,6 +116,12 @@ def _load_case(root: Path, manifest_path: Path) -> OpenRCA2Case:
     roots = manifest.get("root_services")
     if not isinstance(roots, list) or len(roots) != 1:
         raise OpenRCA2Error(f"{root.name} does not have one root service")
+    injection_services = _injection_ground_truth_services(injection)
+    if injection_services != {str(roots[0])}:
+        raise OpenRCA2Error(
+            f"{root.name} manifest roots {roots} disagree with injection ground truth "
+            f"{sorted(injection_services)}"
+        )
     normal_start = _env_epoch(env, "NORMAL_START")
     normal_end = _env_epoch(env, "NORMAL_END")
     abnormal_start = _env_epoch(env, "ABNORMAL_START")
@@ -126,21 +132,22 @@ def _load_case(root: Path, manifest_path: Path) -> OpenRCA2Case:
     if inject_time != abnormal_start:
         raise OpenRCA2Error(f"{root.name} injection time disagrees with abnormal window")
 
+    system = _system_name(str(manifest.get("system") or ""))
     return OpenRCA2Case(
         source_case=root.name,
         dataset=DATASET_REVISION,
-        system=_system_name(str(manifest.get("system") or "")),
+        system=system,
         root=root,
         input=CaseInput(
             case_token=root.name,
             time_start=normal_start,
             time_end=abnormal_end,
             alert_time=abnormal_start,
-            alert_text=_alert_text(root / "conclusion.parquet"),
+            alert_text=_alert_text(root / "conclusion.parquet", system),
             fault_taxonomy=_fault_taxonomy(manifest_path, str(manifest["system"])),
         ),
         ground_truth=GroundTruth(
-            component=str(roots[0]),
+            affected_component=str(roots[0]),
             fault_type=primary_kind,
             fault_category=_fault_category(primary_kind),
             inject_time=inject_time,
@@ -312,8 +319,10 @@ def validate_ingest(
             )
         ],
         "derived_service_calls": [list(pair) for pair in sorted(derived_calls)],
-        "fault_endpoint_call": list(expected_fault_call),
-        "fault_endpoint_call_found": expected_fault_call in derived_calls,
+        "fault_endpoint_call": list(expected_fault_call) if expected_fault_call else None,
+        "fault_endpoint_call_found": (
+            expected_fault_call in derived_calls if expected_fault_call else None
+        ),
         "derived_calls_nonempty": bool(derived_calls),
         "reference_causal_graph_ingested": False,
     }
@@ -504,7 +513,7 @@ def _fault_taxonomy(path: Path, system: str) -> list[str]:
     return sorted(values)
 
 
-def _alert_text(path: Path) -> str:
+def _alert_text(path: Path, system: str) -> str:
     table = pq.read_table(path, columns=["Issues"])
     issues = set()
     for raw in table["Issues"].to_pylist():
@@ -515,7 +524,7 @@ def _alert_text(path: Path) -> str:
             issues.update(str(key) for key in value)
     if not issues:
         raise OpenRCA2Error("case conclusion has no observable alert condition")
-    return f"OpenTelemetry Demo alert: {', '.join(sorted(issues))}"
+    return f"{system} alert: {', '.join(sorted(issues))}"
 
 
 def _window_summary(case: OpenRCA2Case, period: str) -> dict[str, object]:
@@ -564,15 +573,36 @@ def _window_summary(case: OpenRCA2Case, period: str) -> dict[str, object]:
     }
 
 
-def _fault_endpoint_call(path: Path) -> tuple[str, str]:
+def _fault_endpoint_call(path: Path) -> tuple[str, str] | None:
     injection = _read_json(path)
     configs = injection.get("engine_config")
     if not isinstance(configs, list) or len(configs) != 1:
         raise OpenRCA2Error("expected one injection engine config")
     config = configs[0]
-    if not isinstance(config, Mapping) or config.get("direction") != "to":
-        raise OpenRCA2Error("selected network case has no directed target")
+    if not isinstance(config, Mapping):
+        raise OpenRCA2Error("invalid injection engine config")
+    if config.get("direction") != "to":
+        return None
+    if not config.get("app") or not config.get("target_service"):
+        raise OpenRCA2Error("directed injection has no service endpoints")
     return str(config["app"]), str(config["target_service"])
+
+
+def _injection_ground_truth_services(injection: Mapping[str, object]) -> set[str]:
+    ground_truth = injection.get("ground_truth")
+    if not isinstance(ground_truth, list) or not ground_truth:
+        raise OpenRCA2Error("injection has no service ground truth")
+    services: set[str] = set()
+    for item in ground_truth:
+        if not isinstance(item, Mapping):
+            raise OpenRCA2Error("invalid injection ground truth entry")
+        values = item.get("service")
+        if not isinstance(values, list):
+            raise OpenRCA2Error("injection ground truth has no service list")
+        services.update(str(value) for value in values if value not in (None, ""))
+    if not services:
+        raise OpenRCA2Error("injection service ground truth is empty")
+    return services
 
 
 def _derived_service_calls(client: GreptimeClient, case: CaseInput) -> set[tuple[str, str]]:

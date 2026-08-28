@@ -105,6 +105,10 @@ class GreptimeClient:
                 self._load = None
                 self._active_queries = 0
 
+    def query_load_snapshot(self) -> DatabaseLoad | None:
+        with self._load_lock:
+            return self._load.model_copy(deep=True) if self._load is not None else None
+
     def _query_started(self) -> None:
         with self._load_lock:
             if self._load is None:

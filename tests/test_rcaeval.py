@@ -58,7 +58,9 @@ def test_metric_ingest_audits_duplicate_and_conflicting_samples(
             time_end=101,
             alert_time=101,
         ),
-        ground_truth=GroundTruth(component="cartservice", fault_type="cpu", inject_time=101),
+        ground_truth=GroundTruth(
+            affected_component="cartservice", fault_type="cpu", inject_time=101
+        ),
         metrics_path=metrics,
         logs_path=None,
         traces_path=None,

@@ -1,0 +1,11 @@
+{
+  "fixture_id": "measurement-v3-openrca2-hs1-rate",
+  "source_case": "hs1-rate-pod-failure-vmvtxr",
+  "window_start": 1777662720,
+  "window_end": 1777663320,
+  "caller": "frontend",
+  "trace_table": "traces",
+  "expected_callee": "search",
+  "expected_request_count": 2772,
+  "expected_error_count": 1504
+}

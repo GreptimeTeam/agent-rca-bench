@@ -59,7 +59,7 @@
     section { margin-top: 38px; }
     .section-head { display: flex; justify-content: space-between; gap: 20px; align-items: baseline; margin-bottom: 14px; }
     .data-table { overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
-    .data-table table { min-width: 940px; }
+    .data-table table { min-width: 1500px; }
     .data-table th, .data-table td { border-width: 0 0 1px; padding: 12px 14px; }
     .data-table tbody tr:last-child td { border-bottom: 0; }
     .data-table tbody tr:hover { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
@@ -71,6 +71,7 @@
     .prediction { min-width: 190px; }
     .prediction b { display: block; overflow-wrap: anywhere; }
     .prediction span { color: var(--muted); }
+    __REPORT_COLUMN_CSS__
     .series-raw { --series: var(--raw); }
     .series-table_semantics { --series: var(--table); }
     .series-semantic_graph { --series: var(--graph); }
@@ -173,6 +174,11 @@
       </div>
       <div class="data-table" id="summary-table"></div>
       <div class="muted" id="pricing-note" style="margin-top:8px;font-size:12px"></div>
+      <div class="section-head" style="margin-top:24px">
+        <h3>Pre-registered paired metrics</h3>
+        <span class="muted">Lower is better. Ties are excluded from the exact two-sided sign test.</span>
+      </div>
+      <div class="case-matrix" id="paired-metrics"></div>
     </section>
 
     <section aria-labelledby="matrix-title">
@@ -191,6 +197,7 @@
       <div class="case-picker"><label for="case-select">Dataset case</label><select id="case-select"></select></div>
       <div class="muted" id="case-context" style="margin:-12px 0 14px;font-size:12px"></div>
       <div class="data-table" id="case-summary"></div>
+      <div class="muted" style="margin-top:8px;font-size:12px">* First component mention is exploratory. A schema or service-list enumeration can trigger it; it is not localization time.</div>
       <div class="section-head" style="margin-top:32px"><h3>Session traces</h3><span class="muted">Every model turn, tool call, result, error, and evidence citation.</span></div>
       <div class="tabs" id="tabs" role="tablist" aria-label="Visibility level"></div>
       <div id="sessions"></div>
@@ -229,6 +236,20 @@
       const short = value => String(value || '').slice(0, 10);
       const runOf = item => item.run || {};
       const evaluationOf = item => item.evaluation || {};
+      const truthComponentOf = truth => truth.affected_component || truth.component || '—';
+      const evaluationField = (evaluation, field) => field === 'affected_component_match'
+        ? (evaluation.affected_component_match ?? evaluation.component_match)
+        : evaluation[field];
+      const scoreOf = (items, field) => {
+        const eligible = items.filter(item => evaluationField(evaluationOf(item), field) != null);
+        const matches = eligible.filter(item => evaluationField(evaluationOf(item), field) === true).length;
+        return {matches, total: eligible.length, text: eligible.length ? `${matches}/${eligible.length}` : '—'};
+      };
+      const predictionOf = run => {
+        const diagnosis = run.diagnosis || {};
+        const component = diagnosis.affected_component || diagnosis.root_cause_component || '—';
+        return diagnosis.causal_dependency ? `${component} → ${diagnosis.causal_dependency}` : component;
+      };
       const databaseLoadOf = item => item.database_load || null;
       const tracesOf = run => {
         if (run.tool_calls) return run.tool_calls;
@@ -237,8 +258,9 @@
           output: q.result, error: q.error
         }));
       };
-      const errorCount = run => tracesOf(run).filter(t => t.error).length;
+      const errorCount = run => tracesOf(run).filter(t => t.error).length + (run.rejected_tool_calls || []).length + (run.error ? 1 : 0);
       const requestedToolCount = run => run.tool_calls_requested == null ? tracesOf(run).length : Number(run.tool_calls_requested);
+      const budgetHit = run => Boolean(run.tool_budget_exhausted);
       const costOf = run => {
         if (!report.pricing) return null;
         return (Number(run.usage?.input_tokens || 0) * report.pricing.input_per_million + Number(run.usage?.output_tokens || 0) * report.pricing.output_per_million) / 1_000_000;
@@ -248,7 +270,7 @@
         const truth = item.ground_truth || {};
         const fallback = [
           info.system,
-          truth.component && truth.fault_type ? `${truth.component}-${truth.fault_type}` : null,
+          truthComponentOf(truth) !== '—' && truth.fault_type ? `${truthComponentOf(truth)}-${truth.fault_type}` : null,
           info.alert_time || info.incident_time
         ].filter(Boolean).join(' / ');
         const name = info.source_case || info.case_id || fallback || `case-${index + 1}`;
@@ -267,13 +289,15 @@
       }, {metrics: 0, logs: 0, spans: 0});
 
       document.getElementById('title').textContent = report.pilot_id || 'Semantic RCA pilot';
-      document.getElementById('subtitle').textContent = `${report.model || cases[0]?.model || 'unknown model'} · ${cases.length} cases across ${datasets.size} datasets · ${levels.length} visibility levels`;
+      const runner = report.runner || cases[0]?.runner || 'api';
+      document.getElementById('subtitle').textContent = `${runner} · ${report.model || cases[0]?.model || 'unknown model'} · ${cases.length} cases across ${datasets.size} datasets · ${levels.length} visibility levels`;
       document.getElementById('pilot-scope').textContent = `${cases.length} cases · ${num(totalIngest.metrics)} metrics · ${num(totalIngest.logs)} logs · ${num(totalIngest.spans)} spans`;
       const protocol = report.protocol?.version ? `v${report.protocol.version}` : 'legacy';
       const status = cases[0]?.server_status || {};
       document.getElementById('meta').innerHTML = [
         ['Report schema', report.report_schema_version || 'legacy'], ['Protocol', protocol],
-        ['Model', report.model || cases[0]?.model || '—'], ['Cases', cases.length],
+        ['Runner', runner], ['Model', report.model || cases[0]?.model || '—'],
+        ['Cases', cases.length],
         ['Case role', report.case_role || cases[0]?.case_role || 'development'],
         ['Datasets', datasets.size], ['Server commit', short(status.commit) || '—'],
         ['Runs', allRuns.length], ['Repetitions', cases[0]?.repetitions || 1],
@@ -286,6 +310,7 @@
       const tabs = document.getElementById('tabs');
       const sessions = document.getElementById('sessions');
       renderPilotSummary();
+      renderPairedMetrics();
       renderCaseMatrix();
 
       const caseSelect = document.getElementById('case-select');
@@ -298,10 +323,12 @@
           const items = allRuns.filter(item => runOf(item).visibility === level);
           const count = predicate => items.filter(predicate).length;
           const total = getter => items.reduce((sum, item) => sum + Number(getter(runOf(item)) || 0), 0);
-          const joint = count(item => evaluationOf(item).joint_match);
-          const component = count(item => evaluationOf(item).component_match);
+          const joint = scoreOf(items, 'joint_match');
+          const component = scoreOf(items, 'affected_component_match');
           const fault = count(item => evaluationOf(item).fault_type_match);
-          const budgetHits = count(item => runOf(item).tool_budget_exhausted);
+          const budgetHits = count(item => budgetHit(runOf(item)));
+          const evaluations = items.map(evaluationOf);
+          const correctItems = items.filter(item => !budgetHit(runOf(item)) && evaluationOf(item).joint_match);
           const requestedTools = items.reduce((sum, item) => sum + requestedToolCount(runOf(item)), 0);
           const estimatedCost = report.pricing ? items.reduce((sum, item) => sum + costOf(runOf(item)), 0) : null;
           const medianCost = report.pricing ? median(items.map(item => costOf(runOf(item)))) : null;
@@ -316,21 +343,24 @@
           return `<tr class="series-${esc(level)}">
             <td><span class="level">${esc(labels[level] || level)}</span></td>
             <td class="numeric">${items.length}</td>
-            <td class="numeric ${report.correctness_aggregation_comparable ? (joint === items.length ? 'match' : 'miss') : 'muted'}">${report.correctness_aggregation_comparable ? `${joint}/${items.length}` : '—'}</td>
-            <td class="numeric">${report.correctness_aggregation_comparable ? `${component}/${items.length}` : '—'}</td>
-            <td class="numeric">${report.correctness_aggregation_comparable ? `${fault}/${items.length}` : '—'}</td>
-            <td class="numeric"><b>${money(estimatedCost)}</b></td>
-            <td class="numeric">${money(medianCost)}</td>
+            <td class="numeric aggregate-correctness ${joint.total && joint.matches === joint.total ? 'match' : 'miss'}">${joint.text}</td>
+            <td class="numeric aggregate-correctness">${component.text}</td>
+            <td class="numeric aggregate-correctness">${fault}/${items.length}</td>
+            <td class="numeric api-cost"><b>${money(estimatedCost)}</b></td>
+            <td class="numeric api-cost">${money(medianCost)}</td>
             <td class="numeric"><b>${duration(elapsed.reduce((sum, value) => sum + value, 0))}</b></td>
             <td class="numeric">${duration(median(elapsed))}</td>
             <td class="numeric">${num(total(run => Number(run.usage?.input_tokens || 0) + Number(run.usage?.output_tokens || 0)))}</td>
             <td class="numeric">${num(items.reduce((sum, item) => sum + tracesOf(runOf(item)).length, 0))} / ${num(requestedTools)}</td>
+            <td class="numeric aggregate-correctness">${correctItems.length ? num(median(correctItems.map(item => evaluationOf(item).correct_completion_tool_calls))) : '—'}</td>
+            <td class="numeric">${num(evaluations.reduce((sum, value) => sum + Number(value.discovery_calls || 0), 0))}</td>
+            <td class="numeric">${num(evaluations.reduce((sum, value) => sum + Number(value.exact_repeated_calls || 0), 0))}</td>
             <td class="numeric ${budgetHits ? 'miss' : ''}">${budgetHits}/${items.length}</td>
             <td class="numeric">${databaseLoad ? `${num(databaseLoad.queries)} q · ${num(databaseLoad.rows)} rows · c${num(databaseLoad.concurrency)}` : '—'}</td>
             <td class="numeric">${num(items.reduce((sum, item) => sum + errorCount(runOf(item)), 0))}</td>
           </tr>`;
         }).join('');
-        document.getElementById('summary-table').innerHTML = `<table><thead><tr><th>Visibility</th><th class="numeric">Runs</th><th class="numeric">Joint</th><th class="numeric">Component</th><th class="numeric">Mechanism</th><th class="numeric">Cost total</th><th class="numeric">Cost/run p50</th><th class="numeric">Elapsed total${report.latency_comparable ? '' : '*'}</th><th class="numeric">Elapsed/run p50${report.latency_comparable ? '' : '*'}</th><th class="numeric">Tokens</th><th class="numeric">Tools executed / requested</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
+        document.getElementById('summary-table').innerHTML = `<table><thead><tr><th>Visibility</th><th class="numeric">Runs</th><th class="numeric aggregate-correctness">Joint</th><th class="numeric aggregate-correctness">Affected component</th><th class="numeric aggregate-correctness">Mechanism</th><th class="numeric api-cost">Cost total</th><th class="numeric api-cost">Cost/run p50</th><th class="numeric">Elapsed total${report.latency_comparable ? '' : '*'}</th><th class="numeric">Elapsed/run p50${report.latency_comparable ? '' : '*'}</th><th class="numeric">Tokens</th><th class="numeric">Tools executed / requested</th><th class="numeric aggregate-correctness">Non-binding correct-run tools p50</th><th class="numeric">Discovery</th><th class="numeric">Exact repeats</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
         const note = document.getElementById('pricing-note');
         const limitations = [];
         if (!report.correctness_aggregation_comparable) limitations.push('Correctness totals are hidden because the report combines datasets with different answer taxonomies; use the case matrix.');
@@ -341,23 +371,43 @@
             : `effective ${esc(report.pricing.effective_from)}`;
           const pricingDetail = report.pricing.note ? ` · ${esc(report.pricing.note)}` : '';
           note.innerHTML = `Estimated API cost at ${rateMoney(report.pricing.input_per_million)}/MTok input and ${rateMoney(report.pricing.output_per_million)}/MTok output · ${pricingDate}${pricingDetail} · <a href="${esc(report.pricing.source)}">source</a>${limitations.length ? `<br>${limitations.map(esc).join('<br>')}` : ''}`;
+        } else if (runner.endsWith('-subscription')) {
+          note.innerHTML = `This pilot used ${esc(runner)} plan usage. Token counts are recorded, but API dollar pricing does not apply.${limitations.length ? `<br>${limitations.map(esc).join('<br>')}` : ''}`;
         } else {
           note.innerHTML = `No pricing snapshot is registered for this model; token counts remain authoritative.${limitations.length ? `<br>${limitations.map(esc).join('<br>')}` : ''}`;
         }
+      }
+
+      function renderPairedMetrics() {
+        const comparisons = report.paired_primary_comparisons || [];
+        const metricLabel = value => value === 'rows_returned' ? 'GreptimeDB rows returned' : 'Calls to joint-correct diagnosis';
+        const rows = comparisons.map(item => `<tr>
+          <td>${esc(metricLabel(item.metric))}</td>
+          <td>${esc(labels[item.candidate] || item.candidate)} vs ${esc(labels[item.baseline] || item.baseline)}</td>
+          <td class="numeric">${num(item.paired_observations)}</td>
+          <td class="numeric">${num(item.better)} / ${num(item.worse)} / ${num(item.ties)}</td>
+          <td class="numeric">${item.median_delta == null ? '—' : num(item.median_delta)}</td>
+          <td class="numeric">${item.sign_test_p_value == null ? '—' : Number(item.sign_test_p_value).toFixed(4)}</td>
+        </tr>`).join('');
+        document.getElementById('paired-metrics').innerHTML = `<table><thead><tr><th>Metric</th><th>Comparison</th><th class="numeric">Pairs</th><th class="numeric">Better / worse / ties</th><th class="numeric">Median delta</th><th class="numeric">Sign-test p</th></tr></thead><tbody>${rows || '<tr><td colspan="6">No eligible pairs.</td></tr>'}</tbody></table>`;
       }
 
       function renderCaseSummary(runs) {
         const rows = levels.map(level => {
           const items = runs.filter(item => runOf(item).visibility === level);
           if (!items.length) return '';
-          const joint = items.filter(item => evaluationOf(item).joint_match).length;
-          const budgetHits = items.filter(item => runOf(item).tool_budget_exhausted).length;
+          const joint = scoreOf(items, 'joint_match');
+          const component = scoreOf(items, 'affected_component_match');
+          const mechanism = items.filter(item => evaluationOf(item).fault_type_match).length;
+          const budgetHits = items.filter(item => budgetHit(runOf(item))).length;
           const requestedTools = items.reduce((sum, item) => sum + requestedToolCount(runOf(item)), 0);
+          const correctItems = items.filter(item => !budgetHit(runOf(item)) && evaluationOf(item).joint_match);
+          const componentCorrectItems = items.filter(item => !budgetHit(runOf(item)) && evaluationField(evaluationOf(item), 'affected_component_match') === true);
           const predictions = new Map();
           items.forEach(item => {
             const run = runOf(item), diagnosis = run.diagnosis || {};
             const mechanism = evaluationOf(item).predicted_fault_type || diagnosis.fault_type || '—';
-            const key = `${diagnosis.root_cause_component || '—'} · ${mechanism}`;
+            const key = `${predictionOf(run)} · ${mechanism}`;
             predictions.set(key, (predictions.get(key) || 0) + 1);
           });
           const prediction = [...predictions.entries()].map(([key, count]) => `${esc(key)}${count > 1 ? ` ×${count}` : ''}`).join('<br>');
@@ -369,17 +419,23 @@
           return `<tr class="series-${esc(level)}">
             <td><span class="level">${esc(labels[level] || level)}</span></td>
             <td class="prediction">${prediction}</td>
-            <td class="${joint === items.length ? 'match' : 'miss'}">${joint}/${items.length}</td>
+            <td class="${joint.total && joint.matches === joint.total ? 'match' : 'miss'}">${joint.text}</td>
+            <td class="${component.total && component.matches === component.total ? 'match' : 'miss'}">${component.text}</td>
+            <td class="${mechanism === items.length ? 'match' : 'miss'}">${mechanism}/${items.length}</td>
             <td class="numeric">${onset == null ? '—' : num(onset) + 's'}</td>
-            <td class="numeric">${money(estimatedCost)}</td>
+            <td class="numeric api-cost">${money(estimatedCost)}</td>
             <td class="numeric">${duration(median(elapsed))}</td>
             <td class="numeric">${num(items.reduce((sum, item) => sum + tracesOf(runOf(item)).length, 0))} / ${num(requestedTools)}</td>
+            <td class="numeric">${correctItems.length ? num(median(correctItems.map(item => evaluationOf(item).correct_completion_tool_calls))) : '—'}</td>
+            <td class="numeric">${componentCorrectItems.length ? num(median(componentCorrectItems.map(item => evaluationOf(item).tool_calls_executed))) : '—'}</td>
+            <td class="numeric">${num(median(items.map(item => evaluationOf(item).discovery_calls)))}</td>
+            <td class="numeric">${median(items.map(item => evaluationOf(item).first_component_mention_turn)) == null ? '—' : num(median(items.map(item => evaluationOf(item).first_component_mention_turn)))}</td>
             <td class="numeric ${budgetHits ? 'miss' : ''}">${budgetHits}/${items.length}</td>
             <td class="numeric">${databaseLoad}</td>
             <td class="numeric">${num(items.reduce((sum, item) => sum + errorCount(runOf(item)), 0))}</td>
           </tr>`;
         }).join('');
-        return `<table><thead><tr><th>Visibility</th><th>Predictions</th><th>Joint</th><th class="numeric">Onset p50</th><th class="numeric">Cost total</th><th class="numeric">Elapsed p50</th><th class="numeric">Tools executed / requested</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
+        return `<table><thead><tr><th>Visibility</th><th>Predictions</th><th>Joint</th><th>Affected component</th><th>Mechanism</th><th class="numeric">Onset p50</th><th class="numeric api-cost">Cost total</th><th class="numeric">Elapsed p50</th><th class="numeric">Tools executed / requested</th><th class="numeric">Non-binding joint-correct tools p50</th><th class="numeric">Non-binding component-correct tools p50</th><th class="numeric">Discovery p50</th><th class="numeric">First component mention p50*</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
       }
 
       function renderCase(index) {
@@ -387,7 +443,9 @@
         const graph = item.semantic_coverage?.graph || {};
         const context = item.case_context || {};
         const coverage = graph.status ? ` · graph ${graph.status}: ${graph.distinct_entity_count || 0} entities / ${graph.distinct_relationship_count || 0} relationships` : '';
-        document.getElementById('truth').textContent = `${caseLabel(item, index)} · truth ${truth.component || '—'} / ${truth.fault_type || '—'} / ${truth.inject_time || '—'}${coverage}`;
+        const alternatives = (truth.component_alternatives || []).length ? `; conflicting labels: ${truth.component_alternatives.join(', ')}` : '';
+        const componentContract = truth.component_scoreable === false ? `component unscored (${truthComponentOf(truth)}${alternatives})` : `component ${truthComponentOf(truth)}`;
+        document.getElementById('truth').textContent = `${caseLabel(item, index)} · truth ${componentContract} / ${truth.fault_type || '—'} / ${truth.inject_time || '—'}${coverage}`;
         document.getElementById('case-context').textContent = `Telemetry window ${context.window_seconds == null ? 'unknown' : duration(context.window_seconds)} · before alert ${context.telemetry_before_alert_seconds == null ? 'unknown' : duration(context.telemetry_before_alert_seconds)} · known pre-fault baseline ${context.known_pre_fault_seconds == null ? 'unavailable' : duration(context.known_pre_fault_seconds)} · fault taxonomy ${num(context.fault_taxonomy_size)} labels`;
         document.getElementById('case-summary').innerHTML = renderCaseSummary(runs);
         tabs.innerHTML = ''; sessions.innerHTML = '';
@@ -415,17 +473,17 @@
           const cells = levels.map(level => {
             const results = (item.runs || []).filter(run => runOf(run).visibility === level);
             if (!results.length) return '<td class="muted">not run</td>';
-            const joint = results.filter(result => evaluationOf(result).joint_match).length;
+            const joint = scoreOf(results, 'joint_match');
             const components = new Map();
             results.forEach(result => {
-              const component = runOf(result).diagnosis?.root_cause_component || '—';
+              const component = predictionOf(runOf(result));
               components.set(component, (components.get(component) || 0) + 1);
             });
             const predictions = [...components.entries()].map(([name, count]) => `${esc(name)}${count > 1 ? ` ×${count}` : ''}`).join(', ');
-            const pass = joint === results.length;
-            return `<td class="${pass ? 'matrix-pass' : 'matrix-fail'}">${joint}/${results.length} · ${predictions}</td>`;
+            const pass = joint.total && joint.matches === joint.total;
+            return `<td class="${pass ? 'matrix-pass' : joint.total ? 'matrix-fail' : 'muted'}">${joint.text} · ${predictions}</td>`;
           }).join('');
-          return `<tr><td><b>${esc(caseLabel(item, index))}</b></td><td>${esc(truth.component || '—')} / ${esc(truth.fault_type || '—')}</td><td>${esc(graphCoverage)}</td>${cells}</tr>`;
+          return `<tr><td><b>${esc(caseLabel(item, index))}</b></td><td>${esc(truthComponentOf(truth))} / ${esc(truth.fault_type || '—')}</td><td>${esc(graphCoverage)}</td>${cells}</tr>`;
         }).join('');
         document.getElementById('case-matrix').innerHTML = `<table><thead><tr><th>Dataset case</th><th>Ground truth</th><th>Graph coverage</th>${header}</tr></thead><tbody>${rows}</tbody></table>`;
       }
@@ -441,28 +499,43 @@
         const evidence = d.evidence || [];
         const cited = new Map(evidence.map(e => [e.query_id, e.claim]));
         const traces = tracesOf(run);
+        const rejected = run.rejected_tool_calls || [];
         let cursor = 0;
+        let rejectedCursor = 0;
         const turns = (run.responses || []).map((response, index) => {
           const blocks = response.content || [];
           const names = blocks.filter(b => b.type === 'tool_use').map(b => b.name);
           const body = blocks.map(block => {
             if (block.type === 'text') return `<div class="assistant-text">${esc(block.text)}</div>`;
-            if (block.type === 'thinking') return `<details class="thinking"><summary>Reasoning</summary><div>${esc(block.thinking)}</div></details>`;
+            if (block.type === 'thinking') return block.thinking ? `<details class="thinking"><summary>Reasoning</summary><div>${esc(block.thinking)}</div></details>` : '';
             if (block.type === 'tool_use' && block.name === 'submit_diagnosis') {
               return `<div class="tool"><div class="tool-head"><span class="tool-name">submit_diagnosis</span></div><pre>${esc(JSON.stringify(block.input, null, 2))}</pre></div>`;
             }
-            if (block.type === 'tool_use') return renderTool(traces[cursor++], block, cited);
+            if (block.type === 'tool_use') {
+              const rejectedTrace = rejected[rejectedCursor];
+              if (rejectedTrace?.tool_name === block.name) {
+                rejectedCursor += 1;
+                return renderTool(rejectedTrace, block, cited);
+              }
+              return renderTool(traces[cursor++], block, cited);
+            }
             return `<pre>${esc(JSON.stringify(block, null, 2))}</pre>`;
           }).join('');
           const usage = response.usage || {};
+          const turnUsage = usage.input_tokens == null && usage.output_tokens == null
+            ? 'usage unavailable'
+            : `${num(usage.input_tokens)} in · ${num(usage.output_tokens)} out`;
           return `<details class="turn series-${esc(run.visibility)}" ${index === 0 ? 'open' : ''}>
-            <summary><span class="turn-title">Turn ${String(index + 1).padStart(2, '0')} · ${esc(names.join(' + ') || response.stop_reason || 'analysis')}</span><span class="turn-meta">${num(usage.input_tokens)} in · ${num(usage.output_tokens)} out</span></summary>
+            <summary><span class="turn-title">Turn ${String(index + 1).padStart(2, '0')} · ${esc(names.join(' + ') || response.stop_reason || 'analysis')}</span><span class="turn-meta">${turnUsage}</span></summary>
             <div class="turn-body">${body || '<span class="muted">No content blocks.</span>'}</div>
           </details>`;
         }).join('');
         const evidenceHtml = evidence.map(e => `<li><span class="qid">${esc(e.query_id)}</span><span>${esc(e.claim)}</span></li>`).join('') || '<li class="muted">No cited evidence.</li>';
+        const runTokens = run.usage?.input_tokens == null && run.usage?.output_tokens == null
+          ? 'run usage unavailable'
+          : `${num(Number(run.usage?.input_tokens || 0) + Number(run.usage?.output_tokens || 0))} run tokens`;
         return `<article class="session-panel" id="${esc(id)}" role="tabpanel" aria-labelledby="${esc(tabId)}" ${hidden ? 'hidden' : ''}>
-          <div class="session-header"><div class="session-diagnosis"><h3>${esc(d.root_cause_component)} · ${esc(d.fault_type)}</h3><div class="confidence">Run ${Number(item.repetition || 0) + 1} · position ${item.position == null ? 'unknown' : Number(item.position) + 1} · confidence ${num((d.confidence || 0) * 100)}% · mechanism ${esc(ev.predicted_fault_type || d.fault_type || 'legacy')} / truth ${esc(ev.expected_fault_type || 'legacy')} · category ${esc(ev.predicted_fault_category || 'legacy')} / truth ${esc(ev.expected_fault_category || 'legacy')} · ${ev.valid_evidence_count || 0}/${ev.cited_evidence_count || 0} evidence IDs valid · tools ${num(traces.length)}/${num(requestedToolCount(run))}${run.tool_budget_exhausted ? ' · budget exhausted' : ''} · ${esc(d.onset_time || 'onset not submitted')}${databaseLoad ? ` · DB ${num(databaseLoad.query_count)} queries / ${num(databaseLoad.rows_returned)} rows / max concurrency ${num(databaseLoad.max_concurrency)}` : ''}</div><p>${esc(d.explanation || '')}</p></div>
+          <div class="session-header"><div class="session-diagnosis"><h3>${esc(predictionOf(run))} · ${esc(d.fault_type || 'no diagnosis')}</h3><div class="confidence">Run ${Number(item.repetition || 0) + 1} · position ${item.position == null ? 'unknown' : Number(item.position) + 1} · confidence ${num((d.confidence || 0) * 100)}% · mechanism ${esc(ev.predicted_fault_type || d.fault_type || 'none')} / truth ${esc(ev.expected_fault_type || 'legacy')} · category ${esc(ev.predicted_fault_category || 'none')} / truth ${esc(ev.expected_fault_category || 'legacy')} · ${ev.valid_evidence_count || 0}/${ev.cited_evidence_count || 0} evidence IDs valid · tools ${num(traces.length)}/${num(requestedToolCount(run))}${budgetHit(run) ? ' · budget reached' : ''} · ${runTokens} · ${esc(d.onset_time || 'onset not submitted')}${run.error ? ` · failed: ${esc(run.error)}` : ''}${databaseLoad ? ` · DB ${num(databaseLoad.query_count)} queries / ${num(databaseLoad.rows_returned)} rows / max concurrency ${num(databaseLoad.max_concurrency)}` : ''}</div><p>${esc(d.explanation || '')}</p></div>
           <div class="actions"><button type="button" class="small-action" data-action="expand" data-target="${esc(id)}">Expand all</button><button type="button" class="small-action" data-action="collapse" data-target="${esc(id)}">Collapse all</button></div></div>
           <h3>Evidence</h3><ol class="evidence">${evidenceHtml}</ol>
           <h3>Interaction timeline</h3><div class="timeline">${turns}</div>

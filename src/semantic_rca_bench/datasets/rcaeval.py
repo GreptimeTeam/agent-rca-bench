@@ -104,7 +104,7 @@ class RCAEvalRepository:
                 fault_taxonomy=fault_taxonomy,
             ),
             ground_truth=GroundTruth(
-                component=str(row["root_cause_service"]),
+                affected_component=str(row["root_cause_service"]),
                 fault_type=str(row["fault"]),
                 inject_time=inject_time,
             ),
@@ -159,9 +159,7 @@ def ingest_case(client: GreptimeClient, case: RCAEvalCase) -> IngestCounts:
 
     if case.traces_path:
         writer = OtlpTraceWriter(client, case.input.database)
-        counts.trace_spans = writer.write(
-            _trace_span(row) for row in _iter_rows(case.traces_path)
-        )
+        counts.trace_spans = writer.write(_trace_span(row) for row in _iter_rows(case.traces_path))
         counts.rejected_trace_spans = writer.rejected_spans
         counts.remapped_trace_ids = writer.stats.remapped_trace_ids
         counts.remapped_span_ids = writer.stats.remapped_span_ids
@@ -175,9 +173,7 @@ def source_audit(case: RCAEvalCase) -> dict[str, object]:
         "window_rows": {
             "metric_rows": metric_file.metadata.num_rows,
             "metric_series": len(metric_file.schema.names) - 1,
-            "log_rows": (
-                pq.ParquetFile(case.logs_path).metadata.num_rows if case.logs_path else 0
-            ),
+            "log_rows": (pq.ParquetFile(case.logs_path).metadata.num_rows if case.logs_path else 0),
             "trace_rows": (
                 pq.ParquetFile(case.traces_path).metadata.num_rows if case.traces_path else 0
             ),
@@ -212,8 +208,7 @@ def validate_ingest(
     )
     metric_tables = [str(row[0]) for row in semantics.rows if row[1] == "metric"]
     metric_stats = [
-        _database_table_stats(client, table, "greptime_timestamp")
-        for table in metric_tables
+        _database_table_stats(client, table, "greptime_timestamp") for table in metric_tables
     ]
     database_counts = {
         "metric_samples": sum(int(stats["row_count"]) for stats in metric_stats),
@@ -239,7 +234,7 @@ def validate_ingest(
         f"""
         SELECT COUNT(*) AS relationship_count
         FROM greptime_private.semantic_relationships
-        WHERE observed_at >= '{start}' AND observed_at <= '{end}'
+        WHERE observed_at >= '{start}' AND observed_at < '{end}'
         """
     )
     return {

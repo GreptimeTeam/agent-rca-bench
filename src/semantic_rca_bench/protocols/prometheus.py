@@ -79,9 +79,7 @@ def write_series(
 def write_series_batch(
     client: GreptimeClient,
     database: str,
-    series: Iterable[
-        tuple[str, Iterable[tuple[int, float]], dict[str, str] | None]
-    ],
+    series: Iterable[tuple[str, Iterable[tuple[int, float]], dict[str, str] | None]],
     *,
     batch_size: int = 100,
 ) -> None:

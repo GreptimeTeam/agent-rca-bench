@@ -72,6 +72,44 @@ def test_information_schema_query_requires_database_scope() -> None:
         gateway.execute("SELECT table_name FROM information_schema.table_semantics")
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT DISTINCT table_schema FROM information_schema.tables "
+        "WHERE table_name LIKE '%benchmark_db%'",
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'benchmark_db' OR table_name LIKE '%'",
+        "SELECT table_name FROM information_schema.tables WHERE NOT table_schema = 'benchmark_db'",
+    ],
+)
+def test_information_schema_scope_cannot_be_satisfied_by_text_or_bypass(
+    query: str,
+) -> None:
+    gateway = QueryGateway(StubClient(), Visibility.TABLE_SEMANTICS)  # type: ignore[arg-type]
+
+    with pytest.raises(QueryRejected, match="AND-conjunctive"):
+        gateway.execute(query)
+
+
+def test_information_schema_scope_accepts_qualified_conjunctive_predicate() -> None:
+    gateway = QueryGateway(StubClient(), Visibility.TABLE_SEMANTICS)  # type: ignore[arg-type]
+
+    gateway.execute(
+        "SELECT t.table_name FROM information_schema.tables AS t "
+        "WHERE t.table_schema = 'benchmark_db' AND t.table_name LIKE 'metric%'"
+    )
+
+
+def test_information_schema_scope_rejects_predicate_from_nested_select() -> None:
+    gateway = QueryGateway(StubClient(), Visibility.TABLE_SEMANTICS)  # type: ignore[arg-type]
+
+    with pytest.raises(QueryRejected, match="AND-conjunctive"):
+        gateway.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE EXISTS (SELECT 1 WHERE table_schema = 'benchmark_db')"
+        )
+
+
 def test_discovery_filters_before_applying_row_limit() -> None:
     class CrowdedClient:
         database = "benchmark_db"

@@ -1,7 +1,12 @@
 import pytest
 
 from semantic_rca_bench.contracts import QueryResult, Visibility
-from semantic_rca_bench.greptimedb.profile import TableProfileError, TableProfiler
+from semantic_rca_bench.greptimedb.profile import (
+    TableProfileError,
+    TableProfiler,
+    _matched_search_terms,
+    _search_terms,
+)
 
 
 class StubClient:
@@ -44,6 +49,26 @@ class StubClient:
                     "entity_declarations",
                 ],
                 rows=[
+                    [
+                        "system_io_w_s",
+                        "metric",
+                        "prometheus",
+                        None,
+                        None,
+                        "inferred",
+                        None,
+                        None,
+                    ],
+                    [
+                        "system_region_status",
+                        "metric",
+                        "prometheus",
+                        None,
+                        None,
+                        "inferred",
+                        None,
+                        None,
+                    ],
                     [
                         "JVM_Memory_HeapMemoryUsage",
                         "metric",
@@ -162,3 +187,28 @@ def test_semantic_search_does_not_rank_fields_omitted_from_sql_predicate() -> No
     assert result["matched_table_count"] == 0
     assert result["matches"] == []
     assert "COALESCE(source" not in client.queries[0]
+
+
+def test_semantic_search_keeps_io_as_one_token_and_drops_one_letter_terms() -> None:
+    assert _search_terms("node disk write I/O") == ["node", "disk", "write", "io"]
+    assert _search_terms("system_io_w_s") == ["system", "io"]
+    assert _search_terms("CPU of a pod") == ["cpu", "pod"]
+
+
+def test_semantic_search_matches_short_terms_at_token_boundaries() -> None:
+    result = TableProfiler(StubClient(), Visibility.TABLE_SEMANTICS).search("I/O")
+
+    assert result["matched_table_count"] == 1
+    assert result["matches"][0]["table"] == "system_io_w_s"
+    assert result["matches"][0]["matched_terms"] == ["io"]
+
+
+def test_semantic_search_expands_common_io_direction_abbreviations() -> None:
+    result = TableProfiler(StubClient(), Visibility.TABLE_SEMANTICS).search("write I/O")
+
+    assert result["matches"][0]["table"] == "system_io_w_s"
+    assert result["matches"][0]["matched_terms"] == ["write", "io"]
+
+
+def test_semantic_search_does_not_expand_nonadjacent_io_direction_tokens() -> None:
+    assert _matched_search_terms(["write", "io"], "unrelated_w_metric_io") == ["io"]

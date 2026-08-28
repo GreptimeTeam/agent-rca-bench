@@ -6,7 +6,9 @@ import subprocess
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -15,11 +17,14 @@ from pydantic import ValidationError
 
 from semantic_rca_bench.contracts import (
     AgentRun,
+    AgentRunner,
     AgentUsage,
     CaseInput,
+    DatabaseLoad,
     Diagnosis,
     FaultCategory,
     QueryResult,
+    RejectedToolCall,
     ToolTrace,
     Visibility,
 )
@@ -29,6 +34,26 @@ from semantic_rca_bench.greptimedb.visibility import QueryGateway
 
 class AgentError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class ToolInvocation:
+    content: str
+    is_error: bool
+    remaining: int
+
+
+@dataclass
+class StructuredAgentResult:
+    output: dict[str, object] | None
+    error: str | None
+    tool_calls: list[ToolTrace]
+    rejected_tool_calls: list[RejectedToolCall]
+    tool_calls_requested: int
+    tool_budget_exhausted: bool
+    usage: AgentUsage
+    elapsed_seconds: float
+    responses: list[dict[str, object]]
 
 
 ANTHROPIC_KEYCHAIN_SERVICE = "semantic-rca-bench-anthropic"
@@ -76,10 +101,20 @@ SUBMIT_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "root_cause_component": {
+            "affected_component": {
                 "type": "string",
                 "description": (
-                    "The component where the causal failure originates, not a downstream victim."
+                    "The workload or infrastructure component directly affected by the causal "
+                    "fault. For a dependency failure, name the caller that lost access here and "
+                    "put the unavailable dependency in causal_dependency."
+                ),
+            },
+            "causal_dependency": {
+                "type": ["string", "null"],
+                "description": (
+                    "The downstream service, datastore, or external endpoint whose failure "
+                    "caused the affected component to fail, or null when no dependency is "
+                    "identified."
                 ),
             },
             "fault_type": {
@@ -136,7 +171,8 @@ SUBMIT_TOOL = {
             "explanation": {"type": "string"},
         },
         "required": [
-            "root_cause_component",
+            "affected_component",
+            "causal_dependency",
             "fault_category",
             "fault_type",
             "confidence",
@@ -149,6 +185,139 @@ SUBMIT_TOOL = {
 }
 
 
+class InvestigationSession:
+    def __init__(
+        self,
+        gateway: QueryGateway,
+        case_input: CaseInput,
+        visibility: Visibility,
+        *,
+        max_tool_calls: int,
+        semantic_coverage: dict[str, object] | None,
+        investigation_tools: list[dict[str, object]] | None = None,
+    ) -> None:
+        self.gateway = gateway
+        self.case_input = case_input
+        self.visibility = visibility
+        self.max_tool_calls = max_tool_calls
+        self.semantic_coverage = semantic_coverage
+        self.profiler = TableProfiler(gateway.client, visibility)
+        self.tool_calls: list[ToolTrace] = []
+        self.rejected_tool_calls: list[RejectedToolCall] = []
+        self.tool_calls_requested = 0
+        self.tool_budget_exhausted = False
+        tools = (
+            investigation_tools
+            if investigation_tools is not None
+            else _investigation_tools(
+                visibility,
+                case_input.fault_taxonomy,
+                semantic_coverage,
+            )
+        )
+        self.allowed_tools = {str(tool["name"]) for tool in tools}
+
+    def invoke(self, tool_name: str, arguments: dict[str, object]) -> ToolInvocation:
+        self.tool_calls_requested += 1
+        if tool_name not in self.allowed_tools:
+            error = f"unknown or unavailable tool: {tool_name}"
+            self.rejected_tool_calls.append(
+                RejectedToolCall(tool_name=tool_name, input=arguments, error=error)
+            )
+            return ToolInvocation(
+                content=error,
+                is_error=True,
+                remaining=self.remaining,
+            )
+        if len(self.tool_calls) >= self.max_tool_calls:
+            self.tool_budget_exhausted = True
+            return ToolInvocation(
+                content=f"tool call budget exhausted ({self.max_tool_calls})",
+                is_error=True,
+                remaining=0,
+            )
+        load_before = self._load_snapshot()
+        try:
+            output = self._execute(tool_name, arguments)
+            database_load = _database_load_delta(load_before, self._load_snapshot())
+            output, query_id = _citation_output(output, len(self.tool_calls) + 1)
+            self.tool_calls.append(
+                ToolTrace(
+                    tool_name=tool_name,
+                    input=arguments,
+                    query_id=query_id,
+                    output=output,
+                    database_load=database_load,
+                )
+            )
+            return ToolInvocation(
+                content=json.dumps(output, separators=(",", ":"), default=str),
+                is_error=False,
+                remaining=self.remaining,
+            )
+        except Exception as error:
+            database_load = _database_load_delta(load_before, self._load_snapshot())
+            self.tool_calls.append(
+                ToolTrace(
+                    tool_name=tool_name,
+                    input=arguments,
+                    error=str(error),
+                    database_load=database_load,
+                )
+            )
+            return ToolInvocation(
+                content=str(error),
+                is_error=True,
+                remaining=self.remaining,
+            )
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.max_tool_calls - len(self.tool_calls))
+
+    def _execute(self, tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
+        if tool_name == "execute_sql":
+            result = self.gateway.execute(str(arguments.get("query", "")))
+            return result.model_dump(mode="json")
+        if tool_name == "describe_table":
+            return self.profiler.describe(
+                str(arguments.get("table", "")),
+                include_samples=bool(arguments.get("include_samples", False)),
+                sample_limit=int(arguments.get("sample_limit", 1)),
+            )
+        if tool_name == "search_table_semantics":
+            output = self.profiler.search(
+                str(arguments.get("query", "")),
+                signal_type=(
+                    str(arguments["signal_type"]) if arguments.get("signal_type") else None
+                ),
+                limit=int(arguments.get("limit", 50)),
+            )
+            return _catalog_search_output(output, self.case_input.fault_taxonomy)
+        result = self.gateway.execute(_semantic_graph_query(self.case_input, arguments))
+        return _semantic_graph_output(result, arguments)
+
+    def _load_snapshot(self) -> DatabaseLoad | None:
+        snapshot = getattr(self.gateway.client, "query_load_snapshot", None)
+        return snapshot() if callable(snapshot) else None
+
+
+def _database_load_delta(
+    before: DatabaseLoad | None,
+    after: DatabaseLoad | None,
+) -> DatabaseLoad | None:
+    if before is None or after is None:
+        return None
+    query_count = after.query_count - before.query_count
+    return DatabaseLoad(
+        query_count=query_count,
+        failed_query_count=after.failed_query_count - before.failed_query_count,
+        rows_returned=after.rows_returned - before.rows_returned,
+        query_elapsed_seconds=after.query_elapsed_seconds - before.query_elapsed_seconds,
+        max_concurrency=after.max_concurrency if query_count else 0,
+    )
+
+
 def run_agent(
     gateway: QueryGateway,
     case_input: CaseInput,
@@ -156,170 +325,211 @@ def run_agent(
     *,
     model: str,
     max_tool_calls: int = 24,
-    max_turns: int = 30,
+    max_turns: int | None = None,
     max_tokens: int = 4096,
     semantic_coverage: dict[str, object] | None = None,
 ) -> AgentRun:
-    client = _anthropic_client(model)
-    messages: list[dict[str, Any]] = [
-        {
-            "role": "user",
-            "content": _incident_prompt(case_input),
-        }
-    ]
-    profiler = TableProfiler(gateway.client, visibility)
-    tool_traces: list[ToolTrace] = []
-    tool_calls_requested = 0
-    tool_budget_exhausted = False
+    tools = _investigation_tools(
+        visibility,
+        case_input.fault_taxonomy,
+        semantic_coverage,
+    )
+    result = run_structured_api_agent(
+        gateway,
+        case_input,
+        visibility,
+        model=model,
+        system_prompt=_system_prompt(),
+        user_prompt=_incident_prompt(case_input, max_tool_calls),
+        investigation_tools=tools,
+        output_tool=_submit_tool(case_input.fault_taxonomy),
+        validate_output=lambda value: Diagnosis.model_validate(value).model_dump(mode="json"),
+        max_tool_calls=max_tool_calls,
+        max_turns=max_turns,
+        max_tokens=max_tokens,
+        semantic_coverage=semantic_coverage,
+    )
+    diagnosis = Diagnosis.model_validate(result.output) if result.output is not None else None
+    error = result.error
+    if error and error.startswith("agent did not submit final output within "):
+        error = error.replace("final output", "a diagnosis", 1)
+    return AgentRun(
+        run_id=uuid.uuid4().hex,
+        visibility=visibility,
+        model=model,
+        runner=AgentRunner.API,
+        diagnosis=diagnosis,
+        error=error,
+        tool_calls=result.tool_calls,
+        rejected_tool_calls=result.rejected_tool_calls,
+        tool_calls_requested=result.tool_calls_requested,
+        tool_budget_exhausted=result.tool_budget_exhausted,
+        usage=result.usage,
+        elapsed_seconds=result.elapsed_seconds,
+        responses=result.responses,
+    )
+
+
+def run_structured_api_agent(
+    gateway: QueryGateway,
+    case_input: CaseInput,
+    visibility: Visibility,
+    *,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    investigation_tools: list[dict[str, object]],
+    output_tool: dict[str, object],
+    validate_output: Callable[[object], dict[str, object]],
+    max_tool_calls: int,
+    max_turns: int | None,
+    max_tokens: int = 4096,
+    semantic_coverage: dict[str, object] | None = None,
+) -> StructuredAgentResult:
+    if max_turns is None:
+        max_turns = max_tool_calls + 10
+    if max_turns < max_tool_calls + 1:
+        raise ValueError("max_turns must allow every tool call and a final output turn")
+    messages: list[dict[str, Any]] = [{"role": "user", "content": user_prompt}]
+    session = InvestigationSession(
+        gateway,
+        case_input,
+        visibility,
+        max_tool_calls=max_tool_calls,
+        semantic_coverage=semantic_coverage,
+        investigation_tools=investigation_tools,
+    )
     responses: list[dict[str, object]] = []
     usage = AgentUsage()
     started = time.monotonic()
+    output_tool_name = str(output_tool["name"])
+    try:
+        client = _anthropic_client(model)
+    except Exception as error:
+        return _structured_result(
+            session,
+            usage,
+            responses,
+            started,
+            error=f"agent provider failed: {error}",
+        )
 
     for _ in range(max_turns):
-        response = client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=_system_prompt(),
-            tools=_agent_tools(visibility, case_input.fault_taxonomy, semantic_coverage),
-            messages=messages,
-        )
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system_prompt,
+                tools=[*investigation_tools, output_tool],
+                messages=messages,
+            )
+        except Exception as error:
+            return _structured_result(
+                session,
+                usage,
+                responses,
+                started,
+                error=f"agent provider failed: {error}",
+            )
         responses.append(response.model_dump(mode="json"))
         usage.input_tokens += response.usage.input_tokens
         usage.output_tokens += response.usage.output_tokens
         messages.append({"role": "assistant", "content": response.content})
 
         tool_uses = [block for block in response.content if block.type == "tool_use"]
-        diagnosis_block = next(
-            (block for block in tool_uses if block.name == "submit_diagnosis"),
+        output_block = next(
+            (block for block in tool_uses if block.name == output_tool_name),
             None,
         )
-        diagnosis_error: str | None = None
-        if diagnosis_block is not None:
+        output_error: str | None = None
+        if output_block is not None:
             try:
-                diagnosis = Diagnosis.model_validate(diagnosis_block.input)
-            except ValidationError as error:
-                diagnosis_error = str(error)
+                output = validate_output(output_block.input)
+            except (ValidationError, ValueError, TypeError) as error:
+                output_error = str(error)
             else:
-                return AgentRun(
-                    run_id=uuid.uuid4().hex,
-                    visibility=visibility,
-                    model=model,
-                    diagnosis=diagnosis,
-                    tool_calls=tool_traces,
-                    tool_calls_requested=tool_calls_requested,
-                    tool_budget_exhausted=tool_budget_exhausted,
-                    usage=usage,
-                    elapsed_seconds=time.monotonic() - started,
-                    responses=responses,
+                return _structured_result(
+                    session,
+                    usage,
+                    responses,
+                    started,
+                    output=output,
                 )
 
         if not tool_uses:
             messages.append(
                 {
                     "role": "user",
-                    "content": "Continue the investigation or call submit_diagnosis.",
+                    "content": (
+                        f"Continue the investigation or call {output_tool_name}. "
+                        f"You have {session.remaining} investigation "
+                        "tool calls remaining."
+                    ),
                 }
             )
             continue
 
         tool_results: list[dict[str, object]] = []
         for tool_use in tool_uses:
-            if tool_use.name == "submit_diagnosis":
+            if tool_use.name == output_tool_name:
                 tool_results.append(
                     {
                         "type": "tool_result",
                         "tool_use_id": tool_use.id,
-                        "content": f"invalid diagnosis: {diagnosis_error}",
+                        "content": f"invalid final output: {output_error}",
                         "is_error": True,
                     }
                 )
                 continue
-            tool_calls_requested += 1
-            if tool_use.name not in {
-                "execute_sql",
-                "describe_table",
-                "search_table_semantics",
-                "query_semantic_graph",
-            }:
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_use.id,
-                        "content": f"unknown tool: {tool_use.name}",
-                        "is_error": True,
-                    }
-                )
-                continue
-            if len(tool_traces) >= max_tool_calls:
-                tool_budget_exhausted = True
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_use.id,
-                        "content": f"tool call budget exhausted ({max_tool_calls})",
-                        "is_error": True,
-                    }
-                )
-                continue
-            try:
-                if tool_use.name == "execute_sql":
-                    query = str(tool_use.input.get("query", ""))
-                    result = gateway.execute(query)
-                    output = result.model_dump(mode="json")
-                elif tool_use.name == "describe_table":
-                    table = str(tool_use.input.get("table", ""))
-                    output = profiler.describe(
-                        table,
-                        include_samples=bool(tool_use.input.get("include_samples", False)),
-                        sample_limit=int(tool_use.input.get("sample_limit", 1)),
-                    )
-                elif tool_use.name == "search_table_semantics":
-                    output = profiler.search(
-                        str(tool_use.input.get("query", "")),
-                        signal_type=(
-                            str(tool_use.input["signal_type"])
-                            if tool_use.input.get("signal_type")
-                            else None
-                        ),
-                        limit=int(tool_use.input.get("limit", 50)),
-                    )
-                    output = _catalog_search_output(output, case_input.fault_taxonomy)
-                else:
-                    arguments = dict(tool_use.input)
-                    result = gateway.execute(_semantic_graph_query(case_input, arguments))
-                    output = _semantic_graph_output(result, arguments)
-                output, query_id = _citation_output(output, len(tool_traces) + 1)
-                tool_traces.append(
-                    ToolTrace(
-                        tool_name=tool_use.name,
-                        input=dict(tool_use.input),
-                        query_id=query_id,
-                        output=output,
-                    )
-                )
-                content = json.dumps(output, separators=(",", ":"), default=str)
-                is_error = False
-            except Exception as error:
-                tool_traces.append(
-                    ToolTrace(
-                        tool_name=tool_use.name,
-                        input=dict(tool_use.input),
-                        error=str(error),
-                    )
-                )
-                content = str(error)
-                is_error = True
+            invocation = session.invoke(tool_use.name, dict(tool_use.input))
             tool_results.append(
                 {
                     "type": "tool_result",
                     "tool_use_id": tool_use.id,
-                    "content": content,
-                    "is_error": is_error,
+                    "content": invocation.content,
+                    "is_error": invocation.is_error,
                 }
             )
+        tool_results.append(
+            {
+                "type": "text",
+                "text": (
+                    f"Investigation budget: {session.remaining} tool calls remain. "
+                    f"Call {output_tool_name} before the budget reaches zero."
+                ),
+            }
+        )
         messages.append({"role": "user", "content": tool_results})
 
-    raise AgentError(f"agent did not submit a diagnosis within {max_turns} turns")
+    return _structured_result(
+        session,
+        usage,
+        responses,
+        started,
+        error=f"agent did not submit final output within {max_turns} turns",
+    )
+
+
+def _structured_result(
+    session: InvestigationSession,
+    usage: AgentUsage,
+    responses: list[dict[str, object]],
+    started: float,
+    *,
+    output: dict[str, object] | None = None,
+    error: str | None = None,
+) -> StructuredAgentResult:
+    return StructuredAgentResult(
+        output=output,
+        error=error,
+        tool_calls=session.tool_calls,
+        rejected_tool_calls=session.rejected_tool_calls,
+        tool_calls_requested=session.tool_calls_requested,
+        tool_budget_exhausted=session.tool_budget_exhausted,
+        usage=usage,
+        elapsed_seconds=time.monotonic() - started,
+        responses=responses,
+    )
 
 
 def _anthropic_client(model: str) -> anthropic.Anthropic:
@@ -367,6 +577,18 @@ def _agent_tools(
         tools.append(_semantic_graph_tool(semantic_coverage))
     tools.append(_submit_tool(fault_taxonomy))
     return tools
+
+
+def _investigation_tools(
+    visibility: Visibility,
+    fault_taxonomy: list[str],
+    semantic_coverage: dict[str, object] | None,
+) -> list[dict[str, object]]:
+    return [
+        tool
+        for tool in _agent_tools(visibility, fault_taxonomy, semantic_coverage)
+        if tool["name"] != "submit_diagnosis"
+    ]
 
 
 def _execute_sql_tool(
@@ -595,7 +817,7 @@ def _semantic_graph_query(case_input: CaseInput, arguments: dict[str, object]) -
     start = datetime.fromtimestamp(case_input.time_start, UTC).strftime("%Y-%m-%d %H:%M:%S")
     end = datetime.fromtimestamp(case_input.time_end, UTC).strftime("%Y-%m-%d %H:%M:%S")
     limit = max(1, min(int(arguments.get("limit", 100)), 200))
-    predicates = [f"observed_at >= '{start}'", f"observed_at <= '{end}'"]
+    predicates = [f"observed_at >= '{start}'", f"observed_at < '{end}'"]
 
     if view == "entities":
         _append_graph_filters(predicates, arguments, ("entity_type", "entity_id"))
@@ -625,11 +847,17 @@ def _semantic_graph_query(case_input: CaseInput, arguments: dict[str, object]) -
                SUM(duration_sum) AS duration_sum,
                SUM(duration_count) AS duration_count
         FROM (
-            SELECT DISTINCT window_start, window_end, src_type, src_id, dst_type, dst_id,
-                            rel_type, provenance, confidence, request_count, error_count,
-                            duration_sum, duration_count
+            SELECT window_start, window_end, src_type, src_id, dst_type, dst_id,
+                   rel_type, provenance,
+                   MAX(confidence) AS confidence,
+                   MAX(request_count) AS request_count,
+                   MAX(error_count) AS error_count,
+                   MAX(duration_sum) AS duration_sum,
+                   MAX(duration_count) AS duration_count
             FROM greptime_private.semantic_relationships
             WHERE {where}
+            GROUP BY window_start, window_end, src_type, src_id, dst_type, dst_id,
+                     rel_type, provenance
         ) distinct_windows
         GROUP BY src_type, src_id, dst_type, dst_id, rel_type, provenance
         ORDER BY src_type, src_id, dst_type, dst_id, rel_type, provenance
@@ -653,10 +881,10 @@ def _submit_tool(fault_taxonomy: list[str]) -> dict[str, object]:
     tool = deepcopy(SUBMIT_TOOL)
     if fault_taxonomy:
         fault_type = tool["input_schema"]["properties"]["fault_type"]
-        fault_type["enum"] = fault_taxonomy
         fault_type["description"] = (
             "Canonical causal mechanism from the dataset taxonomy. Choose the mechanism "
-            "supported by telemetry, not a downstream symptom."
+            "supported by telemetry, not a downstream symptom. Answers outside these labels "
+            f"are recorded and scored as incorrect: {', '.join(fault_taxonomy)}."
         )
     return tool
 
@@ -685,8 +913,12 @@ GreptimeDB SQL notes:
   INFORMATION_SCHEMA column, not a telemetry-table column.
 
 Final diagnosis contract:
-- root_cause_component is the component where the causal failure originates, not a downstream
-  component that merely exhibits propagated symptoms.
+- affected_component is the workload or infrastructure component directly affected by the
+  causal fault, not a downstream component that merely exhibits propagated symptoms. For a
+  dependency failure, report the caller that lost access rather than replacing it with the
+  unavailable dependency.
+- causal_dependency is the downstream service, datastore, or external endpoint whose failure
+  caused affected_component to fail. Return null when the evidence does not identify one.
 - fault_type names the causal mechanism. Do not substitute a symptom such as high latency when
   evidence supports CPU saturation, memory pressure, disk I/O, packet loss, or socket exhaustion.
 - fault_category is the canonical category for that same causal mechanism. Classify the positive
@@ -700,10 +932,12 @@ Final diagnosis contract:
 - each evidence claim must state only what the cited query result directly supports.
 
 Every final evidence item must copy an exact query_id returned by an investigation tool. Do not ask
-the user questions. Call submit_diagnosis once the available evidence supports the best answer."""
+the user questions. The incident prompt states a fixed investigation budget and each tool response
+states the remainder. Reserve enough budget to synthesize the result; exhausting calls is not an
+objective. Call submit_diagnosis once the available evidence supports the best answer."""
 
 
-def _incident_prompt(case_input: CaseInput) -> str:
+def _incident_prompt(case_input: CaseInput, max_tool_calls: int) -> str:
     start = datetime.fromtimestamp(case_input.time_start, UTC).isoformat()
     alert_time = datetime.fromtimestamp(case_input.alert_time, UTC).isoformat()
     end = datetime.fromtimestamp(case_input.time_end, UTC).isoformat()
@@ -714,8 +948,11 @@ Database: {case_input.database}
 Telemetry window: {start} through {end}
 Alert: {alert_text}
 Alert fired at: {alert_time} (Unix {case_input.alert_time})
+Investigation budget: at most {max_tool_calls} tool calls. Submit the best-supported diagnosis
+before the budget reaches zero.
 
-Find the root-cause component, fault type, and onset time. The database is the only source of
+Find the affected component, causal dependency when present, fault type, and onset time. The
+database is the only source of
 incident evidence. Treat the alert as the observed symptom; its named entity is not necessarily the
 root cause. INFORMATION_SCHEMA row queries must include
 table_schema = '{case_input.database}' so results stay scoped to this incident."""

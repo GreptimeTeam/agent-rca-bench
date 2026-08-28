@@ -1,0 +1,21 @@
+{
+  "fixture_id": "openrca-market-c1-email-read",
+  "source_case": "Market/cloudbed-1@2022-03-20T09:30",
+  "component": "node-6.emailservice-0",
+  "signal": "container filesystem read throughput",
+  "boundary": 1647741299,
+  "target_table": "container_fs_reads_MB__dev_vda",
+  "component_column": "cmdb_id",
+  "time_column": "greptime_timestamp",
+  "value_column": "greptime_value",
+  "baseline": {
+    "start": 1647740400,
+    "end": 1647741240
+  },
+  "incident": {
+    "start": 1647741300,
+    "end": 1647742200
+  },
+  "comparison_field": "mean_value",
+  "minimum_ratio": 2.0
+}

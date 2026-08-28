@@ -1,0 +1,11 @@
+{
+  "fixture_id": "measurement-openrca2-hs0-geo",
+  "source_case": "hs0-geo-pod-failure-f6jqlw",
+  "window_start": 1777662720,
+  "window_end": 1777663320,
+  "caller": "frontend",
+  "trace_table": "traces",
+  "expected_callee": "search",
+  "expected_request_count": 2714,
+  "expected_error_count": 1491
+}

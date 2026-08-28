@@ -8,6 +8,7 @@ dependencies = [
   "anthropic>=0.64.0",
   "httpx[socks]>=0.28.0",
   "huggingface-hub>=0.34.0",
+  "mcp>=1.27.0,<2",
   "opentelemetry-proto>=1.36.0",
   "protobuf>=5.29.0",
   "pyarrow>=20.0.0",

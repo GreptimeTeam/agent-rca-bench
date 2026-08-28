@@ -1,0 +1,21 @@
+{
+  "fixture_id": "openrca-bank-redis02-cpu-user-time",
+  "source_case": "Bank/task_5@2021-03-04T20:00",
+  "component": "Redis02",
+  "signal": "CPU user time utilization",
+  "boundary": 1614860040,
+  "target_table": "OSLinux_CPU_CPU_CPUUserTime",
+  "component_column": "cmdb_id",
+  "time_column": "greptime_timestamp",
+  "value_column": "greptime_value",
+  "baseline": {
+    "start": 1614859200,
+    "end": 1614860040
+  },
+  "incident": {
+    "start": 1614860040,
+    "end": 1614861000
+  },
+  "comparison_field": "mean_value",
+  "minimum_ratio": 2.0
+}

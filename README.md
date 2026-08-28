@@ -37,6 +37,49 @@ kept under ignored local directories.
 API credentials are read from the process environment or macOS Keychain. Never
 put them in a tracked configuration file or command-line argument.
 
+The benchmark can also use the interactive coding-agent subscriptions instead
+of usage-billed API credentials. Subscription runners execute the same benchmark
+tools through an isolated local MCP broker; the broker retains treatment
+visibility, read-only SQL enforcement, tool budgets, trajectories, and database
+load measurement. Provider API credentials and endpoint overrides are removed
+from the child process, so a subscription run cannot silently fall back to API
+billing.
+
+For Codex, authenticate with ChatGPT and select the subscription runner:
+
+```bash
+codex login
+codex login status
+uv run semantic-rca run \
+  --report .reports/smoke-<run-id>.json \
+  --runner codex-subscription \
+  --model gpt-5.6-luna \
+  --repetitions 1 \
+  --output .reports/codex-subscription.json
+```
+
+For Claude Code, authenticate with a Claude Pro or Max account. Do not use
+`claude auth login --console`, which selects Anthropic Console API billing.
+The runner preserves the process proxy variables, reads OAuth from the normal
+Claude Code login, disables plugin-provided MCP servers, and loads only its
+run-local MCP server:
+
+```bash
+claude auth login
+claude auth status
+uv run semantic-rca run \
+  --report .reports/smoke-<run-id>.json \
+  --runner claude-subscription \
+  --model sonnet \
+  --repetitions 1 \
+  --output .reports/claude-subscription.json
+```
+
+Subscription plans have shared usage limits and are not unlimited. Reports mark
+the runner explicitly and omit API dollar estimates; compare treatments only
+within the same runner and model. The API runner remains the default for
+reproducible external measurements.
+
 Claude models use `ANTHROPIC_API_KEY` or the
 `semantic-rca-bench-anthropic` Keychain service. To avoid putting the key in
 shell history:
@@ -82,28 +125,50 @@ until deterministic scoring. Each completed
 `repetition × visibility` pair is persisted, so rerunning the same output file
 resumes unfinished work.
 
-Protocol v11 gives the agent the selected dataset's fault taxonomy and
-requires one canonical fault mechanism from that taxonomy. The evaluator scores
-the mechanism and component with deterministic normalized equality. It records
-the broader fault category separately. Confidence remains a diagnostic
-calibration signal and does not contribute to the correctness score. The Graph
-treatment has a dedicated query tool that applies the incident window and
-deduplicates relationship observation windows before aggregating RED fields. It
-also distinguishes external alert identifiers from canonical graph entity IDs
-and tells the agent to discover graph endpoints before filtering by ID.
+Protocol v20 gives API, Codex subscription, and Claude subscription runners the
+same system contract. The API runner sets its turn limit above the visible
+tool-call cap and records turn exhaustion as a failed run instead of aborting
+the batch. The supported subscription CLIs do not expose a turn-limit option;
+their broker enforces the same database-tool cap, and the process timeout bounds
+the session. A taxonomy violation is a scored incorrect answer in every runner.
+Protocol v20 retains paired returned rows and calls to a correct diagnosis as
+the RCA efficiency metrics. It gives the agent the selected dataset's fault
+taxonomy and requires one canonical fault mechanism from that taxonomy. The
+evaluator scores the mechanism by normalized equality. The diagnosis reports
+the directly affected workload or infrastructure component separately from an
+optional causal dependency. Component scoring is unavailable when a dataset
+publishes conflicting structured component labels. A predicted causal
+dependency remains diagnostic output; no dependency accuracy field exists
+until a source publishes a canonical dependency label. Confidence remains a
+diagnostic calibration signal and does not contribute to correctness.
+
+The Graph treatment has a dedicated query tool that applies the half-open
+incident window and groups each relationship by window and edge identity before
+aggregating Rate, Error, and Duration (RED) fields. It also distinguishes
+external alert identifiers from canonical graph entity IDs and tells the agent
+to discover graph endpoints before filtering by ID.
 
 Table Semantics and Graph treatments also expose semantic catalog search. It
 searches table names, semantic options, and entity declarations across the
-incident database, then ranks candidates by matched concepts. This lets the
+incident database, then ranks candidates by matched concepts. The tokenizer
+normalizes slash abbreviations such as `I/O` to `io`, removes one-letter terms
+and stop words, and matches short terms only at token boundaries. This lets the
 agent find relevant tables in a wide schema before calling `describe_table`.
-When Graph coverage is `empty`, protocol v11 suppresses the graph query tool and
-explicitly tells the agent not to infer topology.
+When Graph coverage is `empty`, the current protocol suppresses the graph query
+tool and explicitly tells the agent not to infer topology.
 
 The semantic treatment includes the metadata, tool schemas, basic usage guides,
 and coverage snapshot that an MCP server would provide. The benchmark therefore
 measures the complete agent-facing semantic interface, not a data-only
 ablation. Semantic discovery and graph calls consume the same fixed cap as SQL
 calls. Each run records requested calls and whether the cap rejected any call.
+
+The 48-call default is a safety cap, not the measured budget. The initial prompt
+and every tool-result turn tell the agent how many calls remain. Completion
+efficiency is reported only when the cap is non-binding and the diagnosis is
+jointly correct. Reports also show discovery calls, failed and exact repeated
+calls, the first turn mentioning the correct component, and calls to a correct
+diagnosis.
 
 Table profiles return the complete schema and semantic metadata. Sample rows are
 opt-in because wide OTLP tables can otherwise dominate model input without
@@ -117,13 +182,47 @@ telemetry and model behavior were inspected. Combined reports reject mixed
 roles. Reports show the telemetry window, history before the alert, and whether
 the ground truth provides a known pre-fault boundary.
 
+Formal runs also reject database names containing the ground-truth component or
+fault type. The database name is visible in SQL discovery instructions, so use
+neutral identifiers such as `case_01` rather than case or incident labels.
+
+The lower-cost discovery and Graph micro-benchmarks specified in
+[`DISCOVERY.md`](DISCOVERY.md) and [`GRAPH.md`](GRAPH.md) are implemented and
+their fresh measurement cells are complete. [`RESULTS.md`](RESULTS.md) records
+the formal cohorts, exclusions, paired statistics, and limitations. A standalone
+Chinese report is available in [`RESULTS.zh-CN.md`](RESULTS.zh-CN.md). The result
+supports a constrained investigation-efficiency mechanism. Correct task output
+is the guardrail against trading validity for fewer rows or tokens; higher
+accuracy is not the primary claim. Do not start another paid full RCA batch from
+this result alone.
+
+`fixtures/measurement/results-summary.json` records exact hashes for the ignored
+formal report artifacts, run-pair descriptions, and case-level inference. Model
+tokens are post-hoc and exploratory; rows and tool calls are the pre-registered
+primary efficiency metrics. Regenerate the tracked summary from retained local
+reports with:
+
+```bash
+uv run python -m semantic_rca_bench.measurement_summary
+```
+
+The implemented `discovery-audit` command checks the frozen evidence query and
+catalog top-five gate without calling a model. `discovery-run` is a separate,
+model-invoking command for the paired Raw/Table Semantics pilot. See
+`DISCOVERY.md` for the exact fixtures, scoring contract, and commands.
+
+The separate [`GRAPH.md`](GRAPH.md) protocol compares Table Semantics with
+Table Semantics plus Semantic Graph on witnessed service-call retrieval. Its
+`graph-audit` command independently reconstructs calls from raw spans and
+requires exact equality with the Graph edge set before any model run.
+
 Import and validate RCA100 `t001` without calling a model:
 
 ```bash
 uv run semantic-rca smoke-rca100 \
   --cache-dir .data/rca100 \
   --endpoint http://127.0.0.1:4000 \
-  --database semantic_graph_rca100_t001 \
+  --database case_01 \
   --task t001
 ```
 
@@ -138,7 +237,7 @@ Import and validate OpenRCA Bank without calling a model:
 uv run semantic-rca smoke-openrca \
   --cache-dir .data/openrca \
   --endpoint http://127.0.0.1:4000 \
-  --database semantic_openrca_bank_task6 \
+  --database case_02 \
   --case task_6@2021-03-04T18:00
 ```
 
@@ -148,20 +247,42 @@ including unknown trace duration units and the absence of graph-capable span
 semantics. Source timestamps, labels, topology, and ground truth are never
 repaired.
 
-Import and validate the frozen OpenRCA 2.0 measurement case without calling a
+OpenRCA Market and Telecom use source-window selectors that were frozen before
+their selected telemetry was downloaded:
+
+```bash
+uv run semantic-rca smoke-openrca \
+  --cache-dir .data/openrca \
+  --endpoint http://127.0.0.1:4000 \
+  --database case_market_01 \
+  --case Market/cloudbed-1@2022-03-21T03:30
+
+uv run semantic-rca smoke-openrca \
+  --cache-dir .data/openrca \
+  --endpoint http://127.0.0.1:4000 \
+  --database case_telecom_01 \
+  --case Telecom@2020-05-27T05:00
+```
+
+Their legacy traces preserve parent IDs and source operation fields but do not
+declare OTel client/server span roles or standard entity identities. The adapter
+does not infer those missing semantics from names or topology documents.
+
+Import and validate the pre-registered OpenRCA 2.0 measurement case without calling a
 model:
 
 ```bash
 uv run semantic-rca smoke-openrca2 \
   --cache-dir .data/openrca2 \
   --endpoint http://127.0.0.1:4000 \
-  --database semantic_openrca2_shipping_delay
+  --database case_03
 ```
 
 The smoke gate records source metric collisions and unavailable aggregation
 metadata, checks stored row counts after database primary-key semantics, and
-verifies that native spans derive the injected `shipping -> quote` call. The
-reference causal graph is validation-only and is never ingested.
+verifies that native spans derive service-call relationships. The reference
+causal graph is validation-only and is never ingested. The gate rejects a case
+when manifest and injection root-service ground truth disagree.
 
 Run independent case instances concurrently when throughput matters:
 
@@ -187,5 +308,5 @@ uv run semantic-rca render \
   --output .reports/pilot.html
 ```
 
-The current three-corpus pilot result and its limits are recorded in
+The current benchmark result and its limits are recorded in
 [`RESULTS.md`](RESULTS.md).
