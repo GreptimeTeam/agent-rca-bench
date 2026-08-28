@@ -11,10 +11,13 @@ from semantic_rca_bench.aegis_transfer_protocol import (
     AegisTransferProtocolFixture,
     audit_transfer_protocol,
     evaluate_transfer_protocol_run,
+    load_transfer_protocol_fixture,
 )
 from semantic_rca_bench.aegis_transfer_scorer import (
     AegisTransferEvaluation,
     AegisTransferScorerFixture,
+    load_transfer_scorer_fixture,
+    sha256_file,
     source_transfer_audit_sha256,
 )
 from semantic_rca_bench.agent import run_agent
@@ -43,9 +46,11 @@ def build_formal_preflight_report(
     scorer_fixture: AegisTransferScorerFixture,
     scorer_path: Path,
     protocol_fixture: AegisTransferProtocolFixture,
+    protocol_path: Path,
 ) -> dict[str, object]:
     recomputed = audit_transfer_protocol(
         protocol_fixture,
+        protocol_path,
         scorer_fixture,
         scorer_path,
         source_audit,
@@ -69,11 +74,11 @@ def build_formal_preflight_report(
         "case_role": protocol_fixture.case_role,
         "case": agent_facing,
         "benchmark_protocol": benchmark_protocol(),
-        "formal_protocol": protocol_fixture.model_dump(mode="json"),
+        "formal_protocol": _json_object_file(protocol_path),
         "bindings": {
             "source_semantic_sha256": source_semantic_sha256,
-            "scorer_fixture_sha256": _canonical_sha256(scorer_fixture.model_dump(mode="json")),
-            "protocol_fixture_sha256": _canonical_sha256(protocol_fixture.model_dump(mode="json")),
+            "scorer_fixture_sha256": sha256_file(scorer_path),
+            "protocol_fixture_sha256": sha256_file(protocol_path),
             "preflight_source_transfer_audit_sha256": source_transfer_audit_sha256(source_audit),
             "preflight_scorer_audit_sha256": _canonical_sha256(scorer_audit),
             "preflight_protocol_audit_sha256": _canonical_sha256(protocol_audit),
@@ -134,9 +139,17 @@ def bind_formal_execution(
     protocol_audit: dict[str, object],
     semantic_coverage: dict[str, object],
     scorer_fixture: AegisTransferScorerFixture,
+    scorer_path: Path,
     protocol_fixture: AegisTransferProtocolFixture,
+    protocol_path: Path,
 ) -> tuple[int, int]:
-    validate_formal_report(report, scorer_fixture, protocol_fixture)
+    validate_formal_report(
+        report,
+        scorer_fixture,
+        scorer_path,
+        protocol_fixture,
+        protocol_path,
+    )
     if formal_source_semantic_sha256(source_audit) != _binding(report, "source_semantic_sha256"):
         raise ValueError("live source audit differs from the frozen preflight semantics")
     if case.input.case_token != protocol_fixture.agent_case_id or case.input.fault_taxonomy:
@@ -173,8 +186,8 @@ def bind_formal_execution(
         "source_semantic_sha256": formal_source_semantic_sha256(source_audit),
         "scorer_audit_sha256": _canonical_sha256(scorer_audit),
         "protocol_audit_sha256": _canonical_sha256(protocol_audit),
-        "scorer_fixture_sha256": _canonical_sha256(scorer_fixture.model_dump(mode="json")),
-        "protocol_fixture_sha256": _canonical_sha256(protocol_fixture.model_dump(mode="json")),
+        "scorer_fixture_sha256": sha256_file(scorer_path),
+        "protocol_fixture_sha256": sha256_file(protocol_path),
     }
     report["semantic_coverage"] = semantic_coverage
     report["graph_window_contract"] = window_contract
@@ -185,14 +198,22 @@ def execute_formal_runs(
     client: GreptimeClient,
     case: AegisTransferCase,
     scorer_fixture: AegisTransferScorerFixture,
+    scorer_path: Path,
     protocol_fixture: AegisTransferProtocolFixture,
+    protocol_path: Path,
     report: dict[str, object],
     *,
     paid_api_confirmed: bool,
     run_agent_fn: FormalAgent = run_agent,
     on_update: ReportUpdate | None = None,
 ) -> dict[str, object]:
-    validate_formal_report(report, scorer_fixture, protocol_fixture)
+    validate_formal_report(
+        report,
+        scorer_fixture,
+        scorer_path,
+        protocol_fixture,
+        protocol_path,
+    )
     if paid_api_confirmed is not True:
         raise ValueError("formal paid API execution has not been explicitly confirmed")
     if report.get("execution_bindings") is None:
@@ -225,7 +246,12 @@ def execute_formal_runs(
                 max_tokens=protocol_fixture.max_tokens,
                 semantic_coverage=coverage,
             )
-        evaluation = evaluate_transfer_protocol_run(run, scorer_fixture, protocol_fixture)
+        evaluation = evaluate_transfer_protocol_run(
+            run,
+            scorer_fixture,
+            protocol_fixture,
+            expected_model=str(cell["model"]),
+        )
         result = {
             **cell,
             "run": run.model_dump(mode="json"),
@@ -252,10 +278,16 @@ def execute_formal_runs(
 def validate_formal_report(
     report: dict[str, object],
     scorer_fixture: AegisTransferScorerFixture,
+    scorer_path: Path,
     protocol_fixture: AegisTransferProtocolFixture,
+    protocol_path: Path,
     *,
     require_complete: bool = False,
 ) -> None:
+    if load_transfer_scorer_fixture(scorer_path) != scorer_fixture:
+        raise ValueError("formal scorer object does not match its bound fixture file")
+    if load_transfer_protocol_fixture(protocol_path) != protocol_fixture:
+        raise ValueError("formal protocol object does not match its bound fixture file")
     if (
         report.get("report_schema_version") != FORMAL_REPORT_SCHEMA_VERSION
         or report.get("mode") != FORMAL_REPORT_MODE
@@ -264,7 +296,7 @@ def validate_formal_report(
         raise ValueError("unsupported formal Aegis transfer report")
     if report.get("benchmark_protocol") != benchmark_protocol():
         raise ValueError("formal report benchmark protocol drifted")
-    if report.get("formal_protocol") != protocol_fixture.model_dump(mode="json"):
+    if report.get("formal_protocol") != _json_object_file(protocol_path):
         raise ValueError("formal report execution protocol drifted")
     if report.get("authorization") != {
         "paid_api_required": True,
@@ -278,8 +310,8 @@ def validate_formal_report(
         raise ValueError("formal report case is not the frozen opaque case")
     bindings = _mapping(report, "bindings")
     expected_fixture_bindings = {
-        "scorer_fixture_sha256": _canonical_sha256(scorer_fixture.model_dump(mode="json")),
-        "protocol_fixture_sha256": _canonical_sha256(protocol_fixture.model_dump(mode="json")),
+        "scorer_fixture_sha256": sha256_file(scorer_path),
+        "protocol_fixture_sha256": sha256_file(protocol_path),
     }
     if any(bindings.get(key) != value for key, value in expected_fixture_bindings.items()):
         raise ValueError("formal report fixture binding drifted")
@@ -304,9 +336,16 @@ def validate_formal_report(
             raise ValueError("formal completed runs are not an exact schedule prefix")
         run = AgentRun.model_validate(item.get("run"))
         recorded = AegisTransferEvaluation.model_validate(item.get("evaluation"))
-        evaluated = evaluate_transfer_protocol_run(run, scorer_fixture, protocol_fixture)
+        evaluated = evaluate_transfer_protocol_run(
+            run,
+            scorer_fixture,
+            protocol_fixture,
+            expected_model=str(schedule[index]["model"]),
+        )
         if recorded.model_dump(mode="json") != evaluated.model_dump(mode="json"):
             raise ValueError("formal stored evaluation does not match deterministic rescoring")
+        if not recorded.runner_contract_match or not recorded.tool_budget_contract_match:
+            raise ValueError("formal completed cell violates the frozen runner contract")
         DatabaseLoad.model_validate(item.get("database_load"))
         cell_bindings = item.get("execution_bindings")
         if not isinstance(cell_bindings, dict):
@@ -396,7 +435,7 @@ def formal_source_semantic_sha256(source_audit: dict[str, object]) -> str:
 
 def write_formal_report(path: Path, report: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    serialized = json.dumps(report, indent=2, sort_keys=True, default=str) + "\n"
+    serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
     with tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",
@@ -486,3 +525,10 @@ def _list_of_mappings(source: dict[str, object], key: str) -> list[dict[str, Any
 def _canonical_sha256(value: object) -> str:
     canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _json_object_file(path: Path) -> dict[str, object]:
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise ValueError(f"expected JSON object: {path}")
+    return value

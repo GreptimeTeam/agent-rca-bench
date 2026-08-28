@@ -486,7 +486,7 @@ def aegis_transfer_scorer_audit(args: argparse.Namespace) -> int:
     transfer_audit = json.loads(args.transfer_audit.read_text())
     if not isinstance(transfer_audit, dict):
         raise ValueError("Aegis transfer audit must be a JSON object")
-    report = audit_transfer_scorer(transfer_audit, fixture)
+    report = audit_transfer_scorer(transfer_audit, fixture, args.scorer)
     write_json(args.output, report)
     print(args.output)
     return 0 if report["no_model_gates"]["all_passed"] else 1
@@ -501,6 +501,7 @@ def aegis_transfer_protocol_audit(args: argparse.Namespace) -> int:
         raise ValueError("Aegis transfer protocol inputs must be JSON objects")
     report = audit_transfer_protocol(
         protocol,
+        args.protocol,
         scorer,
         args.scorer,
         source_audit,
@@ -526,6 +527,7 @@ def aegis_transfer_formal_preflight(args: argparse.Namespace) -> int:
         scorer,
         args.scorer,
         protocol,
+        args.protocol,
     )
     write_formal_report(args.output, report)
     print(args.output)
@@ -556,9 +558,10 @@ def aegis_transfer_formal_run(args: argparse.Namespace) -> int:
     try:
         with prepare_transfer_environment(_transfer_environment_config(args)) as prepared:
             source_report = prepared.source_audit
-            scorer_report = audit_transfer_scorer(source_report, scorer)
+            scorer_report = audit_transfer_scorer(source_report, scorer, args.scorer)
             protocol_report = audit_transfer_protocol(
                 protocol,
+                args.protocol,
                 scorer,
                 args.scorer,
                 source_report,
@@ -572,7 +575,9 @@ def aegis_transfer_formal_run(args: argparse.Namespace) -> int:
                 protocol_report,
                 prepared.semantic_coverage,
                 scorer,
+                args.scorer,
                 protocol,
+                args.protocol,
             )
             write_json(args.source_audit_output, source_report)
             write_json(args.scorer_audit_output, scorer_report)
@@ -582,7 +587,9 @@ def aegis_transfer_formal_run(args: argparse.Namespace) -> int:
                 prepared.client,
                 prepared.case,
                 scorer,
+                args.scorer,
                 protocol,
+                args.protocol,
                 report,
                 paid_api_confirmed=args.confirm_paid_api,
                 on_update=lambda value: write_formal_report(args.report, value),
@@ -624,10 +631,11 @@ def aegis_transfer_run(args: argparse.Namespace) -> int:
     try:
         with prepare_transfer_environment(_transfer_environment_config(args)) as prepared:
             source_report = prepared.source_audit
-            scorer_report = audit_transfer_scorer(source_report, fixture)
+            scorer_report = audit_transfer_scorer(source_report, fixture, args.scorer)
             run_report = build_transfer_run_report(
                 prepared.case,
                 fixture,
+                args.scorer,
                 source_report,
                 scorer_report,
                 prepared.semantic_coverage,

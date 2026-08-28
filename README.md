@@ -365,7 +365,8 @@ uv run semantic-rca aegis-transfer-formal-preflight \
 Preflight is provider-free: it reads local fixtures and audits, recomputes the protocol gate,
 freezes current pricing metadata, and writes an unauthorized report with zero completed cells. It
 neither reads provider credentials nor starts GreptimeDB. The command refuses to overwrite an
-existing report.
+existing report. Fixture bindings use the SHA-256 of the exact JSON files, not a Pydantic model
+serialization, so adding an optional parser field cannot invalidate an unchanged frozen fixture.
 
 Only after a separate explicit API-cost approval, execute the pending cells with:
 
@@ -406,9 +407,12 @@ When execution required multiple invocations, pass the three live audit files fr
 invocation because the report binds those exact files.
 
 The exporter deterministically rescores every cell and reports paired treatment deltas within each
-model. It does not pool correctness across models. It removes provider responses, free-form text,
-identifiers, timings, local metadata, and source telemetry while retaining canonical mechanism
-aggregates, database load, cache usage, pricing, and integrity hashes.
+model. Its pre-registered end-to-end efficiency fields are total GreptimeDB rows returned and
+`correct_completion_tool_calls`; mechanism-evidence trajectory counts remain exploratory. It does
+not pool correctness across models. It removes provider responses, diagnosis explanations,
+evidence claim text, identifiers, timings, local metadata, and source telemetry while retaining
+parsed diagnosis fields, canonical mechanism aggregates, database load, cache usage, pricing, and
+integrity hashes.
 
 Export a deterministic development artifact from the retained private reports without calling a
 model or database:

@@ -234,7 +234,7 @@ def _reports() -> tuple[dict[str, object], dict[str, object], dict[str, object]]
     fixture = load_pilot_scorer_fixture()
     source = _source_audit()
     scorer = {
-        "fixture_sha256": canonical_sha256(fixture.model_dump(mode="json")),
+        "fixture_sha256": canonical_sha256(fixture.model_dump(mode="json", exclude_none=True)),
         "source_transfer_audit_sha256": source_transfer_audit_sha256(source),
         "no_model_gates": {"all_passed": True},
         "synthetic_regressions": {
@@ -284,7 +284,9 @@ def _reports() -> tuple[dict[str, object], dict[str, object], dict[str, object]]
         "runs": cells,
         "source_transfer_audit_sha256": source_transfer_audit_sha256(source),
         "scorer_audit_sha256": canonical_sha256(scorer),
-        "scorer_fixture_sha256": canonical_sha256(fixture.model_dump(mode="json")),
+        "scorer_fixture_sha256": canonical_sha256(
+            fixture.model_dump(mode="json", exclude_none=True)
+        ),
     }
     return run_report, source, scorer
 

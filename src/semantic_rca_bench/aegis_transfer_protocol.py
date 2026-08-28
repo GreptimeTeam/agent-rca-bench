@@ -10,13 +10,14 @@ from semantic_rca_bench.aegis_transfer_scorer import (
     AegisTransferEvaluation,
     AegisTransferScorerFixture,
     evaluate_aegis_transfer_run,
+    sha256_file,
     source_transfer_audit_sha256,
 )
 from semantic_rca_bench.contracts import AgentRun, AgentRunner, Visibility
 from semantic_rca_bench.protocol import benchmark_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "aegis-transfer-three-model-v1"
+PROTOCOL_REVISION = "aegis-transfer-three-model-v2"
 DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v25-three-model-protocol.json")
 
 
@@ -148,11 +149,16 @@ def load_transfer_protocol_fixture(
 
 def audit_transfer_protocol(
     fixture: AegisTransferProtocolFixture,
+    protocol_path: Path,
     scorer_fixture: AegisTransferScorerFixture,
     scorer_path: Path,
     source_audit: dict[str, object],
     scorer_audit: dict[str, object],
 ) -> dict[str, object]:
+    if load_transfer_protocol_fixture(protocol_path) != fixture:
+        raise ValueError("formal protocol object does not match its bound fixture file")
+    if AegisTransferScorerFixture.model_validate_json(scorer_path.read_text()) != scorer_fixture:
+        raise ValueError("formal scorer object does not match its bound fixture file")
     source_gates = source_audit.get("no_model_gates")
     scorer_gates = scorer_audit.get("no_model_gates")
     case = source_audit.get("case")
@@ -177,9 +183,8 @@ def audit_transfer_protocol(
             and frozen_selection.get("manifest_name") == Path(fixture.selection_fixture).name
         ),
         "scorer_fixture_binding": (
-            hashlib.sha256(scorer_path.read_bytes()).hexdigest() == fixture.scorer_fixture_sha256
-            and scorer_audit.get("fixture_sha256")
-            == _sha256_json(scorer_fixture.model_dump(mode="json"))
+            sha256_file(scorer_path) == fixture.scorer_fixture_sha256
+            and scorer_audit.get("fixture_sha256") == fixture.scorer_fixture_sha256
         ),
         "source_no_model_gates": (
             isinstance(source_gates, dict) and source_gates.get("all_passed") is True
@@ -222,7 +227,7 @@ def audit_transfer_protocol(
         "audit_schema_version": 1,
         "mode": "aegis-transfer-formal-protocol-no-model-audit",
         "protocol_revision": fixture.protocol_revision,
-        "protocol_fixture_sha256": _sha256_json(fixture.model_dump(mode="json")),
+        "protocol_fixture_sha256": sha256_file(protocol_path),
         "agent_case_id": fixture.agent_case_id,
         "case_role": fixture.case_role,
         "models": [model.model_dump(mode="json") for model in fixture.models],
@@ -240,14 +245,18 @@ def evaluate_transfer_protocol_run(
     run: AgentRun,
     scorer_fixture: AegisTransferScorerFixture,
     protocol_fixture: AegisTransferProtocolFixture,
+    *,
+    expected_model: str,
 ) -> AegisTransferEvaluation:
     models = {contract.model for contract in protocol_fixture.models}
     if run.model not in models:
         raise ValueError("run model is outside the frozen formal protocol roster")
+    if expected_model not in models:
+        raise ValueError("scheduled model is outside the frozen formal protocol roster")
     return evaluate_aegis_transfer_run(
         run,
         scorer_fixture,
-        expected_model=run.model,
+        expected_model=expected_model,
     )
 
 
@@ -255,7 +264,7 @@ def _validate_bound_file(protocol_path: Path, name: str, expected_sha256: str) -
     candidate = Path(name)
     candidates = [candidate]
     if not candidate.is_absolute():
-        candidates.append(protocol_path.parents[2] / candidate)
+        candidates.extend(parent / candidate for parent in protocol_path.resolve().parents)
     existing = next((path for path in candidates if path.is_file()), None)
     if existing is None or hashlib.sha256(existing.read_bytes()).hexdigest() != expected_sha256:
         raise ValueError(f"formal protocol bound fixture drifted: {name}")

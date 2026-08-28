@@ -217,7 +217,7 @@
             "rows_returned": 2727
           },
           "rejected_tool_calls": {},
-          "runner_error": null,
+          "runner_error": false,
           "tool_budget_exhausted": false,
           "tool_calls_executed": 48,
           "tool_calls_requested": 48
@@ -319,7 +319,7 @@
             "rows_returned": 751
           },
           "rejected_tool_calls": {},
-          "runner_error": null,
+          "runner_error": false,
           "tool_budget_exhausted": false,
           "tool_calls_executed": 33,
           "tool_calls_requested": 33
@@ -426,7 +426,7 @@
             "rows_returned": 2071
           },
           "rejected_tool_calls": {},
-          "runner_error": null,
+          "runner_error": false,
           "tool_budget_exhausted": false,
           "tool_calls_executed": 47,
           "tool_calls_requested": 47
@@ -533,7 +533,7 @@
             "rows_returned": 842
           },
           "rejected_tool_calls": {},
-          "runner_error": null,
+          "runner_error": false,
           "tool_budget_exhausted": false,
           "tool_calls_executed": 45,
           "tool_calls_requested": 45
@@ -645,7 +645,7 @@
             "rows_returned": 1982
           },
           "rejected_tool_calls": {},
-          "runner_error": null,
+          "runner_error": false,
           "tool_budget_exhausted": false,
           "tool_calls_executed": 47,
           "tool_calls_requested": 47
@@ -765,7 +765,7 @@
             "rows_returned": 1396
           },
           "rejected_tool_calls": {},
-          "runner_error": null,
+          "runner_error": false,
           "tool_budget_exhausted": false,
           "tool_calls_executed": 45,
           "tool_calls_requested": 45
@@ -897,7 +897,7 @@
             "rows_returned": 813
           },
           "rejected_tool_calls": {},
-          "runner_error": null,
+          "runner_error": false,
           "tool_budget_exhausted": false,
           "tool_calls_executed": 42,
           "tool_calls_requested": 42
@@ -1034,7 +1034,7 @@
             "rows_returned": 2326
           },
           "rejected_tool_calls": {},
-          "runner_error": null,
+          "runner_error": false,
           "tool_budget_exhausted": false,
           "tool_calls_executed": 47,
           "tool_calls_requested": 47
@@ -1166,7 +1166,7 @@
             "rows_returned": 788
           },
           "rejected_tool_calls": {},
-          "runner_error": null,
+          "runner_error": false,
           "tool_budget_exhausted": false,
           "tool_calls_executed": 47,
           "tool_calls_requested": 47
@@ -1236,6 +1236,7 @@
         "input_cache_write_per_million": 0.44,
         "input_per_million": 0.44,
         "note": "Peak-rate upper bound; off-peak rates are half. Context caching is automatic. Cost is unavailable unless the provider returns a cache breakdown.",
+        "off_peak_multiplier": 0.5,
         "output_per_million": 1.32,
         "source": "https://api-docs.deepseek.com/quick_start/pricing/"
       },
@@ -1256,7 +1257,7 @@
       "source_transfer_audit_sha256": "212c5098f0d6be299aa097fa321f43139fcfac02f63a4b1fb2b9c3580fc51ea4"
     },
     "semantic_hash_scope": "all artifact fields except integrity; excludes private file hashes and run-local IDs, timings, ports, processes, and paths",
-    "semantic_payload_sha256": "d730b016bd9a1b041975116bee57b011573f29d3a1afa567d669d70d4543feba",
+    "semantic_payload_sha256": "d4afe7cd16248162bb921c702ab4d9ebdfe02b9227df1e5300837a5f81e15c1e",
     "source_semantic_sha256": "17bec6ba374e4654b26f025939bc02ff605ec6c0e886ddc0f21be194dfe1556e"
   },
   "license": {
@@ -1274,7 +1275,7 @@
     "excluded": [
       "provider responses and thinking",
       "run IDs and provider tool-call IDs",
-      "free-form explanations, alternatives, and evidence claims",
+      "diagnosis explanations, alternatives, and evidence claim text",
       "non-mechanism SQL result rows",
       "query IDs and elapsed timings",
       "local paths, ports, process metadata, and environment data",

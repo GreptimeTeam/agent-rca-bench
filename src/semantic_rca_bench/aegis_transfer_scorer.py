@@ -32,7 +32,7 @@ from semantic_rca_bench.evaluation import component_matches, is_valid_evidence_t
 from semantic_rca_bench.protocol import benchmark_protocol
 
 SCORER_REVISION = "aegis-transfer-method-replacement-v3"
-DELAY_SCORER_REVISION = "aegis-transfer-request-delay-v1"
+DELAY_SCORER_REVISION = "aegis-transfer-request-delay-v2"
 DEFAULT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-scorer.json")
 DELAY_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v25-scorer.json")
 
@@ -104,6 +104,10 @@ class AegisTransferEvaluation(BaseModel):
     supporting_evidence_query_ids: list[str]
     tool_calls_through_evidence: int | None
     rows_returned_through_evidence: int | None
+    valid_completion: bool | None = None
+    correct_completion_tool_calls: int | None = None
+    tool_calls_through_mechanism_evidence: int | None = None
+    rows_returned_through_mechanism_evidence: int | None = None
 
 
 def canonical_api_runner_contract() -> dict[str, object]:
@@ -188,10 +192,7 @@ def evaluate_aegis_transfer_run(
         and run.model == (expected_model or fixture.canonical_api_runner.model)
         and run.visibility in fixture.canonical_api_runner.visibility_levels
     )
-    tool_budget_contract_match = (
-        len(run.tool_calls) <= fixture.canonical_api_runner.max_tool_calls
-        and run.tool_calls_requested <= fixture.canonical_api_runner.max_tool_calls
-    )
+    tool_budget_contract_match = len(run.tool_calls) <= fixture.canonical_api_runner.max_tool_calls
     affected_match = diagnosis is not None and component_matches(
         diagnosis.affected_component, truth.affected_component
     )
@@ -269,8 +270,13 @@ def evaluate_aegis_transfer_run(
         and all(item.database_load is not None for item in calls_through_evidence)
         else None
     )
+    success = not failure_reasons
+    calls_to_mechanism = support_index + 1 if support_index is not None else None
+    legacy_evidence_metric = (
+        fixture.mechanism_evidence.predicate == "source_declared_http_method_replacement"
+    )
     return AegisTransferEvaluation(
-        success=not failure_reasons,
+        success=success,
         runner_contract_match=runner_contract_match,
         tool_budget_contract_match=tool_budget_contract_match,
         affected_component_match=affected_match,
@@ -284,15 +290,21 @@ def evaluate_aegis_transfer_run(
         cited_evidence_count=len(evidence),
         valid_evidence_count=valid_evidence_count,
         supporting_evidence_query_ids=(support_query_ids if mechanism_evidence_match else []),
-        tool_calls_through_evidence=(support_index + 1 if support_index is not None else None),
-        rows_returned_through_evidence=rows_through_evidence,
+        tool_calls_through_evidence=(calls_to_mechanism if legacy_evidence_metric else None),
+        rows_returned_through_evidence=(rows_through_evidence if legacy_evidence_metric else None),
+        valid_completion=success,
+        correct_completion_tool_calls=len(run.tool_calls) if success else None,
+        tool_calls_through_mechanism_evidence=calls_to_mechanism,
+        rows_returned_through_mechanism_evidence=rows_through_evidence,
     )
 
 
 def audit_transfer_scorer(
     transfer_audit: dict[str, object],
     fixture: AegisTransferScorerFixture,
+    fixture_path: Path,
 ) -> dict[str, object]:
+    _validate_fixture_file(fixture, fixture_path)
     source_gate_match = _transfer_audit_matches_fixture(transfer_audit, fixture)
     canonical_run = _canonical_synthetic_run(transfer_audit, fixture)
     cases: dict[str, tuple[AgentRun, bool]] = {
@@ -342,7 +354,11 @@ def audit_transfer_scorer(
         ),
         "tool_budget_contract_violation": (
             canonical_run.model_copy(
-                update={"tool_calls_requested": fixture.canonical_api_runner.max_tool_calls + 1}
+                update={
+                    "tool_calls": canonical_run.tool_calls
+                    * (fixture.canonical_api_runner.max_tool_calls + 1),
+                    "tool_calls_requested": fixture.canonical_api_runner.max_tool_calls + 1,
+                }
             ),
             False,
         ),
@@ -399,7 +415,7 @@ def audit_transfer_scorer(
         "audit_schema_version": 1,
         "mode": "aegis-transfer-scorer-no-model-audit",
         "scorer_revision": fixture.scorer_revision,
-        "fixture_sha256": _sha256_json(fixture.model_dump(mode="json")),
+        "fixture_sha256": sha256_file(fixture_path),
         "agent_case_id": fixture.agent_case_id,
         "case_role": fixture.case_role,
         "canonical_api_runner": fixture.canonical_api_runner.model_dump(mode="json"),
@@ -485,7 +501,8 @@ def _valid_mechanism_query_scope(
             window_epochs.extend(fixture.normal_window)
         if populated_groups & {"abnormal_client_methods", "abnormal_server_methods"}:
             window_epochs.extend(fixture.abnormal_window)
-    if not all(_time_text(epoch) in lowered or str(epoch) in lowered for epoch in window_epochs):
+    observed_epochs = _timestamp_literal_epochs(statement)
+    if not all(epoch in observed_epochs for epoch in window_epochs):
         return False
     if not all(value in lowered for value in required_text):
         return False
@@ -665,8 +682,31 @@ def _normalize_fault_type(value: str) -> str:
     return re.sub(r"[^a-z0-9]", "", value.lower())
 
 
-def _time_text(epoch: int) -> str:
-    return datetime.fromtimestamp(epoch, UTC).strftime("%Y-%m-%d %H:%M:%S").lower()
+def _timestamp_literal_epochs(statement: exp.Expression) -> set[int]:
+    epochs = set()
+    for literal in statement.find_all(exp.Literal):
+        value = str(literal.this)
+        if value.isdigit() and len(value) == 10:
+            epochs.add(int(value))
+            continue
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        epochs.add(int(parsed.timestamp()))
+    return epochs
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _validate_fixture_file(fixture: AegisTransferScorerFixture, path: Path) -> None:
+    stored = AegisTransferScorerFixture.model_validate_json(path.read_text())
+    if stored != fixture:
+        raise ValueError("Aegis transfer scorer object does not match its bound fixture file")
 
 
 def _sha256_json(value: object) -> str:

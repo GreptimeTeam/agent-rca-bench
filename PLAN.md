@@ -227,7 +227,10 @@ and within-model semantic-layer comparisons. Correctness is not pooled across mo
 the minimum one-model 1.0 gate but does not turn one case into a population estimate. The remaining
 transfer gate is the explicitly approved 27-run execution. The provider-free preflight,
 exact-prefix resume contract, per-cell atomic persistence, fresh-instance source-semantic binding,
-and deterministic sanitized measurement exporter are implemented and locally tested. Failed or
+and deterministic sanitized measurement exporter are implemented and locally tested. The formal
+protocol binds exact fixture-file bytes, binds each run to its scheduled model, and uses the
+end-to-end `database_load.rows_returned` and `evaluation.correct_completion_tool_calls` fields for
+eligible paired deltas. Mechanism-evidence trajectory counts are exploratory. Failed or
 budget-exhausted cells remain observations and are not retried.
 Raw `.reports/` trajectories are not the release contract because they contain
 provider payloads and local metadata.

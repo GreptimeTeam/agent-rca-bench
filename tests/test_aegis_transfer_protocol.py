@@ -18,11 +18,6 @@ from semantic_rca_bench.aegis_transfer_scorer import (
 from semantic_rca_bench.contracts import AgentRun, AgentUsage, Visibility
 
 
-def _sha256_json(value: object) -> str:
-    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(canonical.encode()).hexdigest()
-
-
 def _audits() -> tuple[dict[str, object], dict[str, object]]:
     source = {
         "selection_audit": {
@@ -39,10 +34,9 @@ def _audits() -> tuple[dict[str, object], dict[str, object]]:
         },
         "no_model_gates": {"all_passed": True},
     }
-    scorer = load_transfer_scorer_fixture(DELAY_SCORER_FIXTURE)
     scorer_audit = {
         "source_transfer_audit_sha256": source_transfer_audit_sha256(source),
-        "fixture_sha256": _sha256_json(scorer.model_dump(mode="json")),
+        "fixture_sha256": hashlib.sha256(DELAY_SCORER_FIXTURE.read_bytes()).hexdigest(),
         "no_model_gates": {"all_passed": True},
     }
     return source, scorer_audit
@@ -55,6 +49,7 @@ def test_three_model_protocol_freezes_cache_schedule_and_inference_boundary() ->
 
     audit = audit_transfer_protocol(
         fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
         scorer,
         DELAY_SCORER_FIXTURE,
         source,
@@ -91,6 +86,7 @@ def test_three_model_protocol_requires_source_and_scorer_gates() -> None:
 
     audit = audit_transfer_protocol(
         fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
         scorer,
         DELAY_SCORER_FIXTURE,
         source,
@@ -118,8 +114,15 @@ def test_protocol_scorer_accepts_runner_contract_for_each_frozen_model() -> None
             responses=[],
         )
 
-        assert evaluate_transfer_protocol_run(run, scorer, protocol).runner_contract_match
+        assert evaluate_transfer_protocol_run(
+            run, scorer, protocol, expected_model=model
+        ).runner_contract_match
 
     outside = run.model_copy(update={"model": "not-frozen"})
     with pytest.raises(ValueError, match="outside the frozen"):
-        evaluate_transfer_protocol_run(outside, scorer, protocol)
+        evaluate_transfer_protocol_run(
+            outside,
+            scorer,
+            protocol,
+            expected_model="not-frozen",
+        )

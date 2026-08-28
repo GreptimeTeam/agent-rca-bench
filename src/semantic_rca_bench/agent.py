@@ -457,13 +457,23 @@ def run_structured_api_agent(
                 started,
                 error=f"agent provider failed: {error}",
             )
-        raw_response = response.model_dump(mode="json")
-        responses.append(raw_response)
-        usage.input_tokens += _uncached_input_tokens(raw_response)
-        usage.output_tokens += response.usage.output_tokens
-        messages.append({"role": "assistant", "content": response.content})
+        try:
+            raw_response = response.model_dump(mode="json")
+            responses.append(raw_response)
+            usage.input_tokens += _uncached_input_tokens(raw_response)
+            usage.output_tokens += int(response.usage.output_tokens)
+            content = response.content
+        except Exception as error:
+            return _structured_result(
+                session,
+                usage,
+                responses,
+                started,
+                error=f"invalid provider response: {error}",
+            )
+        messages.append({"role": "assistant", "content": content})
 
-        tool_uses = [block for block in response.content if block.type == "tool_use"]
+        tool_uses = [block for block in content if block.type == "tool_use"]
         output_block = next(
             (block for block in tool_uses if block.name == output_tool_name),
             None,

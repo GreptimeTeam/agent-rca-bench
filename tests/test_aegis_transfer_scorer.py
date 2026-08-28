@@ -20,6 +20,7 @@ from semantic_rca_bench.contracts import (
     Evidence,
     FaultCategory,
     QueryResult,
+    RejectedToolCall,
     ToolTrace,
     Visibility,
 )
@@ -214,6 +215,41 @@ ORDER BY period"""
     }
 
 
+def _delay_run(query: str | None = None) -> AgentRun:
+    audit = _delay_transfer_audit()
+    mechanism = audit["mechanism_evidence"]
+    assert isinstance(mechanism, dict)
+    result = QueryResult.model_validate(mechanism["result"])
+    return AgentRun(
+        run_id="run",
+        visibility=Visibility.RAW,
+        model="deepseek-v4-flash",
+        runner=AgentRunner.API,
+        diagnosis=Diagnosis(
+            affected_component="ts-route-plan-service",
+            causal_dependency="ts-travel2-service",
+            fault_category=FaultCategory.DELAY,
+            fault_type="HTTP request delay",
+            confidence=1,
+            evidence=[Evidence(query_id="q01", claim="paired span duration transition")],
+            explanation="The paired server duration crosses the declared threshold.",
+        ),
+        tool_calls=[
+            ToolTrace(
+                tool_name="execute_sql",
+                input={"query": query or str(mechanism["query"])},
+                query_id="q01",
+                output=result.model_copy(update={"query_id": "q01"}).model_dump(mode="json"),
+                database_load=DatabaseLoad(query_count=1, rows_returned=2),
+            )
+        ],
+        tool_calls_requested=1,
+        usage=AgentUsage(),
+        elapsed_seconds=0,
+        responses=[],
+    )
+
+
 def test_frozen_scorer_accepts_only_complete_directed_mechanism_evidence() -> None:
     fixture = load_transfer_scorer_fixture()
 
@@ -227,13 +263,53 @@ def test_frozen_scorer_accepts_only_complete_directed_mechanism_evidence() -> No
 
 def test_delay_scorer_requires_both_windows_and_threshold_transition() -> None:
     fixture = load_transfer_scorer_fixture(DELAY_SCORER_FIXTURE)
-    audit = audit_transfer_scorer(_delay_transfer_audit(), fixture)
+    audit = audit_transfer_scorer(_delay_transfer_audit(), fixture, DELAY_SCORER_FIXTURE)
 
     assert audit["case_role"] == "measurement"
     assert audit["no_model_gates"]["all_passed"]
     assert audit["synthetic_regressions"]["canonical_positive"]["observed_success"]
     assert not audit["synthetic_regressions"]["missing_normal"]["observed_success"]
     assert not audit["synthetic_regressions"]["missing_abnormal"]["observed_success"]
+
+
+def test_delay_scorer_normalizes_equivalent_iso_timestamp_literals() -> None:
+    query = str(_delay_transfer_audit()["mechanism_evidence"]["query"])
+    for source, replacement in (
+        ("2025-07-20 12:32:50", "2025-07-20T12:32:50+00:00"),
+        ("2025-07-20 12:36:50", "2025-07-20T12:36:50Z"),
+        ("2025-07-20 12:40:49", "2025-07-20T12:40:49+00:00"),
+    ):
+        query = query.replace(source, replacement)
+
+    evaluation = evaluate_aegis_transfer_run(
+        _delay_run(query), load_transfer_scorer_fixture(DELAY_SCORER_FIXTURE)
+    )
+
+    assert evaluation.success
+    assert evaluation.mechanism_evidence_match
+
+
+def test_requested_or_superseded_calls_do_not_violate_execution_budget() -> None:
+    fixture = load_transfer_scorer_fixture(DELAY_SCORER_FIXTURE)
+    run = _delay_run().model_copy(
+        update={
+            "tool_calls_requested": 49,
+            "rejected_tool_calls": [
+                RejectedToolCall(
+                    tool_name="execute_sql",
+                    input={"query": "SELECT 1"},
+                    error="superseded by final output",
+                    reason_code="superseded_by_final_output",
+                )
+            ],
+        }
+    )
+
+    evaluation = evaluate_aegis_transfer_run(run, fixture)
+
+    assert evaluation.success
+    assert evaluation.tool_budget_contract_match
+    assert evaluation.correct_completion_tool_calls == 1
 
 
 def test_delay_scorer_fixture_rejects_nontransitioning_threshold(tmp_path: Path) -> None:
@@ -309,7 +385,9 @@ def test_frozen_scorer_rejects_incomplete_or_noncanonical_runs(run: AgentRun) ->
 def test_no_model_scorer_audit_binds_source_audit_runner_and_negative_regressions() -> None:
     fixture = load_transfer_scorer_fixture()
 
-    audit = audit_transfer_scorer(_transfer_audit(), fixture)
+    audit = audit_transfer_scorer(
+        _transfer_audit(), fixture, Path("fixtures/reference/aegis-transfer-scorer.json")
+    )
 
     assert audit["no_model_gates"] == {
         "source_transfer_audit_match": True,
@@ -325,7 +403,11 @@ def test_no_model_scorer_audit_rejects_agent_facing_source_label() -> None:
     transfer = _transfer_audit()
     transfer["case"]["agent_facing"]["fault_taxonomy"] = ["HTTPRequestReplaceMethod"]
 
-    audit = audit_transfer_scorer(transfer, load_transfer_scorer_fixture())
+    audit = audit_transfer_scorer(
+        transfer,
+        load_transfer_scorer_fixture(),
+        Path("fixtures/reference/aegis-transfer-scorer.json"),
+    )
 
     assert not audit["no_model_gates"]["opaque_agent_input"]
     assert not audit["no_model_gates"]["all_passed"]

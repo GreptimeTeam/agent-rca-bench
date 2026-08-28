@@ -10,6 +10,7 @@ from pathlib import Path
 from semantic_rca_bench.aegis_transfer_scorer import (
     AegisTransferScorerFixture,
     evaluate_aegis_transfer_run,
+    sha256_file,
     source_transfer_audit_sha256,
 )
 from semantic_rca_bench.agent import run_agent
@@ -247,6 +248,7 @@ def _assert_neutral_database(case: AegisTransferCase, database: str) -> None:
 def build_transfer_run_report(
     case: AegisTransferCase,
     fixture: AegisTransferScorerFixture,
+    fixture_path: Path,
     source_audit: dict[str, object],
     scorer_audit: dict[str, object],
     semantic_coverage: dict[str, object],
@@ -254,6 +256,7 @@ def build_transfer_run_report(
     graph_window = validate_transfer_run_preflight(
         case,
         fixture,
+        fixture_path,
         source_audit,
         scorer_audit,
         semantic_coverage,
@@ -282,7 +285,7 @@ def build_transfer_run_report(
         },
         "protocol": benchmark_protocol(),
         "scorer_revision": fixture.scorer_revision,
-        "scorer_fixture_sha256": _canonical_json_sha256(fixture.model_dump(mode="json")),
+        "scorer_fixture_sha256": sha256_file(fixture_path),
         "source_transfer_audit_sha256": source_transfer_audit_sha256(source_audit),
         "scorer_audit_sha256": _canonical_json_sha256(scorer_audit),
         "no_model_gates": {
@@ -389,6 +392,7 @@ def execute_transfer_runs(
 def validate_transfer_run_preflight(
     case: AegisTransferCase,
     fixture: AegisTransferScorerFixture,
+    fixture_path: Path,
     source_audit: dict[str, object],
     scorer_audit: dict[str, object],
     semantic_coverage: dict[str, object],
@@ -403,9 +407,7 @@ def validate_transfer_run_preflight(
         source_audit
     ):
         raise ValueError("Aegis transfer scorer audit is not bound to this source audit")
-    if scorer_audit.get("fixture_sha256") != _canonical_json_sha256(
-        fixture.model_dump(mode="json")
-    ):
+    if scorer_audit.get("fixture_sha256") != sha256_file(fixture_path):
         raise ValueError("Aegis transfer scorer audit is not bound to this scorer fixture")
     if case.input.case_token != fixture.agent_case_id or case.input.fault_taxonomy:
         raise ValueError("Aegis transfer agent input is not opaque")

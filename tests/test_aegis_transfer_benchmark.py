@@ -31,6 +31,8 @@ from semantic_rca_bench.datasets.aegis_transfer import (
     AegisTransferGroundTruth,
 )
 
+SCORER_PATH = Path("fixtures/reference/aegis-transfer-scorer.json")
+
 
 def _query() -> str:
     return """WITH paired AS (
@@ -197,9 +199,9 @@ def test_canonical_transfer_wiring_balances_positions_and_uses_graph_envelope() 
     case = _case()
     source = _source_audit()
     fixture = load_transfer_scorer_fixture()
-    scorer = audit_transfer_scorer(source, fixture)
+    scorer = audit_transfer_scorer(source, fixture, SCORER_PATH)
     coverage = {"graph": {"status": "relational"}}
-    report = build_transfer_run_report(case, fixture, source, scorer, coverage)
+    report = build_transfer_run_report(case, fixture, SCORER_PATH, source, scorer, coverage)
     calls = []
 
     def fake_agent(gateway, case_input, visibility, **kwargs):
@@ -246,10 +248,11 @@ def test_canonical_transfer_run_stops_after_first_runner_error() -> None:
     case = _case()
     source = _source_audit()
     fixture = load_transfer_scorer_fixture()
-    scorer = audit_transfer_scorer(source, fixture)
+    scorer = audit_transfer_scorer(source, fixture, SCORER_PATH)
     report = build_transfer_run_report(
         case,
         fixture,
+        SCORER_PATH,
         source,
         scorer,
         {"graph": {"status": "relational"}},
@@ -299,9 +302,9 @@ def test_transfer_run_preflight_fails_before_agent_execution(mutation, message: 
     case = _case()
     source = _source_audit()
     fixture = load_transfer_scorer_fixture()
-    scorer = audit_transfer_scorer(source, fixture)
+    scorer = audit_transfer_scorer(source, fixture, SCORER_PATH)
     coverage = {"graph": {"status": "relational"}}
     mutation(source, scorer, coverage)
 
     with pytest.raises(ValueError, match=message):
-        build_transfer_run_report(case, fixture, source, scorer, coverage)
+        build_transfer_run_report(case, fixture, SCORER_PATH, source, scorer, coverage)

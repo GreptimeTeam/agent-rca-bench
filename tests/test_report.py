@@ -377,7 +377,7 @@ def test_primary_metrics_infer_over_case_medians_not_run_pairs() -> None:
 def test_failed_run_is_excluded_from_rows_returned_efficiency(run) -> None:
     item = {
         "run": run,
-        "evaluation": {"joint_match": False},
+        "evaluation": {"joint_match": False, "valid_completion": False},
         "database_load": {"rows_returned": 500},
     }
 
@@ -401,3 +401,11 @@ def test_primary_metrics_consume_canonical_valid_completion() -> None:
 
     assert _primary_metric_value(item, "rows_returned") == 10
     assert _primary_metric_value(item, "correct_completion_tool_calls") == 3
+
+
+def test_primary_metrics_reject_legacy_evaluation_without_valid_completion() -> None:
+    item = _primary_item(0, "raw", 10, 3)
+    del item["evaluation"]["valid_completion"]
+
+    with pytest.raises(ValueError, match="missing the canonical valid_completion"):
+        _primary_metric_value(item, "rows_returned")

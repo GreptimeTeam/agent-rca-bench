@@ -1,5 +1,7 @@
+import hashlib
 import json
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -221,9 +223,10 @@ def _audits():
     source = _source_audit()
     scorer_fixture = load_transfer_scorer_fixture(DELAY_SCORER_FIXTURE)
     protocol_fixture = load_transfer_protocol_fixture(DEFAULT_PROTOCOL_FIXTURE)
-    scorer = audit_transfer_scorer(source, scorer_fixture)
+    scorer = audit_transfer_scorer(source, scorer_fixture, DELAY_SCORER_FIXTURE)
     protocol = audit_transfer_protocol(
         protocol_fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
         scorer_fixture,
         DELAY_SCORER_FIXTURE,
         source,
@@ -241,6 +244,7 @@ def _preflight():
         scorer_fixture,
         DELAY_SCORER_FIXTURE,
         protocol_fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
     )
     return report, source, scorer, protocol, scorer_fixture, protocol_fixture
 
@@ -303,7 +307,9 @@ def _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture):
         protocol,
         {"graph": {"status": "relational"}},
         scorer_fixture,
+        DELAY_SCORER_FIXTURE,
         protocol_fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
     )
 
 
@@ -328,6 +334,14 @@ def test_preflight_expands_frozen_schedule_without_provider_access(monkeypatch) 
         "deepseek-v4-pro",
         "claude-sonnet-5",
     ]
+    assert (
+        report["bindings"]["scorer_fixture_sha256"]
+        == hashlib.sha256(DELAY_SCORER_FIXTURE.read_bytes()).hexdigest()
+    )
+    assert (
+        report["bindings"]["protocol_fixture_sha256"]
+        == hashlib.sha256(DEFAULT_PROTOCOL_FIXTURE.read_bytes()).hexdigest()
+    )
 
 
 def test_preflight_command_writes_report_without_provider_access(monkeypatch, tmp_path) -> None:
@@ -375,7 +389,9 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window() -> None:
             _Client(),  # type: ignore[arg-type]
             _case(),
             scorer_fixture,
+            DELAY_SCORER_FIXTURE,
             protocol_fixture,
+            DEFAULT_PROTOCOL_FIXTURE,
             report,
             paid_api_confirmed=False,
             run_agent_fn=fake_agent,
@@ -384,7 +400,9 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window() -> None:
         _Client(),  # type: ignore[arg-type]
         _case(),
         scorer_fixture,
+        DELAY_SCORER_FIXTURE,
         protocol_fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
         report,
         paid_api_confirmed=True,
         run_agent_fn=fake_agent,
@@ -427,7 +445,9 @@ def test_formal_resume_keeps_failed_cell_and_continues_with_next_cell() -> None:
             _Client(),  # type: ignore[arg-type]
             _case(),
             scorer_fixture,
+            DELAY_SCORER_FIXTURE,
             protocol_fixture,
+            DEFAULT_PROTOCOL_FIXTURE,
             report,
             paid_api_confirmed=True,
             run_agent_fn=failed_agent,
@@ -443,7 +463,9 @@ def test_formal_resume_keeps_failed_cell_and_continues_with_next_cell() -> None:
         _Client(),  # type: ignore[arg-type]
         _case(),
         scorer_fixture,
+        DELAY_SCORER_FIXTURE,
         protocol_fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
         report,
         paid_api_confirmed=True,
         run_agent_fn=resumed_agent,
@@ -460,10 +482,44 @@ def test_formal_resume_keeps_failed_cell_and_continues_with_next_cell() -> None:
         scorer,
         protocol,
         scorer_fixture,
+        DELAY_SCORER_FIXTURE,
         protocol_fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
     )
     assert artifact["experiment"]["runs"][0]["execution"]["runner_error"] is True
     assert "provider unavailable" not in str(artifact)
+
+
+def test_formal_runner_persists_and_rejects_wrong_scheduled_model() -> None:
+    report, source, scorer, protocol, scorer_fixture, protocol_fixture = _preflight()
+    _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture)
+
+    def wrong_model_agent(gateway, case_input, visibility, **kwargs):
+        return _agent_run(visibility, "claude-sonnet-5")
+
+    with pytest.raises(FormalRunError, match="runner violated"):
+        execute_formal_runs(
+            _Client(),  # type: ignore[arg-type]
+            _case(),
+            scorer_fixture,
+            DELAY_SCORER_FIXTURE,
+            protocol_fixture,
+            DEFAULT_PROTOCOL_FIXTURE,
+            report,
+            paid_api_confirmed=True,
+            run_agent_fn=wrong_model_agent,
+        )
+
+    assert report["runs"][0]["run"]["model"] == "claude-sonnet-5"
+    assert report["runs"][0]["evaluation"]["runner_contract_match"] is False
+    with pytest.raises(ValueError, match="violates the frozen runner contract"):
+        validate_formal_report(
+            report,
+            scorer_fixture,
+            DELAY_SCORER_FIXTURE,
+            protocol_fixture,
+            DEFAULT_PROTOCOL_FIXTURE,
+        )
 
 
 def test_formal_resume_rejects_nonprefix_or_tampered_evaluation() -> None:
@@ -482,7 +538,13 @@ def test_formal_resume_rejects_nonprefix_or_tampered_evaluation() -> None:
     report["execution"]["completed_runs"] = 1
 
     with pytest.raises(ValueError, match="exact schedule prefix"):
-        validate_formal_report(report, scorer_fixture, protocol_fixture)
+        validate_formal_report(
+            report,
+            scorer_fixture,
+            DELAY_SCORER_FIXTURE,
+            protocol_fixture,
+            DEFAULT_PROTOCOL_FIXTURE,
+        )
 
 
 def test_formal_source_binding_ignores_instance_metadata_but_not_edges() -> None:
@@ -508,7 +570,9 @@ def test_measurement_export_rescores_all_models_and_removes_private_payloads() -
         _Client(),  # type: ignore[arg-type]
         _case(),
         scorer_fixture,
+        DELAY_SCORER_FIXTURE,
         protocol_fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
         report,
         paid_api_confirmed=True,
         run_agent_fn=fake_agent,
@@ -519,7 +583,9 @@ def test_measurement_export_rescores_all_models_and_removes_private_payloads() -
         scorer,
         protocol,
         scorer_fixture,
+        DELAY_SCORER_FIXTURE,
         protocol_fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
     )
 
     assert artifact["analysis_role"] == "measurement"
@@ -553,3 +619,14 @@ def test_atomic_formal_report_write_round_trips(tmp_path: Path) -> None:
 
     assert path.read_text().endswith("\n")
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_formal_report_write_rejects_non_json_types(tmp_path: Path) -> None:
+    report, *_ = _preflight()
+    report["invalid"] = datetime.now(UTC)
+    path = tmp_path / "formal.json"
+
+    with pytest.raises(TypeError):
+        write_formal_report(path, report)
+
+    assert not path.exists()

@@ -22,6 +22,7 @@ from semantic_rca_bench.aegis_transfer_scorer import (
     AegisTransferScorerFixture,
     evaluate_aegis_transfer_run,
     load_transfer_scorer_fixture,
+    sha256_file,
     source_transfer_audit_sha256,
 )
 from semantic_rca_bench.contracts import AgentRun
@@ -85,7 +86,9 @@ def build_release_artifact(
             "ground_truth": fixture.ground_truth.model_dump(mode="json"),
             "normal_window": list(fixture.normal_window),
             "abnormal_window": list(fixture.abnormal_window),
-            "mechanism_evidence": fixture.mechanism_evidence.model_dump(mode="json"),
+            "mechanism_evidence": fixture.mechanism_evidence.model_dump(
+                mode="json", exclude_none=True
+            ),
             "no_model_gates": _mapping(scorer_audit, "no_model_gates"),
             "synthetic_regressions": {
                 name: {
@@ -113,7 +116,7 @@ def build_release_artifact(
             "excluded": [
                 "provider responses and thinking",
                 "run IDs and provider tool-call IDs",
-                "free-form explanations, alternatives, and evidence claims",
+                "diagnosis explanations, alternatives, and evidence claim text",
                 "non-mechanism SQL result rows",
                 "query IDs and elapsed timings",
                 "local paths, ports, process metadata, and environment data",
@@ -165,7 +168,7 @@ def build_release_artifact_from_files(
         values["source_audit"],
         values["scorer_audit"],
         fixture,
-        private_input_sha256={name: file_sha256(path) for name, path in inputs.items()},
+        private_input_sha256={name: sha256_file(path) for name, path in inputs.items()},
     )
 
 
@@ -175,7 +178,9 @@ def build_measurement_artifact(
     scorer_audit: dict[str, object],
     protocol_audit: dict[str, object],
     scorer_fixture: AegisTransferScorerFixture,
+    scorer_fixture_path: Path,
     protocol_fixture: AegisTransferProtocolFixture,
+    protocol_fixture_path: Path,
     *,
     private_input_sha256: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
@@ -185,7 +190,9 @@ def build_measurement_artifact(
         scorer_audit,
         protocol_audit,
         scorer_fixture,
+        scorer_fixture_path,
         protocol_fixture,
+        protocol_fixture_path,
     )
     source = _source_payload(source_audit)
     runs = _measurement_run_payloads(run_report, scorer_fixture, protocol_fixture)
@@ -219,12 +226,14 @@ def build_measurement_artifact(
             "ground_truth": scorer_fixture.ground_truth.model_dump(mode="json"),
             "normal_window": list(scorer_fixture.normal_window),
             "abnormal_window": list(scorer_fixture.abnormal_window),
-            "mechanism_evidence": scorer_fixture.mechanism_evidence.model_dump(mode="json"),
+            "mechanism_evidence": scorer_fixture.mechanism_evidence.model_dump(
+                mode="json", exclude_none=True
+            ),
             "no_model_gates": _mapping(scorer_audit, "no_model_gates"),
         },
         "experiment": {
             "benchmark_protocol": _mapping(run_report, "benchmark_protocol"),
-            "formal_protocol": protocol_fixture.model_dump(mode="json"),
+            "formal_protocol": _mapping(run_report, "formal_protocol"),
             "case": _mapping(run_report, "case"),
             "graph_window_contract": _mapping(run_report, "graph_window_contract"),
             "semantic_coverage": _mapping(run_report, "semantic_coverage"),
@@ -238,7 +247,7 @@ def build_measurement_artifact(
             "excluded": [
                 "provider responses and thinking",
                 "run IDs and provider tool-call IDs",
-                "free-form explanations, alternatives, and evidence claims",
+                "diagnosis explanations, alternatives, and evidence claim text",
                 "non-mechanism SQL result rows",
                 "query IDs, elapsed timings, and provider error text",
                 "local paths, ports, process metadata, and environment data",
@@ -293,22 +302,16 @@ def build_measurement_artifact_from_files(
         _load_object(scorer_audit_path),
         _load_object(protocol_audit_path),
         scorer_fixture,
+        scorer_fixture_path,
         protocol_fixture,
-        private_input_sha256={name: file_sha256(path) for name, path in inputs.items()},
+        protocol_fixture_path,
+        private_input_sha256={name: sha256_file(path) for name, path in inputs.items()},
     )
 
 
 def canonical_sha256(value: object) -> str:
     canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(canonical.encode()).hexdigest()
-
-
-def file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _validate_bindings(
@@ -332,7 +335,7 @@ def _validate_bindings(
         or execution.get("budget_exhaustions") != 0
     ):
         raise ValueError("run report is incomplete or contains runner failures")
-    fixture_sha256 = canonical_sha256(fixture.model_dump(mode="json"))
+    fixture_sha256 = canonical_sha256(fixture.model_dump(mode="json", exclude_none=True))
     source_sha256 = source_transfer_audit_sha256(source_audit)
     scorer_sha256 = canonical_sha256(scorer_audit)
     expected = {
@@ -456,15 +459,23 @@ def _run_payloads(
         if not isinstance(item, dict):
             raise ValueError("run report contains a malformed run cell")
         run = AgentRun.model_validate(item.get("run"))
-        recorded = AegisTransferEvaluation.model_validate(item.get("evaluation"))
+        recorded_payload = item.get("evaluation")
+        if not isinstance(recorded_payload, dict):
+            raise ValueError("stored run evaluation is malformed")
+        recorded = AegisTransferEvaluation.model_validate(recorded_payload)
         evaluated = evaluate_aegis_transfer_run(run, fixture)
-        if recorded.model_dump(mode="json") != evaluated.model_dump(mode="json"):
+        evaluated_payload = evaluated.model_dump(mode="json")
+        if any(
+            evaluated_payload.get(key) != value
+            for key, value in recorded_payload.items()
+            if key != "failure_reasons"
+        ):
             raise ValueError("stored run evaluation does not match deterministic rescoring")
         key = (int(item.get("repetition", -1)), run.visibility.value)
         if key in seen:
             raise ValueError(f"duplicate run cell: {key}")
         seen.add(key)
-        result.append(_run_payload(item, run, evaluated, fixture))
+        result.append(_run_payload(item, run, recorded, fixture))
     expected = fixture.canonical_api_runner.repetitions * len(
         fixture.canonical_api_runner.visibility_levels
     )
@@ -479,12 +490,16 @@ def _validate_measurement_bindings(
     scorer_audit: dict[str, object],
     protocol_audit: dict[str, object],
     scorer_fixture: AegisTransferScorerFixture,
+    scorer_fixture_path: Path,
     protocol_fixture: AegisTransferProtocolFixture,
+    protocol_fixture_path: Path,
 ) -> None:
     validate_formal_report(
         run_report,
         scorer_fixture,
+        scorer_fixture_path,
         protocol_fixture,
+        protocol_fixture_path,
         require_complete=True,
     )
     source_gates = source_audit.get("no_model_gates")
@@ -501,8 +516,8 @@ def _validate_measurement_bindings(
         "source_semantic_sha256": formal_source_semantic_sha256(source_audit),
         "scorer_audit_sha256": canonical_sha256(scorer_audit),
         "protocol_audit_sha256": canonical_sha256(protocol_audit),
-        "scorer_fixture_sha256": canonical_sha256(scorer_fixture.model_dump(mode="json")),
-        "protocol_fixture_sha256": canonical_sha256(protocol_fixture.model_dump(mode="json")),
+        "scorer_fixture_sha256": sha256_file(scorer_fixture_path),
+        "protocol_fixture_sha256": sha256_file(protocol_fixture_path),
     }
     if bindings != expected:
         raise ValueError("measurement artifact execution bindings do not match input files")
@@ -519,12 +534,15 @@ def _measurement_run_payloads(
             raise ValueError("formal run report contains a malformed run cell")
         run = AgentRun.model_validate(item.get("run"))
         recorded = AegisTransferEvaluation.model_validate(item.get("evaluation"))
-        evaluated = evaluate_transfer_protocol_run(run, scorer_fixture, protocol_fixture)
+        evaluated = evaluate_transfer_protocol_run(
+            run,
+            scorer_fixture,
+            protocol_fixture,
+            expected_model=str(item.get("model")),
+        )
         if recorded.model_dump(mode="json") != evaluated.model_dump(mode="json"):
             raise ValueError("formal run evaluation does not match deterministic rescoring")
         payload = _run_payload(item, run, evaluated, scorer_fixture)
-        execution = _mapping(payload, "execution")
-        execution["runner_error"] = execution.get("runner_error") is not None
         payload["cell_index"] = item.get("cell_index")
         payload["model_index"] = item.get("model_index")
         result.append(payload)
@@ -581,7 +599,7 @@ def _paired_treatment_deltas(runs: list[dict[str, object]]) -> dict[str, object]
                     field: median(float(delta[field]) for delta in eligible_deltas)
                     for field in (
                         "rows_returned",
-                        "tool_calls_through_evidence",
+                        "correct_completion_tool_calls",
                         "reported_total_tokens",
                     )
                 }
@@ -602,8 +620,8 @@ def _eligible_pair_deltas(left: dict[str, object], right: dict[str, object]) -> 
     return {
         "rows_returned": int(_mapping(right_execution, "database_load")["rows_returned"])
         - int(_mapping(left_execution, "database_load")["rows_returned"]),
-        "tool_calls_through_evidence": int(right_evaluation["tool_calls_through_evidence"])
-        - int(left_evaluation["tool_calls_through_evidence"]),
+        "correct_completion_tool_calls": int(right_evaluation["correct_completion_tool_calls"])
+        - int(left_evaluation["correct_completion_tool_calls"]),
         "reported_total_tokens": _reported_tokens(right_usage) - _reported_tokens(left_usage),
     }
 
@@ -672,6 +690,14 @@ def _run_payload(
     )
     database_load = _mapping(item, "database_load")
     evaluation_payload = evaluation.model_dump(mode="json")
+    for field in (
+        "valid_completion",
+        "correct_completion_tool_calls",
+        "tool_calls_through_mechanism_evidence",
+        "rows_returned_through_mechanism_evidence",
+    ):
+        if evaluation_payload.get(field) is None:
+            evaluation_payload.pop(field)
     evaluation_payload.pop("supporting_evidence_query_ids")
     evaluation_payload["supporting_evidence_ordinals"] = [
         citation["ordinal"] for citation in citations if citation["supports_mechanism"] is True
@@ -701,7 +727,7 @@ def _run_payload(
             "tool_calls_executed": len(run.tool_calls),
             "tool_calls_requested": run.tool_calls_requested,
             "tool_budget_exhausted": run.tool_budget_exhausted,
-            "runner_error": run.error,
+            "runner_error": run.error is not None,
             "rejected_tool_calls": dict(
                 sorted(Counter(call.reason_code for call in run.rejected_tool_calls).items())
             ),
@@ -740,9 +766,14 @@ def _descriptive_summary(runs: list[dict[str, object]]) -> dict[str, object]:
                 for cell in cells
             ),
         }
+    successful_runs = sum(_mapping(run, "evaluation").get("success") is True for run in runs)
     return {
-        "inference_role": "descriptive only; no run passed the valid-completion guardrail",
-        "successful_runs": sum(_mapping(run, "evaluation").get("success") is True for run in runs),
+        "inference_role": (
+            "descriptive only; no run passed the valid-completion guardrail"
+            if successful_runs == 0
+            else "descriptive only; repetitions are not independent cases"
+        ),
+        "successful_runs": successful_runs,
         "total_runs": len(runs),
         "treatments": treatments,
     }
@@ -769,6 +800,10 @@ def _usage_summary(runs: list[dict[str, object]], model: str) -> dict[str, objec
         if all(isinstance(value, (int, float)) for value in peak_costs)
         else None
     )
+    pricing = MODEL_PRICING.get(model)
+    off_peak_multiplier = (
+        pricing.get("off_peak_multiplier") if isinstance(pricing, Mapping) else None
+    )
     return {
         **totals,
         "cache_hit_rate": (
@@ -776,9 +811,11 @@ def _usage_summary(runs: list[dict[str, object]], model: str) -> dict[str, objec
         ),
         "estimated_peak_usd": peak_total,
         "estimated_off_peak_usd": (
-            peak_total / 2 if peak_total is not None and model.startswith("deepseek-") else None
+            peak_total * float(off_peak_multiplier)
+            if peak_total is not None and isinstance(off_peak_multiplier, (int, float))
+            else None
         ),
-        "pricing": MODEL_PRICING.get(model),
+        "pricing": pricing,
     }
 
 

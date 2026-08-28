@@ -111,7 +111,9 @@ def archive_checksum_status(path: Path) -> dict[str, object]:
     readable_segments = (
         segments if segment_sequence_valid and all(item.is_file() for item in segments) else []
     )
-    observed_size = sum(item.stat().st_size for item in readable_segments) or None
+    observed_size = (
+        sum(item.stat().st_size for item in readable_segments) if readable_segments else None
+    )
     observed_md5 = None
     if observed_size is not None:
         digest = hashlib.md5(usedforsecurity=False)
@@ -203,7 +205,10 @@ def load_selected_case(
     abnormal_window = (_env_epoch(env, "ABNORMAL_START"), _env_epoch(env, "ABNORMAL_END"))
     if not normal_window[0] < normal_window[1] == abnormal_window[0] < abnormal_window[1]:
         raise AegisAuditError("selected source windows are not contiguous")
-    if int(datetime.fromisoformat(str(injection["start_time"])).timestamp()) != abnormal_window[0]:
+    injection_start = datetime.fromisoformat(str(injection["start_time"]).replace("Z", "+00:00"))
+    if injection_start.tzinfo is None:
+        raise AegisAuditError("injection start time must include an explicit timezone")
+    if int(injection_start.timestamp()) != abnormal_window[0]:
         raise AegisAuditError("injection time disagrees with the abnormal window")
 
     fault_type = str(attributes.get("injection.fault_type") or "")

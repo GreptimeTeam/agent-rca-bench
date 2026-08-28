@@ -11,6 +11,7 @@ from semantic_rca_bench.datasets.aegis_transfer import (
     AGENT_CASE_ID,
     SELECTED_SOURCE_CASE,
     _iter_traces,
+    archive_checksum_status,
     canonical_mechanism_evidence_query,
     canonical_raw_edge_query,
     edge_results_equal,
@@ -31,6 +32,8 @@ def _write_table(path: Path, values: dict[str, list[object]], schema: pa.Schema)
 def _selected_case_fixture(
     tmp_path: Path,
     selection_path: Path = Path("fixtures/reference/aegis-selection.json"),
+    *,
+    injection_start: str = "2025-07-19T09:56:38Z",
 ):
     cases_dir = tmp_path / "cases"
     meta_dir = tmp_path / "meta"
@@ -53,7 +56,7 @@ def _selected_case_fixture(
             {
                 "injection_name": SELECTED_SOURCE_CASE,
                 "status": 2,
-                "start_time": "2025-07-19T09:56:38Z",
+                "start_time": injection_start,
                 "display_config": json.dumps(
                     {
                         "injection_point": {
@@ -167,6 +170,23 @@ def test_selected_loader_rejects_unfrozen_opaque_case_mapping(tmp_path: Path) ->
 
     with pytest.raises(AegisAuditError, match="invalid agent case ID"):
         _selected_case_fixture(tmp_path, selection_path)
+
+
+def test_selected_loader_rejects_naive_injection_timestamp(tmp_path: Path) -> None:
+    with pytest.raises(AegisAuditError, match="explicit timezone"):
+        _selected_case_fixture(tmp_path, injection_start="2025-07-19T09:56:38")
+
+
+def test_archive_status_preserves_zero_byte_observation(tmp_path: Path) -> None:
+    archive = tmp_path / "segments"
+    archive.mkdir()
+    for index in range(32):
+        (archive / f"{index:02d}").touch()
+
+    status = archive_checksum_status(archive)
+
+    assert status["observed_size"] == 0
+    assert status["observed_md5"] == "d41d8cd98f00b204e9800998ecf8427e"
 
 
 def test_trace_replay_keeps_http_500_separate_from_source_span_status(tmp_path: Path) -> None:

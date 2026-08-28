@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "scorer_revision": "aegis-transfer-request-delay-v1",
+  "scorer_revision": "aegis-transfer-request-delay-v2",
   "agent_case_id": "aegis-transfer-002",
   "case_role": "measurement",
   "ground_truth": {

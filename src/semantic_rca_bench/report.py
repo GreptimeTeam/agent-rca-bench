@@ -24,6 +24,7 @@ MODEL_PRICING = {
         "input_cache_write_per_million": 0.44,
         "input_cache_hit_per_million": 0.014,
         "output_per_million": 1.32,
+        "off_peak_multiplier": 0.5,
         "checked_at": "2026-08-28",
         "note": (
             "Peak-rate upper bound; off-peak rates are half. Context caching is automatic. "
@@ -37,6 +38,7 @@ MODEL_PRICING = {
         "input_cache_write_per_million": 1.32,
         "input_cache_hit_per_million": 0.044,
         "output_per_million": 3.96,
+        "off_peak_multiplier": 0.5,
         "checked_at": "2026-08-28",
         "note": (
             "Peak-rate upper bound; off-peak rates are half. Context caching is automatic. "
@@ -297,6 +299,8 @@ def _primary_metric_value(item: Mapping[str, object], metric: str) -> float | No
     evaluation = item.get("evaluation")
     if not isinstance(run, Mapping) or not isinstance(evaluation, Mapping):
         return None
+    if "valid_completion" not in evaluation:
+        raise ValueError("RCA evaluation is missing the canonical valid_completion field")
     if evaluation.get("valid_completion") is not True:
         return None
     if metric == "rows_returned":

@@ -383,6 +383,31 @@ def test_deepseek_uses_automatic_cache_and_counts_native_usage(monkeypatch) -> N
     assert "cache_control" not in requests[0]
 
 
+def test_invalid_provider_usage_is_persisted_with_raw_response(monkeypatch) -> None:
+    class Response:
+        content: list[object] = []
+        usage = SimpleNamespace(output_tokens=5)
+
+        def model_dump(self, *, mode: str) -> dict[str, object]:
+            assert mode == "json"
+            return {"content": []}
+
+    provider = SimpleNamespace(messages=SimpleNamespace(create=lambda **_: Response()))
+    monkeypatch.setattr(agent_module, "_anthropic_client", lambda _: provider)
+
+    result = run_agent(
+        SimpleNamespace(client=SimpleNamespace()),  # type: ignore[arg-type]
+        CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
+        Visibility.RAW,
+        model="test-model",
+        max_tool_calls=2,
+    )
+
+    assert result.error == "invalid provider response: provider response has no usage object"
+    assert result.responses == [{"content": []}]
+    assert result.tool_calls == []
+
+
 def test_valid_final_output_records_same_response_investigation_calls_as_rejected(
     monkeypatch,
 ) -> None:

@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "protocol_revision": "aegis-transfer-three-model-v1",
+  "protocol_revision": "aegis-transfer-three-model-v2",
   "agent_case_id": "aegis-transfer-002",
   "case_role": "measurement",
   "selection_fixture": "fixtures/reference/aegis-transfer-v25-selection.json",
   "selection_fixture_sha256": "abf26bb81b6ddb5920682f6fae6ffddb13770a0d2deeb2fa4b9db93dafe859df",
   "scorer_fixture": "fixtures/reference/aegis-transfer-v25-scorer.json",
-  "scorer_fixture_sha256": "5a70a7818ed2080102ee39b9721690980d3da919f93ac284b97861e2522fd605",
+  "scorer_fixture_sha256": "533e204e52a8caa826fe158281fbf9598300baa8ea31f395f0c7223b08451bc8",
   "benchmark_protocol_version": 25,
   "runner": "api",
   "models": [
