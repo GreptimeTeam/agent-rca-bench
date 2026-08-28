@@ -52,7 +52,7 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v23-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v24-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
 
 
@@ -163,6 +163,33 @@ def test_aegis_transfer_scorer_audit_uses_frozen_fixture_by_default() -> None:
     )
 
     assert str(args.scorer) == "fixtures/reference/aegis-transfer-scorer.json"
+
+
+def test_aegis_transfer_run_requires_explicit_paid_api_confirmation() -> None:
+    arguments = [
+        "aegis-transfer-run",
+        "--cases-dir",
+        "cases",
+        "--meta-dir",
+        "meta",
+        "--archive",
+        "segments",
+        "--run-dir",
+        "instance",
+        "--source-audit-output",
+        "audit.json",
+        "--scorer-audit-output",
+        "scorer.json",
+        "--output",
+        "run.json",
+    ]
+
+    with pytest.raises(SystemExit):
+        _parser().parse_args(arguments)
+    args = _parser().parse_args([*arguments, "--confirm-paid-api"])
+
+    assert args.confirm_paid_api is True
+    assert not hasattr(args, "model")
 
 
 def test_measurement_database_name_cannot_leak_ground_truth() -> None:
@@ -293,7 +320,7 @@ def test_discovery_runner_persists_failed_cells_and_continues(monkeypatch, tmp_p
     assert report["discovery_report_schema_version"] == 2
     assert (
         report["token_accounting"]["cached_input"]
-        == "separate raw response fields; omitted from legacy run.usage"
+        == "separate raw response fields; omitted from run.usage"
     )
     assert report["run_pair_descriptive"]["task_success"] == {
         "paired_observations": 2,

@@ -12,31 +12,35 @@ MODEL_PRICING = {
     "claude-sonnet-5": {
         "currency": "USD",
         "input_per_million": 2.0,
+        "input_cache_write_per_million": 2.5,
+        "input_cache_hit_per_million": 0.2,
         "output_per_million": 10.0,
         "effective_from": "2026-08-10",
-        "source": "https://www.anthropic.com/news/claude-sonnet-5",
+        "source": "https://platform.claude.com/docs/en/about-claude/pricing",
     },
     "deepseek-v4-flash": {
         "currency": "USD",
-        "input_per_million": 0.14,
-        "input_cache_hit_per_million": 0.0028,
-        "output_per_million": 0.28,
-        "checked_at": "2026-08-27",
+        "input_per_million": 0.44,
+        "input_cache_write_per_million": 0.44,
+        "input_cache_hit_per_million": 0.014,
+        "output_per_million": 1.32,
+        "checked_at": "2026-08-28",
         "note": (
-            "Cost is unavailable unless the provider response exposes the Anthropic-compatible "
-            "cache creation and cache-read fields."
+            "Peak-rate upper bound; off-peak rates are half. Context caching is automatic. "
+            "Cost is unavailable unless the provider returns a cache breakdown."
         ),
         "source": "https://api-docs.deepseek.com/quick_start/pricing/",
     },
     "deepseek-v4-pro": {
         "currency": "USD",
-        "input_per_million": 0.435,
-        "input_cache_hit_per_million": 0.003625,
-        "output_per_million": 0.87,
-        "checked_at": "2026-08-27",
+        "input_per_million": 1.32,
+        "input_cache_write_per_million": 1.32,
+        "input_cache_hit_per_million": 0.044,
+        "output_per_million": 3.96,
+        "checked_at": "2026-08-28",
         "note": (
-            "Cost is unavailable unless the provider response exposes the Anthropic-compatible "
-            "cache creation and cache-read fields."
+            "Peak-rate upper bound; off-peak rates are half. Context caching is automatic. "
+            "Cost is unavailable unless the provider returns a cache breakdown."
         ),
         "source": "https://api-docs.deepseek.com/quick_start/pricing/",
     },
@@ -46,7 +50,7 @@ TOKEN_ACCOUNTING = {
     "api": {
         "scope": "sum of provider usage across all responses in one run",
         "input_tokens": "uncached input only",
-        "cached_input": "separate raw response fields; omitted from legacy run.usage",
+        "cached_input": "separate raw response fields; omitted from run.usage",
         "cached_input_included_in_input_tokens": False,
         "context": "system prompt, tool schemas, and prior tool results are sent to the provider",
         "output_tokens": "provider-reported output including structured tool output",
@@ -73,9 +77,12 @@ TOKEN_ACCOUNTING = {
 }
 
 
-def _raw_cached_input(run: Mapping[str, object]) -> tuple[int, int]:
+def _raw_input_breakdown(run: Mapping[str, object]) -> tuple[int, int, int, bool]:
+    uncached = 0
     cache_read = 0
     cache_creation = 0
+    usage_responses = 0
+    breakdown_responses = 0
     responses = run.get("responses")
     for response in responses if isinstance(responses, list) else []:
         if not isinstance(response, Mapping):
@@ -83,8 +90,26 @@ def _raw_cached_input(run: Mapping[str, object]) -> tuple[int, int]:
         usage = response.get("usage")
         if not isinstance(usage, Mapping):
             continue
-        cache_read += int(usage.get("cache_read_input_tokens", 0) or 0)
-        cache_creation += int(usage.get("cache_creation_input_tokens", 0) or 0)
+        usage_responses += 1
+        if "prompt_cache_hit_tokens" in usage and "prompt_cache_miss_tokens" in usage:
+            cache_read += int(usage.get("prompt_cache_hit_tokens", 0) or 0)
+            uncached += int(usage.get("prompt_cache_miss_tokens", 0) or 0)
+            breakdown_responses += 1
+        elif "cache_read_input_tokens" in usage and "cache_creation_input_tokens" in usage:
+            cache_read += int(usage.get("cache_read_input_tokens", 0) or 0)
+            cache_creation += int(usage.get("cache_creation_input_tokens", 0) or 0)
+            uncached += int(usage.get("input_tokens", 0) or 0)
+            breakdown_responses += 1
+    return (
+        uncached,
+        cache_read,
+        cache_creation,
+        usage_responses > 0 and breakdown_responses == usage_responses,
+    )
+
+
+def _raw_cached_input(run: Mapping[str, object]) -> tuple[int, int]:
+    _, cache_read, cache_creation, _ = _raw_input_breakdown(run)
     return cache_read, cache_creation
 
 
@@ -107,25 +132,23 @@ def _runner_reported_token_total(
 def _estimated_api_cost(run: Mapping[str, object], pricing: Mapping[str, object]) -> float | None:
     usage = run.get("usage")
     usage = usage if isinstance(usage, Mapping) else {}
-    cache_read, cache_creation = _raw_cached_input(run)
-    cache_read_rate = pricing.get("input_cache_hit_per_million")
-    responses = run.get("responses")
-    response_items = responses if isinstance(responses, list) else []
-    cache_breakdown_available = any(
-        isinstance(response, Mapping)
-        and isinstance((response_usage := response.get("usage")), Mapping)
-        and "cache_read_input_tokens" in response_usage
-        and "cache_creation_input_tokens" in response_usage
-        for response in response_items
+    uncached_input, cache_read, cache_creation, cache_breakdown_available = _raw_input_breakdown(
+        run
     )
+    cache_read_rate = pricing.get("input_cache_hit_per_million")
     if cache_read_rate is not None and not cache_breakdown_available:
         return None
     if cache_read and cache_read_rate is None:
         return None
-    uncached_input = int(usage.get("input_tokens", 0) or 0) + cache_creation
+    if not cache_breakdown_available:
+        uncached_input = int(usage.get("input_tokens", 0) or 0)
+    cache_write_rate = pricing.get("input_cache_write_per_million")
+    if cache_creation and cache_write_rate is None:
+        return None
     output = int(usage.get("output_tokens", 0) or 0)
     return (
         uncached_input * float(pricing["input_per_million"])
+        + cache_creation * float(cache_write_rate or 0)
         + cache_read * float(cache_read_rate or 0)
         + output * float(pricing["output_per_million"])
     ) / 1_000_000

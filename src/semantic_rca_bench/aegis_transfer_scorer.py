@@ -28,7 +28,7 @@ from semantic_rca_bench.datasets.aegis_transfer import normalize_mechanism_evide
 from semantic_rca_bench.evaluation import component_matches, is_valid_evidence_trace
 from semantic_rca_bench.protocol import benchmark_protocol
 
-SCORER_REVISION = "aegis-transfer-method-replacement-v1"
+SCORER_REVISION = "aegis-transfer-method-replacement-v3"
 DEFAULT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-scorer.json")
 
 
@@ -63,6 +63,7 @@ class CanonicalApiRunner(BaseModel):
     treatment_order_seed: int
     parallel_runs: int
     sampling: str
+    prompt_cache: str
 
 
 class AegisTransferScorerFixture(BaseModel):
@@ -93,7 +94,7 @@ class AegisTransferEvaluation(BaseModel):
     failure_reasons: list[str]
     cited_evidence_count: int
     valid_evidence_count: int
-    supporting_evidence_query_id: str | None
+    supporting_evidence_query_ids: list[str]
     tool_calls_through_evidence: int | None
     rows_returned_through_evidence: int | None
 
@@ -101,7 +102,7 @@ class AegisTransferEvaluation(BaseModel):
 def canonical_api_runner_contract() -> dict[str, object]:
     return {
         "runner": AgentRunner.API.value,
-        "model": "claude-sonnet-5",
+        "model": "deepseek-v4-flash",
         "benchmark_protocol_version": benchmark_protocol()["version"],
         "visibility_levels": [level.value for level in Visibility],
         "max_tool_calls": 48,
@@ -111,6 +112,7 @@ def canonical_api_runner_contract() -> dict[str, object]:
         "treatment_order_seed": 0,
         "parallel_runs": 1,
         "sampling": "provider-default; no seed sent",
+        "prompt_cache": "deepseek-automatic-prefix-v1",
     }
 
 
@@ -186,18 +188,22 @@ def evaluate_aegis_transfer_run(
         bool(evidence) and evidence_ids_unique and valid_evidence_count == len(evidence)
     )
 
-    support_index = None
-    support_query_id = None
+    support_indexes = []
+    support_query_ids = []
+    mechanism_parts = []
     for item in evidence:
         matches = traces_by_query_id.get(item.query_id, [])
         if len(matches) != 1:
             continue
         trace = matches[0]
-        if _supports_frozen_mechanism(trace, fixture):
-            support_query_id = item.query_id
-            support_index = run.tool_calls.index(trace)
-            break
-    mechanism_evidence_match = support_index is not None
+        normalized = _mechanism_evidence_from_trace(trace, fixture)
+        if normalized is not None:
+            support_query_ids.append(item.query_id)
+            support_indexes.append(run.tool_calls.index(trace))
+            mechanism_parts.append(normalized)
+    merged_mechanism = _merge_mechanism_evidence(mechanism_parts)
+    mechanism_evidence_match = merged_mechanism == fixture.mechanism_evidence.expected_result
+    support_index = max(support_indexes) if mechanism_evidence_match else None
 
     checks = {
         "run does not use the frozen canonical API runner contract": runner_contract_match,
@@ -245,7 +251,7 @@ def evaluate_aegis_transfer_run(
         failure_reasons=failure_reasons,
         cited_evidence_count=len(evidence),
         valid_evidence_count=valid_evidence_count,
-        supporting_evidence_query_id=support_query_id,
+        supporting_evidence_query_ids=(support_query_ids if mechanism_evidence_match else []),
         tool_calls_through_evidence=(support_index + 1 if support_index is not None else None),
         rows_returned_through_evidence=rows_through_evidence,
     )
@@ -363,38 +369,44 @@ def audit_transfer_scorer(
         "agent_case_id": fixture.agent_case_id,
         "case_role": fixture.case_role,
         "canonical_api_runner": fixture.canonical_api_runner.model_dump(mode="json"),
-        "source_transfer_audit_sha256": _sha256_json(transfer_audit),
+        "source_transfer_audit_sha256": source_transfer_audit_sha256(transfer_audit),
         "synthetic_regressions": results,
         "no_model_gates": gates,
     }
 
 
-def _supports_frozen_mechanism(
+def _mechanism_evidence_from_trace(
     trace: ToolTrace,
     fixture: AegisTransferScorerFixture,
-) -> bool:
+) -> dict[str, dict[str, int]] | None:
     if (
         trace.tool_name != "execute_sql"
         or trace.error is not None
         or not isinstance(trace.output, dict)
     ):
-        return False
+        return None
     try:
         result = QueryResult.model_validate(trace.output)
     except ValueError:
-        return False
+        return None
     query = str(trace.input.get("query") or trace.input.get("sql") or "")
-    return (
-        result.query_id == trace.query_id
-        and not result.truncated
-        and _valid_mechanism_query_scope(query, fixture)
-        and normalize_mechanism_evidence(result) == fixture.mechanism_evidence.expected_result
-    )
+    normalized = normalize_mechanism_evidence(result)
+    populated_groups = {key for key, methods in (normalized or {}).items() if methods}
+    if (
+        result.query_id != trace.query_id
+        or result.truncated
+        or normalized is None
+        or not populated_groups
+        or not _valid_mechanism_query_scope(query, fixture, populated_groups)
+    ):
+        return None
+    return normalized
 
 
 def _valid_mechanism_query_scope(
     query: str,
     fixture: AegisTransferScorerFixture,
+    populated_groups: set[str],
 ) -> bool:
     statement = None
     for dialect in ("postgres", "mysql"):
@@ -417,7 +429,11 @@ def _valid_mechanism_query_scope(
         "span_kind_server",
         "span_attributes.http.request.method",
     }
-    window_epochs = (*fixture.normal_window, *fixture.abnormal_window)
+    window_epochs = []
+    if "normal_server_methods" in populated_groups:
+        window_epochs.extend(fixture.normal_window)
+    if populated_groups & {"abnormal_client_methods", "abnormal_server_methods"}:
+        window_epochs.extend(fixture.abnormal_window)
     if not all(_time_text(epoch) in lowered or str(epoch) in lowered for epoch in window_epochs):
         return False
     if not all(value in lowered for value in required_text):
@@ -428,6 +444,22 @@ def _valid_mechanism_query_scope(
         "parent_span_id",
         "span_id",
     )
+
+
+def _merge_mechanism_evidence(
+    parts: list[dict[str, dict[str, int]]],
+) -> dict[str, dict[str, int]] | None:
+    merged = {
+        "normal_server_methods": {},
+        "abnormal_client_methods": {},
+        "abnormal_server_methods": {},
+    }
+    for part in parts:
+        for group, methods in part.items():
+            if group not in merged or set(merged[group]) & set(methods):
+                return None
+            merged[group].update(methods)
+    return {key: dict(sorted(methods.items())) for key, methods in merged.items()}
 
 
 def _has_column_equality(
@@ -578,3 +610,23 @@ def _time_text(epoch: int) -> str:
 def _sha256_json(value: object) -> str:
     canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def source_transfer_audit_sha256(audit: dict[str, object]) -> str:
+    binding_fields = (
+        "audit_schema_version",
+        "mode",
+        "dataset_revision",
+        "adapter_revision",
+        "pinned_source",
+        "selection_audit",
+        "case",
+        "greptimedb",
+        "source_audit",
+        "ingestion",
+        "edge_equality",
+        "mechanism_evidence",
+        "semantic_surfaces",
+        "no_model_gates",
+    )
+    return _sha256_json({key: audit.get(key) for key in binding_fields})

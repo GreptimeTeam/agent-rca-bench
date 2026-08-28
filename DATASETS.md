@@ -307,7 +307,11 @@ therefore rejected rather than repaired.
   `fixtures/reference/aegis-transfer-scorer.json` freezes this predicate, the
   directed two-service answer, accepted method-replacement labels, and the
   canonical API runner contract. The agent-facing case exposes neither the
-  source case name nor the source fault taxonomy. No model has run.
+  source case name nor the source fault taxonomy. Raw SQL retains the publisher
+  half-open window. Agent-facing Semantic Graph queries use the exact audited
+  whole-minute envelope required by `observed_at` binning. The frozen test-stage
+  model is `deepseek-v4-flash`, whose context cache is automatic. No model has
+  run.
 
 ## OpenRCA 2.0 ops-lite
 

@@ -1,9 +1,31 @@
 from __future__ import annotations
 
+import random
+
+from semantic_rca_bench.contracts import Visibility
+
+
+def run_orders(
+    levels: list[Visibility],
+    repetitions: int,
+    seed: int,
+) -> list[list[Visibility]]:
+    if repetitions < 1:
+        raise ValueError("repetitions must be at least 1")
+    if not levels:
+        raise ValueError("at least one visibility level is required")
+    shuffled = levels.copy()
+    random.Random(seed).shuffle(shuffled)
+    return [
+        shuffled[offset:] + shuffled[:offset]
+        for repetition in range(repetitions)
+        for offset in [repetition % len(shuffled)]
+    ]
+
 
 def benchmark_protocol() -> dict[str, object]:
     return {
-        "version": 23,
+        "version": 24,
         "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-v2",
         "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
         "semantic_graph": "half-open-window-key-deduplicated-query-tool-v6",
@@ -18,8 +40,8 @@ def benchmark_protocol() -> dict[str, object]:
         "case_context": "baseline-availability-v1",
         "database_load": "client-query-boundary-v1",
         "alert": "dataset-native-when-available-v1",
-        "agent_runner": "isolated-provider-environment-partial-audit-preserved-v6",
-        "model_usage": "typed-cache-inclusion-and-verified-breakdown-v2",
+        "agent_runner": "provider-specific-prompt-cache-and-partial-audit-preserved-v7",
+        "model_usage": "typed-cache-inclusion-and-provider-native-breakdown-v3",
         "diagnosis": "affected-component-plus-optional-causal-dependency-v1",
     }
 

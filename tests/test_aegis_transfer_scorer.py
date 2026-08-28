@@ -8,6 +8,7 @@ from semantic_rca_bench.aegis_transfer_scorer import (
     canonical_api_runner_contract,
     evaluate_aegis_transfer_run,
     load_transfer_scorer_fixture,
+    source_transfer_audit_sha256,
 )
 from semantic_rca_bench.contracts import (
     AgentRun,
@@ -83,7 +84,7 @@ def _run(
     return AgentRun(
         run_id="run",
         visibility=Visibility.RAW,
-        model="claude-sonnet-5",
+        model="deepseek-v4-flash",
         runner=runner,
         diagnosis=Diagnosis(
             affected_component=affected_component,
@@ -155,6 +156,48 @@ def test_frozen_scorer_accepts_only_complete_directed_mechanism_evidence() -> No
     assert evaluation.rows_returned_through_evidence == 3
 
 
+def test_frozen_scorer_accepts_complete_mechanism_across_multiple_citations() -> None:
+    run = _run()
+    normal = _mechanism_result()
+    normal = normal.model_copy(update={"rows": [normal.rows[0]]})
+    abnormal = _mechanism_result().model_copy(
+        update={"query_id": "q02", "rows": _mechanism_result().rows[1:]}
+    )
+    traces = [
+        run.tool_calls[0].model_copy(
+            update={
+                "output": normal.model_dump(mode="json"),
+                "database_load": DatabaseLoad(query_count=1, rows_returned=1),
+            }
+        ),
+        run.tool_calls[0].model_copy(
+            update={
+                "query_id": "q02",
+                "output": abnormal.model_dump(mode="json"),
+                "database_load": DatabaseLoad(query_count=1, rows_returned=2),
+            }
+        ),
+    ]
+    assert run.diagnosis is not None
+    diagnosis = run.diagnosis.model_copy(
+        update={
+            "evidence": [
+                Evidence(query_id="q01", claim="normal paired server method"),
+                Evidence(query_id="q02", claim="abnormal paired client and server methods"),
+            ]
+        }
+    )
+    run = run.model_copy(
+        update={"diagnosis": diagnosis, "tool_calls": traces, "tool_calls_requested": 2}
+    )
+
+    evaluation = evaluate_aegis_transfer_run(run, load_transfer_scorer_fixture())
+
+    assert evaluation.success
+    assert evaluation.supporting_evidence_query_ids == ["q01", "q02"]
+    assert evaluation.rows_returned_through_evidence == 3
+
+
 @pytest.mark.parametrize(
     "run",
     [
@@ -196,6 +239,23 @@ def test_no_model_scorer_audit_rejects_agent_facing_source_label() -> None:
 
     assert not audit["no_model_gates"]["opaque_agent_input"]
     assert not audit["no_model_gates"]["all_passed"]
+
+
+def test_source_audit_binding_excludes_instance_lifecycle_metadata() -> None:
+    transfer = _transfer_audit()
+    transfer["exclusive_instance"] = {
+        "ports": {"http": 41000},
+        "process_stopped_by_command": False,
+    }
+    before = source_transfer_audit_sha256(transfer)
+    transfer["exclusive_instance"] = {
+        "ports": {"http": 42000},
+        "process_stopped_by_command": True,
+    }
+
+    assert source_transfer_audit_sha256(transfer) == before
+    transfer["mechanism_evidence"]["pass"] = False
+    assert source_transfer_audit_sha256(transfer) != before
 
 
 def test_scorer_fixture_runner_contract_is_bound_to_code() -> None:

@@ -4,6 +4,7 @@ import pytest
 
 from semantic_rca_bench.report import (
     MODEL_PRICING,
+    TOKEN_ACCOUNTING,
     _estimated_api_cost,
     _exact_sign_p_value,
     _load_case_report,
@@ -19,18 +20,20 @@ from semantic_rca_bench.report import (
 def test_deepseek_pricing_separates_uncached_and_cache_read_input() -> None:
     pricing = MODEL_PRICING["deepseek-v4-flash"]
 
-    assert pricing["input_per_million"] == 0.14
-    assert pricing["input_cache_hit_per_million"] == 0.0028
-    assert pricing["output_per_million"] == 0.28
+    assert pricing["input_per_million"] == 0.44
+    assert pricing["input_cache_hit_per_million"] == 0.014
+    assert pricing["output_per_million"] == 1.32
+    assert "Peak-rate upper bound" in pricing["note"]
     assert "Cost is unavailable unless" in pricing["note"]
 
 
-def test_api_usage_reconstructs_cached_tokens_and_cost_from_raw_events() -> None:
+def test_anthropic_api_usage_reconstructs_cached_tokens_and_cost() -> None:
     run = {
         "usage": {"input_tokens": 120, "output_tokens": 150},
         "responses": [
             {
                 "usage": {
+                    "input_tokens": 120,
                     "cache_creation_input_tokens": 40,
                     "cache_read_input_tokens": 2_176,
                 }
@@ -38,9 +41,29 @@ def test_api_usage_reconstructs_cached_tokens_and_cost_from_raw_events() -> None
         ],
     }
 
-    assert _runner_reported_token_total(run, {"cached_input": "separate"}) == 2_486
+    assert _runner_reported_token_total(run, TOKEN_ACCOUNTING["api"]) == 2_486
+    assert _estimated_api_cost(run, MODEL_PRICING["claude-sonnet-5"]) == pytest.approx(
+        (120 * 2 + 40 * 2.5 + 2_176 * 0.2 + 150 * 10) / 1_000_000
+    )
+
+
+def test_deepseek_api_usage_uses_native_automatic_cache_breakdown() -> None:
+    run = {
+        "usage": {"input_tokens": 120, "output_tokens": 150},
+        "responses": [
+            {
+                "usage": {
+                    "input_tokens": 2_296,
+                    "prompt_cache_hit_tokens": 2_176,
+                    "prompt_cache_miss_tokens": 120,
+                }
+            }
+        ],
+    }
+
+    assert _runner_reported_token_total(run, TOKEN_ACCOUNTING["api"]) == 2_446
     assert _estimated_api_cost(run, MODEL_PRICING["deepseek-v4-flash"]) == pytest.approx(
-        ((120 + 40) * 0.14 + 2_176 * 0.0028 + 150 * 0.28) / 1_000_000
+        (120 * 0.44 + 2_176 * 0.014 + 150 * 1.32) / 1_000_000
     )
 
 
@@ -48,6 +71,24 @@ def test_deepseek_cost_is_unavailable_without_provider_cache_breakdown() -> None
     run = {
         "usage": {"input_tokens": 120, "output_tokens": 20},
         "responses": [{"usage": {"input_tokens": 120, "output_tokens": 20}}],
+    }
+
+    assert _estimated_api_cost(run, MODEL_PRICING["deepseek-v4-flash"]) is None
+
+
+def test_api_cost_is_unavailable_when_any_response_lacks_cache_breakdown() -> None:
+    run = {
+        "usage": {"input_tokens": 240, "output_tokens": 20},
+        "responses": [
+            {
+                "usage": {
+                    "input_tokens": 120,
+                    "prompt_cache_hit_tokens": 100,
+                    "prompt_cache_miss_tokens": 20,
+                }
+            },
+            {"usage": {"input_tokens": 120, "output_tokens": 20}},
+        ],
     }
 
     assert _estimated_api_cost(run, MODEL_PRICING["deepseek-v4-flash"]) is None

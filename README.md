@@ -127,7 +127,8 @@ until deterministic scoring. Each completed
 resumes unfinished work.
 
 Protocol v21 established the same system contract for API, Codex subscription,
-and Claude subscription runners. Protocol v23 retains that runner contract. The
+and Claude subscription runners. Protocol v24 adds provider-specific API prompt
+caching and native cache-usage accounting. The
 API runner sets its turn limit above the visible tool-call cap and records turn
 exhaustion as a failed run instead of aborting the batch. The supported
 subscription CLIs do not expose a turn-limit option; their broker enforces the
@@ -280,11 +281,39 @@ The command binds the source audit to
 directed two-service answer, accepted HTTP method-replacement labels, complete
 `GET`/`OPTIONS` evidence predicate, and canonical API runner contract. The
 scorer requires a cited, successful SQL result from a Client-to-Server
-parent-child join. A single-service answer, reversed edge, invalid citation,
-wrong parent relation, or missing evidence row fails the audit. The agent input
-contains the opaque case ID and no fault taxonomy.
+parent-child join. One citation can prove the complete predicate, or multiple
+unique citations can prove non-overlapping parts whose normalized union exactly
+matches the predicate. A single-service answer, reversed edge, invalid citation,
+wrong parent relation, duplicate evidence cell, or missing evidence row fails
+the audit. The agent input contains the opaque case ID and no fault taxonomy.
 
-For end-to-end RCA, protocol v23 counts a citation as execution-valid only when
+`aegis-transfer-run` is the only model-invoking Aegis command. Its frozen model
+is `deepseek-v4-flash`. It executes nine paid API trajectories: three
+position-balanced repetitions across Raw, Table Semantics, and Semantic Graph.
+Do not run it without explicit cost approval.
+After approval, start the canonical run with:
+
+```bash
+uv run semantic-rca aegis-transfer-run \
+  --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
+  --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
+  --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
+  --run-dir .instances/aegis-transfer-paid-001 \
+  --database case_01 \
+  --source-audit-output .reports/aegis-transfer-paid-source-audit.json \
+  --scorer-audit-output .reports/aegis-transfer-paid-scorer-audit.json \
+  --output .reports/aegis-transfer-paid-run.json \
+  --confirm-paid-api
+```
+
+The run directory and both output paths must not exist. The command starts one
+exclusive loopback GreptimeDB process, repeats ingestion and every no-model
+gate, and calls the API only after the source and scorer gates pass. Raw SQL and
+the agent prompt retain the publisher half-open window. The Semantic Graph tool
+uses the audited minute envelope because `observed_at` is minute-binned. The
+local run report contains provider responses and is not a release artifact.
+
+For end-to-end RCA, protocol v24 counts a citation as execution-valid only when
 it uniquely identifies a successful, non-truncated SQL or Graph query result,
 the result carries the same query ID, and the evidence claim is non-empty.
 Catalog and schema discovery are not incident evidence. This check prevents
@@ -294,8 +323,12 @@ adds its source-specific deterministic evidence-support predicate; the generic
 RCA scorer does not infer evidence entailment.
 
 Token fields are runner-specific. The API runner sums provider usage over all
-responses; `run.usage.input_tokens` excludes cache creation and cache reads,
-which remain available in raw response events. Codex reads exactly one cumulative
+responses; `run.usage.input_tokens` excludes cache creation and cache reads.
+Raw response usage keeps those fields so reports reconstruct total model-visible
+input and billing. Anthropic API requests enable automatic
+5-minute prompt caching. DeepSeek context caching is enabled by the provider and
+requires no request flag; its Anthropic-compatible endpoint ignores
+`cache_control`. Codex reads exactly one cumulative
 `turn.completed` event and persists input including cache without a cache
 breakdown. Claude adds input, cache creation, and cache reads into
 `input_tokens`. Provider context includes system prompts, tool schemas, prior

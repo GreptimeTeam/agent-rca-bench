@@ -309,6 +309,63 @@ def test_agent_records_requested_calls_rejected_by_the_tool_budget(monkeypatch) 
         if isinstance(block, dict) and block.get("type") == "text"
     ]
     assert any(text.startswith("Investigation budget: 0 tool calls remain") for text in budget_text)
+    assert all(request["cache_control"] == {"type": "ephemeral"} for request in requests)
+
+
+def test_deepseek_uses_automatic_cache_and_counts_native_usage(monkeypatch) -> None:
+    diagnosis = {
+        "affected_component": "checkout",
+        "fault_category": "cpu",
+        "fault_type": "cpu",
+        "confidence": 0.7,
+        "evidence": [],
+        "alternative_candidates": [],
+        "explanation": "CPU saturation is the most likely cause.",
+    }
+
+    class Response:
+        content = [
+            SimpleNamespace(
+                type="tool_use",
+                name="submit_diagnosis",
+                input=diagnosis,
+                id="tool-1",
+            )
+        ]
+        usage = SimpleNamespace(input_tokens=120, output_tokens=5)
+
+        def model_dump(self, *, mode: str) -> dict[str, object]:
+            assert mode == "json"
+            return {
+                "content": [],
+                "usage": {
+                    "input_tokens": 120,
+                    "output_tokens": 5,
+                    "prompt_cache_hit_tokens": 100,
+                    "prompt_cache_miss_tokens": 20,
+                },
+            }
+
+    requests = []
+
+    def create(**kwargs):
+        requests.append(kwargs)
+        return Response()
+
+    provider = SimpleNamespace(messages=SimpleNamespace(create=create))
+    monkeypatch.setattr(agent_module, "_anthropic_client", lambda _: provider)
+
+    result = run_agent(
+        SimpleNamespace(client=SimpleNamespace()),  # type: ignore[arg-type]
+        CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
+        Visibility.RAW,
+        model="deepseek-v4-flash",
+        max_tool_calls=2,
+    )
+
+    assert result.usage.input_tokens == 20
+    assert result.usage.output_tokens == 5
+    assert "cache_control" not in requests[0]
 
 
 def test_valid_final_output_records_same_response_investigation_calls_as_rejected(
@@ -520,3 +577,52 @@ def test_graph_relationship_query_supplies_window_scope_and_deduplication() -> N
     assert "observed_at < '2026-04-25 05:28:12'" in query
     assert "src_id = 'checkout'' OR true'" in query
     assert "LIMIT 200" in query
+
+
+def test_graph_relationship_query_can_use_an_audited_minute_envelope() -> None:
+    query = _semantic_graph_query(
+        CaseInput(
+            case_token="aegis-transfer-001",
+            time_start=1_752_918_758,
+            time_end=1_752_919_238,
+            alert_time=1_752_918_998,
+        ),
+        {"view": "relationships"},
+        window=(1_752_918_720, 1_752_919_260),
+    )
+
+    assert "observed_at >= '2025-07-19 09:52:00'" in query
+    assert "observed_at < '2025-07-19 10:01:00'" in query
+
+
+def test_graph_tool_invocation_uses_gateway_window_without_changing_case_window() -> None:
+    queries = []
+
+    class Gateway:
+        client = SimpleNamespace()
+        semantic_graph_window = (1_752_918_720, 1_752_919_260)
+
+        def execute(self, query: str) -> QueryResult:
+            queries.append(query)
+            return QueryResult(query_id="provider", columns=[], rows=[], elapsed_seconds=0)
+
+    case = CaseInput(
+        case_token="aegis-transfer-001",
+        time_start=1_752_918_758,
+        time_end=1_752_919_238,
+        alert_time=1_752_918_998,
+    )
+    session = agent_module.InvestigationSession(
+        Gateway(),  # type: ignore[arg-type]
+        case,
+        Visibility.SEMANTIC_GRAPH,
+        max_tool_calls=1,
+        semantic_coverage={"graph": {"status": "relational"}},
+    )
+
+    session.invoke("query_semantic_graph", {"view": "relationships"})
+
+    assert "observed_at >= '2025-07-19 09:52:00'" in queries[0]
+    assert "observed_at < '2025-07-19 10:01:00'" in queries[0]
+    assert case.time_start == 1_752_918_758
+    assert case.time_end == 1_752_919_238

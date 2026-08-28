@@ -208,8 +208,12 @@ ingestion and the raw-span versus stored Graph exact edge-set gate now pass for
 the selected case. Its evaluator-side transfer fixture freezes the directed
 two-service answer, deterministic method-replacement evidence predicate, and
 canonical API runner contract. Its real no-model scorer audit passes. The
-remaining blocker is to wire the fresh model run without exposing evaluator
-fields to the agent.
+dedicated runner now binds the same source and scorer gates, preserves the
+publisher window for Raw SQL, and applies the audited minute envelope only to
+Semantic Graph queries. The frozen test-stage model is `deepseek-v4-flash`.
+DeepSeek uses its automatic context cache; the shared API loop enables explicit
+prompt caching for Anthropic models. The remaining blocker is an explicitly
+approved fresh model run.
 Raw `.reports/` trajectories are not the release contract because they contain
 provider payloads and local metadata.
 
@@ -283,9 +287,11 @@ pinned Aegis downloader, source-only selection audit, production-protocol
 adapter, exact raw-span versus Graph edge-set audit, and stored method-replacement
 evidence gate are complete. The selected transfer scorer and canonical API
 runner contract are frozen in an evaluator-side fixture, and the scorer passes
-against a fresh real no-model transfer audit. Wire the fresh model run next.
-The local no-model reports are implementation audits, not yet the public release
-artifact. Catalog
+against a fresh real no-model transfer audit. The dedicated run command is wired
+and requires explicit paid-API confirmation. Execute the fresh model run only
+after cost approval, then produce the sanitized release artifact. The local
+no-model reports are implementation audits, not yet the public release artifact.
+Catalog
 broad-recall, multi-model report cards, powered cross-system enrollment, and
 additional report UI are deferred until that path works end to end.
 

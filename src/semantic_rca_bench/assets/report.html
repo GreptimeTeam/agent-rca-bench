@@ -263,10 +263,18 @@
       const jointlyValid = item => evaluationOf(item).valid_completion === true;
       const rawUsageTotals = run => (run.responses || []).reduce((total, response) => {
         const usage = response.usage || {};
-        total.cacheRead += Number(usage.cache_read_input_tokens || 0);
-        total.cacheCreate += Number(usage.cache_creation_input_tokens || 0);
+        if (Object.prototype.hasOwnProperty.call(usage, 'prompt_cache_hit_tokens') && Object.prototype.hasOwnProperty.call(usage, 'prompt_cache_miss_tokens')) {
+          total.cacheRead += Number(usage.prompt_cache_hit_tokens || 0);
+          total.uncached += Number(usage.prompt_cache_miss_tokens || 0);
+          total.breakdown = true;
+        } else if (Object.prototype.hasOwnProperty.call(usage, 'cache_read_input_tokens') && Object.prototype.hasOwnProperty.call(usage, 'cache_creation_input_tokens')) {
+          total.cacheRead += Number(usage.cache_read_input_tokens || 0);
+          total.cacheCreate += Number(usage.cache_creation_input_tokens || 0);
+          total.uncached += Number(usage.input_tokens || 0);
+          total.breakdown = true;
+        }
         return total;
-      }, {cacheRead: 0, cacheCreate: 0});
+      }, {uncached: 0, cacheRead: 0, cacheCreate: 0, breakdown: false});
       const tokenTotalOf = run => {
         if (run.runner_reported_token_total != null) return Number(run.runner_reported_token_total);
         const raw = rawUsageTotals(run);
@@ -280,10 +288,13 @@
           return run.estimated_api_cost == null ? null : Number(run.estimated_api_cost);
         }
         const raw = rawUsageTotals(run);
-        const uncachedInput = Number(run.usage?.input_tokens || 0) + raw.cacheCreate;
         const cacheReadRate = report.pricing.input_cache_hit_per_million;
+        const cacheWriteRate = report.pricing.input_cache_write_per_million;
+        if (cacheReadRate != null && !raw.breakdown) return null;
         if (raw.cacheRead && cacheReadRate == null) return null;
-        return (uncachedInput * report.pricing.input_per_million + raw.cacheRead * Number(cacheReadRate || 0) + Number(run.usage?.output_tokens || 0) * report.pricing.output_per_million) / 1_000_000;
+        if (raw.cacheCreate && cacheWriteRate == null) return null;
+        const uncachedInput = raw.breakdown ? raw.uncached : Number(run.usage?.input_tokens || 0);
+        return (uncachedInput * report.pricing.input_per_million + raw.cacheCreate * Number(cacheWriteRate || 0) + raw.cacheRead * Number(cacheReadRate || 0) + Number(run.usage?.output_tokens || 0) * report.pricing.output_per_million) / 1_000_000;
       };
       const caseLabel = (item, index) => {
         const info = item.case || {};

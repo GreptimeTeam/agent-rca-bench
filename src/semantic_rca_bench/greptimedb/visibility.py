@@ -18,10 +18,17 @@ class QueryGateway:
         visibility: Visibility,
         *,
         max_rows: int = 200,
+        semantic_graph_window: tuple[int, int] | None = None,
     ) -> None:
+        if (
+            semantic_graph_window is not None
+            and semantic_graph_window[0] >= semantic_graph_window[1]
+        ):
+            raise ValueError("Semantic Graph window must be non-empty")
         self.client = client
         self.visibility = visibility
         self.max_rows = max_rows
+        self.semantic_graph_window = semantic_graph_window
 
     def execute(self, sql: str) -> QueryResult:
         statements = sqlglot.parse(sql, read="mysql")

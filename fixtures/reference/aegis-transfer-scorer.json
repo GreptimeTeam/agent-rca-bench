@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "scorer_revision": "aegis-transfer-method-replacement-v1",
+  "scorer_revision": "aegis-transfer-method-replacement-v3",
   "agent_case_id": "aegis-transfer-001",
   "case_role": "measurement",
   "ground_truth": {
@@ -39,8 +39,8 @@
   },
   "canonical_api_runner": {
     "runner": "api",
-    "model": "claude-sonnet-5",
-    "benchmark_protocol_version": 23,
+    "model": "deepseek-v4-flash",
+    "benchmark_protocol_version": 24,
     "visibility_levels": [
       "raw",
       "table_semantics",
@@ -52,6 +52,7 @@
     "repetitions": 3,
     "treatment_order_seed": 0,
     "parallel_runs": 1,
-    "sampling": "provider-default; no seed sent"
+    "sampling": "provider-default; no seed sent",
+    "prompt_cache": "deepseek-automatic-prefix-v1"
   }
 }

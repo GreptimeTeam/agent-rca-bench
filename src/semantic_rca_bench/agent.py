@@ -305,7 +305,13 @@ class InvestigationSession:
                 limit=int(arguments.get("limit", 50)),
             )
             return _catalog_search_output(output, self.case_input.fault_taxonomy)
-        result = self.gateway.execute(_semantic_graph_query(self.case_input, arguments))
+        result = self.gateway.execute(
+            _semantic_graph_query(
+                self.case_input,
+                arguments,
+                window=self.gateway.semantic_graph_window,
+            )
+        )
         return _semantic_graph_output(result, arguments)
 
     def _load_snapshot(self) -> DatabaseLoad | None:
@@ -361,6 +367,7 @@ def run_agent(
         max_turns=max_turns,
         max_tokens=max_tokens,
         semantic_coverage=semantic_coverage,
+        prompt_cache=True,
     )
     diagnosis = Diagnosis.model_validate(result.output) if result.output is not None else None
     error = result.error
@@ -398,6 +405,7 @@ def run_structured_api_agent(
     max_turns: int | None,
     max_tokens: int = 4096,
     semantic_coverage: dict[str, object] | None = None,
+    prompt_cache: bool = False,
 ) -> StructuredAgentResult:
     if max_turns is None:
         max_turns = max_tool_calls + 10
@@ -428,13 +436,18 @@ def run_structured_api_agent(
         )
 
     for _ in range(max_turns):
+        request: dict[str, object] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "tools": [*investigation_tools, output_tool],
+            "messages": messages,
+        }
+        if prompt_cache and not model.startswith("deepseek-"):
+            request["cache_control"] = {"type": "ephemeral"}
         try:
             response = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                system=system_prompt,
-                tools=[*investigation_tools, output_tool],
-                messages=messages,
+                **request,
             )
         except Exception as error:
             return _structured_result(
@@ -444,8 +457,9 @@ def run_structured_api_agent(
                 started,
                 error=f"agent provider failed: {error}",
             )
-        responses.append(response.model_dump(mode="json"))
-        usage.input_tokens += response.usage.input_tokens
+        raw_response = response.model_dump(mode="json")
+        responses.append(raw_response)
+        usage.input_tokens += _uncached_input_tokens(raw_response)
         usage.output_tokens += response.usage.output_tokens
         messages.append({"role": "assistant", "content": response.content})
 
@@ -561,6 +575,15 @@ def _anthropic_client(model: str) -> anthropic.Anthropic:
         )
     api_key = _api_credential("ANTHROPIC_API_KEY", ANTHROPIC_KEYCHAIN_SERVICE)
     return anthropic.Anthropic(api_key=api_key)
+
+
+def _uncached_input_tokens(response: dict[str, object]) -> int:
+    raw_usage = response.get("usage")
+    if not isinstance(raw_usage, dict):
+        raise AgentError("provider response has no usage object")
+    if "prompt_cache_hit_tokens" in raw_usage and "prompt_cache_miss_tokens" in raw_usage:
+        return int(raw_usage["prompt_cache_miss_tokens"] or 0)
+    return int(raw_usage.get("input_tokens", 0) or 0)
 
 
 def _api_credential(environment_variable: str, keychain_service: str) -> str:
@@ -830,12 +853,18 @@ def _semantic_graph_output(
     return output
 
 
-def _semantic_graph_query(case_input: CaseInput, arguments: dict[str, object]) -> str:
+def _semantic_graph_query(
+    case_input: CaseInput,
+    arguments: dict[str, object],
+    *,
+    window: tuple[int, int] | None = None,
+) -> str:
     view = str(arguments.get("view") or "")
     if view not in {"entities", "relationships"}:
         raise AgentError("semantic graph view must be entities or relationships")
-    start = datetime.fromtimestamp(case_input.time_start, UTC).strftime("%Y-%m-%d %H:%M:%S")
-    end = datetime.fromtimestamp(case_input.time_end, UTC).strftime("%Y-%m-%d %H:%M:%S")
+    window_start, window_end = window or (case_input.time_start, case_input.time_end)
+    start = datetime.fromtimestamp(window_start, UTC).strftime("%Y-%m-%d %H:%M:%S")
+    end = datetime.fromtimestamp(window_end, UTC).strftime("%Y-%m-%d %H:%M:%S")
     limit = max(1, min(int(arguments.get("limit", 100)), 200))
     predicates = [f"observed_at >= '{start}'", f"observed_at < '{end}'"]
 
