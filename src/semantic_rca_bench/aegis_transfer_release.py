@@ -7,11 +7,21 @@ from collections.abc import Mapping
 from pathlib import Path
 from statistics import median
 
+from semantic_rca_bench.aegis_transfer_formal import (
+    formal_source_semantic_sha256,
+    validate_formal_report,
+)
+from semantic_rca_bench.aegis_transfer_protocol import (
+    AegisTransferProtocolFixture,
+    evaluate_transfer_protocol_run,
+    load_transfer_protocol_fixture,
+)
 from semantic_rca_bench.aegis_transfer_scorer import (
     SCORER_REVISION,
     AegisTransferEvaluation,
     AegisTransferScorerFixture,
     evaluate_aegis_transfer_run,
+    load_transfer_scorer_fixture,
     source_transfer_audit_sha256,
 )
 from semantic_rca_bench.contracts import AgentRun
@@ -20,6 +30,7 @@ from semantic_rca_bench.report import MODEL_PRICING, _estimated_api_cost, _raw_i
 
 ARTIFACT_SCHEMA_VERSION = 1
 DEFAULT_PILOT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-scorer-v24-pilot.json")
+DEFAULT_MEASUREMENT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v25-scorer.json")
 
 
 def load_pilot_scorer_fixture(
@@ -158,6 +169,135 @@ def build_release_artifact_from_files(
     )
 
 
+def build_measurement_artifact(
+    run_report: dict[str, object],
+    source_audit: dict[str, object],
+    scorer_audit: dict[str, object],
+    protocol_audit: dict[str, object],
+    scorer_fixture: AegisTransferScorerFixture,
+    protocol_fixture: AegisTransferProtocolFixture,
+    *,
+    private_input_sha256: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    _validate_measurement_bindings(
+        run_report,
+        source_audit,
+        scorer_audit,
+        protocol_audit,
+        scorer_fixture,
+        protocol_fixture,
+    )
+    source = _source_payload(source_audit)
+    runs = _measurement_run_payloads(run_report, scorer_fixture, protocol_fixture)
+    model_reports = {
+        model.model: _measurement_model_summary(
+            [run for run in runs if run["model"] == model.model],
+            model.model,
+        )
+        for model in protocol_fixture.models
+    }
+    payload = {
+        "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
+        "artifact_type": "aegis-transfer-measurement-result",
+        "publication_status": (
+            "sanitized measurement result; contains no source telemetry rows or provider payloads"
+        ),
+        "analysis_role": "measurement",
+        "license": {
+            **_mapping(source_audit, "license"),
+            "artifact_schema_and_benchmark_metadata": "Apache-2.0",
+            "derived_source_facts": (
+                "Source dataset record declares CC-BY-4.0; reviewer artifact data coverage "
+                "remains unclear."
+            ),
+            "source_telemetry_redistributed": False,
+        },
+        "source": source,
+        "scorer": {
+            "revision": scorer_fixture.scorer_revision,
+            "agent_case_id": scorer_fixture.agent_case_id,
+            "ground_truth": scorer_fixture.ground_truth.model_dump(mode="json"),
+            "normal_window": list(scorer_fixture.normal_window),
+            "abnormal_window": list(scorer_fixture.abnormal_window),
+            "mechanism_evidence": scorer_fixture.mechanism_evidence.model_dump(mode="json"),
+            "no_model_gates": _mapping(scorer_audit, "no_model_gates"),
+        },
+        "experiment": {
+            "benchmark_protocol": _mapping(run_report, "benchmark_protocol"),
+            "formal_protocol": protocol_fixture.model_dump(mode="json"),
+            "case": _mapping(run_report, "case"),
+            "graph_window_contract": _mapping(run_report, "graph_window_contract"),
+            "semantic_coverage": _mapping(run_report, "semantic_coverage"),
+            "schedule": _list(run_report, "schedule"),
+            "execution": _mapping(run_report, "execution"),
+            "runs": runs,
+            "model_reports": model_reports,
+            "cross_model_pooling": False,
+        },
+        "sanitization": {
+            "excluded": [
+                "provider responses and thinking",
+                "run IDs and provider tool-call IDs",
+                "free-form explanations, alternatives, and evidence claims",
+                "non-mechanism SQL result rows",
+                "query IDs, elapsed timings, and provider error text",
+                "local paths, ports, process metadata, and environment data",
+                "source telemetry rows, label files, and archives",
+            ],
+            "included_derived_data": [
+                "normalized service-call edge sets and counts",
+                "canonical mechanism aggregates",
+                "parsed diagnosis fields and deterministic scorer outputs",
+                "query and row counts plus aggregate token and cache usage",
+                "within-model paired treatment deltas",
+            ],
+        },
+    }
+    return {
+        **payload,
+        "integrity": {
+            "semantic_payload_sha256": canonical_sha256(payload),
+            "source_semantic_sha256": canonical_sha256(source),
+            "private_input_sha256": dict(sorted((private_input_sha256 or {}).items())),
+            "semantic_hash_scope": (
+                "all artifact fields except integrity; excludes private file hashes and "
+                "run-local IDs, timings, ports, processes, paths, and provider error text"
+            ),
+        },
+    }
+
+
+def build_measurement_artifact_from_files(
+    run_path: Path,
+    source_audit_path: Path,
+    scorer_audit_path: Path,
+    protocol_audit_path: Path,
+    scorer_fixture_path: Path = DEFAULT_MEASUREMENT_SCORER_FIXTURE,
+    protocol_fixture_path: Path = Path(
+        "fixtures/reference/aegis-transfer-v25-three-model-protocol.json"
+    ),
+) -> dict[str, object]:
+    inputs = {
+        "run_report": run_path,
+        "source_audit": source_audit_path,
+        "scorer_audit": scorer_audit_path,
+        "protocol_audit": protocol_audit_path,
+        "scorer_fixture": scorer_fixture_path,
+        "protocol_fixture": protocol_fixture_path,
+    }
+    scorer_fixture = load_transfer_scorer_fixture(scorer_fixture_path)
+    protocol_fixture = load_transfer_protocol_fixture(protocol_fixture_path)
+    return build_measurement_artifact(
+        _load_object(run_path),
+        _load_object(source_audit_path),
+        _load_object(scorer_audit_path),
+        _load_object(protocol_audit_path),
+        scorer_fixture,
+        protocol_fixture,
+        private_input_sha256={name: file_sha256(path) for name, path in inputs.items()},
+    )
+
+
 def canonical_sha256(value: object) -> str:
     canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(canonical.encode()).hexdigest()
@@ -267,6 +407,16 @@ def _source_payload(source_audit: dict[str, object]) -> dict[str, object]:
             "declared_edge_match": mechanism.get("declared_edge_match"),
             "original_method": mechanism.get("original_method"),
             "replacement_method": mechanism.get("replacement_method"),
+            **(
+                {"span_name": mechanism["span_name"]}
+                if mechanism.get("span_name") is not None
+                else {}
+            ),
+            **(
+                {"declared_delay_ns": mechanism["declared_delay_ns"]}
+                if mechanism.get("declared_delay_ns") is not None
+                else {}
+            ),
             "evidence_match": mechanism.get("evidence_match"),
             "pass": mechanism.get("pass"),
         },
@@ -321,6 +471,153 @@ def _run_payloads(
     if len(result) != expected:
         raise ValueError(f"expected {expected} run cells, found {len(result)}")
     return result
+
+
+def _validate_measurement_bindings(
+    run_report: dict[str, object],
+    source_audit: dict[str, object],
+    scorer_audit: dict[str, object],
+    protocol_audit: dict[str, object],
+    scorer_fixture: AegisTransferScorerFixture,
+    protocol_fixture: AegisTransferProtocolFixture,
+) -> None:
+    validate_formal_report(
+        run_report,
+        scorer_fixture,
+        protocol_fixture,
+        require_complete=True,
+    )
+    source_gates = source_audit.get("no_model_gates")
+    scorer_gates = scorer_audit.get("no_model_gates")
+    protocol_gates = protocol_audit.get("no_model_gates")
+    if any(
+        not isinstance(gates, dict) or gates.get("all_passed") is not True
+        for gates in (source_gates, scorer_gates, protocol_gates)
+    ):
+        raise ValueError("measurement artifact input no-model gates did not pass")
+    bindings = _mapping(run_report, "execution_bindings")
+    expected = {
+        "source_transfer_audit_sha256": source_transfer_audit_sha256(source_audit),
+        "source_semantic_sha256": formal_source_semantic_sha256(source_audit),
+        "scorer_audit_sha256": canonical_sha256(scorer_audit),
+        "protocol_audit_sha256": canonical_sha256(protocol_audit),
+        "scorer_fixture_sha256": canonical_sha256(scorer_fixture.model_dump(mode="json")),
+        "protocol_fixture_sha256": canonical_sha256(protocol_fixture.model_dump(mode="json")),
+    }
+    if bindings != expected:
+        raise ValueError("measurement artifact execution bindings do not match input files")
+
+
+def _measurement_run_payloads(
+    run_report: dict[str, object],
+    scorer_fixture: AegisTransferScorerFixture,
+    protocol_fixture: AegisTransferProtocolFixture,
+) -> list[dict[str, object]]:
+    result = []
+    for item in _list(run_report, "runs"):
+        if not isinstance(item, dict):
+            raise ValueError("formal run report contains a malformed run cell")
+        run = AgentRun.model_validate(item.get("run"))
+        recorded = AegisTransferEvaluation.model_validate(item.get("evaluation"))
+        evaluated = evaluate_transfer_protocol_run(run, scorer_fixture, protocol_fixture)
+        if recorded.model_dump(mode="json") != evaluated.model_dump(mode="json"):
+            raise ValueError("formal run evaluation does not match deterministic rescoring")
+        payload = _run_payload(item, run, evaluated, scorer_fixture)
+        execution = _mapping(payload, "execution")
+        execution["runner_error"] = execution.get("runner_error") is not None
+        payload["cell_index"] = item.get("cell_index")
+        payload["model_index"] = item.get("model_index")
+        result.append(payload)
+    return result
+
+
+def _measurement_model_summary(runs: list[dict[str, object]], model: str) -> dict[str, object]:
+    treatments = {}
+    for visibility in ("raw", "table_semantics", "semantic_graph"):
+        cells = [run for run in runs if run["visibility"] == visibility]
+        treatments[visibility] = {
+            "runs": len(cells),
+            "successful_runs": sum(
+                _mapping(cell, "evaluation").get("success") is True for cell in cells
+            ),
+        }
+    return {
+        "inference_role": "within-model case-level description",
+        "successful_runs": sum(_mapping(run, "evaluation").get("success") is True for run in runs),
+        "total_runs": len(runs),
+        "treatments": treatments,
+        "paired_treatment_deltas": _paired_treatment_deltas(runs),
+        "usage": _usage_summary(runs, model),
+    }
+
+
+def _paired_treatment_deltas(runs: list[dict[str, object]]) -> dict[str, object]:
+    by_cell = {(int(run["repetition"]), str(run["visibility"])): run for run in runs}
+    output = {}
+    for name, left, right in (
+        ("table_semantics_minus_raw", "raw", "table_semantics"),
+        ("semantic_graph_minus_table_semantics", "table_semantics", "semantic_graph"),
+    ):
+        pairs = []
+        for repetition in sorted({int(run["repetition"]) for run in runs}):
+            left_run = by_cell[(repetition, left)]
+            right_run = by_cell[(repetition, right)]
+            eligible = all(
+                _mapping(run, "evaluation").get("success") is True for run in (left_run, right_run)
+            )
+            pairs.append(
+                {
+                    "repetition": repetition,
+                    "eligible": eligible,
+                    "deltas": (_eligible_pair_deltas(left_run, right_run) if eligible else None),
+                }
+            )
+        eligible_deltas = [pair["deltas"] for pair in pairs if pair["deltas"] is not None]
+        output[name] = {
+            "pairs": pairs,
+            "eligible_pairs": len(eligible_deltas),
+            "median_deltas": (
+                {
+                    field: median(float(delta[field]) for delta in eligible_deltas)
+                    for field in (
+                        "rows_returned",
+                        "tool_calls_through_evidence",
+                        "reported_total_tokens",
+                    )
+                }
+                if eligible_deltas
+                else None
+            ),
+        }
+    return output
+
+
+def _eligible_pair_deltas(left: dict[str, object], right: dict[str, object]) -> dict[str, int]:
+    left_execution = _mapping(left, "execution")
+    right_execution = _mapping(right, "execution")
+    left_evaluation = _mapping(left, "evaluation")
+    right_evaluation = _mapping(right, "evaluation")
+    left_usage = _mapping(left, "usage")
+    right_usage = _mapping(right, "usage")
+    return {
+        "rows_returned": int(_mapping(right_execution, "database_load")["rows_returned"])
+        - int(_mapping(left_execution, "database_load")["rows_returned"]),
+        "tool_calls_through_evidence": int(right_evaluation["tool_calls_through_evidence"])
+        - int(left_evaluation["tool_calls_through_evidence"]),
+        "reported_total_tokens": _reported_tokens(right_usage) - _reported_tokens(left_usage),
+    }
+
+
+def _reported_tokens(usage: dict[str, object]) -> int:
+    return sum(
+        int(usage.get(field, 0))
+        for field in (
+            "uncached_input_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+            "output_tokens",
+        )
+    )
 
 
 def _run_payload(

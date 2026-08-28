@@ -290,8 +290,8 @@ matches the predicate. A single-service answer, reversed edge, invalid citation,
 wrong parent relation, duplicate evidence cell, or missing evidence row fails
 the audit. The agent input contains the opaque case ID and no fault taxonomy.
 
-`aegis-transfer-run` is the only model-invoking Aegis command. Its frozen model
-is `deepseek-v4-flash`. It executes nine paid API trajectories: three
+`aegis-transfer-run` is the historical protocol v24 model-invoking command. Its frozen model is
+`deepseek-v4-flash`. It executes nine paid API trajectories: three
 position-balanced repetitions across Raw, Table Semantics, and Semantic Graph.
 Do not run it without explicit cost approval. The protocol v24 pilot completed all nine
 trajectories but produced no jointly correct diagnosis. Because those trajectories informed the
@@ -351,6 +351,64 @@ position-balanced repetitions over all three treatments for each model. DeepSeek
 prefix caching; Claude uses ephemeral request cache control. Semantic-layer effects remain paired
 within a model, and correctness is not pooled across models. The 27 model trajectories are not
 authorized by this audit and require a new explicit API-cost approval.
+
+Create the immutable 27-cell schedule before requesting that approval:
+
+```bash
+uv run semantic-rca aegis-transfer-formal-preflight \
+  --source-audit .reports/aegis-transfer-v25-source-audit.json \
+  --scorer-audit .reports/aegis-transfer-v25-scorer-audit.json \
+  --protocol-audit .reports/aegis-transfer-v25-protocol-audit.json \
+  --output .reports/aegis-transfer-v25-formal.json
+```
+
+Preflight is provider-free: it reads local fixtures and audits, recomputes the protocol gate,
+freezes current pricing metadata, and writes an unauthorized report with zero completed cells. It
+neither reads provider credentials nor starts GreptimeDB. The command refuses to overwrite an
+existing report.
+
+Only after a separate explicit API-cost approval, execute the pending cells with:
+
+```bash
+uv run semantic-rca aegis-transfer-formal-run \
+  --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
+  --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
+  --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
+  --run-dir .instances/aegis-transfer-v25-formal-01 \
+  --report .reports/aegis-transfer-v25-formal.json \
+  --source-audit-output .reports/aegis-transfer-v25-formal-01-source.json \
+  --scorer-audit-output .reports/aegis-transfer-v25-formal-01-scorer.json \
+  --protocol-audit-output .reports/aegis-transfer-v25-formal-01-protocol.json \
+  --confirm-paid-api
+```
+
+Each invocation starts a new exclusive GreptimeDB instance, repeats all no-model gates, and checks
+the stable source-semantic binding before any provider call. The report is atomically updated after
+every cell. A runner error, budget exhaustion, or contract violation stops the invocation after the
+cell is recorded. Resume with the same report, a new empty run directory, and new audit output
+paths; recorded cells form an exact schedule prefix and are never retried. The command-line flag is
+an execution guard, not a substitute for the required approval. Confirmation is scoped to one
+invocation and is never persisted in the resumable report.
+
+After all 27 cells are recorded, export the sanitized measurement artifact without a provider or
+database connection:
+
+```bash
+uv run semantic-rca aegis-transfer-measurement-export \
+  --run-report .reports/aegis-transfer-v25-formal.json \
+  --source-audit .reports/aegis-transfer-v25-formal-01-source.json \
+  --scorer-audit .reports/aegis-transfer-v25-formal-01-scorer.json \
+  --protocol-audit .reports/aegis-transfer-v25-formal-01-protocol.json \
+  --output artifacts/measurement/aegis-transfer-v25-three-model.json
+```
+
+When execution required multiple invocations, pass the three live audit files from the final
+invocation because the report binds those exact files.
+
+The exporter deterministically rescores every cell and reports paired treatment deltas within each
+model. It does not pool correctness across models. It removes provider responses, free-form text,
+identifiers, timings, local metadata, and source telemetry while retaining canonical mechanism
+aggregates, database load, cache usage, pricing, and integrity hashes.
 
 Export a deterministic development artifact from the retained private reports without calling a
 model or database:

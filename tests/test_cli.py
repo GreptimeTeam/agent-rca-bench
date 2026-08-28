@@ -202,6 +202,70 @@ def test_aegis_transfer_protocol_audit_uses_measurement_fixtures_without_paid_fl
     assert not hasattr(args, "confirm_paid_api")
 
 
+def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
+    preflight = _parser().parse_args(
+        [
+            "aegis-transfer-formal-preflight",
+            "--source-audit",
+            "source.json",
+            "--scorer-audit",
+            "scorer.json",
+            "--protocol-audit",
+            "protocol.json",
+            "--output",
+            "formal.json",
+        ]
+    )
+    execution = [
+        "aegis-transfer-formal-run",
+        "--cases-dir",
+        "cases",
+        "--meta-dir",
+        "meta",
+        "--archive",
+        "segments",
+        "--run-dir",
+        "instance",
+        "--report",
+        "formal.json",
+        "--source-audit-output",
+        "source-live.json",
+        "--scorer-audit-output",
+        "scorer-live.json",
+        "--protocol-audit-output",
+        "protocol-live.json",
+    ]
+
+    assert not hasattr(preflight, "confirm_paid_api")
+    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v25-scorer.json"
+    assert str(preflight.protocol) == (
+        "fixtures/reference/aegis-transfer-v25-three-model-protocol.json"
+    )
+    with pytest.raises(SystemExit):
+        _parser().parse_args(execution)
+    paid = _parser().parse_args([*execution, "--confirm-paid-api"])
+    export = _parser().parse_args(
+        [
+            "aegis-transfer-measurement-export",
+            "--run-report",
+            "formal.json",
+            "--source-audit",
+            "source.json",
+            "--scorer-audit",
+            "scorer.json",
+            "--protocol-audit",
+            "protocol.json",
+            "--output",
+            "measurement.json",
+        ]
+    )
+
+    assert paid.confirm_paid_api is True
+    assert paid.database == "case_02"
+    assert str(paid.selection) == "fixtures/reference/aegis-transfer-v25-selection.json"
+    assert not hasattr(export, "confirm_paid_api")
+
+
 def test_aegis_transfer_run_requires_explicit_paid_api_confirmation() -> None:
     arguments = [
         "aegis-transfer-run",

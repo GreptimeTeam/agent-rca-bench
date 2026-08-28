@@ -18,6 +18,12 @@ from semantic_rca_bench.aegis_transfer_benchmark import (
     execute_transfer_runs,
     prepare_transfer_environment,
 )
+from semantic_rca_bench.aegis_transfer_formal import (
+    bind_formal_execution,
+    build_formal_preflight_report,
+    execute_formal_runs,
+    write_formal_report,
+)
 from semantic_rca_bench.aegis_transfer_protocol import (
     DEFAULT_PROTOCOL_FIXTURE,
     audit_transfer_protocol,
@@ -25,6 +31,7 @@ from semantic_rca_bench.aegis_transfer_protocol import (
 )
 from semantic_rca_bench.aegis_transfer_release import (
     DEFAULT_PILOT_SCORER_FIXTURE,
+    build_measurement_artifact_from_files,
     build_release_artifact_from_files,
 )
 from semantic_rca_bench.aegis_transfer_scorer import (
@@ -181,6 +188,20 @@ def _add_aegis_transfer_environment_arguments(parser: argparse.ArgumentParser) -
     parser.add_argument("--database", default="case_01")
 
 
+def _add_aegis_formal_environment_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--cases-dir", type=Path, required=True)
+    parser.add_argument("--meta-dir", type=Path, required=True)
+    parser.add_argument("--archive", type=Path, required=True)
+    parser.add_argument(
+        "--selection",
+        type=Path,
+        default=Path("fixtures/reference/aegis-transfer-v25-selection.json"),
+    )
+    parser.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
+    parser.add_argument("--run-dir", type=Path, required=True)
+    parser.add_argument("--database", default="case_02")
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="semantic-rca")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -235,6 +256,45 @@ def _parser() -> argparse.ArgumentParser:
     )
     aegis_transfer_protocol.add_argument("--output", type=Path, required=True)
 
+    aegis_formal_preflight = subparsers.add_parser("aegis-transfer-formal-preflight")
+    aegis_formal_preflight.add_argument("--source-audit", type=Path, required=True)
+    aegis_formal_preflight.add_argument("--scorer-audit", type=Path, required=True)
+    aegis_formal_preflight.add_argument("--protocol-audit", type=Path, required=True)
+    aegis_formal_preflight.add_argument(
+        "--scorer",
+        type=Path,
+        default=DELAY_SCORER_FIXTURE,
+    )
+    aegis_formal_preflight.add_argument(
+        "--protocol",
+        type=Path,
+        default=DEFAULT_PROTOCOL_FIXTURE,
+    )
+    aegis_formal_preflight.add_argument("--output", type=Path, required=True)
+
+    aegis_formal_run = subparsers.add_parser("aegis-transfer-formal-run")
+    _add_aegis_formal_environment_arguments(aegis_formal_run)
+    aegis_formal_run.add_argument("--report", type=Path, required=True)
+    aegis_formal_run.add_argument("--source-audit-output", type=Path, required=True)
+    aegis_formal_run.add_argument("--scorer-audit-output", type=Path, required=True)
+    aegis_formal_run.add_argument("--protocol-audit-output", type=Path, required=True)
+    aegis_formal_run.add_argument(
+        "--scorer",
+        type=Path,
+        default=DELAY_SCORER_FIXTURE,
+    )
+    aegis_formal_run.add_argument(
+        "--protocol",
+        type=Path,
+        default=DEFAULT_PROTOCOL_FIXTURE,
+    )
+    aegis_formal_run.add_argument(
+        "--confirm-paid-api",
+        action="store_true",
+        required=True,
+        help="acknowledge that this invocation may execute pending paid API cells",
+    )
+
     aegis_transfer_run = subparsers.add_parser("aegis-transfer-run")
     _add_aegis_transfer_environment_arguments(aegis_transfer_run)
     aegis_transfer_run.add_argument(
@@ -262,6 +322,23 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_PILOT_SCORER_FIXTURE,
     )
     aegis_transfer_export.add_argument("--output", type=Path, required=True)
+
+    aegis_measurement_export = subparsers.add_parser("aegis-transfer-measurement-export")
+    aegis_measurement_export.add_argument("--run-report", type=Path, required=True)
+    aegis_measurement_export.add_argument("--source-audit", type=Path, required=True)
+    aegis_measurement_export.add_argument("--scorer-audit", type=Path, required=True)
+    aegis_measurement_export.add_argument("--protocol-audit", type=Path, required=True)
+    aegis_measurement_export.add_argument(
+        "--scorer",
+        type=Path,
+        default=DELAY_SCORER_FIXTURE,
+    )
+    aegis_measurement_export.add_argument(
+        "--protocol",
+        type=Path,
+        default=DEFAULT_PROTOCOL_FIXTURE,
+    )
+    aegis_measurement_export.add_argument("--output", type=Path, required=True)
 
     smoke = subparsers.add_parser("smoke")
     smoke.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
@@ -434,6 +511,103 @@ def aegis_transfer_protocol_audit(args: argparse.Namespace) -> int:
     return 0 if report["no_model_gates"]["all_passed"] else 1
 
 
+def aegis_transfer_formal_preflight(args: argparse.Namespace) -> int:
+    if args.output.exists():
+        raise ValueError(f"refusing to overwrite formal preflight report: {args.output}")
+    scorer = load_transfer_scorer_fixture(args.scorer)
+    protocol = load_transfer_protocol_fixture(args.protocol)
+    source_audit = _read_json_object(args.source_audit)
+    scorer_audit = _read_json_object(args.scorer_audit)
+    protocol_audit = _read_json_object(args.protocol_audit)
+    report = build_formal_preflight_report(
+        source_audit,
+        scorer_audit,
+        protocol_audit,
+        scorer,
+        args.scorer,
+        protocol,
+    )
+    write_formal_report(args.output, report)
+    print(args.output)
+    return 0
+
+
+def aegis_transfer_formal_run(args: argparse.Namespace) -> int:
+    if args.confirm_paid_api is not True:
+        raise ValueError("formal Aegis transfer run requires explicit paid API confirmation")
+    if not args.report.is_file():
+        raise ValueError("formal Aegis transfer run requires an existing preflight report")
+    audit_paths = (
+        args.source_audit_output,
+        args.scorer_audit_output,
+        args.protocol_audit_output,
+    )
+    if len({path.resolve() for path in (*audit_paths, args.report)}) != 4:
+        raise ValueError("formal run report and audit output paths must be distinct")
+    for path in audit_paths:
+        if path.exists():
+            raise ValueError(f"refusing to overwrite formal audit artifact: {path}")
+    scorer = load_transfer_scorer_fixture(args.scorer)
+    protocol = load_transfer_protocol_fixture(args.protocol)
+    report = _read_json_object(args.report)
+    source_report = None
+    scorer_report = None
+    protocol_report = None
+    try:
+        with prepare_transfer_environment(_transfer_environment_config(args)) as prepared:
+            source_report = prepared.source_audit
+            scorer_report = audit_transfer_scorer(source_report, scorer)
+            protocol_report = audit_transfer_protocol(
+                protocol,
+                scorer,
+                args.scorer,
+                source_report,
+                scorer_report,
+            )
+            bind_formal_execution(
+                report,
+                prepared.case,
+                source_report,
+                scorer_report,
+                protocol_report,
+                prepared.semantic_coverage,
+                scorer,
+                protocol,
+            )
+            write_json(args.source_audit_output, source_report)
+            write_json(args.scorer_audit_output, scorer_report)
+            write_json(args.protocol_audit_output, protocol_report)
+            write_formal_report(args.report, report)
+            execute_formal_runs(
+                prepared.client,
+                prepared.case,
+                scorer,
+                protocol,
+                report,
+                paid_api_confirmed=args.confirm_paid_api,
+                on_update=lambda value: write_formal_report(args.report, value),
+            )
+    finally:
+        if source_report is not None:
+            write_json(args.source_audit_output, source_report)
+        if scorer_report is not None:
+            write_json(args.scorer_audit_output, scorer_report)
+        if protocol_report is not None:
+            write_json(args.protocol_audit_output, protocol_report)
+        write_formal_report(args.report, report)
+    execution = report["execution"]
+    print(args.report)
+    return (
+        0
+        if (
+            execution["complete"]
+            and execution["runner_errors"] == 0
+            and execution["budget_exhaustions"] == 0
+        )
+        else 1
+    )
+
+
 def aegis_transfer_run(args: argparse.Namespace) -> int:
     if args.confirm_paid_api is not True:
         raise ValueError("Aegis transfer run requires explicit paid API confirmation")
@@ -500,6 +674,29 @@ def aegis_transfer_export(args: argparse.Namespace) -> int:
     write_json(args.output, artifact)
     print(args.output)
     return 0
+
+
+def aegis_transfer_measurement_export(args: argparse.Namespace) -> int:
+    if args.output.exists():
+        raise ValueError(f"refusing to overwrite measurement artifact: {args.output}")
+    artifact = build_measurement_artifact_from_files(
+        args.run_report,
+        args.source_audit,
+        args.scorer_audit,
+        args.protocol_audit,
+        args.scorer,
+        args.protocol,
+    )
+    write_json(args.output, artifact)
+    print(args.output)
+    return 0
+
+
+def _read_json_object(path: Path) -> dict[str, object]:
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise ValueError(f"expected JSON object: {path}")
+    return value
 
 
 def _transfer_environment_config(args: argparse.Namespace) -> TransferEnvironmentConfig:
@@ -1585,10 +1782,16 @@ def main() -> None:
             code = aegis_transfer_scorer_audit(args)
         elif args.command == "aegis-transfer-protocol-audit":
             code = aegis_transfer_protocol_audit(args)
+        elif args.command == "aegis-transfer-formal-preflight":
+            code = aegis_transfer_formal_preflight(args)
+        elif args.command == "aegis-transfer-formal-run":
+            code = aegis_transfer_formal_run(args)
         elif args.command == "aegis-transfer-run":
             code = aegis_transfer_run(args)
         elif args.command == "aegis-transfer-export":
             code = aegis_transfer_export(args)
+        elif args.command == "aegis-transfer-measurement-export":
+            code = aegis_transfer_measurement_export(args)
         elif args.command == "smoke":
             code = smoke(args)
         elif args.command == "smoke-rca100":

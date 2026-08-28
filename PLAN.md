@@ -225,8 +225,10 @@ The optional three-model formal protocol freezes `deepseek-v4-flash`, `deepseek-
 `claude-sonnet-5`, three repetitions per treatment and model, provider-specific prompt caching,
 and within-model semantic-layer comparisons. Correctness is not pooled across models. This exceeds
 the minimum one-model 1.0 gate but does not turn one case into a population estimate. The remaining
-transfer gate is the explicitly approved 27-run execution and a sanitized public measurement
-artifact.
+transfer gate is the explicitly approved 27-run execution. The provider-free preflight,
+exact-prefix resume contract, per-cell atomic persistence, fresh-instance source-semantic binding,
+and deterministic sanitized measurement exporter are implemented and locally tested. Failed or
+budget-exhausted cells remain observations and are not retried.
 Raw `.reports/` trajectories are not the release contract because they contain
 provider payloads and local metadata.
 
@@ -303,10 +305,11 @@ were fresh measurement. The sequentially frozen `aegis-transfer-002` delay case 
 measurement case. Its selection, scorer, raw/Graph equality, stored threshold evidence, and
 three-model execution protocol pass their no-model audits. The sanitized v24 development artifact is tracked at
 `artifacts/development/aegis-transfer-v24-deepseek.json`; it is a release-format regression, not the
-fresh 1.0 measurement result. Private no-model reports remain local audit inputs. The next action
-is an explicitly approved 27-run API execution followed by sanitized measurement export and final
-release reporting. Catalog broad-recall, powered cross-system enrollment, and additional report UI
-remain deferred.
+fresh 1.0 measurement result. Private no-model reports remain local audit inputs. The resumable
+formal runner and sanitized three-model exporter are ready, but no v25 provider call has been
+authorized or executed. The next action is an explicitly approved 27-run API execution, followed
+by sanitized measurement export and final release reporting. Catalog broad-recall, powered
+cross-system enrollment, and additional report UI remain deferred.
 
 ## Historical development status
 
