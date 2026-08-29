@@ -138,3 +138,29 @@ def test_discovery_filters_before_applying_row_limit() -> None:
 
     assert result.rows == [["benchmark_db", "target"]]
     assert result.truncated is True
+
+
+def test_query_can_raise_row_limit_within_the_benchmark_cap() -> None:
+    observed_limits = []
+
+    class RecordingClient:
+        database = "benchmark_db"
+
+        def query(self, _: str, *, max_rows: int | None) -> QueryResult:
+            observed_limits.append(max_rows)
+            return QueryResult(query_id="q1", columns=[], rows=[], elapsed_seconds=0)
+
+    gateway = QueryGateway(RecordingClient(), Visibility.RAW)  # type: ignore[arg-type]
+
+    gateway.execute("SELECT * FROM traces")
+    gateway.execute("SELECT * FROM traces", max_rows=1000)
+
+    assert observed_limits == [200, 1000]
+
+
+@pytest.mark.parametrize("max_rows", [0, 1001, True, "1000"])
+def test_query_rejects_invalid_or_excessive_row_limit(max_rows: object) -> None:
+    gateway = QueryGateway(StubClient(), Visibility.RAW)  # type: ignore[arg-type]
+
+    with pytest.raises(QueryRejected, match="max_rows"):
+        gateway.execute("SELECT * FROM traces", max_rows=max_rows)  # type: ignore[arg-type]

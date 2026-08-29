@@ -263,9 +263,8 @@ def _agent_run(visibility: Visibility, model: str, *, error: str | None = None) 
         max_output_tokens=16_384 if openai else 4096,
         diagnosis=(
             Diagnosis(
-                affected_component="ts-train-service",
-                causal_dependency=None,
                 causal_scope=CausalScope.COMPONENT,
+                causal_component="ts-train-service",
                 causal_operation="TrainController.retrieveByName",
                 fault_category=FaultCategory.OTHER,
                 mechanism_code=MechanismCode.APPLICATION_ERROR,
@@ -391,13 +390,14 @@ def test_preflight_binds_pricing_snapshot_across_resume(monkeypatch) -> None:
         )
 
 
-def test_v28_formal_protocol_binds_fresh_case_and_strong_model_roster() -> None:
+def test_v29_protocol_binds_development_case_and_strong_model_roster() -> None:
     protocol = load_transfer_protocol_fixture(DEFAULT_PROTOCOL_FIXTURE)
     scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     schedule = formal_schedule(protocol)
 
     assert protocol.agent_case_id == scorer.agent_case_id == "aegis-transfer-003"
-    assert protocol.benchmark_protocol_version == 28
+    assert protocol.benchmark_protocol_version == 29
+    assert protocol.case_role == scorer.case_role == "development"
     assert [model.model for model in protocol.models] == [
         "gpt-5.6-sol",
         "deepseek-v4-pro",
@@ -581,18 +581,22 @@ def test_formal_runner_persists_failed_cell_and_continues_batch(monkeypatch) -> 
     assert report["runs"][0]["run"]["error"] == "provider unavailable"
     assert report["execution"]["runner_errors"] == 1
     assert report["execution"]["complete"] is True
-    artifact = build_measurement_artifact(
-        report,
-        source,
-        scorer,
-        protocol,
-        scorer_fixture,
-        FORMAL_SCORER_FIXTURE,
-        protocol_fixture,
-        DEFAULT_PROTOCOL_FIXTURE,
-    )
-    assert artifact["experiment"]["runs"][0]["execution"]["runner_error"] is True
-    assert "provider unavailable" not in str(artifact)
+
+
+def test_development_run_cannot_be_exported_as_measurement() -> None:
+    report, source, scorer, protocol, scorer_fixture, protocol_fixture = _preflight()
+
+    with pytest.raises(ValueError, match="development runs cannot be exported"):
+        build_measurement_artifact(
+            report,
+            source,
+            scorer,
+            protocol,
+            scorer_fixture,
+            FORMAL_SCORER_FIXTURE,
+            protocol_fixture,
+            DEFAULT_PROTOCOL_FIXTURE,
+        )
 
 
 def test_formal_runner_persists_and_rejects_wrong_scheduled_model(monkeypatch) -> None:
@@ -667,7 +671,7 @@ def test_formal_runner_checks_protocol_with_wrapped_agent(monkeypatch) -> None:
         raise RuntimeError(f"protocol guard called for v{version}")
 
     monkeypatch.setattr(formal_module, "require_current_protocol", reject_protocol)
-    with pytest.raises(RuntimeError, match="protocol guard called for v28"):
+    with pytest.raises(RuntimeError, match="protocol guard called for v29"):
         execute_formal_runs(
             _Client(),  # type: ignore[arg-type]
             _case(),
@@ -786,6 +790,7 @@ def test_measurement_export_rescores_all_models_and_removes_private_payloads(mon
         "deepseek-v4-pro",
         {"input_per_million": 999, "output_per_million": 999},
     )
+    monkeypatch.setattr(release_module, "_validate_measurement_bindings", lambda *args: None)
     artifact = build_measurement_artifact(
         report,
         source,

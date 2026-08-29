@@ -35,13 +35,14 @@ from semantic_rca_bench.datasets.aegis_transfer import (
     normalize_jvm_exception_evidence,
     normalize_start_gap_evidence,
 )
-from semantic_rca_bench.evaluation import component_matches, is_valid_evidence_trace
+from semantic_rca_bench.evaluation import component_matches
+from semantic_rca_bench.evidence import is_valid_evidence_trace
 from semantic_rca_bench.protocol import benchmark_protocol
 
-CALIBRATION_SCORER_REVISION = "aegis-transfer-request-delay-v3"
-FORMAL_SCORER_REVISION = "aegis-transfer-jvm-exception-v1"
-CALIBRATION_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v28-calibration-scorer.json")
-FORMAL_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v28-scorer.json")
+CALIBRATION_SCORER_REVISION = "aegis-transfer-request-delay-v4"
+FORMAL_SCORER_REVISION = "aegis-transfer-jvm-exception-v2"
+CALIBRATION_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v29-calibration-scorer.json")
+FORMAL_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v29-scorer.json")
 _SCORER_IDENTITIES = {
     CALIBRATION_SCORER_REVISION: (
         "aegis-transfer-002",
@@ -53,7 +54,7 @@ _SCORER_IDENTITIES = {
     ),
     FORMAL_SCORER_REVISION: (
         "aegis-transfer-003",
-        "measurement",
+        "development",
         "deepseek-v4-pro",
         ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
         4096,
@@ -65,9 +66,10 @@ _SCORER_IDENTITIES = {
 class TransferScorerGroundTruth(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    affected_component: str
-    causal_dependency: str | None
-    causal_scope: CausalScope | None = None
+    causal_scope: CausalScope
+    causal_component: str | None = None
+    edge_source: str | None = None
+    edge_destination: str | None = None
     causal_operation: str | None = None
     accepted_causal_operations: tuple[str, ...] = ()
     fault_category: FaultCategory
@@ -123,9 +125,10 @@ class AegisTransferEvaluation(BaseModel):
     success: bool
     runner_contract_match: bool
     tool_budget_contract_match: bool
-    affected_component_match: bool
-    causal_dependency_match: bool
-    declared_edge_match: bool
+    causal_component_match: bool | None
+    edge_source_match: bool | None
+    edge_destination_match: bool | None
+    causal_locus_match: bool
     fault_category_match: bool
     citations_execution_valid: bool
     mechanism_evidence_match: bool
@@ -232,12 +235,16 @@ def load_transfer_scorer_fixture(
     ):
         raise ValueError("Aegis transfer canonical API runner contract drifted")
     truth = fixture.ground_truth
-    if truth.causal_scope is None:
-        raise ValueError("Aegis transfer structured diagnosis contract drifted")
-    if truth.causal_scope is CausalScope.DEPENDENCY_EDGE and not truth.causal_dependency:
-        raise ValueError("dependency-scoped scorer has no causal dependency")
-    if truth.causal_scope is CausalScope.COMPONENT and truth.causal_dependency is not None:
-        raise ValueError("component-scoped scorer must not define a causal dependency")
+    if truth.causal_scope is CausalScope.COMPONENT:
+        if truth.causal_component is None:
+            raise ValueError("component-scoped scorer has no causal component")
+        if truth.edge_source is not None or truth.edge_destination is not None:
+            raise ValueError("component-scoped scorer must not define an edge")
+    else:
+        if truth.causal_component is not None:
+            raise ValueError("dependency-scoped scorer must not define a causal component")
+        if truth.edge_source is None or truth.edge_destination is None:
+            raise ValueError("dependency-scoped scorer requires both edge endpoints")
     accepted_operations = truth.accepted_causal_operations or (
         (truth.causal_operation,) if truth.causal_operation else ()
     )
@@ -338,19 +345,35 @@ def _evaluate_structured_transfer_run(
         and run.visibility in fixture.canonical_api_runner.visibility_levels
     )
     tool_budget_contract_match = len(run.tool_calls) <= fixture.canonical_api_runner.max_tool_calls
-    affected_match = diagnosis is not None and component_matches(
-        diagnosis.affected_component, truth.affected_component
-    )
     if truth.causal_scope is CausalScope.COMPONENT:
-        dependency_match = diagnosis is not None and diagnosis.causal_dependency is None
-    else:
-        dependency_match = (
+        causal_component_match = (
             diagnosis is not None
-            and diagnosis.causal_dependency is not None
-            and truth.causal_dependency is not None
-            and component_matches(diagnosis.causal_dependency, truth.causal_dependency)
+            and diagnosis.causal_component is not None
+            and diagnosis.edge_source is None
+            and diagnosis.edge_destination is None
+            and truth.causal_component is not None
+            and component_matches(diagnosis.causal_component, truth.causal_component)
         )
-    declared_edge_match = affected_match and dependency_match
+        edge_source_match = None
+        edge_destination_match = None
+        causal_locus_match = causal_component_match
+    else:
+        causal_component_match = None
+        edge_source_match = (
+            diagnosis is not None
+            and diagnosis.causal_component is None
+            and diagnosis.edge_source is not None
+            and truth.edge_source is not None
+            and component_matches(diagnosis.edge_source, truth.edge_source)
+        )
+        edge_destination_match = (
+            diagnosis is not None
+            and diagnosis.causal_component is None
+            and diagnosis.edge_destination is not None
+            and truth.edge_destination is not None
+            and component_matches(diagnosis.edge_destination, truth.edge_destination)
+        )
+        causal_locus_match = edge_source_match and edge_destination_match
     causal_scope_match = diagnosis is not None and diagnosis.causal_scope is truth.causal_scope
     causal_operation_match = diagnosis is not None and _causal_operation_matches(
         diagnosis.causal_operation, truth
@@ -361,7 +384,7 @@ def _evaluate_structured_transfer_run(
     )
     diagnosis_correct = all(
         (
-            declared_edge_match,
+            causal_locus_match,
             causal_scope_match,
             causal_operation_match,
             category_match,
@@ -439,8 +462,7 @@ def _evaluate_structured_transfer_run(
     checks = {
         "run does not use the frozen canonical API runner contract": runner_contract_match,
         "run exceeds the frozen tool-call contract": tool_budget_contract_match,
-        "affected component does not match the frozen causal scope": affected_match,
-        "causal dependency does not match the frozen causal scope": dependency_match,
+        "causal locus does not match the frozen source mechanism": causal_locus_match,
         "causal scope does not match the frozen source mechanism": causal_scope_match,
         "causal operation does not match a source-observed operation": causal_operation_match,
         "fault category does not match the frozen source mechanism": category_match,
@@ -461,9 +483,10 @@ def _evaluate_structured_transfer_run(
         success=auditable_completion,
         runner_contract_match=runner_contract_match,
         tool_budget_contract_match=tool_budget_contract_match,
-        affected_component_match=affected_match,
-        causal_dependency_match=dependency_match,
-        declared_edge_match=declared_edge_match,
+        causal_component_match=causal_component_match,
+        edge_source_match=edge_source_match,
+        edge_destination_match=edge_destination_match,
+        causal_locus_match=causal_locus_match,
         fault_category_match=category_match,
         citations_execution_valid=citations_execution_valid,
         mechanism_evidence_match=mechanism_evidence_match,
@@ -565,10 +588,14 @@ def audit_transfer_scorer(
     )
     cases.update(
         {
-            "wrong_affected_component": (
+            "wrong_causal_locus": (
                 _replace_diagnosis(
                     canonical_run,
-                    affected_component="wrong-service",
+                    **(
+                        {"causal_component": "wrong-service"}
+                        if fixture.ground_truth.causal_scope is CausalScope.COMPONENT
+                        else {"edge_destination": "wrong-service"}
+                    ),
                 ),
                 False,
             ),
@@ -598,21 +625,25 @@ def audit_transfer_scorer(
         }
     )
     if fixture.ground_truth.causal_scope is CausalScope.COMPONENT:
-        cases["unexpected_dependency"] = (
-            _replace_diagnosis(canonical_run, causal_dependency="unexpected-service"),
+        cases["unexpected_edge"] = (
+            _replace_diagnosis(
+                canonical_run,
+                edge_source=fixture.ground_truth.causal_component,
+                edge_destination="unexpected-service",
+            ),
             False,
         )
     else:
         cases["reversed_edge"] = (
             _replace_diagnosis(
                 canonical_run,
-                affected_component=fixture.ground_truth.causal_dependency,
-                causal_dependency=fixture.ground_truth.affected_component,
+                edge_source=fixture.ground_truth.edge_destination,
+                edge_destination=fixture.ground_truth.edge_source,
             ),
             False,
         )
-        cases["missing_dependency"] = (
-            _replace_diagnosis(canonical_run, causal_dependency=None),
+        cases["missing_edge_destination"] = (
+            _replace_diagnosis(canonical_run, edge_destination=None),
             False,
         )
     if fixture.mechanism_evidence.predicate == "source_declared_http_client_server_start_gap":
@@ -630,13 +661,12 @@ def audit_transfer_scorer(
                             "LOWER(s.span_kind) = 'span_kind_server'",
                         )
                         .replace(
-                            f"c.service_name = '{fixture.ground_truth.affected_component}'",
-                            "LOWER(c.service_name) = "
-                            f"'{fixture.ground_truth.affected_component.lower()}'",
+                            f"c.service_name = '{fixture.ground_truth.edge_source}'",
+                            f"LOWER(c.service_name) = '{fixture.ground_truth.edge_source.lower()}'",
                         )
                         .replace(
-                            f"s.service_name = '{fixture.ground_truth.causal_dependency}'",
-                            f"s.service_name IN ('{fixture.ground_truth.causal_dependency}')",
+                            f"s.service_name = '{fixture.ground_truth.edge_destination}'",
+                            f"s.service_name IN ('{fixture.ground_truth.edge_destination}')",
                         ),
                     ),
                     True,
@@ -700,9 +730,9 @@ def audit_transfer_scorer(
                     _replace_trace_query(
                         canonical_run,
                         canonical_query.replace(
-                            f"service_name = '{fixture.ground_truth.affected_component}'",
+                            f"service_name = '{fixture.ground_truth.causal_component}'",
                             "LOWER(service_name) = LOWER("
-                            f"'{fixture.ground_truth.affected_component.upper()}')",
+                            f"'{fixture.ground_truth.causal_component.upper()}')",
                         ).replace(
                             "span_status_code = 'STATUS_CODE_ERROR'",
                             "UPPER(span_status_code) = 'STATUS_CODE_ERROR'",
@@ -724,7 +754,7 @@ def audit_transfer_scorer(
                     _replace_trace_query(
                         canonical_run,
                         canonical_query.replace(
-                            fixture.ground_truth.affected_component,
+                            fixture.ground_truth.causal_component,
                             "wrong-service",
                         ),
                     ),
@@ -748,10 +778,10 @@ def audit_transfer_scorer(
                     _replace_trace_query(
                         canonical_run,
                         canonical_query.replace(
-                            f"service_name = '{fixture.ground_truth.affected_component}'",
+                            f"service_name = '{fixture.ground_truth.causal_component}'",
                             (
                                 "(service_name = "
-                                f"'{fixture.ground_truth.affected_component}' OR 1 = 1)"
+                                f"'{fixture.ground_truth.causal_component}' OR 1 = 1)"
                             ),
                             1,
                         ),
@@ -889,7 +919,7 @@ def audit_transfer_scorer(
     }
 
 
-def _trace_proves_declared_edge(
+def _trace_proves_causal_edge(
     trace: ToolTrace,
     fixture: AegisTransferScorerFixture,
 ) -> bool:
@@ -911,9 +941,9 @@ def _trace_proves_declared_edge(
     truth = fixture.ground_truth
     return any(
         edge["src_type"] == "service"
-        and edge["src_id"] == truth.affected_component
+        and edge["src_id"] == truth.edge_source
         and edge["dst_type"] == "service"
-        and edge["dst_id"] == truth.causal_dependency
+        and edge["dst_id"] == truth.edge_destination
         and edge["rel_type"] == "calls"
         and edge["provenance"] == "trace"
         and int(edge["request_count"]) > 0
@@ -926,7 +956,7 @@ def _trace_proves_causal_scope(
     fixture: AegisTransferScorerFixture,
 ) -> bool:
     if fixture.ground_truth.causal_scope is CausalScope.DEPENDENCY_EDGE:
-        return _trace_proves_declared_edge(trace, fixture)
+        return _trace_proves_causal_edge(trace, fixture)
     if trace.error is not None or not isinstance(trace.output, dict):
         return False
     if trace.tool_name not in {"execute_sql", "query_semantic_graph"}:
@@ -947,7 +977,8 @@ def _trace_proves_causal_scope(
     return any(
         len(row) > max(type_index, id_index)
         and str(row[type_index]).lower() == "service"
-        and component_matches(str(row[id_index]), fixture.ground_truth.affected_component)
+        and fixture.ground_truth.causal_component is not None
+        and component_matches(str(row[id_index]), fixture.ground_truth.causal_component)
         for row in result.rows
     )
 
@@ -1047,7 +1078,9 @@ def _jvm_exception_query_scope(
         return None
     if any(_identity_literal_comparison(item) for item in statement.find_all(exp.EQ, exp.In)):
         return None
-    service = fixture.ground_truth.affected_component
+    service = fixture.ground_truth.causal_component
+    if service is None:
+        return None
     allowed_epochs = {
         fixture.normal_window[0],
         fixture.normal_window[1],
@@ -1752,7 +1785,7 @@ def _start_gap_query_scope(
             & _aliases_matching_literal(
                 select,
                 "service_name",
-                fixture.ground_truth.affected_component,
+                str(fixture.ground_truth.edge_source),
                 allow_case_normalization=True,
             )
             & trace_aliases
@@ -1767,7 +1800,7 @@ def _start_gap_query_scope(
             & _aliases_matching_literal(
                 select,
                 "service_name",
-                str(fixture.ground_truth.causal_dependency),
+                str(fixture.ground_truth.edge_destination),
                 allow_case_normalization=True,
             )
             & _aliases_matching_literal(
@@ -2459,7 +2492,7 @@ def _transfer_audit_matches_fixture(
         if fixture.mechanism_evidence.predicate == "source_declared_jvm_exception":
             mechanism_details_match = (
                 mechanism.get("observable") == fixture.mechanism_evidence.observable
-                and mechanism.get("service_name") == fixture.ground_truth.affected_component
+                and mechanism.get("service_name") == fixture.ground_truth.causal_component
                 and mechanism.get("method_name")
                 in {
                     operation.rsplit(".", 1)[-1]
@@ -2471,8 +2504,8 @@ def _transfer_audit_matches_fixture(
             )
         expected_edge = (
             (
-                fixture.ground_truth.affected_component,
-                fixture.ground_truth.causal_dependency,
+                fixture.ground_truth.edge_source,
+                fixture.ground_truth.edge_destination,
             )
             if fixture.ground_truth.causal_scope is CausalScope.DEPENDENCY_EDGE
             else None
@@ -2523,9 +2556,11 @@ def _canonical_synthetic_run(
         reasoning_effort=fixture.canonical_api_runner.reasoning_effort,
         max_output_tokens=fixture.canonical_api_runner.max_output_tokens,
         diagnosis=Diagnosis(
-            affected_component=truth.affected_component,
-            causal_dependency=truth.causal_dependency,
             causal_scope=truth.causal_scope,
+            causal_component=truth.causal_component,
+            edge_source=truth.edge_source,
+            edge_destination=truth.edge_destination,
+            impacted_component=None,
             causal_operation=truth.causal_operation,
             fault_category=truth.fault_category,
             mechanism_code=truth.mechanism_code,

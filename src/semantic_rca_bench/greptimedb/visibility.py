@@ -11,15 +11,25 @@ class QueryRejected(ValueError):
     pass
 
 
+DEFAULT_QUERY_MAX_ROWS = 200
+MAX_QUERY_MAX_ROWS = 1000
+
+
 class QueryGateway:
     def __init__(
         self,
         client: GreptimeClient,
         visibility: Visibility,
         *,
-        max_rows: int = 200,
+        max_rows: int = DEFAULT_QUERY_MAX_ROWS,
         semantic_graph_window: tuple[int, int] | None = None,
     ) -> None:
+        if (
+            isinstance(max_rows, bool)
+            or not isinstance(max_rows, int)
+            or not 1 <= max_rows <= MAX_QUERY_MAX_ROWS
+        ):
+            raise ValueError(f"max_rows must be between 1 and {MAX_QUERY_MAX_ROWS}")
         if (
             semantic_graph_window is not None
             and semantic_graph_window[0] >= semantic_graph_window[1]
@@ -30,7 +40,12 @@ class QueryGateway:
         self.max_rows = max_rows
         self.semantic_graph_window = semantic_graph_window
 
-    def execute(self, sql: str) -> QueryResult:
+    def execute(self, sql: str, *, max_rows: int | None = None) -> QueryResult:
+        row_limit = self.max_rows if max_rows is None else max_rows
+        if isinstance(row_limit, bool) or not isinstance(row_limit, int):
+            raise QueryRejected("max_rows must be an integer")
+        if not 1 <= row_limit <= MAX_QUERY_MAX_ROWS:
+            raise QueryRejected(f"max_rows must be between 1 and {MAX_QUERY_MAX_ROWS}")
         statements = sqlglot.parse(sql, read="mysql")
         if len(statements) != 1:
             raise QueryRejected("exactly one SQL statement is allowed")
@@ -47,10 +62,10 @@ class QueryGateway:
             self._check_information_schema_scope(tables)
 
         discovery = self._is_discovery_query(tables)
-        result = self.client.query(sql, max_rows=None if discovery else self.max_rows)
+        result = self.client.query(sql, max_rows=None if discovery else row_limit)
         if discovery:
             result = self._filter_discovery_rows(result)
-            return self._truncate(result)
+            return self._truncate(result, row_limit)
         return result
 
     @staticmethod
@@ -61,11 +76,12 @@ class QueryGateway:
             for table in tables
         )
 
-    def _truncate(self, result: QueryResult) -> QueryResult:
+    @staticmethod
+    def _truncate(result: QueryResult, max_rows: int) -> QueryResult:
         return result.model_copy(
             update={
-                "rows": result.rows[: self.max_rows],
-                "truncated": result.truncated or len(result.rows) > self.max_rows,
+                "rows": result.rows[:max_rows],
+                "truncated": result.truncated or len(result.rows) > max_rows,
             }
         )
 

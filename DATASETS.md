@@ -14,7 +14,7 @@ but it must record every lossy or synthetic protocol field.
 | OpenRCA 1.0 Bank | OpenRCA Bank | Wide enterprise metric schema and legacy multimodal telemetry | Included | Not applicable: no standard entity identity or span roles |
 | OpenRCA 1.0 Market | OpenRCA Market | Multi-level node, pod, and service failures over wide legacy telemetry | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
 | OpenRCA 1.0 Telecom | OpenRCA Telecom | Independent telecom/database system with metrics and traces but no logs | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
-| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v24-v27 development evidence plus a frozen protocol v28 measurement preflight | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
+| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v24-v29 development evidence; the supported cohort is exhausted for fresh measurement | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
 | OpenRCA 2.0 ops-lite | Hotel Reservation | Native OTel and verified causal paths | Provisional; internal protocol-formal measurement only | Positive when standard client/server spans witness service calls |
 | Amazon PetShop | Amazon PetShop | Component-level causal RCA over service metrics | Rejected | Metric-only; no incident-local mechanism label or continuous baseline |
 | AnoMod TrainTicket | TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
@@ -392,6 +392,11 @@ therefore rejected rather than repaired.
   audits have the same semantic hash,
   `6ee4f3c43dfffca8e63195f2d614a70be63b75663a9a54a1c03a44c3b9d38428`. Preflight does not
   authorize or execute any provider call.
+- `fixtures/reference/aegis-transfer-v29-four-model-protocol.json` reclassifies case 003 as a
+  development calibration case because its v28 trajectory caused the diagnosis-contract change.
+  Component scope now binds `causal_component`; dependency-edge scope binds both directed edge
+  endpoints. SQL returns 200 rows by default, allows an explicit per-query limit up to 1,000, and
+  rejects truncated final citations for repair. V29 does not supply fresh measurement evidence.
 
 ## OpenRCA 2.0 ops-lite
 

@@ -44,7 +44,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 
 这是 benchmark 的附带产物。模型只能在相同 case、protocol、treatment 和 runner contract 下比较。分别报告：
 
-- RCA validity：affected component、fault mechanism、evidence citation，以及有 canonical truth 时的 onset 和 causal dependency
+- RCA validity：causal locus（component 或 directed edge）、fault mechanism、evidence citation，以及有 canonical truth 时的 onset 和 propagated impact
 - Investigation efficiency：rows、calls、tokens、time 和可比较时的 cost
 - Agent reliability：runner failure、invalid tool call、budget exhaustion、repeated call 和 structured-output failure
 - Semantic utilization：catalog、table profile 和 Graph 的使用方式，以及每个模型的 Graph uplift
@@ -61,7 +61,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
   `database_load.rows_returned`（combined report 中为 `rows_returned`）和
   `evaluation.correct_completion_tool_calls`。两者使用冻结 protocol 定义的同一个
   eligibility guardrail。通用 RCA v23 guardrail 要求正确 diagnosis、至少一条 citation、
-  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v28 使用分层契约：
+  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v29 使用分层契约：
   diagnosis 正确、全部 required evidence claim 由 execution-valid citation 覆盖、且无
   runner error/budget hit 时可比较效率；无关的额外无效 citation 只使
   `auditable_completion=false`，不能抹掉已经成立的 required evidence 或效率轨迹。
@@ -95,7 +95,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 
 ## Runner 与隔离要求
 
-- API、Codex subscription 和 Claude subscription 必须表达同一 system contract，并记录 runner capability 差异。API transport、reasoning effort 和 reasoning/visible output 共享的预算必须由执行协议显式绑定，不能根据模型名或 provider 默认值推断。
+- API、Codex subscription 和 Claude subscription 必须表达同一 system contract，并记录 runner capability 差异。API transport、reasoning effort 和 reasoning/visible output 共享的预算必须由执行协议显式绑定，不能根据模型名或 provider 默认值推断。SQL 默认返回 200 行，agent 可逐次显式提高到 1000 行；截断结果不能成为最终 citation，runner 必须给 agent 一次可修复的错误反馈。
 - Subscription runner 不能静默回退到 API billing。Provider credentials 和 endpoint overrides 不得传入 subscription child process。
 - Tool-call cap 必须对 agent 可见；未知工具和 cap rejection 分开记录。Turn exhaustion 或 runner failure 应持久化为可评分失败，不能中断整个 batch。
 - 一个正式 case 使用独占 GreptimeDB instance。Semantic Graph 会枚举实例中的 user schemas，单纯使用不同 database 不能保证隔离。
@@ -104,7 +104,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 
 ## Benchmark 1.0 与研究结论边界
 
-`v24`、`v25`、`v26`、`v27`、`v28` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
+`v24`、`v25`、`v26`、`v27`、`v28`、`v29` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
 scorer 和实验装置的迭代，不是公开发布版本。冻结前的运行均为研发实验；当前代码不为
 旧研发周期保留 loader、scorer、resume、renderer 或其他兼容层。
 
@@ -144,6 +144,7 @@ confirmatory study。
 - `src/semantic_rca_bench/discovery.py`：Discovery task、fixture、runner 和 deterministic scorer。
 - `src/semantic_rca_bench/graph_benchmark.py`：Graph task、raw-edge audit、runner 和 deterministic scorer。
 - `src/semantic_rca_bench/evaluation.py`：端到端 RCA correctness、evidence validity 和 trajectory metrics。
+- `src/semantic_rca_bench/evidence.py`：runner 和 scorer 共用的 execution-valid citation 契约。
 - `src/semantic_rca_bench/report.py`、`assets/report.html`：combined report、case-level inference、token/cost accounting 和 report card UI。
 - `src/semantic_rca_bench/measurement_summary.py`：从 ignored formal reports 生成 case-level aggregate 和 report hashes。
 - `src/semantic_rca_bench/selection.py`：离线构造和审计 selection manifest 的 deterministic ranking primitive；运行时 CLI 不重新选 case。

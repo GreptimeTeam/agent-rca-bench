@@ -1,0 +1,64 @@
+{
+  "version": 2,
+  "scorer_revision": "aegis-transfer-jvm-exception-v2",
+  "agent_case_id": "aegis-transfer-003",
+  "case_role": "development",
+  "ground_truth": {
+    "causal_scope": "component",
+    "causal_component": "ts-train-service",
+    "edge_source": null,
+    "edge_destination": null,
+    "causal_operation": "TrainController.retrieveByName",
+    "accepted_causal_operations": [
+      "retrieveByName",
+      "TrainController.retrieveByName",
+      "GET /api/v1/trainservice/trains/byName/{name}"
+    ],
+    "fault_category": "other",
+    "mechanism_code": "application_error",
+    "source_fault_type": "JVMException"
+  },
+  "normal_window": [
+    1752841317,
+    1752841557
+  ],
+  "abnormal_window": [
+    1752841557,
+    1752841796
+  ],
+  "mechanism_evidence": {
+    "predicate": "source_declared_jvm_exception",
+    "observable": "error spans and exception logs",
+    "span_name": "retrieveByName",
+    "minimum_anomalous_observations": 2,
+    "expected_result": {
+      "normal": {
+        "error_span_count": 0,
+        "exception_log_count": 0
+      },
+      "abnormal": {
+        "error_span_count": 1981,
+        "exception_log_count": 1981
+      }
+    }
+  },
+  "canonical_api_runner": {
+    "runner": "api",
+    "model": "deepseek-v4-pro",
+    "api_transport": "anthropic-compatible-messages",
+    "reasoning_effort": null,
+    "benchmark_protocol_version": 29,
+    "visibility_levels": [
+      "raw",
+      "semantic_graph"
+    ],
+    "max_tool_calls": 48,
+    "max_turns": 58,
+    "max_output_tokens": 4096,
+    "repetitions": 2,
+    "treatment_order_seed": 0,
+    "parallel_runs": 1,
+    "sampling": "provider-default; no seed sent",
+    "prompt_cache": "deepseek-automatic-prefix-v1"
+  }
+}

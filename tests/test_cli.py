@@ -51,21 +51,21 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
         json.dumps(
             {
                 "case": {"source_case": "re2ob_checkoutservice_cpu_1"},
-                "ground_truth": {"component": "checkoutservice", "fault_type": "cpu"},
+                "ground_truth": {"causal_component": "checkoutservice", "fault_type": "cpu"},
             }
         )
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v28-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v29-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
 
 
 def test_noncurrent_protocol_cannot_start_new_agent_execution() -> None:
-    require_current_protocol(28)
+    require_current_protocol(29)
 
-    with pytest.raises(ValueError, match="does not match current protocol v28"):
-        require_current_protocol(27)
+    with pytest.raises(ValueError, match="does not match current protocol v29"):
+        require_current_protocol(28)
 
 
 def test_run_accepts_subscription_runners() -> None:
@@ -174,10 +174,10 @@ def test_aegis_transfer_scorer_audit_uses_frozen_fixture_by_default() -> None:
         ]
     )
 
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v28-scorer.json"
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v29-scorer.json"
 
 
-def test_aegis_transfer_protocol_audit_uses_measurement_fixtures_without_paid_flag() -> None:
+def test_aegis_transfer_protocol_audit_uses_current_fixtures_without_paid_flag() -> None:
     args = _parser().parse_args(
         [
             "aegis-transfer-protocol-audit",
@@ -190,8 +190,8 @@ def test_aegis_transfer_protocol_audit_uses_measurement_fixtures_without_paid_fl
         ]
     )
 
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v28-scorer.json"
-    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v28-four-model-protocol.json")
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v29-scorer.json"
+    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v29-four-model-protocol.json")
     assert not hasattr(args, "confirm_paid_api")
 
 
@@ -205,6 +205,10 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
             "scorer.json",
             "--protocol-audit",
             "protocol.json",
+            "--scorer",
+            "fixtures/reference/aegis-transfer-v29-scorer.json",
+            "--protocol",
+            "fixtures/reference/aegis-transfer-v29-four-model-protocol.json",
             "--output",
             "formal.json",
         ]
@@ -230,9 +234,9 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v28-scorer.json"
+    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v29-scorer.json"
     assert str(preflight.protocol) == (
-        "fixtures/reference/aegis-transfer-v28-four-model-protocol.json"
+        "fixtures/reference/aegis-transfer-v29-four-model-protocol.json"
     )
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
@@ -248,6 +252,10 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
             "scorer.json",
             "--protocol-audit",
             "protocol.json",
+            "--scorer",
+            "fixtures/reference/aegis-transfer-v29-scorer.json",
+            "--protocol",
+            "fixtures/reference/aegis-transfer-v29-four-model-protocol.json",
             "--output",
             "measurement.json",
         ]
@@ -257,12 +265,12 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
     assert paid.max_new_runs == 1
     assert paid.database == "case_03"
     assert str(paid.selection) == "fixtures/reference/aegis-transfer-v27-selection.json"
-    assert str(paid.scorer) == "fixtures/reference/aegis-transfer-v28-scorer.json"
-    assert str(paid.protocol) == "fixtures/reference/aegis-transfer-v28-four-model-protocol.json"
+    assert str(paid.scorer) == "fixtures/reference/aegis-transfer-v29-scorer.json"
+    assert str(paid.protocol) == "fixtures/reference/aegis-transfer-v29-four-model-protocol.json"
     assert not hasattr(export, "confirm_paid_api")
-    assert str(export.scorer) == "fixtures/reference/aegis-transfer-v28-scorer.json"
+    assert str(export.scorer) == "fixtures/reference/aegis-transfer-v29-scorer.json"
     assert str(export.protocol) == (
-        "fixtures/reference/aegis-transfer-v28-four-model-protocol.json"
+        "fixtures/reference/aegis-transfer-v29-four-model-protocol.json"
     )
 
 
@@ -294,12 +302,12 @@ def test_aegis_transfer_run_requires_explicit_paid_api_confirmation() -> None:
     assert str(args.selection) == (
         "fixtures/reference/aegis-transfer-v27-calibration-selection.json"
     )
-    assert str(args.scorer) == ("fixtures/reference/aegis-transfer-v28-calibration-scorer.json")
+    assert str(args.scorer) == ("fixtures/reference/aegis-transfer-v29-calibration-scorer.json")
     assert not hasattr(args, "model")
 
 
 def test_measurement_database_name_cannot_leak_ground_truth() -> None:
-    truth = GroundTruth(affected_component="emailservice", fault_type="socket", inject_time=None)
+    truth = GroundTruth(causal_component="emailservice", fault_type="socket", inject_time=None)
 
     _assert_neutral_database_name("case_01", truth)
     with pytest.raises(ValueError, match="ground-truth component"):
@@ -312,7 +320,7 @@ def test_rca100_requires_a_post_audit_smoke_report() -> None:
     source = {
         "case": {"adapter": "rca100"},
         "ground_truth": {
-            "component": "cart-pod",
+            "causal_component": "cart-pod",
             "fault_type": "redisUnavailable",
             "inject_time": None,
         },

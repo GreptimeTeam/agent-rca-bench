@@ -6,6 +6,7 @@ from semantic_rca_bench.contracts import (
     Diagnosis,
     FaultCategory,
     GroundTruth,
+    MechanismCode,
     QueryResult,
     RejectedToolCall,
     ToolTrace,
@@ -25,8 +26,10 @@ def _run(fault_category: FaultCategory, fault_type: str) -> AgentRun:
         visibility=Visibility.RAW,
         model="test-model",
         diagnosis=Diagnosis(
-            affected_component="checkoutservice",
+            causal_scope="component",
+            causal_component="checkoutservice",
             fault_category=fault_category,
+            mechanism_code=MechanismCode.UNKNOWN,
             fault_type=fault_type,
             confidence=0.7,
             explanation="test diagnosis",
@@ -72,8 +75,10 @@ def _run_with_evidence(
     **run_updates: object,
 ) -> AgentRun:
     diagnosis = Diagnosis(
-        affected_component="checkoutservice",
+        causal_scope="component",
+        causal_component="checkoutservice",
         fault_category=FaultCategory.DELAY,
+        mechanism_code=MechanismCode.CALL_PATH_DELAY,
         fault_type="delay",
         confidence=0.7,
         evidence=[{"query_id": "q01", "claim": claim}],
@@ -87,10 +92,10 @@ def _run_with_evidence(
 def test_causal_fault_category_takes_precedence_over_latency_symptom() -> None:
     result = evaluate(
         _run(FaultCategory.CPU, "CPU saturation causing latency degradation"),
-        GroundTruth(affected_component="checkoutservice", fault_type="delay", inject_time=0),
+        GroundTruth(causal_component="checkoutservice", fault_type="delay", inject_time=0),
     )
 
-    assert result.affected_component_match
+    assert result.causal_component_match
     assert result.predicted_fault_category == "cpu"
     assert result.expected_fault_category == "delay"
     assert not result.fault_type_match
@@ -101,7 +106,7 @@ def test_causal_fault_category_takes_precedence_over_latency_symptom() -> None:
 def test_delay_mechanism_matches_delay_ground_truth() -> None:
     result = evaluate(
         _run(FaultCategory.DELAY, "delay"),
-        GroundTruth(affected_component="checkoutservice", fault_type="delay", inject_time=0),
+        GroundTruth(causal_component="checkoutservice", fault_type="delay", inject_time=0),
     )
 
     assert result.predicted_fault_category == "delay"
@@ -114,7 +119,7 @@ def test_exact_fault_type_is_independent_of_broad_category() -> None:
     result = evaluate(
         _run(FaultCategory.OTHER, "rateLimiting"),
         GroundTruth(
-            affected_component="checkoutservice",
+            causal_component="checkoutservice",
             fault_type="httpError5xx",
             fault_category=FaultCategory.OTHER,
             inject_time=0,
@@ -179,8 +184,10 @@ def test_evaluation_records_discovery_and_completion_efficiency() -> None:
             ],
             "tool_calls_requested": 4,
             "diagnosis": Diagnosis(
-                affected_component="checkoutservice",
+                causal_scope="component",
+                causal_component="checkoutservice",
                 fault_category=FaultCategory.DELAY,
+                mechanism_code=MechanismCode.CALL_PATH_DELAY,
                 fault_type="delay",
                 confidence=0.7,
                 evidence=[{"query_id": "q03", "claim": "latency increased"}],
@@ -191,7 +198,7 @@ def test_evaluation_records_discovery_and_completion_efficiency() -> None:
 
     result = evaluate(
         run,
-        GroundTruth(affected_component="checkoutservice", fault_type="delay", inject_time=0),
+        GroundTruth(causal_component="checkoutservice", fault_type="delay", inject_time=0),
     )
 
     assert result.discovery_calls == 2
@@ -206,7 +213,7 @@ def test_evaluation_records_discovery_and_completion_efficiency() -> None:
 def test_correct_diagnosis_without_evidence_is_not_a_valid_completion() -> None:
     result = evaluate(
         _run(FaultCategory.DELAY, "delay"),
-        GroundTruth(affected_component="checkoutservice", fault_type="delay", inject_time=0),
+        GroundTruth(causal_component="checkoutservice", fault_type="delay", inject_time=0),
     )
 
     assert result.joint_match
@@ -255,7 +262,7 @@ def test_correct_diagnosis_without_evidence_is_not_a_valid_completion() -> None:
 def test_invalid_evidence_cannot_unlock_completion_efficiency(traces, claim) -> None:
     result = evaluate(
         _run_with_evidence(traces, claim=claim),
-        GroundTruth(affected_component="checkoutservice", fault_type="delay", inject_time=0),
+        GroundTruth(causal_component="checkoutservice", fault_type="delay", inject_time=0),
     )
 
     assert result.joint_match
@@ -278,7 +285,7 @@ def test_invalid_evidence_cannot_unlock_completion_efficiency(traces, claim) -> 
 def test_metadata_or_non_table_sql_is_not_incident_evidence(query) -> None:
     result = evaluate(
         _run_with_evidence([_sql_trace(query)], claim="query returned a row"),
-        GroundTruth(affected_component="checkoutservice", fault_type="delay", inject_time=0),
+        GroundTruth(causal_component="checkoutservice", fault_type="delay", inject_time=0),
     )
 
     assert result.valid_evidence_count == 0
@@ -289,7 +296,7 @@ def test_metadata_or_non_table_sql_is_not_incident_evidence(query) -> None:
 def test_runner_failure_or_budget_hit_cannot_unlock_completion_efficiency(run_state) -> None:
     result = evaluate(
         _run_with_evidence([_sql_trace()], **run_state),
-        GroundTruth(affected_component="checkoutservice", fault_type="delay", inject_time=0),
+        GroundTruth(causal_component="checkoutservice", fault_type="delay", inject_time=0),
     )
 
     assert result.joint_match
@@ -299,9 +306,11 @@ def test_runner_failure_or_budget_hit_cannot_unlock_completion_efficiency(run_st
 
 def test_successful_graph_query_is_execution_valid_evidence() -> None:
     diagnosis = Diagnosis(
-        affected_component="frontend",
-        causal_dependency="search",
+        causal_scope="component",
+        causal_component="frontend",
+        impacted_component="search",
         fault_category=FaultCategory.DELAY,
+        mechanism_code=MechanismCode.CALL_PATH_DELAY,
         fault_type="delay",
         confidence=0.7,
         evidence=[{"query_id": "q01", "claim": "search returned errors"}],
@@ -323,7 +332,7 @@ def test_successful_graph_query_is_execution_valid_evidence() -> None:
 
     result = evaluate(
         run,
-        GroundTruth(affected_component="frontend", fault_type="delay", inject_time=0),
+        GroundTruth(causal_component="frontend", fault_type="delay", inject_time=0),
     )
 
     assert result.valid_evidence_count == 1
@@ -334,7 +343,7 @@ def test_successful_graph_query_is_execution_valid_evidence() -> None:
 def test_parenthesized_select_is_execution_valid_evidence() -> None:
     result = evaluate(
         _run_with_evidence([_sql_trace("(SELECT * FROM checkout_latency)")]),
-        GroundTruth(affected_component="checkoutservice", fault_type="delay", inject_time=0),
+        GroundTruth(causal_component="checkoutservice", fault_type="delay", inject_time=0),
     )
 
     assert result.valid_evidence_count == 1
@@ -357,7 +366,7 @@ def test_final_output_superseded_call_is_not_a_failed_call() -> None:
 
     result = evaluate(
         run,
-        GroundTruth(affected_component="checkoutservice", fault_type="delay", inject_time=0),
+        GroundTruth(causal_component="checkoutservice", fault_type="delay", inject_time=0),
     )
 
     assert result.valid_completion is True
@@ -368,7 +377,7 @@ def test_unscoreable_component_excludes_joint_accuracy() -> None:
     result = evaluate(
         _run(FaultCategory.OTHER, "redisUnavailable"),
         GroundTruth(
-            affected_component="cart-64944cd445-8pbgx",
+            causal_component="cart-64944cd445-8pbgx",
             component_scoreable=False,
             component_alternatives=["cart"],
             fault_type="redisUnavailable",
@@ -376,19 +385,21 @@ def test_unscoreable_component_excludes_joint_accuracy() -> None:
         ),
     )
 
-    assert result.affected_component_match is None
+    assert result.causal_component_match is None
     assert result.joint_match is None
     assert result.fault_type_match
     assert result.correct_completion_tool_calls is None
 
 
-def test_causal_dependency_remains_diagnostic_without_ground_truth_scoring() -> None:
+def test_impacted_component_remains_descriptive_without_ground_truth_scoring() -> None:
     run = _run(FaultCategory.OTHER, "redisUnavailable").model_copy(
         update={
             "diagnosis": Diagnosis(
-                affected_component="cart",
-                causal_dependency="Valkey cart-store (Redis backend)",
+                causal_scope="component",
+                causal_component="cart",
+                impacted_component="Valkey cart-store (Redis backend)",
                 fault_category=FaultCategory.OTHER,
+                mechanism_code=MechanismCode.DEPENDENCY_UNAVAILABLE,
                 fault_type="redisUnavailable",
                 confidence=0.7,
                 explanation="test diagnosis",
@@ -398,12 +409,12 @@ def test_causal_dependency_remains_diagnostic_without_ground_truth_scoring() -> 
 
     result = evaluate(
         run,
-        GroundTruth(affected_component="cart", fault_type="redisUnavailable", inject_time=0),
+        GroundTruth(causal_component="cart", fault_type="redisUnavailable", inject_time=0),
     )
 
     assert run.diagnosis is not None
-    assert run.diagnosis.causal_dependency == "Valkey cart-store (Redis backend)"
-    assert "causal_dependency_match" not in result.model_dump()
+    assert run.diagnosis.impacted_component == "Valkey cart-store (Redis backend)"
+    assert "impacted_component_match" not in result.model_dump()
 
 
 def test_failed_run_is_scored_without_a_fabricated_diagnosis() -> None:
@@ -413,31 +424,11 @@ def test_failed_run_is_scored_without_a_fabricated_diagnosis() -> None:
 
     result = evaluate(
         run,
-        GroundTruth(affected_component="checkout", fault_type="cpu", inject_time=0),
+        GroundTruth(causal_component="checkout", fault_type="cpu", inject_time=0),
     )
 
-    assert not result.affected_component_match
+    assert not result.causal_component_match
     assert not result.fault_type_match
     assert not result.joint_match
     assert result.predicted_fault_type is None
     assert result.correct_completion_tool_calls is None
-
-
-def test_v17_component_fields_are_read_but_v18_names_are_serialized() -> None:
-    diagnosis = Diagnosis.model_validate(
-        {
-            "root_cause_component": "checkout",
-            "fault_category": "cpu",
-            "fault_type": "cpu",
-            "confidence": 0.7,
-            "explanation": "legacy report",
-        }
-    )
-    truth = GroundTruth.model_validate(
-        {"component": "checkout", "fault_type": "cpu", "inject_time": None}
-    )
-
-    assert diagnosis.affected_component == "checkout"
-    assert truth.affected_component == "checkout"
-    assert "root_cause_component" not in diagnosis.model_dump()
-    assert "component" not in truth.model_dump()

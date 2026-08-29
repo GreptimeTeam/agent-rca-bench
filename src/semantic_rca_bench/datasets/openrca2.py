@@ -147,7 +147,7 @@ def _load_case(root: Path, manifest_path: Path) -> OpenRCA2Case:
             fault_taxonomy=_fault_taxonomy(manifest_path, str(manifest["system"])),
         ),
         ground_truth=GroundTruth(
-            affected_component=str(roots[0]),
+            causal_component=str(roots[0]),
             fault_type=primary_kind,
             fault_category=_fault_category(primary_kind),
             inject_time=inject_time,

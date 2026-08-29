@@ -212,7 +212,7 @@ def test_openrca2_case_uses_system_scoped_taxonomy_and_native_alert(tmp_path: Pa
     assert case.input.alert_time - case.input.time_start == 300
     assert case.input.alert_text == "OpenTelemetry Demo alert: entrance_unreachable"
     assert case.input.fault_taxonomy == ["NetworkDelay", "PodKill"]
-    assert case.ground_truth.affected_component == "shipping"
+    assert case.ground_truth.causal_component == "shipping"
     assert case.ground_truth.fault_type == "NetworkDelay"
 
 

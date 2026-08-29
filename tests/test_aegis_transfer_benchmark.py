@@ -191,9 +191,9 @@ def _agent_run(visibility: Visibility) -> AgentRun:
         api_transport=ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
         max_output_tokens=4096,
         diagnosis=Diagnosis(
-            affected_component="ts-route-plan-service",
-            causal_dependency="ts-travel2-service",
             causal_scope=CausalScope.DEPENDENCY_EDGE,
+            edge_source="ts-route-plan-service",
+            edge_destination="ts-travel2-service",
             causal_operation="POST /api/v1/travel2service/trips/left",
             fault_category=FaultCategory.DELAY,
             mechanism_code=MechanismCode.CALL_PATH_DELAY,

@@ -17,8 +17,8 @@ from semantic_rca_bench.contracts import AgentRun, AgentRunner, ApiTransport, Vi
 from semantic_rca_bench.protocol import benchmark_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "aegis-transfer-four-model-v7"
-DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v28-four-model-protocol.json")
+PROTOCOL_REVISION = "aegis-transfer-four-model-v8"
+DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v29-four-model-protocol.json")
 
 
 class TransferModelContract(BaseModel):
@@ -84,9 +84,9 @@ def load_transfer_protocol_fixture(
     specification = {
         "version": 2,
         "agent_case_id": "aegis-transfer-003",
-        "benchmark_protocol_version": 28,
+        "benchmark_protocol_version": 29,
         "selection_fixture": "fixtures/reference/aegis-transfer-v27-selection.json",
-        "scorer_fixture": "fixtures/reference/aegis-transfer-v28-scorer.json",
+        "scorer_fixture": "fixtures/reference/aegis-transfer-v29-scorer.json",
         "models": (
             (
                 "gpt-5.6-sol",
@@ -139,9 +139,9 @@ def load_transfer_protocol_fixture(
         raise ValueError("unsupported Aegis transfer formal protocol revision")
     if (
         fixture.agent_case_id != specification["agent_case_id"]
-        or fixture.case_role != "measurement"
+        or fixture.case_role != "development"
     ):
-        raise ValueError("formal protocol is not bound to the frozen measurement case")
+        raise ValueError("protocol is not bound to the development calibration case")
     if fixture.benchmark_protocol_version != specification["benchmark_protocol_version"]:
         raise ValueError("formal protocol benchmark version drifted")
     if fixture.runner is not AgentRunner.API or observed_models != specification["models"]:
@@ -181,7 +181,7 @@ def load_transfer_protocol_fixture(
         and inference.case_is_independent_unit
         and inference.repetitions_are_descriptive
         and inference.single_case_claim
-        == "fresh case-level transfer demonstration; not a general semantic-layer effect estimate"
+        == "development calibration after causal-contract revision; not fresh measurement evidence"
     ):
         raise ValueError("formal protocol inference boundary drifted")
     _validate_bound_file(path, fixture.selection_fixture, fixture.selection_fixture_sha256)
@@ -223,7 +223,7 @@ def audit_transfer_protocol(
         "benchmark_protocol_match": (
             fixture.benchmark_protocol_version == current_benchmark_version
         ),
-        "measurement_case_match": (
+        "protocol_case_match": (
             scorer_fixture.agent_case_id == fixture.agent_case_id
             and scorer_fixture.case_role == fixture.case_role
             and isinstance(agent_facing, dict)

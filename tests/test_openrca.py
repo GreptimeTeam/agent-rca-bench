@@ -133,7 +133,7 @@ def test_bank_case_selector_uses_task_and_official_local_window(tmp_path: Path) 
     assert case.source_case == "Bank/task_6@2021-03-04T18:00"
     assert case.input.time_start == 1614852000
     assert case.input.time_end == 1614853800
-    assert case.ground_truth.affected_component == "Redis02"
+    assert case.ground_truth.causal_component == "Redis02"
     assert case.ground_truth.fault_type == "high memory usage"
     assert case.ground_truth.inject_time == 1614852540
 
@@ -347,7 +347,7 @@ def test_market_adapter_preserves_component_kinds_and_unknown_span_roles(
     span = next(_iter_legacy_traces(case))
 
     assert case.variant == "market"
-    assert case.ground_truth.affected_component == "node-6"
+    assert case.ground_truth.causal_component == "node-6"
     assert source_rows == 5
     assert sum(len(samples) for _, samples, _ in series) == 8
     assert span.name == "Call"

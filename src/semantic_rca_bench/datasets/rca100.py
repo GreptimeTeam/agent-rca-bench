@@ -125,7 +125,7 @@ def _load_case(root: Path, answer_path: Path, taxonomy_path: Path) -> RCA100Case
             fault_taxonomy=_fault_taxonomy(taxonomy),
         ),
         ground_truth=GroundTruth(
-            affected_component=str(components[0]),
+            causal_component=str(components[0]),
             component_scoreable=component_scoreable,
             component_alternatives=component_alternatives,
             fault_type=fault_type,

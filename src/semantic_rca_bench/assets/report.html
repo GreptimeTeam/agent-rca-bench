@@ -231,10 +231,10 @@
       const short = value => String(value || '').slice(0, 10);
       const runOf = item => item.run || {};
       const evaluationOf = item => item.evaluation || {};
-      const truthComponentOf = truth => truth.affected_component || truth.component || '—';
-      const evaluationField = (evaluation, field) => field === 'affected_component_match'
-        ? (evaluation.affected_component_match ?? evaluation.component_match)
-        : evaluation[field];
+      const truthLocusOf = truth => truth.causal_scope === 'dependency_edge'
+        ? `${truth.edge_source || '—'} → ${truth.edge_destination || '—'}`
+        : (truth.causal_component || '—');
+      const evaluationField = (evaluation, field) => evaluation[field];
       const scoreOf = (items, field) => {
         const eligible = items.filter(item => evaluationField(evaluationOf(item), field) != null);
         const matches = eligible.filter(item => evaluationField(evaluationOf(item), field) === true).length;
@@ -242,8 +242,9 @@
       };
       const predictionOf = run => {
         const diagnosis = run.diagnosis || {};
-        const component = diagnosis.affected_component || diagnosis.root_cause_component || '—';
-        return diagnosis.causal_dependency ? `${component} → ${diagnosis.causal_dependency}` : component;
+        return diagnosis.causal_scope === 'dependency_edge'
+          ? `${diagnosis.edge_source || '—'} → ${diagnosis.edge_destination || '—'}`
+          : (diagnosis.causal_component || '—');
       };
       const databaseLoadOf = item => item.database_load || null;
       const tracesOf = run => {
@@ -304,7 +305,7 @@
         const truth = item.ground_truth || {};
         const fallback = [
           info.system,
-          truthComponentOf(truth) !== '—' && truth.fault_type ? `${truthComponentOf(truth)}-${truth.fault_type}` : null,
+          truthLocusOf(truth) !== '—' && truth.fault_type ? `${truthLocusOf(truth)}-${truth.fault_type}` : null,
           info.alert_time || info.incident_time
         ].filter(Boolean).join(' / ');
         const name = info.source_case || info.case_id || fallback || `case-${index + 1}`;
@@ -358,7 +359,7 @@
           const count = predicate => items.filter(predicate).length;
           const total = getter => items.reduce((sum, item) => sum + Number(getter(runOf(item)) || 0), 0);
           const joint = scoreOf(items, 'joint_match');
-          const component = scoreOf(items, 'affected_component_match');
+          const component = scoreOf(items, 'causal_component_match');
           const fault = count(item => evaluationOf(item).fault_type_match);
           const budgetHits = count(item => budgetHit(runOf(item)));
           const evaluations = items.map(evaluationOf);
@@ -396,7 +397,7 @@
             <td class="numeric">${num(items.reduce((sum, item) => sum + errorCount(runOf(item)), 0))}</td>
           </tr>`;
         }).join('');
-        document.getElementById('summary-table').innerHTML = `<table><thead><tr><th>Visibility</th><th class="numeric">Runs</th><th class="numeric aggregate-correctness">Joint</th><th class="numeric aggregate-correctness">Affected component</th><th class="numeric aggregate-correctness">Mechanism</th><th class="numeric api-cost">Cost total</th><th class="numeric api-cost">Cost/run p50</th><th class="numeric">Elapsed total${report.latency_comparable ? '' : '*'}</th><th class="numeric">Elapsed/run p50${report.latency_comparable ? '' : '*'}</th><th class="numeric">Tokens</th><th class="numeric">Tools executed / requested</th><th class="numeric aggregate-correctness">Jointly valid tools p50</th><th class="numeric">Discovery</th><th class="numeric">Exact repeats</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
+        document.getElementById('summary-table').innerHTML = `<table><thead><tr><th>Visibility</th><th class="numeric">Runs</th><th class="numeric aggregate-correctness">Joint</th><th class="numeric aggregate-correctness">Causal component</th><th class="numeric aggregate-correctness">Mechanism</th><th class="numeric api-cost">Cost total</th><th class="numeric api-cost">Cost/run p50</th><th class="numeric">Elapsed total${report.latency_comparable ? '' : '*'}</th><th class="numeric">Elapsed/run p50${report.latency_comparable ? '' : '*'}</th><th class="numeric">Tokens</th><th class="numeric">Tools executed / requested</th><th class="numeric aggregate-correctness">Jointly valid tools p50</th><th class="numeric">Discovery</th><th class="numeric">Exact repeats</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
         const note = document.getElementById('pricing-note');
         const limitations = [];
         if (report.token_accounting) limitations.push(`Token accounting: ${report.token_accounting.scope}; ${report.token_accounting.input_tokens}; ${report.token_accounting.comparability}.`);
@@ -440,12 +441,12 @@
           const items = runs.filter(item => runOf(item).visibility === level);
           if (!items.length) return '';
           const joint = scoreOf(items, 'joint_match');
-          const component = scoreOf(items, 'affected_component_match');
+          const component = scoreOf(items, 'causal_component_match');
           const mechanism = items.filter(item => evaluationOf(item).fault_type_match).length;
           const budgetHits = items.filter(item => budgetHit(runOf(item))).length;
           const requestedTools = items.reduce((sum, item) => sum + requestedToolCount(runOf(item)), 0);
           const correctItems = items.filter(jointlyValid);
-          const componentCorrectItems = items.filter(item => !budgetHit(runOf(item)) && evaluationField(evaluationOf(item), 'affected_component_match') === true);
+          const componentCorrectItems = items.filter(item => !budgetHit(runOf(item)) && evaluationField(evaluationOf(item), 'causal_component_match') === true);
           const predictions = new Map();
           items.forEach(item => {
             const run = runOf(item), diagnosis = run.diagnosis || {};
@@ -477,7 +478,7 @@
             <td class="numeric">${num(items.reduce((sum, item) => sum + errorCount(runOf(item)), 0))}</td>
           </tr>`;
         }).join('');
-        return `<table><thead><tr><th>Visibility</th><th>Predictions</th><th>Joint</th><th>Affected component</th><th>Mechanism</th><th class="numeric">Onset p50</th><th class="numeric api-cost">Cost total</th><th class="numeric">Elapsed p50</th><th class="numeric">Tools executed / requested</th><th class="numeric">Jointly valid tools p50</th><th class="numeric">Non-binding component-correct tools p50</th><th class="numeric">Discovery p50</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
+        return `<table><thead><tr><th>Visibility</th><th>Predictions</th><th>Joint</th><th>Causal component</th><th>Mechanism</th><th class="numeric">Onset p50</th><th class="numeric api-cost">Cost total</th><th class="numeric">Elapsed p50</th><th class="numeric">Tools executed / requested</th><th class="numeric">Jointly valid tools p50</th><th class="numeric">Non-binding causal-component-correct tools p50</th><th class="numeric">Discovery p50</th><th class="numeric">Budget hit</th><th class="numeric">Database load</th><th class="numeric">Errors</th></tr></thead><tbody>${rows}</tbody></table>`;
       }
 
       function renderCase(index) {
@@ -486,7 +487,7 @@
         const context = item.case_context || {};
         const coverage = graph.status ? ` · graph ${graph.status}: ${graph.distinct_entity_count || 0} entities / ${graph.distinct_relationship_count || 0} relationships` : '';
         const alternatives = (truth.component_alternatives || []).length ? `; conflicting labels: ${truth.component_alternatives.join(', ')}` : '';
-        const componentContract = truth.component_scoreable === false ? `component unscored (${truthComponentOf(truth)}${alternatives})` : `component ${truthComponentOf(truth)}`;
+        const componentContract = truth.component_scoreable === false ? `causal locus unscored (${truthLocusOf(truth)}${alternatives})` : `causal locus ${truthLocusOf(truth)}`;
         document.getElementById('truth').textContent = `${caseLabel(item, index)} · truth ${componentContract} / ${truth.fault_type || '—'} / ${truth.inject_time || '—'}${coverage}`;
         document.getElementById('case-context').textContent = `Telemetry window ${context.window_seconds == null ? 'unknown' : duration(context.window_seconds)} · before alert ${context.telemetry_before_alert_seconds == null ? 'unknown' : duration(context.telemetry_before_alert_seconds)} · known pre-fault baseline ${context.known_pre_fault_seconds == null ? 'unavailable' : duration(context.known_pre_fault_seconds)} · fault taxonomy ${num(context.fault_taxonomy_size)} labels`;
         document.getElementById('case-summary').innerHTML = renderCaseSummary(runs);
@@ -525,7 +526,7 @@
             const pass = joint.total && joint.matches === joint.total;
             return `<td class="${pass ? 'matrix-pass' : joint.total ? 'matrix-fail' : 'muted'}">${joint.text} · ${predictions}</td>`;
           }).join('');
-          return `<tr><td><b>${esc(caseLabel(item, index))}</b></td><td>${esc(truthComponentOf(truth))} / ${esc(truth.fault_type || '—')}</td><td>${esc(graphCoverage)}</td>${cells}</tr>`;
+          return `<tr><td><b>${esc(caseLabel(item, index))}</b></td><td>${esc(truthLocusOf(truth))} / ${esc(truth.fault_type || '—')}</td><td>${esc(graphCoverage)}</td>${cells}</tr>`;
         }).join('');
         document.getElementById('case-matrix').innerHTML = `<table><thead><tr><th>Dataset case</th><th>Ground truth</th><th>Graph coverage</th>${header}</tr></thead><tbody>${rows}</tbody></table>`;
       }

@@ -211,9 +211,9 @@ def _run(
         api_transport=ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
         max_output_tokens=4096,
         diagnosis=Diagnosis(
-            affected_component="ts-route-plan-service",
-            causal_dependency="ts-travel2-service",
             causal_scope=CausalScope.DEPENDENCY_EDGE,
+            edge_source="ts-route-plan-service",
+            edge_destination="ts-travel2-service",
             causal_operation="POST /api/v1/travel2service/trips/left",
             fault_category=FaultCategory.DELAY,
             mechanism_code=mechanism_code,
@@ -627,7 +627,6 @@ def _exception_run(
     query: str | None = None,
     result: QueryResult | None = None,
     operation: str | None = "TrainController.retrieveByName",
-    dependency: str | None = None,
 ) -> AgentRun:
     evidence = Evidence(
         query_id="q01",
@@ -646,9 +645,8 @@ def _exception_run(
         api_transport=ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
         max_output_tokens=4096,
         diagnosis=Diagnosis(
-            affected_component="ts-train-service",
-            causal_dependency=dependency,
             causal_scope=CausalScope.COMPONENT,
+            causal_component="ts-train-service",
             causal_operation=operation,
             fault_category=FaultCategory.OTHER,
             mechanism_code=MechanismCode.APPLICATION_ERROR,
@@ -684,6 +682,37 @@ def test_formal_v27_accepts_component_scoped_exception_transition() -> None:
     assert evaluation.mechanism_evidence_match is True
     assert evaluation.efficiency_eligible is True
     assert evaluation.success is True
+
+
+def test_component_mechanism_is_not_reclassified_as_propagation_edge() -> None:
+    fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    component_run = _exception_run()
+    assert component_run.diagnosis is not None
+    component_run = component_run.model_copy(
+        update={
+            "diagnosis": component_run.diagnosis.model_copy(
+                update={"impacted_component": "ts-travel-plan-service"}
+            )
+        }
+    )
+    edge_diagnosis = Diagnosis.model_validate(
+        {
+            **component_run.diagnosis.model_dump(mode="json"),
+            "causal_scope": "dependency_edge",
+            "causal_component": None,
+            "edge_source": "ts-travel-plan-service",
+            "edge_destination": "ts-train-service",
+        }
+    )
+    edge_run = component_run.model_copy(update={"diagnosis": edge_diagnosis})
+
+    component_evaluation = evaluate_aegis_transfer_run(component_run, fixture)
+    edge_evaluation = evaluate_aegis_transfer_run(edge_run, fixture)
+
+    assert component_evaluation.causal_locus_match is True
+    assert component_evaluation.diagnosis_correct is True
+    assert edge_evaluation.causal_locus_match is False
+    assert edge_evaluation.diagnosis_correct is False
 
 
 def test_formal_v27_accepts_case_normalized_source_predicates() -> None:
@@ -828,13 +857,25 @@ def test_formal_v27_causal_operation_is_part_of_primary_correctness() -> None:
     assert missing.causal_operation_match is False
 
 
-def test_formal_v27_component_scope_requires_null_dependency() -> None:
+def test_formal_v27_component_scope_rejects_edge_fields() -> None:
+    run = _exception_run()
+    assert run.diagnosis is not None
+    run = run.model_copy(
+        update={
+            "diagnosis": run.diagnosis.model_copy(
+                update={
+                    "edge_source": "ts-travel-plan-service",
+                    "edge_destination": "ts-train-service",
+                }
+            )
+        }
+    )
     evaluation = evaluate_aegis_transfer_run(
-        _exception_run(dependency="ts-route-plan-service"),
+        run,
         load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
     )
 
-    assert evaluation.causal_dependency_match is False
+    assert evaluation.causal_component_match is False
     assert evaluation.diagnosis_correct is False
 
 

@@ -155,9 +155,9 @@ two-sided sign test and adjust the two primary tests with Holm's method. Run-pai
 directions are descriptive only. Discovery ordering and other trajectory metrics
 are exploratory and cannot support headline claims.
 
-Protocol v26 introduced, and protocol v27 retains, a transfer guardrail that does not collapse
-the result into one success bit. `diagnosis_correct` covers the affected component,
-conditional dependency, causal scope, causal operation, category, and mechanism code.
+Protocol v26 introduced, and protocol v29 retains, a transfer guardrail that does not collapse
+the result into one success bit. `diagnosis_correct` covers the causal locus, causal operation,
+category, and mechanism code.
 `required_evidence_covered`
 requires claim-typed evidence for the causal scope and mechanism.
 `citation_integrity` and `execution_reliability` are reported separately.
@@ -199,7 +199,7 @@ therefore be compared only within the same model, runner, protocol, and case.
 
 ## Benchmark 1.0 release gate and research-claim gate
 
-Protocol labels such as v24 through v28 identify internal development cycles. They record changes
+Protocol labels such as v24 through v29 identify internal development cycles. They record changes
 to the harness and make development experiments interpretable; they are not release versions. The
 current tree does not preserve runtime compatibility with earlier development protocols.
 
@@ -276,7 +276,8 @@ restart and memory-pressure predicates are not silently admitted without a match
 pipeline. The frozen selection selects the single-component JVM exception case as opaque ID
 `aegis-transfer-003`. The source and stored oracles require a clean normal window and repeated
 `retrieveByName` Error spans plus exception logs after onset. The scorer uses `component` scope,
-requires `causal_dependency=null`, and scores the global `application_error` mechanism. It accepts
+requires `causal_component=ts-train-service` with no edge endpoints, and scores the global
+`application_error` mechanism. It accepts
 equivalent complete-window evidence without prescribing one SQL statement.
 
 Before any `aegis-transfer-003` model cell, the agent-visible Semantic Graph relationship
@@ -298,14 +299,26 @@ inside the Graph treatment. It adds `gpt-5.6-sol` through the OpenAI Responses A
 repetitions over the two treatments, for 16 cells. OpenAI runs use stateless output-item replay and
 implicit 30-minute prompt caching, explicit `medium` reasoning effort, and a 16,384-token combined
 reasoning-and-visible-output budget. The first scheduled OpenAI cell is a separately authorized,
-bounded transport and truncation probe before the remaining paid cells. The remaining transfer gate is a fresh provider-free audit,
-followed by explicit approval for paid execution; no v28 provider call has run.
+bounded transport and truncation probe before the remaining paid cells. The first v28 OpenAI
+Raw/Graph pair ran as a development probe. Its Graph trajectory found both the caller-to-callee
+error-propagation edge and the downstream service's local exceptions, but the output contract
+encouraged the model to encode the caller as the affected component and the callee as a
+dependency-edge failure.
 This selection exhausts the pinned reviewer cohort under the supported-mechanism rule: after
 the v24 method-replacement and v25 delay cases are consumed, the v27 JVM-exception case is the only
 remaining eligible candidate. A later fresh transfer case therefore requires a new pinned cohort
 or a separately frozen expansion of end-to-end mechanism support; it cannot reuse a consumed case.
 Raw `.reports/` trajectories are not the release contract because they contain
 provider payloads and local metadata.
+
+Protocol v29 makes the causal answer isomorphic to the source truth. A component-scoped answer
+contains one `causal_component`; a dependency-edge answer contains one directed `edge_source` and
+`edge_destination`. `impacted_component` is descriptive and does not affect root-cause
+correctness. The SQL tool returns at most 200 rows by default and accepts an explicit per-query
+limit up to 1,000. A truncated result cannot be cited; both API transports return an invalid final
+submission to the agent so it can issue an aggregate, narrow the query, or request a larger bounded
+result. Because the v28 case-003 trajectory caused these changes, v29 binds case 003 only as a
+development calibration case. A fresh transfer measurement requires a new source case or cohort.
 
 A later confirmatory study must pre-register practical effect thresholds,
 multiplicity, exclusion assumptions, power, and independent-case enrollment.

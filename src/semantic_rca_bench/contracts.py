@@ -4,7 +4,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Visibility(StrEnum):
@@ -68,9 +68,7 @@ class EvidenceClaimType(StrEnum):
 class GroundTruth(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    affected_component: str = Field(
-        validation_alias=AliasChoices("affected_component", "component")
-    )
+    causal_component: str
     component_scoreable: bool = True
     component_alternatives: list[str] = Field(default_factory=list)
     fault_type: str
@@ -189,20 +187,39 @@ class Evidence(BaseModel):
 
 
 class Diagnosis(BaseModel):
-    affected_component: str = Field(
-        validation_alias=AliasChoices("affected_component", "root_cause_component")
-    )
-    causal_dependency: str | None = None
-    causal_scope: CausalScope | None = None
+    causal_scope: CausalScope
+    causal_component: str | None = None
+    edge_source: str | None = None
+    edge_destination: str | None = None
+    impacted_component: str | None = None
     causal_operation: str | None = None
     fault_category: FaultCategory
-    mechanism_code: MechanismCode | None = None
+    mechanism_code: MechanismCode
     fault_type: str
     onset_time: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     evidence: list[Evidence] = Field(default_factory=list)
     alternative_candidates: list[str] = Field(default_factory=list, max_length=3)
     explanation: str
+
+    @model_validator(mode="after")
+    def validate_causal_locus(self) -> Diagnosis:
+        if self.causal_scope is CausalScope.COMPONENT:
+            if self.causal_component is None or not self.causal_component.strip():
+                raise ValueError("component diagnosis requires causal_component")
+            if self.edge_source is not None or self.edge_destination is not None:
+                raise ValueError("component diagnosis must not define an edge")
+        else:
+            if self.causal_component is not None:
+                raise ValueError("dependency-edge diagnosis must not define causal_component")
+            if (
+                self.edge_source is None
+                or not self.edge_source.strip()
+                or self.edge_destination is None
+                or not self.edge_destination.strip()
+            ):
+                raise ValueError("dependency-edge diagnosis requires both edge endpoints")
+        return self
 
 
 class ToolTrace(BaseModel):
@@ -255,9 +272,7 @@ class AgentRun(BaseModel):
 
 
 class Evaluation(BaseModel):
-    affected_component_match: bool | None = Field(
-        validation_alias=AliasChoices("affected_component_match", "component_match")
-    )
+    causal_component_match: bool | None
     fault_type_match: bool
     fault_category_match: bool
     joint_match: bool | None

@@ -101,7 +101,7 @@ class OpenRCARepository:
                 fault_taxonomy=_fault_taxonomy(record_path),
             ),
             ground_truth=GroundTruth(
-                affected_component=truth["component"],
+                causal_component=truth["component"],
                 fault_type=truth["reason"],
                 fault_category=_fault_category(truth["reason"]),
                 inject_time=int(float(truth["timestamp"])),
@@ -195,7 +195,7 @@ class OpenRCARepository:
                 fault_taxonomy=_fault_taxonomy(record_path),
             ),
             ground_truth=GroundTruth(
-                affected_component=truth["component"],
+                causal_component=truth["component"],
                 fault_type=truth["reason"],
                 fault_category=_fault_category(truth["reason"]),
                 inject_time=int(float(truth["timestamp"])),

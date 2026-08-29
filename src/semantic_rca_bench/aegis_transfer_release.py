@@ -14,7 +14,6 @@ from semantic_rca_bench.aegis_transfer_formal import (
     validate_formal_report,
 )
 from semantic_rca_bench.aegis_transfer_protocol import (
-    DEFAULT_PROTOCOL_FIXTURE,
     AegisTransferProtocolFixture,
     evaluate_transfer_protocol_run,
     load_transfer_protocol_fixture,
@@ -27,11 +26,10 @@ from semantic_rca_bench.aegis_transfer_scorer import (
     source_transfer_audit_sha256,
 )
 from semantic_rca_bench.contracts import AgentRun
-from semantic_rca_bench.evaluation import is_valid_evidence_trace
+from semantic_rca_bench.evidence import is_valid_evidence_trace
 from semantic_rca_bench.report import MODEL_PRICING, _estimated_api_cost, _raw_input_breakdown
 
 ARTIFACT_SCHEMA_VERSION = 1
-DEFAULT_MEASUREMENT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v28-scorer.json")
 
 
 def build_measurement_artifact(
@@ -151,8 +149,8 @@ def build_measurement_artifact_from_files(
     source_audit_path: Path,
     scorer_audit_path: Path,
     protocol_audit_path: Path,
-    scorer_fixture_path: Path = DEFAULT_MEASUREMENT_SCORER_FIXTURE,
-    protocol_fixture_path: Path = DEFAULT_PROTOCOL_FIXTURE,
+    scorer_fixture_path: Path,
+    protocol_fixture_path: Path,
 ) -> dict[str, object]:
     inputs = {
         "run_report": run_path,
@@ -296,6 +294,12 @@ def _validate_measurement_bindings(
     protocol_fixture: AegisTransferProtocolFixture,
     protocol_fixture_path: Path,
 ) -> None:
+    if (
+        scorer_fixture.case_role != "measurement"
+        or protocol_fixture.case_role != "measurement"
+        or run_report.get("case_role") != "measurement"
+    ):
+        raise ValueError("development runs cannot be exported as measurement artifacts")
     validate_formal_report(
         run_report,
         scorer_fixture,
@@ -544,15 +548,15 @@ def _run_payload(
     diagnosis_payload = None
     if diagnosis is not None:
         diagnosis_payload = {
-            "affected_component": diagnosis.affected_component,
-            "causal_dependency": diagnosis.causal_dependency,
+            "causal_component": diagnosis.causal_component,
+            "edge_source": diagnosis.edge_source,
+            "edge_destination": diagnosis.edge_destination,
+            "impacted_component": diagnosis.impacted_component,
             "fault_category": diagnosis.fault_category.value,
             "fault_type": diagnosis.fault_type,
             "onset_time": diagnosis.onset_time,
             "confidence": diagnosis.confidence,
-            "causal_scope": (
-                diagnosis.causal_scope.value if diagnosis.causal_scope is not None else None
-            ),
+            "causal_scope": diagnosis.causal_scope.value,
             "causal_operation": diagnosis.causal_operation,
             "mechanism_code": (
                 diagnosis.mechanism_code.value if diagnosis.mechanism_code is not None else None

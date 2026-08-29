@@ -34,8 +34,13 @@ from semantic_rca_bench.contracts import (
     ToolTrace,
     Visibility,
 )
+from semantic_rca_bench.evidence import is_valid_evidence_trace
 from semantic_rca_bench.greptimedb.profile import TableProfiler
-from semantic_rca_bench.greptimedb.visibility import QueryGateway
+from semantic_rca_bench.greptimedb.visibility import (
+    DEFAULT_QUERY_MAX_ROWS,
+    MAX_QUERY_MAX_ROWS,
+    QueryGateway,
+)
 
 
 class AgentError(RuntimeError):
@@ -112,29 +117,41 @@ SUBMIT_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "affected_component": {
-                "type": "string",
-                "description": (
-                    "The workload or infrastructure component directly affected by the causal "
-                    "fault. For a dependency failure, name the caller that lost access here and "
-                    "put the unavailable dependency in causal_dependency."
-                ),
-            },
-            "causal_dependency": {
+            "causal_component": {
                 "type": ["string", "null"],
                 "description": (
-                    "Exactly one downstream service, datastore, or external endpoint on the "
-                    "primary causal path, or null when no dependency is identified. Do not "
-                    "submit a list or alternation."
+                    "Exactly one component where the causal mechanism is local. Required for "
+                    "component scope and null for dependency_edge scope."
+                ),
+            },
+            "edge_source": {
+                "type": ["string", "null"],
+                "description": (
+                    "The caller or upstream endpoint of the directed causal edge. Required for "
+                    "dependency_edge scope and null for component scope."
+                ),
+            },
+            "edge_destination": {
+                "type": ["string", "null"],
+                "description": (
+                    "The callee or downstream endpoint of the directed causal edge. Required "
+                    "for dependency_edge scope and null for component scope."
+                ),
+            },
+            "impacted_component": {
+                "type": ["string", "null"],
+                "description": (
+                    "One component that exhibits propagated impact, or null when not separately "
+                    "identified. This does not define the root-cause locus."
                 ),
             },
             "causal_scope": {
                 "type": "string",
                 "enum": [scope.value for scope in CausalScope],
                 "description": (
-                    "component when the mechanism is local to affected_component; "
-                    "dependency_edge when it occurs on the directed path from "
-                    "affected_component to causal_dependency."
+                    "component when the mechanism is local to causal_component; "
+                    "dependency_edge when it occurs on the directed path from edge_source to "
+                    "edge_destination."
                 ),
             },
             "causal_operation": {
@@ -220,9 +237,11 @@ SUBMIT_TOOL = {
             "explanation": {"type": "string"},
         },
         "required": [
-            "affected_component",
-            "causal_dependency",
             "causal_scope",
+            "causal_component",
+            "edge_source",
+            "edge_destination",
+            "impacted_component",
             "causal_operation",
             "fault_category",
             "mechanism_code",
@@ -340,7 +359,11 @@ class InvestigationSession:
 
     def _execute(self, tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
         if tool_name == "execute_sql":
-            result = self.gateway.execute(str(arguments.get("query", "")))
+            requested_max_rows = arguments.get("max_rows")
+            result = self.gateway.execute(
+                str(arguments.get("query", "")),
+                **({"max_rows": requested_max_rows} if requested_max_rows is not None else {}),
+            )
             return result.model_dump(mode="json")
         if tool_name == "describe_table":
             return self.profiler.describe(
@@ -369,6 +392,29 @@ class InvestigationSession:
     def _load_snapshot(self) -> DatabaseLoad | None:
         snapshot = getattr(self.gateway.client, "query_load_snapshot", None)
         return snapshot() if callable(snapshot) else None
+
+    def validate_diagnosis_citations(self, output: dict[str, object]) -> None:
+        diagnosis = Diagnosis.model_validate(output)
+        traces_by_query_id: dict[str, list[ToolTrace]] = {}
+        for trace in self.tool_calls:
+            if trace.query_id is not None:
+                traces_by_query_id.setdefault(trace.query_id, []).append(trace)
+        invalid: list[str] = []
+        seen_query_ids: set[str] = set()
+        for evidence in diagnosis.evidence:
+            if evidence.query_id in seen_query_ids:
+                invalid.append(evidence.query_id)
+                continue
+            seen_query_ids.add(evidence.query_id)
+            matches = traces_by_query_id.get(evidence.query_id, [])
+            if not evidence.claim.strip() or not is_valid_evidence_trace(matches):
+                invalid.append(evidence.query_id)
+        if invalid:
+            query_ids = ", ".join(dict.fromkeys(invalid))
+            raise ValueError(
+                "evidence citations must reference one successful, non-truncated SQL or Graph "
+                f"result; replace invalid citations: {query_ids}"
+            )
 
 
 def _database_load_delta(
@@ -567,6 +613,8 @@ def run_structured_api_agent(
         if output_block is not None:
             try:
                 output = validate_output(output_block.input)
+                if output_tool_name == "submit_diagnosis":
+                    session.validate_diagnosis_citations(output)
             except (ValidationError, ValueError, TypeError) as error:
                 output_error = str(error)
             else:
@@ -722,7 +770,7 @@ def _run_openai_structured_api_agent(
             raw_output_items = raw_response.get("output")
             if not isinstance(raw_output_items, list):
                 raise AgentError("OpenAI response has no output item list")
-            input_items.extend(raw_output_items)
+            input_items.extend(_openai_continuation_items(raw_output_items))
         except Exception as error:
             return _structured_result(
                 session,
@@ -754,6 +802,8 @@ def _run_openai_structured_api_agent(
             _, _, output_arguments = output_call
             try:
                 output = validate_output(output_arguments)
+                if output_tool_name == "submit_diagnosis":
+                    session.validate_diagnosis_citations(output)
             except (ValidationError, ValueError, TypeError) as error:
                 output_error = str(error)
             else:
@@ -867,6 +917,21 @@ def _openai_function_tool(tool: dict[str, object]) -> dict[str, object]:
         "parameters": tool["input_schema"],
         "strict": False,
     }
+
+
+def _openai_continuation_items(
+    output_items: list[object],
+) -> list[dict[str, object]]:
+    continuation_items: list[dict[str, object]] = []
+    for output_item in output_items:
+        if not isinstance(output_item, dict):
+            raise AgentError("OpenAI response output item is not an object")
+        item = deepcopy(output_item)
+        if item.get("type") in {"reasoning", "function_call"}:
+            item.pop("status", None)
+            item = {key: value for key, value in item.items() if value is not None}
+        continuation_items.append(item)
+    return continuation_items
 
 
 def _openai_prompt_cache_key(
@@ -1012,7 +1077,10 @@ def _execute_sql_tool(
 ) -> dict[str, object]:
     description = (
         "Execute one read-only GreptimeDB SQL statement in the incident database. "
-        "Use MySQL dialect and INFORMATION_SCHEMA for ordinary schema discovery."
+        "Use MySQL dialect and INFORMATION_SCHEMA for ordinary schema discovery. "
+        f"Results default to at most {DEFAULT_QUERY_MAX_ROWS} rows; max_rows may explicitly "
+        f"raise this to {MAX_QUERY_MAX_ROWS}. Prefer aggregation or narrower filters. A truncated "
+        "result is incomplete and cannot be cited as final evidence."
     )
     if visibility is Visibility.SEMANTIC_GRAPH:
         graph = semantic_coverage.get("graph", {}) if semantic_coverage else {}
@@ -1051,7 +1119,17 @@ def _execute_sql_tool(
                 "query": {
                     "type": "string",
                     "description": "One SELECT, SHOW, or DESCRIBE statement.",
-                }
+                },
+                "max_rows": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAX_QUERY_MAX_ROWS,
+                    "default": DEFAULT_QUERY_MAX_ROWS,
+                    "description": (
+                        "Maximum rows returned for this query. Raise it only when a complete "
+                        "result cannot be obtained with aggregation or narrower filters."
+                    ),
+                },
             },
             "required": ["query"],
             "additionalProperties": False,
@@ -1318,13 +1396,6 @@ def _submit_tool(fault_taxonomy: list[str]) -> dict[str, object]:
 
 def _validate_diagnosis_output(value: object) -> dict[str, object]:
     diagnosis = Diagnosis.model_validate(value)
-    if diagnosis.causal_scope is None or diagnosis.mechanism_code is None:
-        raise ValueError("diagnosis is missing the current structured causal contract")
-    if diagnosis.causal_scope is CausalScope.DEPENDENCY_EDGE:
-        if diagnosis.causal_dependency is None:
-            raise ValueError("dependency_edge diagnosis requires causal_dependency")
-    elif diagnosis.causal_dependency is not None:
-        raise ValueError("component diagnosis must not name a causal_dependency")
     if any(not item.claim_types for item in diagnosis.evidence):
         raise ValueError("every evidence item must declare at least one claim type")
     return diagnosis.model_dump(mode="json")
@@ -1332,7 +1403,7 @@ def _validate_diagnosis_output(value: object) -> dict[str, object]:
 
 def _system_prompt() -> str:
     return """You are the on-call SRE investigating an incident from telemetry in GreptimeDB.
-Determine the single most likely root-cause component and causal fault type. Do not report a
+Determine the single most likely root-cause locus and causal fault type. Do not report a
 surface observation as the cause unless the evidence discriminates that causal mechanism from its
 alternatives. Work from query evidence, not naming alone. Compare baseline and anomalous periods
 when the telemetry window
@@ -1366,16 +1437,14 @@ GreptimeDB SQL notes:
   INFORMATION_SCHEMA column, not a telemetry-table column.
 
 Final diagnosis contract:
-- affected_component is the workload or infrastructure component directly affected by the
-  causal fault, not a downstream component that merely exhibits propagated symptoms. For a
-  dependency failure, report the caller that lost access rather than replacing it with the
-  unavailable dependency.
-- causal_dependency is the downstream service, datastore, or external endpoint whose failure
-  caused affected_component to fail. It is exactly one entity, not a list or alternation. When two
-  candidates remain, submit the better-supported one in causal_dependency, put the other in
-  alternative_candidates, and lower confidence. Return null when the evidence identifies no edge.
-- causal_scope states whether the causal mechanism is local to affected_component or lies on the
-  directed dependency edge to causal_dependency. causal_operation names one operation when known.
+- causal_scope and its locus fields identify where the mechanism exists, independently of where
+  symptoms propagate. For component scope, set exactly one causal_component and leave both edge
+  fields null. For dependency_edge scope, set exactly one directed edge_source and edge_destination
+  and leave causal_component null. Do not submit a list or alternation in any locus field.
+- impacted_component optionally names one component that exhibits propagated impact. It is not a
+  substitute for the component or edge where the causal mechanism exists. Put unresolved candidates
+  in alternative_candidates and lower confidence.
+- causal_operation names one operation at the causal locus when known.
 - mechanism_code is the case-independent structured causal mechanism. fault_type is a concise
   free-text description of the same mechanism; put qualifications and alternatives in explanation.
 - fault_category is the canonical category for that same causal mechanism. Classify the positive
@@ -1391,6 +1460,8 @@ Final diagnosis contract:
   causal scope and mechanism. When baseline telemetry is available, the evidence set must compare
   the relevant operation or signal across baseline and anomalous periods. Evidence that establishes
   only an observation does not by itself establish its cause.
+- truncated query results are incomplete and cannot be cited. Use aggregation, narrower filters, or
+  an explicit execute_sql max_rows up to 1000 to obtain a complete result before citing it.
 
 Every final evidence item must copy an exact query_id returned by an investigation tool. Do not ask
 the user questions. The incident prompt states a fixed investigation budget and each tool response
@@ -1412,7 +1483,8 @@ Alert fired at: {alert_time} (Unix {case_input.alert_time})
 Investigation budget: at most {max_tool_calls} tool calls. Submit the best-supported diagnosis
 before the budget reaches zero.
 
-Find the affected component, causal dependency when present, fault type, and onset time. The
+Find the causal component or directed causal edge, propagated impact when present, fault type, and
+onset time. The
 database is the only source of
 incident evidence. Treat the alert as the observed symptom; its named entity is not necessarily the
 root cause. INFORMATION_SCHEMA row queries must include

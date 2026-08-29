@@ -104,7 +104,7 @@ class RCAEvalRepository:
                 fault_taxonomy=fault_taxonomy,
             ),
             ground_truth=GroundTruth(
-                affected_component=str(row["root_cause_service"]),
+                causal_component=str(row["root_cause_service"]),
                 fault_type=str(row["fault"]),
                 inject_time=inject_time,
             ),

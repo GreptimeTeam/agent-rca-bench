@@ -157,7 +157,7 @@ def bind_formal_execution(
     if formal_source_semantic_sha256(source_audit) != _binding(report, "source_semantic_sha256"):
         raise ValueError("live source audit differs from the frozen preflight semantics")
     if case.input.case_token != protocol_fixture.agent_case_id or case.input.fault_taxonomy:
-        raise ValueError("live formal case input is not the frozen opaque measurement case")
+        raise ValueError("live case input is not the protocol-bound opaque case")
     if [case.input.time_start, case.input.alert_time, case.input.time_end] != [
         scorer_fixture.normal_window[0],
         scorer_fixture.normal_window[1],
@@ -303,7 +303,7 @@ def validate_formal_report(
     if (
         report.get("report_schema_version") != FORMAL_REPORT_SCHEMA_VERSION
         or report.get("mode") != FORMAL_REPORT_MODE
-        or report.get("case_role") != "measurement"
+        or report.get("case_role") != protocol_fixture.case_role
     ):
         raise ValueError("unsupported formal Aegis transfer report")
     if report.get("benchmark_protocol") != benchmark_protocol():

@@ -4,10 +4,8 @@ import json
 import re
 from datetime import datetime
 
-import sqlglot
-from sqlglot import exp
-
-from semantic_rca_bench.contracts import AgentRun, Evaluation, GroundTruth, QueryResult, ToolTrace
+from semantic_rca_bench.contracts import AgentRun, CausalScope, Evaluation, GroundTruth, ToolTrace
+from semantic_rca_bench.evidence import is_valid_evidence_trace
 
 
 def _normalize(value: str) -> str:
@@ -44,8 +42,10 @@ def fault_type_matches(predicted: str, expected: str) -> bool:
 
 def evaluate(run: AgentRun, truth: GroundTruth) -> Evaluation:
     diagnosis = run.diagnosis
-    affected_component_match = (
-        component_matches(diagnosis.affected_component, truth.affected_component)
+    causal_component_match = (
+        diagnosis.causal_scope is CausalScope.COMPONENT
+        and diagnosis.causal_component is not None
+        and component_matches(diagnosis.causal_component, truth.causal_component)
         if diagnosis is not None and truth.component_scoreable
         else False
         if truth.component_scoreable
@@ -97,9 +97,7 @@ def evaluate(run: AgentRun, truth: GroundTruth) -> Evaluation:
         }
     )
     joint_match = (
-        affected_component_match and fault_type_match
-        if affected_component_match is not None
-        else None
+        causal_component_match and fault_type_match if causal_component_match is not None else None
     )
     valid_completion = (
         joint_match is True
@@ -110,7 +108,7 @@ def evaluate(run: AgentRun, truth: GroundTruth) -> Evaluation:
         and not run.tool_budget_exhausted
     )
     return Evaluation(
-        affected_component_match=affected_component_match,
+        causal_component_match=causal_component_match,
         fault_type_match=fault_type_match,
         fault_category_match=fault_category_match,
         joint_match=joint_match,
@@ -137,56 +135,6 @@ def evaluate(run: AgentRun, truth: GroundTruth) -> Evaluation:
         valid_completion=valid_completion,
         correct_completion_tool_calls=len(run.tool_calls) if valid_completion else None,
     )
-
-
-def is_valid_evidence_trace(matches: list[ToolTrace]) -> bool:
-    if len(matches) != 1:
-        return False
-    trace = matches[0]
-    if trace.error is not None or trace.tool_name not in {"execute_sql", "query_semantic_graph"}:
-        return False
-    if trace.tool_name == "execute_sql":
-        query = str(trace.input.get("query") or trace.input.get("sql") or "")
-        if not _is_evidence_sql(query):
-            return False
-    if not isinstance(trace.output, dict):
-        return False
-    try:
-        result = QueryResult.model_validate(trace.output)
-    except ValueError:
-        return False
-    return result.query_id == trace.query_id and not result.truncated
-
-
-def _is_evidence_sql(query: str) -> bool:
-    statement = None
-    for dialect in ("postgres", "mysql"):
-        try:
-            statements = sqlglot.parse(query, read=dialect)
-        except sqlglot.errors.ParseError:
-            continue
-        candidate = statements[0] if len(statements) == 1 else None
-        while isinstance(candidate, exp.Subquery):
-            candidate = candidate.this
-        if isinstance(candidate, (exp.Select, exp.Union)):
-            statement = candidate
-            break
-    if statement is None:
-        return False
-    tables = list(statement.find_all(exp.Table))
-    if not tables:
-        return False
-    for table in tables:
-        schema = table.db.lower()
-        name = table.name.lower()
-        if schema in {"information_schema", "pg_catalog"}:
-            return False
-        if schema == "greptime_private" and name not in {
-            "semantic_entities",
-            "semantic_relationships",
-        }:
-            return False
-    return True
 
 
 def _is_discovery_call(tool_name: str, arguments: dict[str, object]) -> bool:

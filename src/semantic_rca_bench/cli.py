@@ -339,12 +339,12 @@ def _parser() -> argparse.ArgumentParser:
     aegis_measurement_export.add_argument(
         "--scorer",
         type=Path,
-        default=FORMAL_SCORER_FIXTURE,
+        required=True,
     )
     aegis_measurement_export.add_argument(
         "--protocol",
         type=Path,
-        default=DEFAULT_PROTOCOL_FIXTURE,
+        required=True,
     )
     aegis_measurement_export.add_argument("--output", type=Path, required=True)
 
@@ -1663,9 +1663,11 @@ def run(args: argparse.Namespace) -> int:
 def _assert_neutral_database_name(database: str, truth: GroundTruth) -> None:
     normalized_database = re.sub(r"[^a-z0-9]+", "", database.lower())
     for label, value in (
-        ("component", truth.affected_component),
+        ("component", truth.causal_component),
         ("fault type", truth.fault_type),
     ):
+        if value is None:
+            continue
         normalized_value = re.sub(r"[^a-z0-9]+", "", value.lower())
         if normalized_value and normalized_value in normalized_database:
             raise ValueError(f"database name leaks ground-truth {label}: use a neutral identifier")
@@ -1704,7 +1706,7 @@ def _batch_output(
             str(value)
             for value in (
                 case.get("dataset"),
-                truth.get("affected_component", truth.get("component")),
+                truth.get("causal_component"),
                 truth.get("fault_type"),
             )
             if value

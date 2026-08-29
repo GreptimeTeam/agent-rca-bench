@@ -103,6 +103,17 @@ def test_tools_expose_only_allowed_semantic_capabilities() -> None:
     assert "scope lists namespace or environment columns" in graph_profile
     assert "unmatched_count" in graph_sql
     assert "duration_max" in graph_sql
+    max_rows = _execute_sql_tool(Visibility.RAW)["input_schema"]["properties"]["max_rows"]
+    assert max_rows == {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 200,
+        "description": (
+            "Maximum rows returned for this query. Raise it only when a complete result cannot "
+            "be obtained with aggregation or narrower filters."
+        ),
+    }
 
 
 def test_graph_tool_reports_active_coverage() -> None:
@@ -179,7 +190,15 @@ def test_diagnosis_requires_canonical_fault_category() -> None:
         "socket",
         "other",
     ]
-    assert {"causal_scope", "causal_operation", "mechanism_code"} <= set(schema["required"])
+    assert {
+        "causal_scope",
+        "causal_component",
+        "edge_source",
+        "edge_destination",
+        "impacted_component",
+        "causal_operation",
+        "mechanism_code",
+    } <= set(schema["required"])
     assert schema["properties"]["causal_scope"]["enum"] == [
         "component",
         "dependency_edge",
@@ -315,9 +334,11 @@ def test_agent_records_requested_calls_rejected_by_the_tool_budget(monkeypatch) 
             }
 
     diagnosis = {
-        "affected_component": "checkout",
-        "causal_dependency": None,
         "causal_scope": "component",
+        "causal_component": "checkout",
+        "edge_source": None,
+        "edge_destination": None,
+        "impacted_component": None,
         "causal_operation": None,
         "fault_category": "cpu",
         "mechanism_code": "cpu_saturation",
@@ -387,9 +408,11 @@ def test_agent_records_requested_calls_rejected_by_the_tool_budget(monkeypatch) 
 
 def test_deepseek_uses_automatic_cache_and_counts_native_usage(monkeypatch) -> None:
     diagnosis = {
-        "affected_component": "checkout",
-        "causal_dependency": None,
         "causal_scope": "component",
+        "causal_component": "checkout",
+        "edge_source": None,
+        "edge_destination": None,
+        "impacted_component": None,
         "causal_operation": None,
         "fault_category": "cpu",
         "mechanism_code": "cpu_saturation",
@@ -446,11 +469,15 @@ def test_deepseek_uses_automatic_cache_and_counts_native_usage(monkeypatch) -> N
     assert "cache_control" not in requests[0]
 
 
-def test_openai_responses_runner_replays_output_items_and_counts_cache_usage(monkeypatch) -> None:
+def test_openai_responses_runner_projects_continuation_items_and_counts_cache_usage(
+    monkeypatch,
+) -> None:
     diagnosis = {
-        "affected_component": "checkout",
-        "causal_dependency": None,
         "causal_scope": "component",
+        "causal_component": "checkout",
+        "edge_source": None,
+        "edge_destination": None,
+        "impacted_component": None,
         "causal_operation": None,
         "fault_category": "cpu",
         "mechanism_code": "cpu_saturation",
@@ -481,6 +508,9 @@ def test_openai_responses_runner_replays_output_items_and_counts_cache_usage(mon
         {
             "type": "reasoning",
             "id": "reasoning-1",
+            "status": "completed",
+            "summary": [],
+            "content": [],
             "encrypted_content": "opaque-reasoning",
         },
         {
@@ -489,6 +519,9 @@ def test_openai_responses_runner_replays_output_items_and_counts_cache_usage(mon
             "call_id": "call-1",
             "name": "execute_sql",
             "arguments": '{"query":"SELECT 1"}',
+            "status": "completed",
+            "caller": None,
+            "namespace": None,
         },
     ]
     responses = iter(
@@ -591,12 +624,28 @@ def test_openai_responses_runner_replays_output_items_and_counts_cache_usage(mon
         tool["type"] == "function" and tool["strict"] is False for tool in requests[0]["tools"]
     )
     second_input = requests[1]["input"]
-    assert first_raw_output[0] in second_input
+    reasoning = next(item for item in second_input if item.get("type") == "reasoning")
+    assert reasoning == {
+        "type": "reasoning",
+        "id": "reasoning-1",
+        "summary": [],
+        "content": [],
+        "encrypted_content": "opaque-reasoning",
+    }
+    function_call = next(item for item in second_input if item.get("type") == "function_call")
+    assert function_call == {
+        "type": "function_call",
+        "id": "item-1",
+        "call_id": "call-1",
+        "name": "execute_sql",
+        "arguments": '{"query":"SELECT 1"}',
+    }
     function_output = next(
         item for item in second_input if item.get("type") == "function_call_output"
     )
     assert function_output["call_id"] == "call-1"
     assert json.loads(function_output["output"])["query_id"] == "q01"
+    assert result.responses[0]["output"] == first_raw_output
 
 
 def test_openai_incomplete_response_records_provider_reason(monkeypatch) -> None:
@@ -688,9 +737,11 @@ def test_valid_final_output_records_same_response_investigation_calls_as_rejecte
     monkeypatch,
 ) -> None:
     diagnosis = {
-        "affected_component": "checkout",
-        "causal_dependency": None,
         "causal_scope": "component",
+        "causal_component": "checkout",
+        "edge_source": None,
+        "edge_destination": None,
+        "impacted_component": None,
         "causal_operation": None,
         "fault_category": "cpu",
         "mechanism_code": "cpu_saturation",
@@ -877,6 +928,115 @@ def test_investigation_trace_records_database_load_delta() -> None:
         query_elapsed_seconds=0.2,
         max_concurrency=1,
     )
+
+
+def test_execute_sql_passes_explicit_row_limit_to_gateway() -> None:
+    calls = []
+
+    class Gateway:
+        client = SimpleNamespace()
+
+        def execute(self, query: str, *, max_rows: int | None = None) -> QueryResult:
+            calls.append((query, max_rows))
+            return QueryResult(query_id="provider", columns=[], rows=[], elapsed_seconds=0)
+
+    session = agent_module.InvestigationSession(
+        Gateway(),  # type: ignore[arg-type]
+        CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
+        Visibility.RAW,
+        max_tool_calls=1,
+        semantic_coverage=None,
+    )
+
+    session.invoke("execute_sql", {"query": "SELECT * FROM traces", "max_rows": 1000})
+
+    assert calls == [("SELECT * FROM traces", 1000)]
+    assert session.tool_calls[0].input["max_rows"] == 1000
+
+
+def test_truncated_final_citation_is_returned_for_repair(monkeypatch) -> None:
+    def diagnosis(query_id: str) -> dict[str, object]:
+        return {
+            "causal_scope": "component",
+            "causal_component": "checkout",
+            "edge_source": None,
+            "edge_destination": None,
+            "impacted_component": None,
+            "causal_operation": None,
+            "fault_category": "cpu",
+            "mechanism_code": "cpu_saturation",
+            "fault_type": "cpu saturation",
+            "confidence": 0.7,
+            "evidence": [
+                {
+                    "query_id": query_id,
+                    "claim": "CPU is saturated.",
+                    "claim_types": ["fault_mechanism"],
+                }
+            ],
+            "alternative_candidates": [],
+            "explanation": "The complete aggregate supports CPU saturation.",
+        }
+
+    class Response:
+        def __init__(self, name: str, value: dict[str, object], identifier: str) -> None:
+            self.content = [SimpleNamespace(type="tool_use", name=name, input=value, id=identifier)]
+            self.usage = SimpleNamespace(input_tokens=1, output_tokens=1)
+
+        def model_dump(self, *, mode: str) -> dict[str, object]:
+            assert mode == "json"
+            return {
+                "content": [
+                    {"type": block.type, "name": block.name, "input": block.input}
+                    for block in self.content
+                ],
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            }
+
+    responses = iter(
+        [
+            Response("execute_sql", {"query": "SELECT * FROM cpu"}, "tool-1"),
+            Response("submit_diagnosis", diagnosis("q01"), "tool-2"),
+            Response(
+                "execute_sql",
+                {"query": "SELECT host, MAX(usage) FROM cpu GROUP BY host"},
+                "tool-3",
+            ),
+            Response("submit_diagnosis", diagnosis("q02"), "tool-4"),
+        ]
+    )
+    provider = SimpleNamespace(messages=SimpleNamespace(create=lambda **_: next(responses)))
+    monkeypatch.setattr(agent_module, "_anthropic_client", lambda _: provider)
+
+    class Gateway:
+        client = SimpleNamespace()
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def execute(self, _: str) -> QueryResult:
+            self.calls += 1
+            return QueryResult(
+                query_id="provider",
+                columns=["value"],
+                rows=[[1]],
+                elapsed_seconds=0,
+                truncated=self.calls == 1,
+            )
+
+    result = run_agent(
+        Gateway(),  # type: ignore[arg-type]
+        CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
+        Visibility.RAW,
+        model="test-model",
+        api_transport=ApiTransport.ANTHROPIC_MESSAGES,
+        max_tool_calls=4,
+    )
+
+    assert result.diagnosis is not None
+    assert [trace.query_id for trace in result.tool_calls] == ["q01", "q02"]
+    assert len(result.responses) == 4
+    assert result.diagnosis.evidence[0].query_id == "q02"
 
 
 def test_unfiltered_empty_graph_result_does_not_add_identity_guidance() -> None:
