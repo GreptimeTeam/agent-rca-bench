@@ -23,28 +23,65 @@ def run_orders(
     ]
 
 
-def benchmark_protocol() -> dict[str, object]:
-    return {
-        "version": 25,
-        "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-v2",
-        "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
-        "semantic_graph": "half-open-window-key-deduplicated-query-tool-v6",
-        "semantic_context": "benchmark-preflight-v1",
-        "sql_contract": "greptimedb-basic-v1",
-        "citation": "unique-successful-nonmetadata-query-result-v2",
-        "evaluator": "canonical-valid-completion-and-rejection-disposition-v9",
-        "primary_metrics": "case-median-rows-and-calls-holm-sign-test-v2",
-        "repetition_schedule": "seeded-rotating-order-with-position-v2",
-        "tool_budget": "shared-visible-cap-api-turn-limit-subscription-timeout-v5",
-        "case_role": "explicit-development-or-measurement-v1",
-        "case_context": "baseline-availability-v1",
-        "database_load": "client-query-boundary-v1",
-        "alert": "dataset-native-when-available-v1",
-        "agent_runner": "provider-specific-prompt-cache-and-partial-audit-preserved-v7",
-        "model_usage": "typed-cache-inclusion-and-provider-native-breakdown-v3",
-        "diagnosis": "affected-component-plus-optional-causal-dependency-v1",
-        "investigation_prompt": "provisional-hypothesis-triage-v1",
+def benchmark_protocol(version: int | None = None) -> dict[str, object]:
+    protocols = {
+        25: {
+            "version": 25,
+            "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-v2",
+            "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
+            "semantic_graph": "half-open-window-key-deduplicated-query-tool-v6",
+            "semantic_context": "benchmark-preflight-v1",
+            "sql_contract": "greptimedb-basic-v1",
+            "citation": "unique-successful-nonmetadata-query-result-v2",
+            "evaluator": "canonical-valid-completion-and-rejection-disposition-v9",
+            "primary_metrics": "case-median-rows-and-calls-holm-sign-test-v2",
+            "repetition_schedule": "seeded-rotating-order-with-position-v2",
+            "tool_budget": "shared-visible-cap-api-turn-limit-subscription-timeout-v5",
+            "case_role": "explicit-development-or-measurement-v1",
+            "case_context": "baseline-availability-v1",
+            "database_load": "client-query-boundary-v1",
+            "alert": "dataset-native-when-available-v1",
+            "agent_runner": "provider-specific-prompt-cache-and-partial-audit-preserved-v7",
+            "model_usage": "typed-cache-inclusion-and-provider-native-breakdown-v3",
+            "diagnosis": "affected-component-plus-optional-causal-dependency-v1",
+            "investigation_prompt": "provisional-hypothesis-triage-v1",
+        },
+        26: {
+            "version": 26,
+            "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-v2",
+            "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
+            "semantic_graph": "half-open-window-key-deduplicated-query-tool-v6",
+            "semantic_context": "benchmark-preflight-v1",
+            "sql_contract": "greptimedb-basic-v1",
+            "citation": "typed-claim-successful-nonmetadata-query-result-v3",
+            "evaluator": "layered-diagnosis-evidence-citation-execution-v10",
+            "primary_metrics": "correctness-preserving-case-median-rows-and-calls-v3",
+            "repetition_schedule": "seeded-rotating-order-with-position-v2",
+            "tool_budget": "shared-visible-cap-api-turn-limit-subscription-timeout-v5",
+            "case_role": "explicit-development-or-measurement-v1",
+            "case_context": "baseline-availability-v1",
+            "database_load": "client-query-boundary-v1",
+            "alert": "dataset-native-when-available-v1",
+            "agent_runner": "provider-specific-prompt-cache-and-partial-audit-preserved-v7",
+            "model_usage": "typed-cache-inclusion-and-provider-native-breakdown-v3",
+            "diagnosis": "typed-causal-scope-operation-and-global-mechanism-v2",
+            "investigation_prompt": "case-invariant-symmetric-hypothesis-discrimination-v2",
+        },
     }
+    selected = 26 if version is None else version
+    try:
+        return dict(protocols[selected])
+    except KeyError as error:
+        raise ValueError(f"unsupported benchmark protocol version: {selected}") from error
+
+
+def require_current_protocol(version: int) -> None:
+    current = int(benchmark_protocol()["version"])
+    if version != current:
+        raise ValueError(
+            f"benchmark protocol v{version} is retired for new agent execution; "
+            f"current protocol is v{current}"
+        )
 
 
 def discovery_protocol() -> dict[str, object]:

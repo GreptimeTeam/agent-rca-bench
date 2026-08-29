@@ -29,6 +29,37 @@ class FaultCategory(StrEnum):
     OTHER = "other"
 
 
+class CausalScope(StrEnum):
+    COMPONENT = "component"
+    DEPENDENCY_EDGE = "dependency_edge"
+
+
+class MechanismCode(StrEnum):
+    CPU_SATURATION = "cpu_saturation"
+    CPU_THROTTLING = "cpu_throttling"
+    MEMORY_PRESSURE = "memory_pressure"
+    MEMORY_LEAK = "memory_leak"
+    OUT_OF_MEMORY = "out_of_memory"
+    DISK_IO_DEGRADATION = "disk_io_degradation"
+    PACKET_LOSS = "packet_loss"
+    SOCKET_EXHAUSTION = "socket_exhaustion"
+    CONNECTION_FAILURE = "connection_failure"
+    CALL_PATH_DELAY = "call_path_delay"
+    DEPENDENCY_UNAVAILABLE = "dependency_unavailable"
+    DEPENDENCY_CONTRACT_FAILURE = "dependency_contract_failure"
+    APPLICATION_ERROR = "application_error"
+    CONFIGURATION_ERROR = "configuration_error"
+    DATA_SEMANTICS_ERROR = "data_semantics_error"
+    UNKNOWN = "unknown"
+
+
+class EvidenceClaimType(StrEnum):
+    CAUSAL_SCOPE = "causal_scope"
+    FAULT_MECHANISM = "fault_mechanism"
+    ONSET = "onset"
+    EXCLUSION = "exclusion"
+
+
 class GroundTruth(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -149,6 +180,7 @@ class QueryResult(BaseModel):
 class Evidence(BaseModel):
     query_id: str
     claim: str
+    claim_types: list[EvidenceClaimType] = Field(default_factory=list)
 
 
 class Diagnosis(BaseModel):
@@ -156,7 +188,10 @@ class Diagnosis(BaseModel):
         validation_alias=AliasChoices("affected_component", "root_cause_component")
     )
     causal_dependency: str | None = None
+    causal_scope: CausalScope | None = None
+    causal_operation: str | None = None
     fault_category: FaultCategory
+    mechanism_code: MechanismCode | None = None
     fault_type: str
     onset_time: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)

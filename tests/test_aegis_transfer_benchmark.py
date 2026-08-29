@@ -4,8 +4,11 @@ from pathlib import Path
 import pytest
 
 from semantic_rca_bench.aegis_transfer_benchmark import (
+    OPUS_DIAGNOSTIC_MODEL,
     TransferRunError,
+    build_opus_graph_diagnostic_report,
     build_transfer_run_report,
+    execute_opus_graph_diagnostic,
     execute_transfer_runs,
 )
 from semantic_rca_bench.aegis_transfer_scorer import (
@@ -242,6 +245,53 @@ def test_canonical_transfer_wiring_balances_positions_and_uses_graph_envelope() 
     assert all(call[3]["max_tool_calls"] == 48 for call in calls)
     assert all(call[3]["max_turns"] == 58 for call in calls)
     assert all(call[3]["max_tokens"] == 4096 for call in calls)
+
+
+def test_opus_diagnostic_executes_exactly_one_graph_cell_and_is_not_measurement() -> None:
+    case = _case()
+    source = _source_audit()
+    fixture = load_transfer_scorer_fixture()
+    scorer = audit_transfer_scorer(source, fixture, SCORER_PATH)
+    report = build_opus_graph_diagnostic_report(
+        case,
+        fixture,
+        SCORER_PATH,
+        source,
+        scorer,
+        {"graph": {"status": "relational"}},
+    )
+    calls = []
+
+    def fake_agent(gateway, case_input, visibility, **kwargs):
+        calls.append((gateway.semantic_graph_window, visibility, kwargs))
+        return _agent_run(visibility).model_copy(update={"model": OPUS_DIAGNOSTIC_MODEL})
+
+    execute_opus_graph_diagnostic(
+        _Client(),  # type: ignore[arg-type]
+        case,
+        fixture,
+        report,
+        run_agent_fn=fake_agent,
+    )
+
+    assert report["measurement_eligible"] is False
+    assert report["execution"]["expected_runs"] == 1
+    assert report["execution"]["complete"] is True
+    assert len(report["runs"]) == 1
+    assert calls == [
+        (
+            (1752918720, 1752919260),
+            Visibility.SEMANTIC_GRAPH,
+            {
+                "model": OPUS_DIAGNOSTIC_MODEL,
+                "max_tool_calls": 48,
+                "max_turns": 58,
+                "max_tokens": 4096,
+                "semantic_coverage": {"graph": {"status": "relational"}},
+            },
+        )
+    ]
+    assert report["runs"][0]["evaluation"]["runner_contract_match"] is True
 
 
 def test_canonical_transfer_run_stops_after_first_runner_error() -> None:

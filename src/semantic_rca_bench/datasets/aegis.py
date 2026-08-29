@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 
 import httpx
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from semantic_rca_bench.selection import deterministic_rank
@@ -30,6 +32,7 @@ _ARCHIVE_DATASET_PREFIX = (
 
 _PERIODS = ("normal", "abnormal")
 _TRACE_COLUMNS = (
+    "time",
     "trace_id",
     "span_id",
     "parent_span_id",
@@ -43,7 +46,18 @@ _TRACE_COLUMNS = (
     "attr.http.request.method",
     "attr.http.response.status_code",
 )
-_REQUIRED_TRACE_COLUMNS = frozenset(_TRACE_COLUMNS[:8])
+_REQUIRED_TRACE_COLUMNS = frozenset(
+    {
+        "trace_id",
+        "span_id",
+        "parent_span_id",
+        "span_name",
+        "attr.span_kind",
+        "service_name",
+        "duration",
+        "attr.status_code",
+    }
+)
 _SPAN_KINDS = {"Unspecified", "Internal", "Server", "Client", "Producer", "Consumer"}
 _STATUS_CODES = {"Unset", "Ok", "Error"}
 
@@ -143,8 +157,23 @@ def audit_cohort(
             "consumed_candidates": consumed,
             "selected_case": selected,
         },
+        "observable_mechanism_selection": {
+            "seed": SELECTION_SEED,
+            "eligible_set": sorted(
+                str(case["source_case"])
+                for case in cases
+                if case["graph_source_eligible"] is True
+                and case["mechanism_evidence"]["predicate_match"] is True
+            ),
+        },
         "cases": cases,
     }
+    observable = audit["observable_mechanism_selection"]
+    observable["ranked_candidates"] = (
+        deterministic_rank(observable["eligible_set"], SELECTION_SEED)
+        if observable["eligible_set"]
+        else []
+    )
     if selection_path is not None:
         audit["frozen_selection_gate"] = _validate_frozen_selection(audit, selection_path)
     return audit
@@ -156,6 +185,10 @@ def _validate_frozen_selection(audit: dict[str, object], selection_path: Path) -
         raise AegisAuditError("frozen selection manifest must be an object")
     if manifest.get("selection_strategy") == "next-unconsumed-from-parent-v1":
         return _validate_sequential_selection(audit, selection_path, manifest)
+    if manifest.get("selection_strategy") == "consumed-v25-case-development-recalibration-v1":
+        return _validate_recalibration_selection(audit, selection_path, manifest)
+    if manifest.get("selection_strategy") == "fresh-source-observable-mechanism-v1":
+        return _validate_fresh_observable_selection(audit, selection_path, manifest)
     selection = audit["selection"]
     if not isinstance(selection, dict):
         raise AegisAuditError("source audit selection must be an object")
@@ -293,18 +326,10 @@ def _validate_sequential_selection(
         "normal_window": case.get("source_windows", {}).get("normal"),
         "abnormal_window": case.get("source_windows", {}).get("abnormal"),
         "declared_edge": case.get("declared_edge"),
-        "mechanism_evidence": {
-            key: mechanism.get(key)
-            for key in (
-                "predicate",
-                "span_name",
-                "declared_delay_ns",
-                "normal_count",
-                "normal_max_duration_ns",
-                "abnormal_count",
-                "abnormal_max_duration_ns",
-            )
-        },
+        "mechanism_evidence": _selected_mechanism_projection(
+            mechanism,
+            str(selected.get("mechanism_evidence", {}).get("predicate")),
+        ),
         "normal_raw_edge_set": _edge_set_summary(trace_windows.get("normal")),
         "abnormal_raw_edge_set": _edge_set_summary(trace_windows.get("abnormal")),
     }
@@ -348,6 +373,286 @@ def _validate_sequential_selection(
         "expected": expected,
         "pass": True,
     }
+
+
+def _validate_recalibration_selection(
+    audit: dict[str, object],
+    selection_path: Path,
+    manifest: dict[str, object],
+) -> dict[str, object]:
+    parent_name = manifest.get("parent_manifest")
+    parent_sha256 = manifest.get("parent_manifest_sha256")
+    if not isinstance(parent_name, str) or Path(parent_name).name != parent_name:
+        raise AegisAuditError("recalibration selection has an invalid parent manifest")
+    parent_path = selection_path.parent / parent_name
+    if not parent_path.is_file() or not isinstance(parent_sha256, str):
+        raise AegisAuditError("recalibration parent manifest is missing")
+    observed_parent_sha256 = hashlib.sha256(parent_path.read_bytes()).hexdigest()
+    if observed_parent_sha256 != parent_sha256:
+        raise AegisAuditError("recalibration parent manifest checksum drifted")
+    parent = _read_json(parent_path)
+    selected = manifest.get("selected_case")
+    parent_selected = parent.get("selected_case")
+    cases = audit.get("cases")
+    source = audit.get("source")
+    if (
+        manifest.get("case_role") != "development"
+        or not isinstance(selected, dict)
+        or not isinstance(parent_selected, dict)
+        or selected.get("source_case") != parent_selected.get("source_case")
+        or manifest.get("agent_case_id") != parent.get("agent_case_id")
+        or not isinstance(cases, list)
+        or not isinstance(source, dict)
+    ):
+        raise AegisAuditError("recalibration selection is not bound to the consumed v25 case")
+    matching = [case for case in cases if case.get("source_case") == selected.get("source_case")]
+    if len(matching) != 1:
+        raise AegisAuditError("recalibration source case is not unique")
+    case = matching[0]
+    mechanism = case.get("mechanism_evidence")
+    trace_windows = case.get("trace_windows")
+    selected_mechanism = selected.get("mechanism_evidence")
+    if (
+        case.get("directed_graph_candidate") is not True
+        or not isinstance(mechanism, dict)
+        or mechanism.get("start_gap_predicate_match") is not True
+        or not isinstance(trace_windows, dict)
+        or not isinstance(selected_mechanism, dict)
+    ):
+        raise AegisAuditError("recalibration case lacks source-faithful start-gap evidence")
+    observed_selected = {
+        "source_case": case.get("source_case"),
+        "fault_type": case.get("fault_type"),
+        "ground_truth_services": case.get("ground_truth_services"),
+        "normal_window": case.get("source_windows", {}).get("normal"),
+        "abnormal_window": case.get("source_windows", {}).get("abnormal"),
+        "declared_edge": case.get("declared_edge"),
+        "mechanism_evidence": _selected_mechanism_projection(
+            mechanism, str(selected_mechanism.get("predicate"))
+        ),
+        "normal_raw_edge_set": _edge_set_summary(trace_windows.get("normal")),
+        "abnormal_raw_edge_set": _edge_set_summary(trace_windows.get("abnormal")),
+    }
+    observed_source = {
+        "artifact_record": source.get("artifact_record"),
+        "artifact_filename": source.get("artifact_filename"),
+        "artifact_md5": source.get("expected_artifact_md5"),
+        "source_dataset_record": source.get("source_dataset_record"),
+        "data_redistributed": source.get("data_redistributed"),
+    }
+    if observed_source != manifest.get("source") or observed_selected != selected:
+        raise AegisAuditError("frozen recalibration selection drifted")
+    return {
+        "manifest_name": selection_path.name,
+        "observed": {
+            "source": observed_source,
+            "selection_strategy": manifest.get("selection_strategy"),
+            "parent_manifest": parent_name,
+            "parent_manifest_sha256": observed_parent_sha256,
+            "case_role": manifest.get("case_role"),
+            "agent_case_id": manifest.get("agent_case_id"),
+            "selected_case": observed_selected,
+        },
+        "expected": {
+            "source": manifest.get("source"),
+            "selection_strategy": manifest.get("selection_strategy"),
+            "parent_manifest": parent_name,
+            "parent_manifest_sha256": parent_sha256,
+            "case_role": "development",
+            "agent_case_id": manifest.get("agent_case_id"),
+            "selected_case": selected,
+        },
+        "pass": True,
+    }
+
+
+def _validate_fresh_observable_selection(
+    audit: dict[str, object],
+    selection_path: Path,
+    manifest: dict[str, object],
+) -> dict[str, object]:
+    parents = manifest.get("consumed_parent_manifests")
+    if not isinstance(parents, list) or not parents:
+        raise AegisAuditError("fresh selection has no consumed parent manifests")
+    observed_parents = []
+    consumed_cases = []
+    consumed_agent_ids = []
+    for item in parents:
+        if not isinstance(item, dict):
+            raise AegisAuditError("fresh selection parent manifest entry is malformed")
+        name = item.get("name")
+        expected_sha256 = item.get("sha256")
+        if (
+            not isinstance(name, str)
+            or Path(name).name != name
+            or not isinstance(expected_sha256, str)
+        ):
+            raise AegisAuditError("fresh selection parent manifest identity is invalid")
+        path = selection_path.parent / name
+        if not path.is_file():
+            raise AegisAuditError("fresh selection parent manifest is missing")
+        observed_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        if observed_sha256 != expected_sha256:
+            raise AegisAuditError("fresh selection parent manifest checksum drifted")
+        parent = _read_json(path)
+        selected = parent.get("selected_case")
+        agent_case_id = parent.get("agent_case_id")
+        if (
+            not isinstance(selected, dict)
+            or not isinstance(selected.get("source_case"), str)
+            or not isinstance(agent_case_id, str)
+        ):
+            raise AegisAuditError("fresh selection parent manifest is incomplete")
+        consumed_cases.append(selected["source_case"])
+        consumed_agent_ids.append(agent_case_id)
+        observed_parents.append({"name": name, "sha256": observed_sha256})
+
+    observable = audit.get("observable_mechanism_selection")
+    source = audit.get("source")
+    cases = audit.get("cases")
+    selected = manifest.get("selected_case")
+    if (
+        not isinstance(observable, dict)
+        or not isinstance(source, dict)
+        or not isinstance(cases, list)
+        or not isinstance(selected, dict)
+    ):
+        raise AegisAuditError("source audit is incomplete for fresh selection")
+    eligible = [
+        name for name in observable.get("eligible_set", []) if name not in set(consumed_cases)
+    ]
+    ranked = deterministic_rank(eligible, str(observable.get("seed"))) if eligible else []
+    if not ranked or selected.get("source_case") != ranked[0]:
+        raise AegisAuditError("fresh selection is not the first unconsumed eligible candidate")
+    matching = [case for case in cases if case.get("source_case") == ranked[0]]
+    if len(matching) != 1:
+        raise AegisAuditError("fresh selection source case is not unique")
+    case = matching[0]
+    mechanism = case.get("mechanism_evidence")
+    trace_windows = case.get("trace_windows")
+    selected_mechanism = selected.get("mechanism_evidence")
+    if (
+        case.get("graph_source_eligible") is not True
+        or not isinstance(mechanism, dict)
+        or mechanism.get("predicate_match") is not True
+        or not isinstance(trace_windows, dict)
+        or not isinstance(selected_mechanism, dict)
+    ):
+        raise AegisAuditError("fresh selection candidate is not source-scoreable")
+    observed_selected = {
+        "source_case": case.get("source_case"),
+        "fault_type": case.get("fault_type"),
+        "ground_truth_services": case.get("ground_truth_services"),
+        "normal_window": case.get("source_windows", {}).get("normal"),
+        "abnormal_window": case.get("source_windows", {}).get("abnormal"),
+        "declared_edge": case.get("declared_edge"),
+        "mechanism_evidence": _selected_mechanism_projection(
+            mechanism, str(selected_mechanism.get("predicate"))
+        ),
+        "normal_raw_edge_set": _edge_set_summary(trace_windows.get("normal")),
+        "abnormal_raw_edge_set": _edge_set_summary(trace_windows.get("abnormal")),
+    }
+    observed_source = {
+        "artifact_record": source.get("artifact_record"),
+        "artifact_filename": source.get("artifact_filename"),
+        "artifact_md5": source.get("expected_artifact_md5"),
+        "source_dataset_record": source.get("source_dataset_record"),
+        "data_redistributed": source.get("data_redistributed"),
+    }
+    observed = {
+        "source": observed_source,
+        "selection_strategy": manifest.get("selection_strategy"),
+        "selection_seed": observable.get("seed"),
+        "consumed_parent_manifests": observed_parents,
+        "consumed_source_cases": consumed_cases,
+        "eligible_unconsumed_candidates": sorted(eligible),
+        "ranked_unconsumed_candidates": ranked,
+        "case_role": manifest.get("case_role"),
+        "selection_phase": manifest.get("selection_phase"),
+        "agent_case_id": manifest.get("agent_case_id"),
+        "selected_case": observed_selected,
+    }
+    expected = {
+        "source": manifest.get("source"),
+        "selection_strategy": "fresh-source-observable-mechanism-v1",
+        "selection_seed": manifest.get("selection_seed"),
+        "consumed_parent_manifests": parents,
+        "consumed_source_cases": manifest.get("consumed_source_cases"),
+        "eligible_unconsumed_candidates": manifest.get("eligible_unconsumed_candidates"),
+        "ranked_unconsumed_candidates": manifest.get("ranked_unconsumed_candidates"),
+        "case_role": "measurement",
+        "selection_phase": "before_agent_trajectory",
+        "agent_case_id": manifest.get("agent_case_id"),
+        "selected_case": selected,
+    }
+    if observed != expected:
+        mismatches = sorted(key for key in expected if observed[key] != expected[key])
+        raise AegisAuditError(f"frozen fresh selection drift: {mismatches}")
+    if observed["agent_case_id"] in consumed_agent_ids:
+        raise AegisAuditError("fresh selection must use a new opaque agent case ID")
+    return {
+        "manifest_name": selection_path.name,
+        "observed": observed,
+        "expected": expected,
+        "pass": True,
+    }
+
+
+def _selected_mechanism_projection(
+    mechanism: dict[str, object], predicate: str
+) -> dict[str, object]:
+    if predicate == "source_declared_http_delay_threshold":
+        fields = (
+            "predicate",
+            "span_name",
+            "declared_delay_ns",
+            "normal_count",
+            "normal_max_duration_ns",
+            "abnormal_count",
+            "abnormal_max_duration_ns",
+        )
+    elif predicate == "source_declared_http_client_server_start_gap":
+        fields = (
+            "start_gap_predicate",
+            "span_name",
+            "declared_delay_ns",
+            "normal_count",
+            "normal_min_start_gap_ns",
+            "normal_max_start_gap_ns",
+            "normal_at_or_above_threshold",
+            "abnormal_count",
+            "abnormal_min_start_gap_ns",
+            "abnormal_max_start_gap_ns",
+            "abnormal_at_or_above_threshold",
+        )
+    elif predicate == "source_declared_workload_restart":
+        fields = (
+            "predicate",
+            "pod_name",
+            "metric",
+            "normal_count",
+            "normal_min_restarts",
+            "normal_max_restarts",
+            "abnormal_count",
+            "abnormal_min_restarts",
+            "abnormal_max_restarts",
+        )
+    elif predicate == "source_declared_jvm_exception":
+        fields = (
+            "predicate",
+            "service_name",
+            "method_name",
+            "normal_error_span_count",
+            "normal_exception_log_count",
+            "abnormal_error_span_count",
+            "abnormal_exception_log_count",
+        )
+    else:
+        return {"predicate": mechanism.get("predicate")}
+    projected = {key: mechanism.get(key) for key in fields}
+    if "start_gap_predicate" in projected:
+        projected["predicate"] = projected.pop("start_gap_predicate")
+    return projected
 
 
 def _edge_set_summary(value: object) -> dict[str, object] | None:
@@ -451,7 +756,12 @@ def _audit_case(
     abnormal_end = _env_epoch(env, "ABNORMAL_END")
     if not normal_start < normal_end == abnormal_start < abnormal_end:
         raise AegisAuditError(f"non-contiguous source windows for {root.name}")
-    injection_start = int(datetime.fromisoformat(str(injection["start_time"])).timestamp())
+    injection_start_value = datetime.fromisoformat(
+        str(injection["start_time"]).replace("Z", "+00:00")
+    )
+    if injection_start_value.tzinfo is None:
+        raise AegisAuditError("injection start time must include an explicit timezone")
+    injection_start = int(injection_start_value.timestamp())
     if injection_start != abnormal_start:
         raise AegisAuditError(f"injection time disagrees with source window for {root.name}")
 
@@ -510,10 +820,12 @@ def _audit_case(
         directed_reasons.append("declared_endpoint_not_witnessed_in_both_windows")
     directed_graph_candidate = not directed_reasons
     mechanism = _mechanism_evidence(
+        root,
         fault_type,
         display_config,
         declared_edge,
         observations,
+        ground_truth,
         {field for window in windows.values() for field in window["observed_nonempty_body_fields"]},
     )
     return {
@@ -549,7 +861,11 @@ def _trace_window_audit(
     body_columns = sorted(column for column in source_schema_columns if "body" in column.lower())
     columns = [column for column in _TRACE_COLUMNS if column in schema_names]
     columns.extend(column for column in body_columns if column not in columns)
-    rows = pq.read_table(path, columns=columns).to_pylist()
+    table = pq.read_table(path, columns=columns)
+    time_index = table.schema.get_field_index("time")
+    if time_index >= 0:
+        table = table.set_column(time_index, "time", pc.cast(table.column(time_index), pa.int64()))
+    rows = table.to_pylist()
     nonempty_body_fields = sorted(
         column for column in body_columns if any(row.get(column) not in (None, "") for row in rows)
     )
@@ -618,12 +934,17 @@ def _trace_window_audit(
 
 
 def _mechanism_evidence(
+    root: Path,
     fault_type: str,
     display_config: dict[str, object],
     edge: tuple[str, str] | None,
     observations: dict[str, dict[tuple[str, str], list[dict[str, object]]]],
+    ground_truth: dict[str, object],
     nonempty_body_fields: set[str],
 ) -> dict[str, object]:
+    component = _component_mechanism_evidence(root, fault_type, display_config, ground_truth)
+    if component is not None:
+        return component
     if edge is None:
         return {
             "predicate": None,
@@ -688,6 +1009,20 @@ def _mechanism_evidence(
             for item in abnormal
             if item["server"].get("span_name") == span_name
         ]
+        normal_start_gaps = [
+            int(item["server"]["time"]) - int(item["client"]["time"])
+            for item in normal
+            if item["server"].get("span_name") == span_name
+            and item["server"].get("time") is not None
+            and item["client"].get("time") is not None
+        ]
+        abnormal_start_gaps = [
+            int(item["server"]["time"]) - int(item["client"]["time"])
+            for item in abnormal
+            if item["server"].get("span_name") == span_name
+            and item["server"].get("time") is not None
+            and item["client"].get("time") is not None
+        ]
         normal_max = max(normal_durations, default=None)
         abnormal_max = max(abnormal_durations, default=None)
         matched = bool(
@@ -695,6 +1030,21 @@ def _mechanism_evidence(
             and normal_max is not None
             and abnormal_max is not None
             and normal_max < threshold_ns <= abnormal_max
+        )
+        normal_gap_min = min(normal_start_gaps, default=None)
+        normal_gap_max = max(normal_start_gaps, default=None)
+        abnormal_gap_min = min(abnormal_start_gaps, default=None)
+        abnormal_gap_max = max(abnormal_start_gaps, default=None)
+        normal_threshold_count = sum(value >= threshold_ns for value in normal_start_gaps)
+        abnormal_threshold_count = sum(value >= threshold_ns for value in abnormal_start_gaps)
+        start_gap_matched = bool(
+            threshold_ns > 0
+            and normal_gap_max is not None
+            and abnormal_gap_min is not None
+            and normal_gap_max < threshold_ns <= abnormal_gap_min
+            and normal_threshold_count == 0
+            and abnormal_threshold_count == len(abnormal_start_gaps)
+            and abnormal_start_gaps
         )
         return {
             "predicate": "source_declared_http_delay_threshold",
@@ -706,6 +1056,14 @@ def _mechanism_evidence(
             "normal_max_duration_ns": normal_max,
             "abnormal_count": len(abnormal_durations),
             "abnormal_max_duration_ns": abnormal_max,
+            "start_gap_predicate": "source_declared_http_client_server_start_gap",
+            "start_gap_predicate_match": start_gap_matched,
+            "normal_min_start_gap_ns": normal_gap_min,
+            "normal_max_start_gap_ns": normal_gap_max,
+            "normal_at_or_above_threshold": normal_threshold_count,
+            "abnormal_min_start_gap_ns": abnormal_gap_min,
+            "abnormal_max_start_gap_ns": abnormal_gap_max,
+            "abnormal_at_or_above_threshold": abnormal_threshold_count,
         }
 
     if fault_type == "HTTPResponseReplaceBody":
@@ -728,6 +1086,142 @@ def _mechanism_evidence(
         "predicate_match": False,
         "reason": "no frozen transfer predicate for this fault type",
     }
+
+
+def _component_mechanism_evidence(
+    root: Path,
+    fault_type: str,
+    display_config: dict[str, object],
+    ground_truth: dict[str, object],
+) -> dict[str, object] | None:
+    pods = ground_truth.get("pod")
+    services = ground_truth.get("service")
+    if not isinstance(pods, list) or len(pods) != 1 or not isinstance(services, list):
+        return None
+    pod_name = str(pods[0])
+    service_name = str(services[0]) if len(services) == 1 else ""
+    if fault_type in {"ContainerKill", "PodFailure"}:
+        values = {
+            period: _metric_values(
+                root / f"{period}_metrics.parquet",
+                metric="k8s.container.restarts",
+                pod_name=pod_name,
+            )
+            for period in _PERIODS
+        }
+        normal = values["normal"]
+        abnormal = values["abnormal"]
+        matched = bool(normal and abnormal and max(normal) == 0 and min(abnormal) >= 1)
+        return {
+            "predicate": "source_declared_workload_restart",
+            "scoreable": matched,
+            "predicate_match": matched,
+            "pod_name": pod_name,
+            "metric": "k8s.container.restarts",
+            "normal_count": len(normal),
+            "normal_min_restarts": min(normal) if normal else None,
+            "normal_max_restarts": max(normal) if normal else None,
+            "abnormal_count": len(abnormal),
+            "abnormal_min_restarts": min(abnormal) if abnormal else None,
+            "abnormal_max_restarts": max(abnormal) if abnormal else None,
+        }
+    if fault_type == "JVMMemoryStress":
+        threshold = 0.85
+        values = {
+            period: _metric_values(
+                root / f"{period}_metrics.parquet",
+                metric="k8s.pod.memory_limit_utilization",
+                pod_name=pod_name,
+            )
+            for period in _PERIODS
+        }
+        normal = values["normal"]
+        abnormal = values["abnormal"]
+        abnormal_hits = sum(value >= threshold for value in abnormal)
+        matched = bool(normal and abnormal and max(normal) < threshold and abnormal_hits >= 2)
+        return {
+            "predicate": "source_declared_memory_pressure",
+            "scoreable": matched,
+            "predicate_match": matched,
+            "pod_name": pod_name,
+            "metric": "k8s.pod.memory_limit_utilization",
+            "threshold": threshold,
+            "normal_count": len(normal),
+            "normal_max": max(normal) if normal else None,
+            "normal_at_or_above_threshold": sum(value >= threshold for value in normal),
+            "abnormal_count": len(abnormal),
+            "abnormal_max": max(abnormal) if abnormal else None,
+            "abnormal_at_or_above_threshold": abnormal_hits,
+        }
+    if fault_type == "JVMException":
+        injection_point = display_config.get("injection_point")
+        if not isinstance(injection_point, dict):
+            return None
+        method_name = str(injection_point.get("method_name") or "")
+        if not method_name or not service_name:
+            return None
+        trace_counts = {
+            period: _exception_trace_count(
+                root / f"{period}_traces.parquet", service_name, method_name
+            )
+            for period in _PERIODS
+        }
+        log_counts = {
+            period: _exception_log_count(root / f"{period}_logs.parquet", service_name)
+            for period in _PERIODS
+        }
+        matched = (
+            trace_counts["normal"] == 0
+            and log_counts["normal"] == 0
+            and trace_counts["abnormal"] >= 2
+            and log_counts["abnormal"] >= 2
+        )
+        return {
+            "predicate": "source_declared_jvm_exception",
+            "scoreable": matched,
+            "predicate_match": matched,
+            "service_name": service_name,
+            "method_name": method_name,
+            "normal_error_span_count": trace_counts["normal"],
+            "normal_exception_log_count": log_counts["normal"],
+            "abnormal_error_span_count": trace_counts["abnormal"],
+            "abnormal_exception_log_count": log_counts["abnormal"],
+        }
+    return None
+
+
+def _metric_values(path: Path, *, metric: str, pod_name: str) -> list[float]:
+    table = pq.read_table(path, columns=["metric", "value", "attr.k8s.pod.name"])
+    return [
+        float(row["value"])
+        for row in table.to_pylist()
+        if row.get("metric") == metric
+        and row.get("attr.k8s.pod.name") == pod_name
+        and isinstance(row.get("value"), (int, float))
+    ]
+
+
+def _exception_trace_count(path: Path, service_name: str, method_name: str) -> int:
+    table = pq.read_table(
+        path,
+        columns=["service_name", "span_name", "attr.status_code"],
+    )
+    return sum(
+        row.get("service_name") == service_name
+        and row.get("attr.status_code") == "Error"
+        and method_name.lower() in str(row.get("span_name") or "").lower()
+        for row in table.to_pylist()
+    )
+
+
+def _exception_log_count(path: Path, service_name: str) -> int:
+    table = pq.read_table(path, columns=["service_name", "level", "message"])
+    return sum(
+        row.get("service_name") == service_name
+        and str(row.get("level") or "").upper() in {"ERROR", "SEVERE", "FATAL"}
+        and "exception" in str(row.get("message") or "").lower()
+        for row in table.to_pylist()
+    )
 
 
 def _edge_for_pair(

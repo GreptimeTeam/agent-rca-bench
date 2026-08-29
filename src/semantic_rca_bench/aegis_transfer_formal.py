@@ -25,10 +25,10 @@ from semantic_rca_bench.contracts import AgentRun, DatabaseLoad, Visibility
 from semantic_rca_bench.datasets.aegis_transfer import AegisTransferCase
 from semantic_rca_bench.greptimedb.client import GreptimeClient
 from semantic_rca_bench.greptimedb.visibility import QueryGateway
-from semantic_rca_bench.protocol import benchmark_protocol, run_orders
+from semantic_rca_bench.protocol import benchmark_protocol, require_current_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-FORMAL_REPORT_SCHEMA_VERSION = 1
+FORMAL_REPORT_SCHEMA_VERSION = 2
 FORMAL_REPORT_MODE = "aegis-transfer-three-model-api-run"
 
 FormalAgent = Callable[..., AgentRun]
@@ -65,6 +65,9 @@ def build_formal_preflight_report(
     case = _mapping(source_audit, "case")
     agent_facing = _mapping(case, "agent_facing")
     source_semantic_sha256 = formal_source_semantic_sha256(source_audit)
+    pricing_snapshot = {
+        model.model: dict(MODEL_PRICING[model.model]) for model in protocol_fixture.models
+    }
     return {
         "report_schema_version": FORMAL_REPORT_SCHEMA_VERSION,
         "mode": FORMAL_REPORT_MODE,
@@ -73,7 +76,7 @@ def build_formal_preflight_report(
         ),
         "case_role": protocol_fixture.case_role,
         "case": agent_facing,
-        "benchmark_protocol": benchmark_protocol(),
+        "benchmark_protocol": benchmark_protocol(protocol_fixture.benchmark_protocol_version),
         "formal_protocol": _json_object_file(protocol_path),
         "bindings": {
             "source_semantic_sha256": source_semantic_sha256,
@@ -82,10 +85,9 @@ def build_formal_preflight_report(
             "preflight_source_transfer_audit_sha256": source_transfer_audit_sha256(source_audit),
             "preflight_scorer_audit_sha256": _canonical_sha256(scorer_audit),
             "preflight_protocol_audit_sha256": _canonical_sha256(protocol_audit),
+            "pricing_snapshot_sha256": _canonical_sha256(pricing_snapshot),
         },
-        "pricing_snapshot": {
-            model.model: MODEL_PRICING[model.model] for model in protocol_fixture.models
-        },
+        "pricing_snapshot": pricing_snapshot,
         "schedule": schedule,
         "runs": [],
         "execution": {
@@ -214,6 +216,10 @@ def execute_formal_runs(
         protocol_fixture,
         protocol_path,
     )
+    if run_agent_fn is run_agent and len(_list_of_mappings(report, "runs")) < len(
+        _list_of_mappings(report, "schedule")
+    ):
+        require_current_protocol(protocol_fixture.benchmark_protocol_version)
     if paid_api_confirmed is not True:
         raise ValueError("formal paid API execution has not been explicitly confirmed")
     if report.get("execution_bindings") is None:
@@ -268,10 +274,6 @@ def execute_formal_runs(
             on_update(report)
         if not evaluation.runner_contract_match or not evaluation.tool_budget_contract_match:
             raise FormalRunError("formal runner violated its frozen contract")
-        if run.error is not None:
-            raise FormalRunError(f"formal runner stopped after persisted error: {run.error}")
-        if run.tool_budget_exhausted:
-            raise FormalRunError("formal runner stopped after persisted tool-budget exhaustion")
     return report
 
 
@@ -288,13 +290,16 @@ def validate_formal_report(
         raise ValueError("formal scorer object does not match its bound fixture file")
     if load_transfer_protocol_fixture(protocol_path) != protocol_fixture:
         raise ValueError("formal protocol object does not match its bound fixture file")
+    report_schema_version = report.get("report_schema_version")
     if (
-        report.get("report_schema_version") != FORMAL_REPORT_SCHEMA_VERSION
+        report_schema_version not in {1, FORMAL_REPORT_SCHEMA_VERSION}
         or report.get("mode") != FORMAL_REPORT_MODE
         or report.get("case_role") != "measurement"
     ):
         raise ValueError("unsupported formal Aegis transfer report")
-    if report.get("benchmark_protocol") != benchmark_protocol():
+    if report.get("benchmark_protocol") != benchmark_protocol(
+        protocol_fixture.benchmark_protocol_version
+    ):
         raise ValueError("formal report benchmark protocol drifted")
     if report.get("formal_protocol") != _json_object_file(protocol_path):
         raise ValueError("formal report execution protocol drifted")
@@ -315,10 +320,18 @@ def validate_formal_report(
     }
     if any(bindings.get(key) != value for key, value in expected_fixture_bindings.items()):
         raise ValueError("formal report fixture binding drifted")
-    if report.get("pricing_snapshot") != {
-        model.model: MODEL_PRICING[model.model] for model in protocol_fixture.models
+    pricing_snapshot = report.get("pricing_snapshot")
+    if not isinstance(pricing_snapshot, dict) or set(pricing_snapshot) != {
+        model.model for model in protocol_fixture.models
     }:
-        raise ValueError("formal report pricing snapshot drifted")
+        raise ValueError("formal report pricing snapshot is malformed")
+    if report_schema_version == 1:
+        if pricing_snapshot != {
+            model.model: MODEL_PRICING[model.model] for model in protocol_fixture.models
+        }:
+            raise ValueError("legacy formal report pricing snapshot drifted")
+    elif bindings.get("pricing_snapshot_sha256") != _canonical_sha256(pricing_snapshot):
+        raise ValueError("formal report pricing snapshot binding drifted")
     schedule = _list_of_mappings(report, "schedule")
     if schedule != formal_schedule(protocol_fixture):
         raise ValueError("formal report schedule drifted")
@@ -402,6 +415,8 @@ def formal_source_semantic_sha256(source_audit: dict[str, object]) -> str:
             for key in (
                 "raw_edge_query",
                 "graph_edge_query",
+                "period_raw_replay_exact",
+                "unified_window_proof",
                 "normalized_raw_edges",
                 "normalized_graph_edges",
                 "raw_edge_set_sha256",
@@ -420,6 +435,9 @@ def formal_source_semantic_sha256(source_audit: dict[str, object]) -> str:
                 "replacement_method",
                 "span_name",
                 "declared_delay_ns",
+                "observable",
+                "service_name",
+                "method_name",
                 "query",
                 "normalized_result",
                 "expected_result",
@@ -430,7 +448,32 @@ def formal_source_semantic_sha256(source_audit: dict[str, object]) -> str:
         "semantic_coverage": surfaces.get("coverage"),
         "no_model_gates": source_audit.get("no_model_gates"),
     }
+    payload["edge_equality"]["period_raw_replay"] = period_raw_replay_semantics(equality)
     return _canonical_sha256(payload)
+
+
+def period_raw_replay_semantics(equality: dict[str, object]) -> dict[str, object]:
+    replay = equality.get("period_raw_replay")
+    if not isinstance(replay, dict):
+        return {}
+    result = {}
+    for period in ("normal", "abnormal"):
+        item = replay.get(period)
+        if not isinstance(item, dict):
+            continue
+        result[period] = {
+            key: item.get(key)
+            for key in (
+                "source_window",
+                "raw_edge_query",
+                "normalized_stored_raw_edges",
+                "normalized_source_raw_edges",
+                "stored_raw_edge_set_sha256",
+                "source_raw_edge_set_sha256",
+                "exact_source_stored_edge_set_equality",
+            )
+        }
+    return result
 
 
 def write_formal_report(path: Path, report: dict[str, object]) -> None:

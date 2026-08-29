@@ -9,6 +9,15 @@ from pathlib import Path
 from statistics import median
 
 MODEL_PRICING = {
+    "claude-opus-4-8": {
+        "currency": "USD",
+        "input_per_million": 5.0,
+        "input_cache_write_per_million": 6.25,
+        "input_cache_hit_per_million": 0.5,
+        "output_per_million": 25.0,
+        "checked_at": "2026-08-29",
+        "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+    },
     "claude-sonnet-5": {
         "currency": "USD",
         "input_per_million": 2.0,

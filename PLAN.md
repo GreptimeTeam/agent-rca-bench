@@ -154,6 +154,17 @@ two-sided sign test and adjust the four primary tests with Holm's method. Run-pa
 directions are descriptive only. Discovery ordering and other trajectory metrics
 are exploratory and cannot support headline claims.
 
+Protocol v26 makes the transfer guardrail explicit instead of collapsing it
+into one success bit. `diagnosis_correct` covers the affected component,
+conditional dependency, causal scope, causal operation, category, and mechanism code.
+`required_evidence_covered`
+requires claim-typed evidence for the causal scope and mechanism.
+`citation_integrity` and `execution_reliability` are reported separately.
+Transfer efficiency is eligible only when the diagnosis is correct, the
+required claims are supported, and execution is reliable. An unrelated invalid
+extra citation prevents `auditable_completion` but does not retroactively make
+the diagnosis incorrect or erase an otherwise eligible efficiency trajectory.
+
 The two benchmark lines use different report fields:
 
 - End-to-end RCA uses `database_load.rows_returned`, exposed by the combined
@@ -216,22 +227,41 @@ predicate. The model usually stopped at the downstream NPE and did not compare t
 abnormal traced operation. Those trajectories informed protocol v25's generic
 provisional-hypothesis triage and discriminating-query strategy. Under the experiment invariant
 above, that case is therefore a development case for v25 and cannot supply the fresh 1.0
-measurement demonstration. The next candidate from the original frozen unconsumed list is now
-frozen separately as `aegis-transfer-002`. Its source-declared request-delay predicate, isolated
-production-protocol replay, exact 41-edge raw/Graph equality, deterministic scorer, and no-model
-protocol audit all pass. No trajectory from this case influenced the prompt or selection.
+measurement demonstration. The next candidate from the original frozen unconsumed list was frozen
+separately as `aegis-transfer-002`. Its isolated production-protocol replay and exact 41-edge
+raw/Graph equality pass.
 
-The optional three-model formal protocol freezes `deepseek-v4-flash`, `deepseek-v4-pro`, and
-`claude-sonnet-5`, three repetitions per treatment and model, provider-specific prompt caching,
-and within-model semantic-layer comparisons. Correctness is not pooled across models. This exceeds
-the minimum one-model 1.0 gate but does not turn one case into a population estimate. The remaining
-transfer gate is the explicitly approved 27-run execution. The provider-free preflight,
-exact-prefix resume contract, per-cell atomic persistence, fresh-instance source-semantic binding,
-and deterministic sanitized measurement exporter are implemented and locally tested. The formal
-protocol binds exact fixture-file bytes, binds each run to its scheduled model, and uses the
-end-to-end `database_load.rows_returned` and `evaluation.correct_completion_tool_calls` fields for
-eligible paired deltas. Mechanism-evidence trajectory counts are exploratory. Failed or
-budget-exhausted cells remain observations and are not retried.
+Protocol v25 executed 27 cells over `deepseek-v4-flash`, `deepseek-v4-pro`, and
+`claude-sonnet-5`, plus one post-measurement Opus Graph diagnostic. Those runs are retained as
+development evidence, not as a valid transfer measurement: the v25 scorer used server span
+duration instead of the publisher-declared client-to-server start gap, required free-text fault
+labels to equal a hidden token, and constrained mechanism evidence to the canonical aggregate
+shape. The 27 cells completed without runner errors or budget exhaustion, but their zero eligible
+pairs do not measure model ability or semantic-layer efficiency under a valid contract.
+
+Protocol v26 corrects the delay observable to `server.timestamp - client.timestamp`, uses a
+case-independent structured mechanism ontology, types evidence by claim, and accepts equivalent
+threshold proofs while retaining AST-verified edge, operation, role, parent, identity, and
+half-open-window constraints. The consumed v25 case is bound to v26 only as a development
+calibration fixture. Historical v25 validation, shadow scoring, and export remain available, but
+v24/v25 fixtures are retired for new agent execution.
+
+The fresh v26 measurement selection was computed before agent trajectory from all
+source-observable, graph-eligible Aegis cases after excluding the exact v24 and v25 parent
+manifests. It selects the single-component JVM exception case as opaque ID
+`aegis-transfer-003`. The source and stored oracles require a clean normal window and repeated
+`retrieveByName` Error spans plus exception logs after onset. The scorer uses `component` scope,
+requires `causal_dependency=null`, and scores the global `application_error` mechanism. It accepts
+equivalent complete-window evidence without prescribing one SQL statement.
+
+The v26 Graph equality gate uses a code-proven unified window because the source boundary shares
+one minute bin across both periods. It first compares the stored normal and abnormal raw edge sets
+independently with their full source sets. It then compares the full normalized raw and Graph edge
+sets over the only exactly representable contiguous union. Two independent ingestion runs produce
+the same source-semantic hash. The formal protocol freezes `deepseek-v4-pro`, `claude-sonnet-5`,
+and `claude-opus-4-8`, with three position-balanced repetitions for each treatment and model.
+Preflight freezes 27 unauthorized cells. The remaining transfer gate is explicit approval and paid
+execution; no v26 provider call has run.
 Raw `.reports/` trajectories are not the release contract because they contain
 provider payloads and local metadata.
 
@@ -304,14 +334,16 @@ The next stage is release-focused, not a broad case-expansion program. The
 pinned Aegis downloader, source-only selection audit, production-protocol
 adapter, exact raw-span versus Graph edge-set audit, and both stored mechanism gates are complete.
 The protocol v24 paid pilot is retained as a negative development result; do not rerun it as if it
-were fresh measurement. The sequentially frozen `aegis-transfer-002` delay case is the fresh v25
-measurement case. Its selection, scorer, raw/Graph equality, stored threshold evidence, and
-three-model execution protocol pass their no-model audits. The sanitized v24 development artifact is tracked at
-`artifacts/development/aegis-transfer-v24-deepseek.json`; it is a release-format regression, not the
-fresh 1.0 measurement result. Private no-model reports remain local audit inputs. The resumable
-formal runner and sanitized three-model exporter are ready, but no v25 provider call has been
-authorized or executed. The next action is an explicitly approved 27-run API execution, followed
-by sanitized measurement export and final release reporting. Catalog broad-recall, powered
+were fresh measurement. The sequentially frozen `aegis-transfer-002` delay case was consumed by
+the v25 three-model run. Its source replay and raw/Graph equality remain valid, but its
+duration-based scorer did not measure the declared start-gap mechanism. The sanitized v24
+development artifact is tracked at `artifacts/development/aegis-transfer-v24-deepseek.json`; it is
+a release-format regression, not the fresh 1.0 measurement result. The v25 27-cell artifact is
+retained for audit and development analysis, not promoted to a valid measurement. Private
+no-model reports remain local audit inputs. The v26 no-model grader, fresh selection, source
+replay, exact equality audit, mechanism gate, formal protocol, resume binding, and sanitized
+exporter are complete. The next action is to review the frozen model roster and cost estimate, then
+explicitly approve or reject the 27-cell paid API execution. Catalog broad-recall, powered
 cross-system enrollment, and additional report UI remain deferred.
 
 ## Historical development status

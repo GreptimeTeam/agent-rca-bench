@@ -6,12 +6,15 @@ from pathlib import Path
 
 import pytest
 
+import semantic_rca_bench.aegis_transfer_formal as formal_module
+import semantic_rca_bench.aegis_transfer_release as release_module
 import semantic_rca_bench.cli as cli_module
 from semantic_rca_bench.aegis_transfer_formal import (
     FormalRunError,
     bind_formal_execution,
     build_formal_preflight_report,
     execute_formal_runs,
+    formal_schedule,
     formal_source_semantic_sha256,
     validate_formal_report,
     write_formal_report,
@@ -24,6 +27,7 @@ from semantic_rca_bench.aegis_transfer_protocol import (
 from semantic_rca_bench.aegis_transfer_release import build_measurement_artifact
 from semantic_rca_bench.aegis_transfer_scorer import (
     DELAY_SCORER_FIXTURE,
+    FORMAL_SCORER_FIXTURE,
     audit_transfer_scorer,
     load_transfer_scorer_fixture,
 )
@@ -44,6 +48,8 @@ from semantic_rca_bench.datasets.aegis_transfer import (
     AegisTransferCase,
     AegisTransferGroundTruth,
 )
+
+LEGACY_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v25-three-model-protocol.json")
 
 
 def _query() -> str:
@@ -222,11 +228,11 @@ def _case() -> AegisTransferCase:
 def _audits():
     source = _source_audit()
     scorer_fixture = load_transfer_scorer_fixture(DELAY_SCORER_FIXTURE)
-    protocol_fixture = load_transfer_protocol_fixture(DEFAULT_PROTOCOL_FIXTURE)
+    protocol_fixture = load_transfer_protocol_fixture(LEGACY_PROTOCOL_FIXTURE)
     scorer = audit_transfer_scorer(source, scorer_fixture, DELAY_SCORER_FIXTURE)
     protocol = audit_transfer_protocol(
         protocol_fixture,
-        DEFAULT_PROTOCOL_FIXTURE,
+        LEGACY_PROTOCOL_FIXTURE,
         scorer_fixture,
         DELAY_SCORER_FIXTURE,
         source,
@@ -244,7 +250,7 @@ def _preflight():
         scorer_fixture,
         DELAY_SCORER_FIXTURE,
         protocol_fixture,
-        DEFAULT_PROTOCOL_FIXTURE,
+        LEGACY_PROTOCOL_FIXTURE,
     )
     return report, source, scorer, protocol, scorer_fixture, protocol_fixture
 
@@ -309,7 +315,7 @@ def _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture):
         scorer_fixture,
         DELAY_SCORER_FIXTURE,
         protocol_fixture,
-        DEFAULT_PROTOCOL_FIXTURE,
+        LEGACY_PROTOCOL_FIXTURE,
     )
 
 
@@ -340,8 +346,57 @@ def test_preflight_expands_frozen_schedule_without_provider_access(monkeypatch) 
     )
     assert (
         report["bindings"]["protocol_fixture_sha256"]
-        == hashlib.sha256(DEFAULT_PROTOCOL_FIXTURE.read_bytes()).hexdigest()
+        == hashlib.sha256(LEGACY_PROTOCOL_FIXTURE.read_bytes()).hexdigest()
     )
+
+
+def test_preflight_binds_pricing_snapshot_across_resume(monkeypatch) -> None:
+    report, *_, scorer_fixture, protocol_fixture = _preflight()
+    frozen = json.loads(json.dumps(report["pricing_snapshot"]))
+    monkeypatch.setitem(
+        formal_module.MODEL_PRICING,
+        "deepseek-v4-flash",
+        {"input_per_million": 999, "output_per_million": 999},
+    )
+
+    validate_formal_report(
+        report,
+        scorer_fixture,
+        DELAY_SCORER_FIXTURE,
+        protocol_fixture,
+        LEGACY_PROTOCOL_FIXTURE,
+    )
+    assert report["pricing_snapshot"] == frozen
+
+    report["pricing_snapshot"]["deepseek-v4-flash"]["input_per_million"] = 998
+    with pytest.raises(ValueError, match="pricing snapshot binding drifted"):
+        validate_formal_report(
+            report,
+            scorer_fixture,
+            DELAY_SCORER_FIXTURE,
+            protocol_fixture,
+            LEGACY_PROTOCOL_FIXTURE,
+        )
+
+
+def test_v26_formal_protocol_binds_fresh_case_and_strong_model_roster() -> None:
+    protocol = load_transfer_protocol_fixture(DEFAULT_PROTOCOL_FIXTURE)
+    scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    schedule = formal_schedule(protocol)
+
+    assert protocol.agent_case_id == scorer.agent_case_id == "aegis-transfer-003"
+    assert protocol.benchmark_protocol_version == 26
+    assert [model.model for model in protocol.models] == [
+        "deepseek-v4-pro",
+        "claude-sonnet-5",
+        "claude-opus-4-8",
+    ]
+    assert len(schedule) == 27
+    assert [cell["model"] for cell in schedule[::9]] == [
+        "deepseek-v4-pro",
+        "claude-sonnet-5",
+        "claude-opus-4-8",
+    ]
 
 
 def test_preflight_command_writes_report_without_provider_access(monkeypatch, tmp_path) -> None:
@@ -366,6 +421,10 @@ def test_preflight_command_writes_report_without_provider_access(monkeypatch, tm
             str(inputs["scorer"]),
             "--protocol-audit",
             str(inputs["protocol"]),
+            "--scorer",
+            str(DELAY_SCORER_FIXTURE),
+            "--protocol",
+            str(LEGACY_PROTOCOL_FIXTURE),
             "--output",
             str(output),
         ]
@@ -391,7 +450,7 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window() -> None:
             scorer_fixture,
             DELAY_SCORER_FIXTURE,
             protocol_fixture,
-            DEFAULT_PROTOCOL_FIXTURE,
+            LEGACY_PROTOCOL_FIXTURE,
             report,
             paid_api_confirmed=False,
             run_agent_fn=fake_agent,
@@ -402,7 +461,7 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window() -> None:
         scorer_fixture,
         DELAY_SCORER_FIXTURE,
         protocol_fixture,
-        DEFAULT_PROTOCOL_FIXTURE,
+        LEGACY_PROTOCOL_FIXTURE,
         report,
         paid_api_confirmed=True,
         run_agent_fn=fake_agent,
@@ -432,32 +491,20 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window() -> None:
     )
 
 
-def test_formal_resume_keeps_failed_cell_and_continues_with_next_cell() -> None:
+def test_formal_runner_persists_failed_cell_and_continues_batch() -> None:
     report, source, scorer, protocol, scorer_fixture, protocol_fixture = _preflight()
     _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture)
     first_model = report["schedule"][0]["model"]
+    calls = 0
 
     def failed_agent(gateway, case_input, visibility, **kwargs):
-        return _agent_run(visibility, kwargs["model"], error="provider unavailable")
-
-    with pytest.raises(FormalRunError, match="persisted error"):
-        execute_formal_runs(
-            _Client(),  # type: ignore[arg-type]
-            _case(),
-            scorer_fixture,
-            DELAY_SCORER_FIXTURE,
-            protocol_fixture,
-            DEFAULT_PROTOCOL_FIXTURE,
-            report,
-            paid_api_confirmed=True,
-            run_agent_fn=failed_agent,
+        nonlocal calls
+        calls += 1
+        return _agent_run(
+            visibility,
+            kwargs["model"],
+            error="provider unavailable" if calls == 1 else None,
         )
-
-    resumed_models = []
-
-    def resumed_agent(gateway, case_input, visibility, **kwargs):
-        resumed_models.append(kwargs["model"])
-        return _agent_run(visibility, kwargs["model"])
 
     execute_formal_runs(
         _Client(),  # type: ignore[arg-type]
@@ -465,14 +512,14 @@ def test_formal_resume_keeps_failed_cell_and_continues_with_next_cell() -> None:
         scorer_fixture,
         DELAY_SCORER_FIXTURE,
         protocol_fixture,
-        DEFAULT_PROTOCOL_FIXTURE,
+        LEGACY_PROTOCOL_FIXTURE,
         report,
         paid_api_confirmed=True,
-        run_agent_fn=resumed_agent,
+        run_agent_fn=failed_agent,
     )
 
-    assert len(resumed_models) == 26
-    assert resumed_models[0] == first_model
+    assert calls == 27
+    assert report["runs"][0]["model"] == first_model
     assert report["runs"][0]["run"]["error"] == "provider unavailable"
     assert report["execution"]["runner_errors"] == 1
     assert report["execution"]["complete"] is True
@@ -484,7 +531,7 @@ def test_formal_resume_keeps_failed_cell_and_continues_with_next_cell() -> None:
         scorer_fixture,
         DELAY_SCORER_FIXTURE,
         protocol_fixture,
-        DEFAULT_PROTOCOL_FIXTURE,
+        LEGACY_PROTOCOL_FIXTURE,
     )
     assert artifact["experiment"]["runs"][0]["execution"]["runner_error"] is True
     assert "provider unavailable" not in str(artifact)
@@ -504,7 +551,7 @@ def test_formal_runner_persists_and_rejects_wrong_scheduled_model() -> None:
             scorer_fixture,
             DELAY_SCORER_FIXTURE,
             protocol_fixture,
-            DEFAULT_PROTOCOL_FIXTURE,
+            LEGACY_PROTOCOL_FIXTURE,
             report,
             paid_api_confirmed=True,
             run_agent_fn=wrong_model_agent,
@@ -518,7 +565,7 @@ def test_formal_runner_persists_and_rejects_wrong_scheduled_model() -> None:
             scorer_fixture,
             DELAY_SCORER_FIXTURE,
             protocol_fixture,
-            DEFAULT_PROTOCOL_FIXTURE,
+            LEGACY_PROTOCOL_FIXTURE,
         )
 
 
@@ -543,7 +590,7 @@ def test_formal_resume_rejects_nonprefix_or_tampered_evaluation() -> None:
             scorer_fixture,
             DELAY_SCORER_FIXTURE,
             protocol_fixture,
-            DEFAULT_PROTOCOL_FIXTURE,
+            LEGACY_PROTOCOL_FIXTURE,
         )
 
 
@@ -559,7 +606,45 @@ def test_formal_source_binding_ignores_instance_metadata_but_not_edges() -> None
     assert formal_source_semantic_sha256(source) != first
 
 
-def test_measurement_export_rescores_all_models_and_removes_private_payloads() -> None:
+def test_formal_source_binding_includes_mechanism_observable() -> None:
+    source = _source_audit()
+    source["mechanism_evidence"]["observable"] = "server.timestamp - client.timestamp"
+    first = formal_source_semantic_sha256(source)
+
+    source["mechanism_evidence"]["observable"] = "server.duration_nano"
+
+    assert formal_source_semantic_sha256(source) != first
+
+
+def test_formal_source_binding_ignores_period_query_metadata_but_not_edge_semantics() -> None:
+    source = _source_audit()
+    source["edge_equality"]["period_raw_replay"] = {
+        period: {
+            "source_window": [1, 2],
+            "raw_edge_query": "SELECT edge",
+            "raw_edge_result": {"query_id": f"{period}-one", "elapsed_seconds": 1},
+            "normalized_stored_raw_edges": [{"request_count": 1}],
+            "normalized_source_raw_edges": [{"request_count": 1}],
+            "stored_raw_edge_set_sha256": "same",
+            "source_raw_edge_set_sha256": "same",
+            "exact_source_stored_edge_set_equality": True,
+        }
+        for period in ("normal", "abnormal")
+    }
+    first = formal_source_semantic_sha256(source)
+    source["edge_equality"]["period_raw_replay"]["normal"]["raw_edge_result"] = {
+        "query_id": "normal-two",
+        "elapsed_seconds": 99,
+    }
+
+    assert formal_source_semantic_sha256(source) == first
+    source["edge_equality"]["period_raw_replay"]["normal"]["normalized_stored_raw_edges"][0][
+        "request_count"
+    ] = 2
+    assert formal_source_semantic_sha256(source) != first
+
+
+def test_measurement_export_rescores_all_models_and_removes_private_payloads(monkeypatch) -> None:
     report, source, scorer, protocol, scorer_fixture, protocol_fixture = _preflight()
     _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture)
 
@@ -572,10 +657,16 @@ def test_measurement_export_rescores_all_models_and_removes_private_payloads() -
         scorer_fixture,
         DELAY_SCORER_FIXTURE,
         protocol_fixture,
-        DEFAULT_PROTOCOL_FIXTURE,
+        LEGACY_PROTOCOL_FIXTURE,
         report,
         paid_api_confirmed=True,
         run_agent_fn=fake_agent,
+    )
+    frozen_pricing = json.loads(json.dumps(report["pricing_snapshot"]))
+    monkeypatch.setitem(
+        release_module.MODEL_PRICING,
+        "deepseek-v4-flash",
+        {"input_per_million": 999, "output_per_million": 999},
     )
     artifact = build_measurement_artifact(
         report,
@@ -585,11 +676,16 @@ def test_measurement_export_rescores_all_models_and_removes_private_payloads() -
         scorer_fixture,
         DELAY_SCORER_FIXTURE,
         protocol_fixture,
-        DEFAULT_PROTOCOL_FIXTURE,
+        LEGACY_PROTOCOL_FIXTURE,
     )
 
     assert artifact["analysis_role"] == "measurement"
     assert artifact["experiment"]["cross_model_pooling"] is False
+    assert artifact["experiment"]["pricing_snapshot"] == frozen_pricing
+    assert (
+        artifact["experiment"]["model_reports"]["deepseek-v4-flash"]["usage"]["pricing"]
+        == frozen_pricing["deepseek-v4-flash"]
+    )
     assert set(artifact["experiment"]["model_reports"]) == {
         "deepseek-v4-flash",
         "deepseek-v4-pro",

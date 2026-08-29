@@ -128,10 +128,11 @@ resumes unfinished work.
 
 Protocol v21 established the same system contract for API, Codex subscription,
 and Claude subscription runners. Protocol v24 added provider-specific API prompt
-caching and native cache-usage accounting. Protocol v25 adds provisional causal-hypothesis
-triage: the agent establishes the failing operation, uses discriminating queries instead of
-unconditional resource sweeps, and compares the same traced operation across the change point.
-The
+caching and native cache-usage accounting. Protocol v25 added provisional causal-hypothesis
+triage. Protocol v26 makes that method case-invariant and symmetric across mechanism classes,
+adds structured causal scope and mechanism fields, and routes cited results to typed claims. The
+agent establishes the failing operation, uses discriminating queries instead of unconditional
+resource sweeps, and compares the same operation across the change point. The
 API runner sets its turn limit above the visible tool-call cap and records turn
 exhaustion as a failed run instead of aborting the batch. The supported
 subscription CLIs do not expose a turn-limit option; their broker enforces the
@@ -290,129 +291,131 @@ matches the predicate. A single-service answer, reversed edge, invalid citation,
 wrong parent relation, duplicate evidence cell, or missing evidence row fails
 the audit. The agent input contains the opaque case ID and no fault taxonomy.
 
-`aegis-transfer-run` is the historical protocol v24 model-invoking command. Its frozen model is
-`deepseek-v4-flash`. It executes nine paid API trajectories: three
-position-balanced repetitions across Raw, Table Semantics, and Semantic Graph.
-Do not run it without explicit cost approval. The protocol v24 pilot completed all nine
-trajectories but produced no jointly correct diagnosis. Because those trajectories informed the
-protocol v25 prompt, the fixture now marks this case as development; another run cannot be reported
-as a fresh measurement cell.
-After approval, start the canonical run with:
+Protocol v24 and v25 model runs are complete historical development runs. V25 executed all 27
+three-model cells without runner errors or budget exhaustion, and one later Opus Graph diagnostic
+also completed. Their scorer used server duration for a fault injected between client and server
+start, required a hidden exact fault label, and constrained evidence to the canonical aggregate.
+The resulting zero eligible pairs are not a model-quality or semantic-layer result. Historical
+reports and the sanitized v25 artifact remain readable, but v24/v25 fixtures are retired for new
+agent execution. An execution request bound to either retired protocol fails before contacting a
+provider.
 
-```bash
-uv run semantic-rca aegis-transfer-run \
-  --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
-  --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
-  --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
-  --run-dir .instances/aegis-transfer-paid-001 \
-  --database case_01 \
-  --source-audit-output .reports/aegis-transfer-paid-source-audit.json \
-  --scorer-audit-output .reports/aegis-transfer-paid-scorer-audit.json \
-  --output .reports/aegis-transfer-paid-run.json \
-  --confirm-paid-api
-```
+Protocol v26 retains the consumed delay case as development calibration and selects a fresh source-
+observable JVM exception case for measurement. The agent sees only `aegis-transfer-003`, an empty
+fault taxonomy, and the incident windows. Source labels, the source case name, and
+`causal_graph.json` remain outside the agent input and ingestion path.
 
-The run directory and both output paths must not exist. The command starts one
-exclusive loopback GreptimeDB process, repeats ingestion and every no-model
-gate, and calls the API only after the source and scorer gates pass. Raw SQL and
-the agent prompt retain the publisher half-open window. The Semantic Graph tool
-uses the audited minute envelope because `observed_at` is minute-binned. The
-local run report contains provider responses and is not a release artifact.
-
-Protocol v25 uses the next candidate that was already frozen as unconsumed in
-the original trajectory-blind ranking. It does not replace or discard the v24
-negative result. Run the fresh request-delay case and its scorer with explicit
-fixtures:
+Run the complete provider-free gate sequence before requesting paid execution:
 
 ```bash
 uv run semantic-rca aegis-transfer-audit \
   --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
   --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
   --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
-  --selection fixtures/reference/aegis-transfer-v25-selection.json \
-  --run-dir .instances/aegis-transfer-002 \
-  --database case_02 \
-  --output .reports/aegis-transfer-v25-source-audit.json
+  --selection fixtures/reference/aegis-transfer-v26-selection.json \
+  --run-dir .instances/aegis-transfer-v26-source-01 \
+  --database case_03 \
+  --output .reports/aegis-transfer-v26-source.json
 
 uv run semantic-rca aegis-transfer-scorer-audit \
-  --transfer-audit .reports/aegis-transfer-v25-source-audit.json \
-  --scorer fixtures/reference/aegis-transfer-v25-scorer.json \
-  --output .reports/aegis-transfer-v25-scorer-audit.json
+  --transfer-audit .reports/aegis-transfer-v26-source.json \
+  --scorer fixtures/reference/aegis-transfer-v26-scorer.json \
+  --output .reports/aegis-transfer-v26-scorer.json
 
 uv run semantic-rca aegis-transfer-protocol-audit \
-  --source-audit .reports/aegis-transfer-v25-source-audit.json \
-  --scorer-audit .reports/aegis-transfer-v25-scorer-audit.json \
-  --output .reports/aegis-transfer-v25-protocol-audit.json
-```
+  --source-audit .reports/aegis-transfer-v26-source.json \
+  --scorer-audit .reports/aegis-transfer-v26-scorer.json \
+  --scorer fixtures/reference/aegis-transfer-v26-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v26-three-model-protocol.json \
+  --output .reports/aegis-transfer-v26-protocol.json
 
-The last command is no-model. It freezes the API roster to
-`deepseek-v4-flash`, `deepseek-v4-pro`, and `claude-sonnet-5`, with three
-position-balanced repetitions over all three treatments for each model. DeepSeek uses automatic
-prefix caching; Claude uses ephemeral request cache control. Semantic-layer effects remain paired
-within a model, and correctness is not pooled across models. The 27 model trajectories are not
-authorized by this audit and require a new explicit API-cost approval.
-
-Create the immutable 27-cell schedule before requesting that approval:
-
-```bash
 uv run semantic-rca aegis-transfer-formal-preflight \
-  --source-audit .reports/aegis-transfer-v25-source-audit.json \
-  --scorer-audit .reports/aegis-transfer-v25-scorer-audit.json \
-  --protocol-audit .reports/aegis-transfer-v25-protocol-audit.json \
-  --output .reports/aegis-transfer-v25-formal.json
+  --source-audit .reports/aegis-transfer-v26-source.json \
+  --scorer-audit .reports/aegis-transfer-v26-scorer.json \
+  --protocol-audit .reports/aegis-transfer-v26-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v26-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v26-three-model-protocol.json \
+  --output .reports/aegis-transfer-v26-formal.json
 ```
 
-Preflight is provider-free: it reads local fixtures and audits, recomputes the protocol gate,
-freezes current pricing metadata, and writes an unauthorized report with zero completed cells. It
-neither reads provider credentials nor starts GreptimeDB. The command refuses to overwrite an
-existing report. Fixture bindings use the SHA-256 of the exact JSON files, not a Pydantic model
-serialization, so adding an optional parser field cannot invalidate an unchanged frozen fixture.
+The source oracle requires zero `retrieveByName` Error spans and zero exception logs during the
+normal window, followed by repeated observations of both signals during the abnormal window. The
+stored aggregate is 0/0 to 1,981/1,981. The case has one source-labeled component and no declared
+dependency edge; the loader and scorer do not invent one.
 
-Only after a separate explicit API-cost approval, execute the pending cells with:
+The source boundary is not minute-aligned, and the shared Graph minute contains Client spans from
+both periods. The audit therefore proves each stored period's raw edge set against its full source
+edge set, then compares raw and Graph over the only exactly representable contiguous union. The
+normalized union contains 40 edges and has the same hash on both sides. Two independent ingestions
+produce the same source-semantic hash.
+
+The scorer accepts a combined aggregate, separate trace and log aggregates, or complete raw rows.
+It requires the exact service, operation, source Error status, exception log predicate, and complete
+half-open windows. It rejects identity cherry-picking, truncated results, `LIMIT`, hard-coded
+aggregate aliases, predicates neutralized by `OR` or `NOT`, and required predicates placed only in
+an unrelated nested query. Aggregate period labels must be derived from the source timestamp; time
+literals in projections do not substitute for exact positive window filters.
+
+Protocol v26 reports `diagnosis_correct`, `required_evidence_covered`, `citation_integrity`,
+`execution_reliability`, `auditable_completion`, and `efficiency_eligible` separately. The primary
+efficiency comparison requires correct structured diagnosis, required claim coverage, and reliable
+execution. An unrelated invalid extra citation blocks auditable completion without changing
+diagnosis correctness. Free-text `fault_type` is explanatory; the scored mechanism is the global,
+case-independent `mechanism_code`.
+
+The formal fixture freezes `deepseek-v4-pro`, `claude-sonnet-5`, and `claude-opus-4-8`. Each model
+runs three position-balanced repetitions over Raw, Table Semantics, and Semantic Graph, for 27
+cells. DeepSeek uses provider-managed prefix caching. Claude uses ephemeral request cache control.
+Preflight records zero completed cells and does not read credentials, start GreptimeDB, or call a
+provider.
+
+**Warning:** The next command calls paid APIs. Run it only after reviewing the frozen roster and
+cost estimate and receiving explicit approval for that invocation.
 
 ```bash
 uv run semantic-rca aegis-transfer-formal-run \
   --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
   --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
   --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
-  --run-dir .instances/aegis-transfer-v25-formal-01 \
-  --report .reports/aegis-transfer-v25-formal.json \
-  --source-audit-output .reports/aegis-transfer-v25-formal-01-source.json \
-  --scorer-audit-output .reports/aegis-transfer-v25-formal-01-scorer.json \
-  --protocol-audit-output .reports/aegis-transfer-v25-formal-01-protocol.json \
+  --selection fixtures/reference/aegis-transfer-v26-selection.json \
+  --run-dir .instances/aegis-transfer-v26-paid-01 \
+  --database case_03 \
+  --report .reports/aegis-transfer-v26-formal.json \
+  --source-audit-output .reports/aegis-transfer-v26-paid-01-source.json \
+  --scorer-audit-output .reports/aegis-transfer-v26-paid-01-scorer.json \
+  --protocol-audit-output .reports/aegis-transfer-v26-paid-01-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v26-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v26-three-model-protocol.json \
   --confirm-paid-api
 ```
 
-Each invocation starts a new exclusive GreptimeDB instance, repeats all no-model gates, and checks
-the stable source-semantic binding before any provider call. The report is atomically updated after
-every cell. A runner error, budget exhaustion, or contract violation stops the invocation after the
-cell is recorded. Resume with the same report, a new empty run directory, and new audit output
-paths; recorded cells form an exact schedule prefix and are never retried. The command-line flag is
-an execution guard, not a substitute for the required approval. Confirmation is scoped to one
-invocation and is never persisted in the resumable report.
+The runner atomically persists every completed cell and resumes only an exact schedule prefix.
+Runner errors and budget exhaustion remain scored cell outcomes and do not stop the rest of the
+batch. A roster, scheduled-model, or tool-budget contract violation is a harness failure and stops
+the invocation after recording the cell. Resume with the same report, a new empty run directory,
+new audit output paths, and a new explicit approval. The preflight binds the pricing snapshot by
+content so a later pricing-table update cannot invalidate an in-progress report or alter its
+exported cost estimate.
 
-After all 27 cells are recorded, export the sanitized measurement artifact without a provider or
+After all 27 cells complete, export the sanitized measurement artifact without a provider or
 database connection:
 
 ```bash
 uv run semantic-rca aegis-transfer-measurement-export \
-  --run-report .reports/aegis-transfer-v25-formal.json \
-  --source-audit .reports/aegis-transfer-v25-formal-01-source.json \
-  --scorer-audit .reports/aegis-transfer-v25-formal-01-scorer.json \
-  --protocol-audit .reports/aegis-transfer-v25-formal-01-protocol.json \
-  --output artifacts/measurement/aegis-transfer-v25-three-model.json
+  --run-report .reports/aegis-transfer-v26-formal.json \
+  --source-audit .reports/aegis-transfer-v26-paid-01-source.json \
+  --scorer-audit .reports/aegis-transfer-v26-paid-01-scorer.json \
+  --protocol-audit .reports/aegis-transfer-v26-paid-01-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v26-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v26-three-model-protocol.json \
+  --output artifacts/measurement/aegis-transfer-v26-three-model.json
 ```
 
-When execution required multiple invocations, pass the three live audit files from the final
-invocation because the report binds those exact files.
-
-The exporter deterministically rescores every cell and reports paired treatment deltas within each
-model. Its pre-registered end-to-end efficiency fields are total GreptimeDB rows returned and
-`correct_completion_tool_calls`; mechanism-evidence trajectory counts remain exploratory. It does
-not pool correctness across models. It removes provider responses, diagnosis explanations,
-evidence claim text, identifiers, timings, local metadata, and source telemetry while retaining
-parsed diagnosis fields, canonical mechanism aggregates, database load, cache usage, pricing, and
-integrity hashes.
+The exporter deterministically rescores every cell. It excludes provider responses, free-form
+explanations, evidence claim text, source rows, query IDs, timings, local paths, and process data.
+For mechanism queries, it publishes only SQL, columns, row counts, truncation state, and a result
+hash. It reports paired efficiency deltas within each model and never pools correctness across
+models.
 
 Export a deterministic development artifact from the retained private reports without calling a
 model or database:
@@ -439,8 +442,11 @@ the result carries the same query ID, and the evidence claim is non-empty.
 Catalog and schema discovery are not incident evidence. This check prevents
 failed or fabricated references from unlocking efficiency metrics, but it does
 not prove that the cited rows support the diagnosis. The Aegis transfer scorer
-adds its source-specific deterministic evidence-support predicate; the generic
-RCA scorer does not infer evidence entailment.
+adds a source-specific deterministic evidence-support predicate. Protocol v26
+also requires each citation to declare the structured claim types it supports,
+then evaluates causal-scope coverage, mechanism coverage, referential integrity,
+and execution reliability separately. The generic RCA scorer still does not
+infer evidence entailment.
 
 Token fields are runner-specific. The API runner sums provider usage over all
 responses; `run.usage.input_tokens` excludes cache creation and cache reads.

@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import semantic_rca_bench.agent as agent_module
@@ -124,8 +125,8 @@ def test_system_prompt_uses_generic_hypothesis_triage_without_case_clues() -> No
     prompt = " ".join(_system_prompt().split())
     lowered = prompt.lower()
 
-    assert "two or three provisional causal hypotheses" in prompt
-    assert "dependency contract or semantics failure" in prompt
+    assert "two or three hypotheses that differ in causal scope or mechanism" in prompt
+    assert "observed signals as evidence, not automatically as causes" in prompt
     assert "compare the same operation before and after onset" in prompt
     assert "does not by itself prove" in prompt
     assert "broad resource health checks only" in prompt
@@ -133,6 +134,8 @@ def test_system_prompt_uses_generic_hypothesis_triage_without_case_clues() -> No
     assert "ts-security-service" not in lowered
     assert "ts-order-other-service" not in lowered
     assert "method replacement" not in lowered
+    assert "packet loss" not in lowered
+    assert "socket exhaustion" not in lowered
 
 
 def test_diagnosis_requires_canonical_fault_category() -> None:
@@ -148,6 +151,28 @@ def test_diagnosis_requires_canonical_fault_category() -> None:
         "socket",
         "other",
     ]
+    assert {"causal_scope", "causal_operation", "mechanism_code"} <= set(schema["required"])
+    assert schema["properties"]["causal_scope"]["enum"] == [
+        "component",
+        "dependency_edge",
+    ]
+    assert "call_path_delay" in schema["properties"]["mechanism_code"]["enum"]
+    evidence = schema["properties"]["evidence"]["items"]
+    assert "claim_types" in evidence["required"]
+
+
+def test_current_diagnosis_contract_is_case_independent() -> None:
+    prompt = _system_prompt().lower()
+    schema = json.dumps(SUBMIT_TOOL, sort_keys=True).lower()
+
+    for source_label in (
+        "httprequestdelay",
+        "ts-route-plan-service",
+        "ts-travel2-service",
+        "trips/left",
+    ):
+        assert source_label not in prompt
+        assert source_label not in schema
 
 
 def test_dataset_fault_taxonomy_guides_without_rejecting_out_of_taxonomy_output() -> None:
@@ -263,7 +288,11 @@ def test_agent_records_requested_calls_rejected_by_the_tool_budget(monkeypatch) 
 
     diagnosis = {
         "affected_component": "checkout",
+        "causal_dependency": None,
+        "causal_scope": "component",
+        "causal_operation": None,
         "fault_category": "cpu",
+        "mechanism_code": "cpu_saturation",
         "fault_type": "cpu",
         "confidence": 0.7,
         "evidence": [],
@@ -330,7 +359,11 @@ def test_agent_records_requested_calls_rejected_by_the_tool_budget(monkeypatch) 
 def test_deepseek_uses_automatic_cache_and_counts_native_usage(monkeypatch) -> None:
     diagnosis = {
         "affected_component": "checkout",
+        "causal_dependency": None,
+        "causal_scope": "component",
+        "causal_operation": None,
         "fault_category": "cpu",
+        "mechanism_code": "cpu_saturation",
         "fault_type": "cpu",
         "confidence": 0.7,
         "evidence": [],
@@ -413,7 +446,11 @@ def test_valid_final_output_records_same_response_investigation_calls_as_rejecte
 ) -> None:
     diagnosis = {
         "affected_component": "checkout",
+        "causal_dependency": None,
+        "causal_scope": "component",
+        "causal_operation": None,
         "fault_category": "cpu",
+        "mechanism_code": "cpu_saturation",
         "fault_type": "cpu",
         "confidence": 0.7,
         "evidence": [],

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from semantic_rca_bench.aegis_transfer_release import (
+    _measurement_model_summary,
     build_release_artifact,
     canonical_sha256,
     load_pilot_scorer_fixture,
@@ -310,12 +311,19 @@ def test_release_artifact_is_sanitized_and_semantically_hashed() -> None:
     ]
     assert first["supporting_mechanism_queries"][0]["result"] == {
         "columns": ["period", "side", "method", "span_count"],
-        "rows": [
-            ["normal", "server", "GET", 57],
-            ["abnormal", "client", "GET", 758],
-            ["abnormal", "server", "OPTIONS", 758],
-        ],
+        "row_count": 3,
         "truncated": False,
+        "sha256": canonical_sha256(
+            {
+                "columns": ["period", "side", "method", "span_count"],
+                "rows": [
+                    ["normal", "server", "GET", 57],
+                    ["abnormal", "client", "GET", 758],
+                    ["abnormal", "server", "OPTIONS", 758],
+                ],
+                "truncated": False,
+            }
+        ),
     }
     assert canonical_sha256(artifact)
     text = str(artifact)
@@ -389,3 +397,40 @@ def test_tracked_development_artifact_is_self_consistent_and_sanitized() -> None
         '"signature"',
     ):
         assert forbidden not in serialized
+
+
+def test_v26_efficiency_pairs_do_not_require_unrelated_citation_integrity() -> None:
+    runs = []
+    for position, visibility in enumerate(("raw", "table_semantics", "semantic_graph")):
+        auditable = visibility == "semantic_graph"
+        runs.append(
+            {
+                "repetition": 0,
+                "position": position,
+                "visibility": visibility,
+                "evaluation": {
+                    "success": auditable,
+                    "auditable_completion": auditable,
+                    "efficiency_eligible": True,
+                    "correct_completion_tool_calls": 10 - position,
+                },
+                "execution": {"database_load": {"rows_returned": 100 - position * 10}},
+                "usage": {
+                    "uncached_input_tokens": 100,
+                    "cache_read_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "output_tokens": 10 - position,
+                    "estimated_peak_usd": 0.1,
+                },
+            }
+        )
+
+    summary = _measurement_model_summary(
+        runs,
+        "deepseek-v4-flash",
+        structured=True,
+    )
+
+    assert summary["successful_runs"] == 1
+    assert summary["efficiency_eligible_runs"] == 3
+    assert summary["paired_treatment_deltas"]["table_semantics_minus_raw"]["eligible_pairs"] == 1

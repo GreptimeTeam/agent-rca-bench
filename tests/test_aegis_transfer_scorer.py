@@ -434,7 +434,7 @@ def test_scorer_fixture_runner_contract_is_bound_to_code() -> None:
     fixture = load_transfer_scorer_fixture()
 
     assert fixture.case_role == "development"
-    assert fixture.canonical_api_runner.model_dump(mode="json") == canonical_api_runner_contract()
+    assert fixture.canonical_api_runner.model_dump(mode="json") == canonical_api_runner_contract(25)
 
 
 def test_scorer_fixture_drift_fails_closed(tmp_path: Path) -> None:

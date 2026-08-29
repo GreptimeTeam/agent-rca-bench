@@ -37,10 +37,16 @@ from semantic_rca_bench.inspect import (
     assert_semantic_graph_window_empty,
     inspect_semantic_surfaces,
 )
-from semantic_rca_bench.protocol import benchmark_protocol, run_orders
+from semantic_rca_bench.protocol import benchmark_protocol, require_current_protocol, run_orders
+from semantic_rca_bench.report import MODEL_PRICING
 
 TransferAgent = Callable[..., AgentRun]
 ReportUpdate = Callable[[dict[str, object]], None]
+
+OPUS_DIAGNOSTIC_MODEL = "claude-opus-4-8"
+OPUS_DIAGNOSTIC_MAX_TOOL_CALLS = 48
+OPUS_DIAGNOSTIC_MAX_TURNS = 58
+OPUS_DIAGNOSTIC_MAX_TOKENS = 4096
 
 
 class TransferRunError(RuntimeError):
@@ -101,7 +107,7 @@ def prepare_transfer_environment(
             empty_before_ingest = assert_semantic_graph_window_empty(client, case.input)
             counts = ingest_case(client, case, source)
             stored = validate_stored_rows(client, case, counts, source)
-            equality = exact_edge_equality_audit(client, case)
+            equality = exact_edge_equality_audit(client, case, source)
             mechanism = mechanism_evidence_audit(client, case)
             graph_window = equality["window_contract"]["graph_observed_window"]
             graph_case_input = case.input.model_copy(
@@ -186,7 +192,10 @@ def _source_audit_report(
         },
         "pinned_source": archive,
         "selection_audit": {
-            "selection": cohort_audit["selection"],
+            "base_ranking": cohort_audit["selection"],
+            "active_frozen_selection": cohort_audit["frozen_selection_gate"]["observed"][
+                "selected_case"
+            ],
             "frozen_selection_gate": cohort_audit["frozen_selection_gate"],
         },
         "case": {
@@ -204,7 +213,11 @@ def _source_audit_report(
             "normal_window": list(case.normal_window),
             "abnormal_window": list(case.abnormal_window),
             "ground_truth_services": list(case.ground_truth.services),
-            "declared_edge": list(case.ground_truth.declared_edge),
+            "declared_edge": (
+                list(case.ground_truth.declared_edge)
+                if case.ground_truth.declared_edge is not None
+                else None
+            ),
             "fault_type": case.ground_truth.fault_type,
         },
         "greptimedb": {
@@ -283,7 +296,7 @@ def build_transfer_run_report(
             "alert_text": case.input.alert_text,
             "fault_taxonomy": case.input.fault_taxonomy,
         },
-        "protocol": benchmark_protocol(),
+        "protocol": benchmark_protocol(fixture.canonical_api_runner.benchmark_protocol_version),
         "scorer_revision": fixture.scorer_revision,
         "scorer_fixture_sha256": sha256_file(fixture_path),
         "source_transfer_audit_sha256": source_transfer_audit_sha256(source_audit),
@@ -331,6 +344,8 @@ def execute_transfer_runs(
     on_update: ReportUpdate | None = None,
 ) -> dict[str, object]:
     contract = fixture.canonical_api_runner
+    if run_agent_fn is run_agent:
+        require_current_protocol(contract.benchmark_protocol_version)
     if contract.runner is not AgentRunner.API:
         raise ValueError("Aegis transfer canonical runner must use the API runner")
     if client.database != case.input.database:
@@ -386,6 +401,141 @@ def execute_transfer_runs(
                 raise TransferRunError(f"Aegis transfer runner failed: {agent_run.error}")
             if agent_run.tool_budget_exhausted:
                 raise TransferRunError("Aegis transfer tool budget was exhausted")
+    return report
+
+
+def build_opus_graph_diagnostic_report(
+    case: AegisTransferCase,
+    fixture: AegisTransferScorerFixture,
+    fixture_path: Path,
+    source_audit: dict[str, object],
+    scorer_audit: dict[str, object],
+    semantic_coverage: dict[str, object],
+) -> dict[str, object]:
+    graph_window = validate_transfer_run_preflight(
+        case,
+        fixture,
+        fixture_path,
+        source_audit,
+        scorer_audit,
+        semantic_coverage,
+    )
+    return {
+        "report_schema_version": 1,
+        "mode": "aegis-transfer-development-diagnostic",
+        "publication_status": "private raw artifact; contains provider responses",
+        "measurement_eligible": False,
+        "diagnostic_reason": (
+            "post-measurement strongest-model floor-effect probe; case already consumed"
+        ),
+        "case_role": fixture.case_role,
+        "case": {
+            "case_id": case.input.case_token,
+            "database": case.input.database,
+            "time_start": case.input.time_start,
+            "time_end": case.input.time_end,
+            "alert_time": case.input.alert_time,
+            "alert_text": case.input.alert_text,
+            "fault_taxonomy": case.input.fault_taxonomy,
+        },
+        "protocol": benchmark_protocol(fixture.canonical_api_runner.benchmark_protocol_version),
+        "scorer_revision": fixture.scorer_revision,
+        "scorer_fixture_sha256": sha256_file(fixture_path),
+        "source_transfer_audit_sha256": source_transfer_audit_sha256(source_audit),
+        "scorer_audit_sha256": _canonical_json_sha256(scorer_audit),
+        "no_model_gates": {
+            "source": source_audit["no_model_gates"],
+            "scorer": scorer_audit["no_model_gates"],
+        },
+        "diagnostic_contract": {
+            "runner": AgentRunner.API.value,
+            "model": OPUS_DIAGNOSTIC_MODEL,
+            "visibility": Visibility.SEMANTIC_GRAPH.value,
+            "max_tool_calls": OPUS_DIAGNOSTIC_MAX_TOOL_CALLS,
+            "max_turns": OPUS_DIAGNOSTIC_MAX_TURNS,
+            "max_tokens": OPUS_DIAGNOSTIC_MAX_TOKENS,
+            "sampling": "provider-default; no seed sent",
+            "prompt_cache": "ephemeral-request-cache-control",
+            "pricing": MODEL_PRICING[OPUS_DIAGNOSTIC_MODEL],
+        },
+        "graph_window_contract": {
+            "source_window": [case.input.time_start, case.input.time_end],
+            "semantic_graph_window": list(graph_window),
+        },
+        "semantic_coverage": semantic_coverage,
+        "runs": [],
+        "execution": {
+            "expected_runs": 1,
+            "completed_runs": 0,
+            "runner_errors": 0,
+            "budget_exhaustions": 0,
+            "complete": False,
+        },
+    }
+
+
+def execute_opus_graph_diagnostic(
+    client: GreptimeClient,
+    case: AegisTransferCase,
+    fixture: AegisTransferScorerFixture,
+    report: dict[str, object],
+    *,
+    run_agent_fn: TransferAgent = run_agent,
+    on_update: ReportUpdate | None = None,
+) -> dict[str, object]:
+    if run_agent_fn is run_agent:
+        require_current_protocol(fixture.canonical_api_runner.benchmark_protocol_version)
+    if client.database != case.input.database:
+        raise ValueError("Aegis transfer client database does not match the opaque case input")
+    runs = report.get("runs")
+    if not isinstance(runs, list) or runs:
+        raise ValueError("Aegis transfer diagnostic report must start with an empty runs list")
+    coverage = report.get("semantic_coverage")
+    if not isinstance(coverage, dict):
+        raise ValueError("Aegis transfer diagnostic report is missing semantic coverage")
+    gateway = QueryGateway(
+        client,
+        Visibility.SEMANTIC_GRAPH,
+        semantic_graph_window=_graph_window_from_report(report),
+    )
+    with client.measure_query_load() as database_load:
+        agent_run = run_agent_fn(
+            gateway,
+            case.input,
+            Visibility.SEMANTIC_GRAPH,
+            model=OPUS_DIAGNOSTIC_MODEL,
+            max_tool_calls=OPUS_DIAGNOSTIC_MAX_TOOL_CALLS,
+            max_turns=OPUS_DIAGNOSTIC_MAX_TURNS,
+            max_tokens=OPUS_DIAGNOSTIC_MAX_TOKENS,
+            semantic_coverage=coverage,
+        )
+    evaluation = evaluate_aegis_transfer_run(
+        agent_run,
+        fixture,
+        expected_model=OPUS_DIAGNOSTIC_MODEL,
+    )
+    runs.append(
+        {
+            "run": agent_run.model_dump(mode="json"),
+            "evaluation": evaluation.model_dump(mode="json"),
+            "database_load": database_load.model_dump(mode="json"),
+        }
+    )
+    report["execution"] = {
+        "expected_runs": 1,
+        "completed_runs": 1,
+        "runner_errors": int(agent_run.error is not None),
+        "budget_exhaustions": int(agent_run.tool_budget_exhausted),
+        "complete": True,
+    }
+    if on_update is not None:
+        on_update(report)
+    if not evaluation.runner_contract_match or not evaluation.tool_budget_contract_match:
+        raise TransferRunError("Aegis transfer diagnostic runner violated its contract")
+    if agent_run.error is not None:
+        raise TransferRunError(f"Aegis transfer diagnostic runner failed: {agent_run.error}")
+    if agent_run.tool_budget_exhausted:
+        raise TransferRunError("Aegis transfer diagnostic tool budget was exhausted")
     return report
 
 

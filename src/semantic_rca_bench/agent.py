@@ -20,9 +20,12 @@ from semantic_rca_bench.contracts import (
     AgentRunner,
     AgentUsage,
     CaseInput,
+    CausalScope,
     DatabaseLoad,
     Diagnosis,
+    EvidenceClaimType,
     FaultCategory,
+    MechanismCode,
     QueryResult,
     RejectedToolCall,
     ToolTrace,
@@ -112,16 +115,45 @@ SUBMIT_TOOL = {
             "causal_dependency": {
                 "type": ["string", "null"],
                 "description": (
-                    "The downstream service, datastore, or external endpoint whose failure "
-                    "caused the affected component to fail, or null when no dependency is "
-                    "identified."
+                    "Exactly one downstream service, datastore, or external endpoint on the "
+                    "primary causal path, or null when no dependency is identified. Do not "
+                    "submit a list or alternation."
+                ),
+            },
+            "causal_scope": {
+                "type": "string",
+                "enum": [scope.value for scope in CausalScope],
+                "description": (
+                    "component when the mechanism is local to affected_component; "
+                    "dependency_edge when it occurs on the directed path from "
+                    "affected_component to causal_dependency."
+                ),
+            },
+            "causal_operation": {
+                "type": ["string", "null"],
+                "description": (
+                    "The single operation or endpoint on the causal path when telemetry "
+                    "identifies one, otherwise null."
+                ),
+            },
+            "mechanism_code": {
+                "type": "string",
+                "enum": [mechanism.value for mechanism in MechanismCode],
+                "description": (
+                    "The case-independent structured causal mechanism. Use resource-specific "
+                    "codes only when that resource is causal; call_path_delay for delay located "
+                    "between a caller and callee; connection_failure for established connection "
+                    "failure rather than its downstream 5xx symptom; dependency_contract_failure "
+                    "for request/response contract changes; application_error, "
+                    "configuration_error, or data_semantics_error for those local mechanisms; "
+                    "unknown only when evidence does not discriminate a listed mechanism."
                 ),
             },
             "fault_type": {
                 "type": "string",
                 "description": (
-                    "The causal fault category or mechanism, not merely an observed symptom. "
-                    "Keep it concise and do not include ruled-out alternatives."
+                    "A concise free-text description consistent with mechanism_code. Put detail "
+                    "and ruled-out alternatives in explanation."
                 ),
             },
             "fault_category": {
@@ -158,8 +190,17 @@ SUBMIT_TOOL = {
                     "properties": {
                         "query_id": {"type": "string"},
                         "claim": {"type": "string"},
+                        "claim_types": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [claim.value for claim in EvidenceClaimType],
+                            },
+                            "minItems": 1,
+                            "uniqueItems": True,
+                        },
                     },
-                    "required": ["query_id", "claim"],
+                    "required": ["query_id", "claim", "claim_types"],
                     "additionalProperties": False,
                 },
             },
@@ -173,7 +214,10 @@ SUBMIT_TOOL = {
         "required": [
             "affected_component",
             "causal_dependency",
+            "causal_scope",
+            "causal_operation",
             "fault_category",
+            "mechanism_code",
             "fault_type",
             "confidence",
             "evidence",
@@ -362,7 +406,7 @@ def run_agent(
         user_prompt=_incident_prompt(case_input, max_tool_calls),
         investigation_tools=tools,
         output_tool=_submit_tool(case_input.fault_taxonomy),
-        validate_output=lambda value: Diagnosis.model_validate(value).model_dump(mode="json"),
+        validate_output=_validate_diagnosis_output,
         max_tool_calls=max_tool_calls,
         max_turns=max_turns,
         max_tokens=max_tokens,
@@ -948,21 +992,37 @@ def _submit_tool(fault_taxonomy: list[str]) -> dict[str, object]:
     return tool
 
 
+def _validate_diagnosis_output(value: object) -> dict[str, object]:
+    diagnosis = Diagnosis.model_validate(value)
+    if diagnosis.causal_scope is None or diagnosis.mechanism_code is None:
+        raise ValueError("diagnosis is missing the current structured causal contract")
+    if diagnosis.causal_scope is CausalScope.DEPENDENCY_EDGE:
+        if diagnosis.causal_dependency is None:
+            raise ValueError("dependency_edge diagnosis requires causal_dependency")
+    elif diagnosis.causal_dependency is not None:
+        raise ValueError("component diagnosis must not name a causal_dependency")
+    if any(not item.claim_types for item in diagnosis.evidence):
+        raise ValueError("every evidence item must declare at least one claim type")
+    return diagnosis.model_dump(mode="json")
+
+
 def _system_prompt() -> str:
     return """You are the on-call SRE investigating an incident from telemetry in GreptimeDB.
 Determine the single most likely root-cause component and causal fault type. Do not report a
-surface symptom such as latency when evidence identifies a different causal mechanism. Work from
-query evidence, not naming alone. Compare baseline and anomalous periods when the telemetry window
+surface observation as the cause unless the evidence discriminates that causal mechanism from its
+alternatives. Work from query evidence, not naming alone. Compare baseline and anomalous periods
+when the telemetry window
 contains a known baseline, and correlate metrics, logs, and traces when present. Infer the change
 point from telemetry rather than the alert time. Discover the schema before relying on column
 names, and use semantic capabilities explicitly exposed by the tools when available. Stay inside
 the named incident database.
 
-Before broad health checks, establish the change point and the failing request or operation. Form
-two or three provisional causal hypotheses across the relevant classes, such as resource pressure,
-transport failure, a dependency contract or semantics failure, or an application, data, or
-configuration fault. Prefer the next query that best distinguishes those hypotheses, and revise
-the classification when evidence contradicts it. When traces are available, compare the same
+Before broad health checks, establish the change point and the failing request or operation. Treat
+observed signals as evidence, not automatically as causes. The same observation may arise from
+different mechanisms, and an observed condition may be causal or propagated. Form two or three
+hypotheses that differ in causal scope or mechanism, then use the next query to distinguish them.
+If the available evidence does not discriminate, report the best-supported hypothesis, state the
+ambiguity in explanation, and lower confidence. When traces are available, compare the same
 operation before and after onset, including its parent-child path, service identity, span role, and
 relevant attributes. A recorded successful request or span does not by itself prove that the
 intended operation ran or returned semantically correct data. Run broad resource health checks only
@@ -987,9 +1047,13 @@ Final diagnosis contract:
   dependency failure, report the caller that lost access rather than replacing it with the
   unavailable dependency.
 - causal_dependency is the downstream service, datastore, or external endpoint whose failure
-  caused affected_component to fail. Return null when the evidence does not identify one.
-- fault_type names the causal mechanism. Do not substitute a symptom such as high latency when
-  evidence supports CPU saturation, memory pressure, disk I/O, packet loss, or socket exhaustion.
+  caused affected_component to fail. It is exactly one entity, not a list or alternation. When two
+  candidates remain, submit the better-supported one in causal_dependency, put the other in
+  alternative_candidates, and lower confidence. Return null when the evidence identifies no edge.
+- causal_scope states whether the causal mechanism is local to affected_component or lies on the
+  directed dependency edge to causal_dependency. causal_operation names one operation when known.
+- mechanism_code is the case-independent structured causal mechanism. fault_type is a concise
+  free-text description of the same mechanism; put qualifications and alternatives in explanation.
 - fault_category is the canonical category for that same causal mechanism. Classify the positive
   diagnosis, not ruled-out alternatives mentioned in fault_type or explanation.
 - onset_time is the earliest time at which telemetry supports a deviation from baseline. It is not
@@ -998,7 +1062,11 @@ Final diagnosis contract:
   merely more likely than alternatives, around 0.7 means supported by multiple consistent facts,
   and above 0.9 requires direct, cross-signal evidence with plausible alternatives ruled out.
   Missing telemetry and ambiguous identity or relationships must reduce confidence.
-- each evidence claim must state only what the cited query result directly supports.
+- each evidence claim must state only what the cited query result directly supports and declare
+  which structured claims it supports. Collectively, the cited evidence must support the primary
+  causal scope and mechanism. When baseline telemetry is available, the evidence set must compare
+  the relevant operation or signal across baseline and anomalous periods. Evidence that establishes
+  only an observation does not by itself establish its cause.
 
 Every final evidence item must copy an exact query_id returned by an investigation tool. Do not ask
 the user questions. The incident prompt states a fixed investigation budget and each tool response

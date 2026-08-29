@@ -9,9 +9,11 @@ from statistics import median
 
 from semantic_rca_bench.aegis_transfer_formal import (
     formal_source_semantic_sha256,
+    period_raw_replay_semantics,
     validate_formal_report,
 )
 from semantic_rca_bench.aegis_transfer_protocol import (
+    DEFAULT_PROTOCOL_FIXTURE,
     AegisTransferProtocolFixture,
     evaluate_transfer_protocol_run,
     load_transfer_protocol_fixture,
@@ -31,7 +33,7 @@ from semantic_rca_bench.report import MODEL_PRICING, _estimated_api_cost, _raw_i
 
 ARTIFACT_SCHEMA_VERSION = 1
 DEFAULT_PILOT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-scorer-v24-pilot.json")
-DEFAULT_MEASUREMENT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v25-scorer.json")
+DEFAULT_MEASUREMENT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v26-scorer.json")
 
 
 def load_pilot_scorer_fixture(
@@ -124,13 +126,13 @@ def build_release_artifact(
             ],
             "included_derived_data": [
                 "normalized service-call edge sets and counts",
-                "canonical mechanism aggregates",
+                "mechanism query schemas, row counts, and result hashes",
                 "parsed diagnosis fields and deterministic scorer outputs",
                 "query and row counts plus aggregate token usage",
             ],
         },
     }
-    return {
+    report = {
         **payload,
         "integrity": {
             "semantic_payload_sha256": canonical_sha256(payload),
@@ -147,6 +149,7 @@ def build_release_artifact(
             ),
         },
     }
+    return report
 
 
 def build_release_artifact_from_files(
@@ -195,11 +198,19 @@ def build_measurement_artifact(
         protocol_fixture_path,
     )
     source = _source_payload(source_audit)
-    runs = _measurement_run_payloads(run_report, scorer_fixture, protocol_fixture)
+    pricing_snapshot = _mapping(run_report, "pricing_snapshot")
+    runs = _measurement_run_payloads(
+        run_report,
+        scorer_fixture,
+        protocol_fixture,
+        pricing_snapshot,
+    )
     model_reports = {
         model.model: _measurement_model_summary(
             [run for run in runs if run["model"] == model.model],
             model.model,
+            structured=scorer_fixture.version == 2,
+            pricing=_mapping(pricing_snapshot, model.model),
         )
         for model in protocol_fixture.models
     }
@@ -234,6 +245,7 @@ def build_measurement_artifact(
         "experiment": {
             "benchmark_protocol": _mapping(run_report, "benchmark_protocol"),
             "formal_protocol": _mapping(run_report, "formal_protocol"),
+            "pricing_snapshot": pricing_snapshot,
             "case": _mapping(run_report, "case"),
             "graph_window_contract": _mapping(run_report, "graph_window_contract"),
             "semantic_coverage": _mapping(run_report, "semantic_coverage"),
@@ -255,7 +267,7 @@ def build_measurement_artifact(
             ],
             "included_derived_data": [
                 "normalized service-call edge sets and counts",
-                "canonical mechanism aggregates",
+                "mechanism query schemas, row counts, and result hashes",
                 "parsed diagnosis fields and deterministic scorer outputs",
                 "query and row counts plus aggregate token and cache usage",
                 "within-model paired treatment deltas",
@@ -282,9 +294,7 @@ def build_measurement_artifact_from_files(
     scorer_audit_path: Path,
     protocol_audit_path: Path,
     scorer_fixture_path: Path = DEFAULT_MEASUREMENT_SCORER_FIXTURE,
-    protocol_fixture_path: Path = Path(
-        "fixtures/reference/aegis-transfer-v25-three-model-protocol.json"
-    ),
+    protocol_fixture_path: Path = DEFAULT_PROTOCOL_FIXTURE,
 ) -> dict[str, object]:
     inputs = {
         "run_report": run_path,
@@ -374,11 +384,14 @@ def _source_payload(source_audit: dict[str, object]) -> dict[str, object]:
     equality = _mapping(source_audit, "edge_equality")
     mechanism = _mapping(source_audit, "mechanism_evidence")
     selection = _mapping(source_audit, "selection_audit")
+    selected = selection.get("active_frozen_selection")
+    if selected is None:
+        selected = selection.get("selection")
     return {
         "dataset_revision": source_audit.get("dataset_revision"),
         "adapter_revision": source_audit.get("adapter_revision"),
         "pinned_source": _mapping(source_audit, "pinned_source"),
-        "selection": _mapping(selection, "selection"),
+        "selection": selected,
         "frozen_selection_gate_passed": _mapping(selection, "frozen_selection_gate").get("pass"),
         "case": {
             "agent_facing": _mapping(case, "agent_facing"),
@@ -394,6 +407,9 @@ def _source_payload(source_audit: dict[str, object]) -> dict[str, object]:
         "edge_equality": {
             "raw_edge_query": equality.get("raw_edge_query"),
             "graph_edge_query": equality.get("graph_edge_query"),
+            "period_raw_replay": period_raw_replay_semantics(equality),
+            "period_raw_replay_exact": equality.get("period_raw_replay_exact"),
+            "unified_window_proof": equality.get("unified_window_proof"),
             "normalized_raw_edges": equality.get("normalized_raw_edges"),
             "normalized_graph_edges": equality.get("normalized_graph_edges"),
             "raw_edge_set_sha256": equality.get("raw_edge_set_sha256"),
@@ -418,6 +434,21 @@ def _source_payload(source_audit: dict[str, object]) -> dict[str, object]:
             **(
                 {"declared_delay_ns": mechanism["declared_delay_ns"]}
                 if mechanism.get("declared_delay_ns") is not None
+                else {}
+            ),
+            **(
+                {"observable": mechanism["observable"]}
+                if mechanism.get("observable") is not None
+                else {}
+            ),
+            **(
+                {"service_name": mechanism["service_name"]}
+                if mechanism.get("service_name") is not None
+                else {}
+            ),
+            **(
+                {"method_name": mechanism["method_name"]}
+                if mechanism.get("method_name") is not None
                 else {}
             ),
             "evidence_match": mechanism.get("evidence_match"),
@@ -527,6 +558,7 @@ def _measurement_run_payloads(
     run_report: dict[str, object],
     scorer_fixture: AegisTransferScorerFixture,
     protocol_fixture: AegisTransferProtocolFixture,
+    pricing_snapshot: dict[str, object],
 ) -> list[dict[str, object]]:
     result = []
     for item in _list(run_report, "runs"):
@@ -542,34 +574,70 @@ def _measurement_run_payloads(
         )
         if recorded.model_dump(mode="json") != evaluated.model_dump(mode="json"):
             raise ValueError("formal run evaluation does not match deterministic rescoring")
-        payload = _run_payload(item, run, evaluated, scorer_fixture)
+        payload = _run_payload(
+            item,
+            run,
+            evaluated,
+            scorer_fixture,
+            pricing=_mapping(pricing_snapshot, run.model),
+        )
         payload["cell_index"] = item.get("cell_index")
         payload["model_index"] = item.get("model_index")
         result.append(payload)
     return result
 
 
-def _measurement_model_summary(runs: list[dict[str, object]], model: str) -> dict[str, object]:
+def _measurement_model_summary(
+    runs: list[dict[str, object]],
+    model: str,
+    *,
+    structured: bool,
+    pricing: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     treatments = {}
     for visibility in ("raw", "table_semantics", "semantic_graph"):
         cells = [run for run in runs if run["visibility"] == visibility]
-        treatments[visibility] = {
+        treatment = {
             "runs": len(cells),
             "successful_runs": sum(
-                _mapping(cell, "evaluation").get("success") is True for cell in cells
+                (
+                    _auditable_completion(_mapping(cell, "evaluation"))
+                    if structured
+                    else _mapping(cell, "evaluation").get("success") is True
+                )
+                for cell in cells
             ),
         }
-    return {
+        if structured:
+            treatment["efficiency_eligible_runs"] = sum(
+                _efficiency_eligible(_mapping(cell, "evaluation")) for cell in cells
+            )
+        treatments[visibility] = treatment
+    report = {
         "inference_role": "within-model case-level description",
-        "successful_runs": sum(_mapping(run, "evaluation").get("success") is True for run in runs),
+        "successful_runs": sum(
+            (
+                _auditable_completion(_mapping(run, "evaluation"))
+                if structured
+                else _mapping(run, "evaluation").get("success") is True
+            )
+            for run in runs
+        ),
         "total_runs": len(runs),
         "treatments": treatments,
-        "paired_treatment_deltas": _paired_treatment_deltas(runs),
-        "usage": _usage_summary(runs, model),
+        "paired_treatment_deltas": _paired_treatment_deltas(runs, structured=structured),
+        "usage": _usage_summary(runs, model, pricing=pricing),
     }
+    if structured:
+        report["efficiency_eligible_runs"] = sum(
+            _efficiency_eligible(_mapping(run, "evaluation")) for run in runs
+        )
+    return report
 
 
-def _paired_treatment_deltas(runs: list[dict[str, object]]) -> dict[str, object]:
+def _paired_treatment_deltas(
+    runs: list[dict[str, object]], *, structured: bool
+) -> dict[str, object]:
     by_cell = {(int(run["repetition"]), str(run["visibility"])): run for run in runs}
     output = {}
     for name, left, right in (
@@ -581,7 +649,12 @@ def _paired_treatment_deltas(runs: list[dict[str, object]]) -> dict[str, object]
             left_run = by_cell[(repetition, left)]
             right_run = by_cell[(repetition, right)]
             eligible = all(
-                _mapping(run, "evaluation").get("success") is True for run in (left_run, right_run)
+                (
+                    _efficiency_eligible(_mapping(run, "evaluation"))
+                    if structured
+                    else _mapping(run, "evaluation").get("success") is True
+                )
+                for run in (left_run, right_run)
             )
             pairs.append(
                 {
@@ -643,6 +716,8 @@ def _run_payload(
     run: AgentRun,
     evaluation: AegisTransferEvaluation,
     fixture: AegisTransferScorerFixture,
+    *,
+    pricing: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     diagnosis = run.diagnosis
     traces_by_query_id: dict[str, list[object]] = {}
@@ -652,39 +727,56 @@ def _run_payload(
     evidence = diagnosis.evidence if diagnosis is not None else []
     evidence_ids_unique = len({entry.query_id for entry in evidence}) == len(evidence)
     supporting_ids = set(evaluation.supporting_evidence_query_ids)
+    causal_scope_ids = set(evaluation.causal_scope_evidence_query_ids)
+    mechanism_ids = set(evaluation.mechanism_evidence_query_ids)
     citations = []
     mechanism_queries = []
     for index, entry in enumerate(evidence, start=1):
         matches = traces_by_query_id.get(entry.query_id, [])
-        citations.append(
-            {
-                "ordinal": index,
-                "execution_valid": (
-                    evidence_ids_unique
-                    and bool(entry.claim.strip())
-                    and is_valid_evidence_trace(matches)
-                ),
-                "supports_mechanism": entry.query_id in supporting_ids,
-            }
-        )
-        if entry.query_id in supporting_ids and len(matches) == 1:
+        citation = {
+            "ordinal": index,
+            "execution_valid": (
+                evidence_ids_unique
+                and bool(entry.claim.strip())
+                and is_valid_evidence_trace(matches)
+            ),
+            "supports_mechanism": entry.query_id in supporting_ids,
+        }
+        if fixture.version == 2:
+            citation.update(
+                {
+                    "supports_causal_scope": entry.query_id in causal_scope_ids,
+                    "supports_fault_mechanism": entry.query_id in mechanism_ids,
+                    "claim_types": [claim.value for claim in entry.claim_types],
+                }
+            )
+        citations.append(citation)
+        mechanism_query_ids = mechanism_ids if fixture.version == 2 else supporting_ids
+        if entry.query_id in mechanism_query_ids and len(matches) == 1:
             trace = matches[0]
             output = trace.output if isinstance(trace.output, dict) else {}
+            result_payload = {
+                "columns": output.get("columns"),
+                "rows": output.get("rows"),
+                "truncated": output.get("truncated"),
+            }
+            rows = output.get("rows")
             mechanism_queries.append(
                 {
                     "evidence_ordinal": index,
                     "query": trace.input.get("query") or trace.input.get("sql"),
                     "result": {
                         "columns": output.get("columns"),
-                        "rows": output.get("rows"),
+                        "row_count": len(rows) if isinstance(rows, list) else None,
                         "truncated": output.get("truncated"),
+                        "sha256": canonical_sha256(result_payload),
                     },
                 }
             )
     uncached, cache_read, cache_creation, breakdown_complete = _raw_input_breakdown(
         run.model_dump(mode="json")
     )
-    pricing = MODEL_PRICING.get(run.model)
+    pricing = pricing or MODEL_PRICING.get(run.model)
     peak_cost = (
         _estimated_api_cost(run.model_dump(mode="json"), pricing) if pricing is not None else None
     )
@@ -699,27 +791,53 @@ def _run_payload(
         if evaluation_payload.get(field) is None:
             evaluation_payload.pop(field)
     evaluation_payload.pop("supporting_evidence_query_ids")
+    evaluation_payload.pop("causal_scope_evidence_query_ids")
+    evaluation_payload.pop("mechanism_evidence_query_ids")
     evaluation_payload["supporting_evidence_ordinals"] = [
         citation["ordinal"] for citation in citations if citation["supports_mechanism"] is True
     ]
+    if fixture.version == 2:
+        evaluation_payload["causal_scope_evidence_ordinals"] = [
+            citation["ordinal"]
+            for citation in citations
+            if citation["supports_causal_scope"] is True
+        ]
+        evaluation_payload["mechanism_evidence_ordinals"] = [
+            citation["ordinal"]
+            for citation in citations
+            if citation["supports_fault_mechanism"] is True
+        ]
+    diagnosis_payload = None
+    if diagnosis is not None:
+        diagnosis_payload = {
+            "affected_component": diagnosis.affected_component,
+            "causal_dependency": diagnosis.causal_dependency,
+            "fault_category": diagnosis.fault_category.value,
+            "fault_type": diagnosis.fault_type,
+            "onset_time": diagnosis.onset_time,
+            "confidence": diagnosis.confidence,
+        }
+        if fixture.version == 2:
+            diagnosis_payload.update(
+                {
+                    "causal_scope": (
+                        diagnosis.causal_scope.value if diagnosis.causal_scope is not None else None
+                    ),
+                    "causal_operation": diagnosis.causal_operation,
+                    "mechanism_code": (
+                        diagnosis.mechanism_code.value
+                        if diagnosis.mechanism_code is not None
+                        else None
+                    ),
+                }
+            )
     return {
         "repetition": int(item.get("repetition", 0)),
         "position": int(item.get("position", 0)),
         "visibility": run.visibility.value,
         "model": run.model,
         "runner": run.runner.value,
-        "diagnosis": (
-            {
-                "affected_component": diagnosis.affected_component,
-                "causal_dependency": diagnosis.causal_dependency,
-                "fault_category": diagnosis.fault_category.value,
-                "fault_type": diagnosis.fault_type,
-                "onset_time": diagnosis.onset_time,
-                "confidence": diagnosis.confidence,
-            }
-            if diagnosis is not None
-            else None
-        ),
+        "diagnosis": diagnosis_payload,
         "citations": citations,
         "supporting_mechanism_queries": mechanism_queries,
         "evaluation": evaluation_payload,
@@ -750,13 +868,19 @@ def _run_payload(
 
 
 def _descriptive_summary(runs: list[dict[str, object]]) -> dict[str, object]:
+    structured = any("auditable_completion" in _mapping(run, "evaluation") for run in runs)
     treatments = {}
     for visibility in sorted({str(run["visibility"]) for run in runs}):
         cells = [run for run in runs if run["visibility"] == visibility]
-        treatments[visibility] = {
+        treatment = {
             "runs": len(cells),
             "successful_runs": sum(
-                _mapping(cell, "evaluation").get("success") is True for cell in cells
+                (
+                    _auditable_completion(_mapping(cell, "evaluation"))
+                    if structured
+                    else _mapping(cell, "evaluation").get("success") is True
+                )
+                for cell in cells
             ),
             "median_tool_calls_executed": median(
                 int(_mapping(cell, "execution").get("tool_calls_executed", 0)) for cell in cells
@@ -766,8 +890,20 @@ def _descriptive_summary(runs: list[dict[str, object]]) -> dict[str, object]:
                 for cell in cells
             ),
         }
-    successful_runs = sum(_mapping(run, "evaluation").get("success") is True for run in runs)
-    return {
+        if structured:
+            treatment["efficiency_eligible_runs"] = sum(
+                _efficiency_eligible(_mapping(cell, "evaluation")) for cell in cells
+            )
+        treatments[visibility] = treatment
+    successful_runs = sum(
+        (
+            _auditable_completion(_mapping(run, "evaluation"))
+            if structured
+            else _mapping(run, "evaluation").get("success") is True
+        )
+        for run in runs
+    )
+    report = {
         "inference_role": (
             "descriptive only; no run passed the valid-completion guardrail"
             if successful_runs == 0
@@ -777,9 +913,29 @@ def _descriptive_summary(runs: list[dict[str, object]]) -> dict[str, object]:
         "total_runs": len(runs),
         "treatments": treatments,
     }
+    if structured:
+        report["efficiency_eligible_runs"] = sum(
+            _efficiency_eligible(_mapping(run, "evaluation")) for run in runs
+        )
+    return report
 
 
-def _usage_summary(runs: list[dict[str, object]], model: str) -> dict[str, object]:
+def _efficiency_eligible(evaluation: Mapping[str, object]) -> bool:
+    value = evaluation.get("efficiency_eligible")
+    return value is True if value is not None else evaluation.get("success") is True
+
+
+def _auditable_completion(evaluation: Mapping[str, object]) -> bool:
+    value = evaluation.get("auditable_completion")
+    return value is True if value is not None else evaluation.get("success") is True
+
+
+def _usage_summary(
+    runs: list[dict[str, object]],
+    model: str,
+    *,
+    pricing: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     fields = (
         "uncached_input_tokens",
         "cache_read_input_tokens",
@@ -800,7 +956,7 @@ def _usage_summary(runs: list[dict[str, object]], model: str) -> dict[str, objec
         if all(isinstance(value, (int, float)) for value in peak_costs)
         else None
     )
-    pricing = MODEL_PRICING.get(model)
+    pricing = pricing or MODEL_PRICING.get(model)
     off_peak_multiplier = (
         pricing.get("off_peak_multiplier") if isinstance(pricing, Mapping) else None
     )

@@ -39,12 +39,15 @@ AGENT_CASE_ID = TRANSFER_AGENT_CASE_ID
 SELECTED_SOURCE_CASE = "ts0-ts-security-service-request-replace-method-j6gpxx"
 DELAY_AGENT_CASE_ID = "aegis-transfer-002"
 DELAY_SOURCE_CASE = "ts8-ts-route-plan-service-request-delay-5dmjfm"
+FORMAL_AGENT_CASE_ID = "aegis-transfer-003"
+FORMAL_SOURCE_CASE = "ts2-ts-train-service-exception-plrfk2"
 FROZEN_TRANSFER_CASES = {
     AGENT_CASE_ID: SELECTED_SOURCE_CASE,
     DELAY_AGENT_CASE_ID: DELAY_SOURCE_CASE,
+    FORMAL_AGENT_CASE_ID: FORMAL_SOURCE_CASE,
 }
 DATASET_REVISION = "aegis-fse-2026-reviewer@zenodo-19522409"
-ADAPTER_REVISION = "aegis-transfer-v1"
+ADAPTER_REVISION = "aegis-transfer-v2"
 PERIODS = ("normal", "abnormal")
 
 _SPAN_KINDS = {
@@ -75,8 +78,8 @@ _EDGE_COLUMNS = (
 class AegisTransferGroundTruth(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    services: tuple[str, str]
-    declared_edge: tuple[str, str]
+    services: tuple[str, ...]
+    declared_edge: tuple[str, str] | None
     fault_type: str
 
 
@@ -221,22 +224,30 @@ def load_selected_case(
     selected_services = {str(item) for item in selected.get("ground_truth_services") or []}
     if published_services != injection_services or injection_services != selected_services:
         raise AegisAuditError("publisher, injection, and frozen service labels disagree")
-    if len(selected_services) != 2:
-        raise AegisAuditError("selected Aegis case must retain two service labels")
-    if attributes.get("ground_truth.service_count") != 2:
+    if len(selected_services) not in {1, 2}:
+        raise AegisAuditError("selected Aegis case has an unsupported service-label count")
+    if attributes.get("ground_truth.service_count") != len(selected_services):
         raise AegisAuditError("publisher service count disagrees with the selected labels")
 
     display_config = _json_object(injection.get("display_config"), "display_config")
     injection_point = display_config.get("injection_point")
     if not isinstance(injection_point, dict):
         raise AegisAuditError("selected injection has no structured injection point")
-    declared_edge = (
-        str(injection_point.get("app_name") or ""),
-        str(injection_point.get("server_address") or ""),
-    )
-    frozen_edge = tuple(str(item) for item in selected.get("declared_edge") or [])
-    if declared_edge != frozen_edge or len(frozen_edge) != 2:
-        raise AegisAuditError("source-declared endpoint disagrees with the frozen edge")
+    frozen_edge_value = selected.get("declared_edge")
+    if fault_type == "JVMException":
+        if frozen_edge_value is not None or len(selected_services) != 1:
+            raise AegisAuditError("component-scoped case must not declare a dependency edge")
+        if injection_point.get("app_name") not in selected_services:
+            raise AegisAuditError("component injection point disagrees with the frozen service")
+        declared_edge = None
+    else:
+        declared_edge = (
+            str(injection_point.get("app_name") or ""),
+            str(injection_point.get("server_address") or ""),
+        )
+        frozen_edge = tuple(str(item) for item in frozen_edge_value or [])
+        if declared_edge != frozen_edge or len(frozen_edge) != 2:
+            raise AegisAuditError("source-declared endpoint disagrees with the frozen edge")
     _validate_frozen_mechanism(fault_type, display_config, injection_point, selected)
 
     paths = {
@@ -309,10 +320,20 @@ def _validate_frozen_mechanism(
     elif fault_type == "HTTPRequestDelay":
         declared_delay_ns = int(display_config.get("delay_duration") or 0) * 1_000_000
         valid = (
-            frozen.get("predicate") == "source_declared_http_delay_threshold"
+            frozen.get("predicate")
+            in {
+                "source_declared_http_delay_threshold",
+                "source_declared_http_client_server_start_gap",
+            }
             and frozen.get("span_name")
             == f"{injection_point.get('method')} {injection_point.get('route')}"
             and frozen.get("declared_delay_ns") == declared_delay_ns
+        )
+    elif fault_type == "JVMException":
+        valid = (
+            frozen.get("predicate") == "source_declared_jvm_exception"
+            and frozen.get("service_name") == injection_point.get("app_name")
+            and frozen.get("method_name") == injection_point.get("method_name")
         )
     else:
         raise AegisAuditError(f"unsupported frozen Aegis transfer mechanism: {fault_type}")
@@ -552,8 +573,68 @@ def validate_stored_rows(
 def exact_edge_equality_audit(
     client: GreptimeClient,
     case: AegisTransferCase,
+    source: dict[str, object],
 ) -> dict[str, object]:
     window = graph_audit_window(case.normal_window[0], case.abnormal_window[1])
+    source_trace_windows = source.get("trace_windows")
+    if not isinstance(source_trace_windows, dict):
+        raise AegisAuditError("source trace-window audit is missing")
+    period_raw_replay = {}
+    for period, period_window in zip(
+        PERIODS, (case.normal_window, case.abnormal_window), strict=True
+    ):
+        expected = source_trace_windows.get(period)
+        if not isinstance(expected, dict) or not isinstance(expected.get("edge_set"), list):
+            raise AegisAuditError(f"source {period} edge set is missing")
+        query = canonical_raw_edge_query(*period_window)
+        result = client.query(query, max_rows=None)
+        normalized = normalize_edge_result(result)
+        expected_edges = expected["edge_set"]
+        period_raw_replay[period] = {
+            "source_window": list(period_window),
+            "raw_edge_query": query,
+            "raw_edge_result": result.model_dump(mode="json"),
+            "normalized_stored_raw_edges": normalized,
+            "normalized_source_raw_edges": expected_edges,
+            "stored_raw_edge_set_sha256": _edge_hash(normalized),
+            "source_raw_edge_set_sha256": _edge_hash(expected_edges),
+            "exact_source_stored_edge_set_equality": normalized == expected_edges,
+        }
+    period_raw_replay_exact = all(
+        item["exact_source_stored_edge_set_equality"] is True for item in period_raw_replay.values()
+    )
+    boundary = case.normal_window[1]
+    boundary_minute = _floor_minute(boundary)
+    shared_boundary_counts = {}
+    for period in PERIODS:
+        counts = source_trace_windows[period].get("client_observed_minute_counts")
+        if not isinstance(counts, dict):
+            raise AegisAuditError(f"source {period} client minute counts are missing")
+        shared_boundary_counts[period] = int(counts.get(str(boundary_minute), 0))
+    graph_period_split_supported = boundary == boundary_minute
+    unified_window_proof = {
+        "normal_abnormal_windows_contiguous": case.normal_window[1] == case.abnormal_window[0],
+        "source_trace_windows_exact": source.get("trace_windows_exact") is True,
+        "stored_period_raw_edges_match_source": period_raw_replay_exact,
+        "graph_period_split_supported": graph_period_split_supported,
+        "shared_boundary_minute": boundary_minute,
+        "shared_boundary_minute_client_counts": shared_boundary_counts,
+        "unified_graph_window_required": (
+            not graph_period_split_supported and all(shared_boundary_counts.values())
+        ),
+        "reason": (
+            "observed_at is minute-binned and the non-minute normal/abnormal boundary has "
+            "client spans from both periods; only the contiguous union is representable exactly"
+        ),
+    }
+    unified_window_proof["pass"] = all(
+        (
+            unified_window_proof["normal_abnormal_windows_contiguous"],
+            unified_window_proof["source_trace_windows_exact"],
+            unified_window_proof["stored_period_raw_edges_match_source"],
+            unified_window_proof["unified_graph_window_required"],
+        )
+    )
     observed_start, observed_end = window["graph_observed_window"]
     raw_query = canonical_raw_edge_query(observed_start, observed_end)
     graph_query = canonical_graph_edge_query(observed_start, observed_end)
@@ -564,6 +645,9 @@ def exact_edge_equality_audit(
     exact = edge_results_equal(raw_result, graph_result)
     return {
         "window_contract": window,
+        "period_raw_replay": period_raw_replay,
+        "period_raw_replay_exact": period_raw_replay_exact,
+        "unified_window_proof": unified_window_proof,
         "raw_edge_query": raw_query,
         "raw_edge_result": raw_result.model_dump(mode="json"),
         "graph_edge_query": graph_query,
@@ -714,15 +798,56 @@ def mechanism_evidence_audit(
             "span_name": expected.get("span_name"),
             "declared_delay_ns": expected.get("declared_delay_ns"),
         }
+    elif predicate == "source_declared_http_client_server_start_gap":
+        normalized = normalize_start_gap_evidence(result)
+        expected_result = {
+            "normal": {
+                "count": expected.get("normal_count"),
+                "min_start_gap_ns": expected.get("normal_min_start_gap_ns"),
+                "max_start_gap_ns": expected.get("normal_max_start_gap_ns"),
+                "at_or_above_threshold": expected.get("normal_at_or_above_threshold"),
+            },
+            "abnormal": {
+                "count": expected.get("abnormal_count"),
+                "min_start_gap_ns": expected.get("abnormal_min_start_gap_ns"),
+                "max_start_gap_ns": expected.get("abnormal_max_start_gap_ns"),
+                "at_or_above_threshold": expected.get("abnormal_at_or_above_threshold"),
+            },
+        }
+        mechanism_fields = {
+            "observable": "server.timestamp - client.timestamp",
+            "span_name": expected.get("span_name"),
+            "declared_delay_ns": expected.get("declared_delay_ns"),
+        }
+    elif predicate == "source_declared_jvm_exception":
+        normalized = normalize_jvm_exception_evidence(result)
+        expected_result = {
+            "normal": {
+                "error_span_count": expected.get("normal_error_span_count"),
+                "exception_log_count": expected.get("normal_exception_log_count"),
+            },
+            "abnormal": {
+                "error_span_count": expected.get("abnormal_error_span_count"),
+                "exception_log_count": expected.get("abnormal_exception_log_count"),
+            },
+        }
+        mechanism_fields = {
+            "observable": "error spans and exception logs",
+            "service_name": expected.get("service_name"),
+            "method_name": expected.get("method_name"),
+        }
     else:
         raise AegisAuditError(f"unsupported stored mechanism evidence predicate: {predicate}")
-    declared_edge_match = list(case.ground_truth.declared_edge) == case.selected_manifest.get(
-        "declared_edge"
+    declared_edge = (
+        list(case.ground_truth.declared_edge)
+        if case.ground_truth.declared_edge is not None
+        else None
     )
+    declared_edge_match = declared_edge == case.selected_manifest.get("declared_edge")
     evidence_match = mechanism_evidence_matches(normalized, expected_result)
     return {
         "predicate": predicate,
-        "declared_edge": list(case.ground_truth.declared_edge),
+        "declared_edge": declared_edge,
         "declared_edge_match": declared_edge_match,
         **mechanism_fields,
         "query": query,
@@ -739,11 +864,55 @@ def canonical_mechanism_evidence_query(case: AegisTransferCase) -> str:
     normal_end = _time_literal(case.normal_window[1])
     abnormal_start = _time_literal(case.abnormal_window[0])
     abnormal_end = _time_literal(case.abnormal_window[1])
-    source = _literal(case.ground_truth.declared_edge[0])
-    destination = _literal(case.ground_truth.declared_edge[1])
     evidence = case.selected_manifest.get("mechanism_evidence")
     if not isinstance(evidence, dict):
         raise AegisAuditError("frozen mechanism evidence is missing")
+    if evidence.get("predicate") == "source_declared_jvm_exception":
+        service = _literal(str(evidence.get("service_name") or ""))
+        method_name = str(evidence.get("method_name") or "")
+        method_pattern = _literal(f"%{method_name}%")
+        return f"""WITH periods AS (
+  SELECT 'normal' AS period
+  UNION ALL
+  SELECT 'abnormal' AS period
+), evidence AS (
+  SELECT CASE
+           WHEN timestamp >= {normal_start} AND timestamp < {normal_end} THEN 'normal'
+           WHEN timestamp >= {abnormal_start} AND timestamp < {abnormal_end} THEN 'abnormal'
+         END AS period,
+         1 AS error_span_count,
+         0 AS exception_log_count
+  FROM traces
+  WHERE service_name = {service}
+    AND span_status_code = 'STATUS_CODE_ERROR'
+    AND span_name LIKE {method_pattern}
+    AND timestamp >= {normal_start} AND timestamp < {abnormal_end}
+  UNION ALL
+  SELECT CASE
+           WHEN greptime_timestamp >= {normal_start} AND greptime_timestamp < {normal_end}
+             THEN 'normal'
+           WHEN greptime_timestamp >= {abnormal_start} AND greptime_timestamp < {abnormal_end}
+             THEN 'abnormal'
+         END AS period,
+         0 AS error_span_count,
+         1 AS exception_log_count
+  FROM logs
+  WHERE service_name = {service}
+    AND level IN ('ERROR', 'SEVERE', 'FATAL')
+    AND LOWER(line) LIKE '%exception%'
+    AND greptime_timestamp >= {normal_start} AND greptime_timestamp < {abnormal_end}
+)
+SELECT p.period,
+       COALESCE(SUM(e.error_span_count), 0) AS error_span_count,
+       COALESCE(SUM(e.exception_log_count), 0) AS exception_log_count
+FROM periods p
+LEFT JOIN evidence e ON e.period = p.period
+GROUP BY p.period
+ORDER BY p.period"""
+    if case.ground_truth.declared_edge is None:
+        raise AegisAuditError("dependency mechanism evidence requires a declared edge")
+    source = _literal(case.ground_truth.declared_edge[0])
+    destination = _literal(case.ground_truth.declared_edge[1])
     if evidence.get("predicate") == "source_declared_http_delay_threshold":
         span_name = _literal(str(evidence.get("span_name") or ""))
         return f"""WITH paired AS (
@@ -764,6 +933,34 @@ def canonical_mechanism_evidence_query(case: AegisTransferCase) -> str:
     AND c.timestamp >= {normal_start} AND c.timestamp < {abnormal_end}
 )
 SELECT period, COUNT(*) AS span_count, MAX(server_duration_ns) AS max_duration_ns
+FROM paired
+GROUP BY period
+ORDER BY period"""
+    if evidence.get("predicate") == "source_declared_http_client_server_start_gap":
+        span_name = _literal(str(evidence.get("span_name") or ""))
+        threshold = int(evidence.get("declared_delay_ns") or 0)
+        return f"""WITH paired AS (
+  SELECT CASE
+           WHEN c.timestamp >= {normal_start} AND c.timestamp < {normal_end} THEN 'normal'
+           WHEN c.timestamp >= {abnormal_start} AND c.timestamp < {abnormal_end} THEN 'abnormal'
+         END AS period,
+         CAST(s.timestamp AS BIGINT) - CAST(c.timestamp AS BIGINT) AS server_start_gap_ns
+  FROM traces c
+  JOIN traces s
+    ON c.trace_id = s.trace_id
+   AND s.parent_span_id = c.span_id
+  WHERE c.span_kind = 'SPAN_KIND_CLIENT'
+    AND s.span_kind = 'SPAN_KIND_SERVER'
+    AND c.service_name = {source}
+    AND s.service_name = {destination}
+    AND s.span_name = {span_name}
+    AND c.timestamp >= {normal_start} AND c.timestamp < {abnormal_end}
+)
+SELECT period, COUNT(*) AS span_count,
+       MIN(server_start_gap_ns) AS min_start_gap_ns,
+       MAX(server_start_gap_ns) AS max_start_gap_ns,
+       SUM(CASE WHEN server_start_gap_ns >= {threshold} THEN 1 ELSE 0 END)
+         AS at_or_above_threshold
 FROM paired
 GROUP BY period
 ORDER BY period"""
@@ -846,6 +1043,72 @@ def normalize_delay_evidence(result: QueryResult) -> dict[str, dict[str, int]] |
     return {period: normalized[period] for period in PERIODS if period in normalized}
 
 
+def normalize_start_gap_evidence(result: QueryResult) -> dict[str, dict[str, int]] | None:
+    required = (
+        "period",
+        "span_count",
+        "min_start_gap_ns",
+        "max_start_gap_ns",
+        "at_or_above_threshold",
+    )
+    columns = [column.lower() for column in result.columns]
+    if result.truncated or any(columns.count(column) != 1 for column in required):
+        return None
+    indexes = [columns.index(column) for column in required]
+    normalized = {}
+    for row in result.rows:
+        period, count, minimum, maximum, threshold_count = (row[index] for index in indexes)
+        values = (count, minimum, maximum, threshold_count)
+        if (
+            period not in PERIODS
+            or period in normalized
+            or any(not isinstance(value, int) or isinstance(value, bool) for value in values)
+            or count <= 0
+            or minimum > maximum
+            or threshold_count < 0
+            or threshold_count > count
+        ):
+            return None
+        normalized[str(period)] = {
+            "count": count,
+            "min_start_gap_ns": minimum,
+            "max_start_gap_ns": maximum,
+            "at_or_above_threshold": threshold_count,
+        }
+    return {period: normalized[period] for period in PERIODS if period in normalized}
+
+
+def normalize_jvm_exception_evidence(
+    result: QueryResult,
+) -> dict[str, dict[str, int]] | None:
+    required = ("period", "error_span_count", "exception_log_count")
+    columns = [column.lower() for column in result.columns]
+    if result.truncated or any(columns.count(column) != 1 for column in required):
+        return None
+    indexes = [columns.index(column) for column in required]
+    normalized = {}
+    for row in result.rows:
+        period, span_count, log_count = (row[index] for index in indexes)
+        if (
+            period not in PERIODS
+            or period in normalized
+            or not isinstance(span_count, int)
+            or isinstance(span_count, bool)
+            or not isinstance(log_count, int)
+            or isinstance(log_count, bool)
+            or span_count < 0
+            or log_count < 0
+        ):
+            return None
+        normalized[str(period)] = {
+            "error_span_count": span_count,
+            "exception_log_count": log_count,
+        }
+    if set(normalized) != set(PERIODS):
+        return None
+    return {period: normalized[period] for period in PERIODS}
+
+
 def mechanism_evidence_matches(
     observed: dict[str, dict[str, int]] | None,
     expected: dict[str, object],
@@ -893,6 +1156,8 @@ def no_model_gates(
             )
         ),
         "raw_graph_exact_edge_set_equality": equality.get("exact_edge_set_equality") is True,
+        "stored_period_raw_edges_match_source": equality.get("period_raw_replay_exact") is True,
+        "unified_graph_window_proven": equality.get("unified_window_proof", {}).get("pass") is True,
         "mechanism_evidence": mechanism.get("pass") is True,
         "opaque_agent_case_id": (
             case.input.case_token == case.agent_case_id
@@ -927,6 +1192,11 @@ def _source_trace_window_audit(path: Path, window: tuple[int, int]) -> dict[str,
     kinds = Counter(str(row.get("attr.span_kind")) for row in rows)
     statuses = Counter(str(row.get("attr.status_code")) for row in rows)
     services = Counter(str(row.get("service_name")) for row in rows)
+    client_observed_minutes = Counter(
+        _floor_minute(int(row["time"]) // 1_000_000_000)
+        for row in rows
+        if row.get("attr.span_kind") == "Client"
+    )
     identity_valid = all(
         _valid_hex_id(str(row.get("trace_id") or ""), 16)
         and _valid_hex_id(str(row.get("span_id") or ""), 8)
@@ -950,6 +1220,9 @@ def _source_trace_window_audit(path: Path, window: tuple[int, int]) -> dict[str,
         "service_counts": dict(sorted(services.items())),
         "span_kind_counts": dict(sorted(kinds.items())),
         "status_code_counts": dict(sorted(statuses.items())),
+        "client_observed_minute_counts": {
+            str(minute): count for minute, count in sorted(client_observed_minutes.items())
+        },
         "edge_count": len(edge_set),
         "witness_count": witnesses,
         "edge_set_sha256": _edge_hash(edge_set),

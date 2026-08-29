@@ -22,6 +22,7 @@ from semantic_rca_bench.agent import (
     _investigation_tools,
     _submit_tool,
     _system_prompt,
+    _validate_diagnosis_output,
 )
 from semantic_rca_bench.contracts import (
     AgentRun,
@@ -152,7 +153,7 @@ def run_subscription_agent(
         ),
         investigation_tools=tools,
         output_schema=diagnosis_schema,
-        validate_output=lambda value: Diagnosis.model_validate(value).model_dump(mode="json"),
+        validate_output=_validate_diagnosis_output,
         max_tool_calls=max_tool_calls,
         semantic_coverage=semantic_coverage,
     )

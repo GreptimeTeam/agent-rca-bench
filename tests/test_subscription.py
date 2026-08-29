@@ -23,7 +23,11 @@ from semantic_rca_bench.contracts import (
 
 DIAGNOSIS = {
     "affected_component": "checkout",
+    "causal_dependency": None,
+    "causal_scope": "component",
+    "causal_operation": None,
     "fault_category": "cpu",
+    "mechanism_code": "cpu_saturation",
     "fault_type": "cpu",
     "confidence": 0.8,
     "evidence": [],

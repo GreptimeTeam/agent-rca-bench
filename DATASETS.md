@@ -14,7 +14,7 @@ but it must record every lossy or synthetic protocol field.
 | OpenRCA 1.0 Bank | OpenRCA Bank | Wide enterprise metric schema and legacy multimodal telemetry | Included | Not applicable: no standard entity identity or span roles |
 | OpenRCA 1.0 Market | OpenRCA Market | Multi-level node, pod, and service failures over wide legacy telemetry | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
 | OpenRCA 1.0 Telecom | OpenRCA Telecom | Independent telecom/database system with metrics and traces but no logs | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
-| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v24 development pilot plus frozen protocol v25 measurement case | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
+| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v24/v25 development evidence plus a frozen protocol v26 measurement preflight | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
 | OpenRCA 2.0 ops-lite | Hotel Reservation | Native OTel and verified causal paths | Provisional; internal protocol-formal measurement only | Positive when standard client/server spans witness service calls |
 | Amazon PetShop | Amazon PetShop | Component-level causal RCA over service metrics | Rejected | Metric-only; no incident-local mechanism label or continuous baseline |
 | AnoMod TrainTicket | TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
@@ -331,14 +331,49 @@ therefore rejected rather than repaired.
   `a251c201c117d583c6f50e243c9626e5f9105022ae5424726b1284d809c13c33`.
   The non-minute source window `[1753014770, 1753015249)` maps to the minimal Graph envelope
   `[1753014720, 1753015260)`; the source audit proves that this transformation adds no source span.
-- Stored paired spans reproduce the frozen delay predicate exactly: the normal window has 37
-  matching server spans with maximum duration 846,092,899 ns; the abnormal window has 25 with
-  maximum duration 3,252,068,825 ns. The normal maximum is below the declared 3.07-second delay,
-  and the abnormal maximum reaches it. The scorer rejects either missing window, a wrong directed
-  edge, a wrong parent relation, or an aggregate that does not exactly match the frozen result.
-- `fixtures/reference/aegis-transfer-v25-three-model-protocol.json` freezes three API models,
-  provider-specific prompt caching, identical budgets, and position-balanced treatment order.
-  Model runs remain unauthorized until an explicit paid-API approval.
+- The v25 duration predicate was not source-faithful. The publisher injects delay between the
+  client and paired server start, so the correct observable is
+  `server.timestamp - client.timestamp`, not `server.duration_nano`. Recomputed source evidence
+  has 37 normal pairs with start gaps from -1,580,610 ns to 18,958,433 ns and zero observations at
+  or above 3.07 seconds. All 25 abnormal pairs are at or above the threshold, from 3,070,537,663 ns
+  to 3,111,430,672 ns.
+- Protocol v25 completed its frozen 27-cell three-model execution without runner errors or budget
+  exhaustion. Its measurement interpretation is invalid because the scorer used the wrong
+  observable and hidden exact-output contracts. The runs are retained as development evidence;
+  their zero eligible pairs are not a model-quality or semantic-layer result.
+- `fixtures/reference/aegis-transfer-v26-calibration-selection.json` binds the corrected source
+  predicate to the same consumed case with `case_role=development` and to the exact parent v25
+  manifest bytes. `fixtures/reference/aegis-transfer-v26-calibration-scorer.json` freezes the
+  corrected no-model oracle. It scores a structured dependency edge and global
+  `call_path_delay` mechanism, routes citations by claim type, and accepts equivalent start-gap
+  threshold proofs without requiring exact source counts or a prescribed SQL shape. SQL evidence
+  must still prove the exact operation, service identities, Client/Server roles, trace/parent
+  pairing, ordered timestamp subtraction, and complete half-open outer window.
+- Protocol v24/v25 fixtures remain readable for validation, shadow scoring, and historical export,
+  but new agent execution under those protocols is rejected.
+- The fresh v26 selection recomputes source-observable eligibility over the publisher cohort before
+  agent execution and excludes the exact v24 and v25 parent manifests. The only eligible
+  unconsumed case is `ts2-ts-train-service-exception-plrfk2`, exposed to the agent only as
+  `aegis-transfer-003`. Its source ground truth is the single component `ts-train-service`; the
+  adapter does not invent a dependency edge.
+- The v26 source predicate uses the publisher-declared `retrieveByName` injection point. Stored
+  telemetry has zero matching Error spans and zero exception logs in the normal window, then 1,981
+  of each in the abnormal window. The deterministic scorer accepts equivalent complete-window
+  aggregates, split trace/log aggregates, or complete raw rows. It rejects wrong service,
+  operation, source span status, log predicate, narrowed window, identity cherry-picking, `LIMIT`,
+  hard-coded aggregate aliases, filters neutralized by `OR` or `NOT`, predicates detached into a
+  nested query, and aggregate period labels not derived from the source timestamp.
+- The normal/abnormal boundary is not minute-aligned. Its shared `observed_at` minute contains 7,235
+  normal and 122 abnormal Client spans, so the minute-binned Graph cannot represent the two source
+  periods separately. The audit first proves each stored period's complete raw edge set equals its
+  source edge set, then compares the complete raw and Graph edge sets over the contiguous union.
+  The union has 40 edges, and both sides have SHA-256
+  `adde43389704b978531ae025cd478907a4eb0c7be473f361b746c96606d07d45`.
+- `fixtures/reference/aegis-transfer-v26-three-model-protocol.json` freezes 27 API cells over
+  `deepseek-v4-pro`, `claude-sonnet-5`, and `claude-opus-4-8`. The two independent final source
+  audits have the same semantic hash,
+  `c8abfb94edb288d9bb1f30dd347ebf9932f1625a652a813e6a4d923169307a15`. Preflight does not
+  authorize or execute any provider call.
 
 ## OpenRCA 2.0 ops-lite
 

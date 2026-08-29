@@ -26,7 +26,12 @@ from semantic_rca_bench.contracts import (
     Visibility,
 )
 from semantic_rca_bench.discovery import DiscoveryAudit
-from semantic_rca_bench.protocol import benchmark_protocol, discovery_protocol, graph_protocol
+from semantic_rca_bench.protocol import (
+    benchmark_protocol,
+    discovery_protocol,
+    graph_protocol,
+    require_current_protocol,
+)
 
 
 def test_run_orders_rotate_every_level_through_each_position() -> None:
@@ -52,8 +57,15 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v25-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v26-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
+
+
+def test_retired_protocol_cannot_start_new_agent_execution() -> None:
+    require_current_protocol(26)
+
+    with pytest.raises(ValueError, match="v25 is retired"):
+        require_current_protocol(25)
 
 
 def test_run_accepts_subscription_runners() -> None:
@@ -197,8 +209,8 @@ def test_aegis_transfer_protocol_audit_uses_measurement_fixtures_without_paid_fl
         ]
     )
 
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v25-scorer.json"
-    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v25-three-model-protocol.json")
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v26-scorer.json"
+    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v26-three-model-protocol.json")
     assert not hasattr(args, "confirm_paid_api")
 
 
@@ -237,9 +249,9 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v25-scorer.json"
+    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v26-scorer.json"
     assert str(preflight.protocol) == (
-        "fixtures/reference/aegis-transfer-v25-three-model-protocol.json"
+        "fixtures/reference/aegis-transfer-v26-three-model-protocol.json"
     )
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
@@ -261,9 +273,15 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
     )
 
     assert paid.confirm_paid_api is True
-    assert paid.database == "case_02"
-    assert str(paid.selection) == "fixtures/reference/aegis-transfer-v25-selection.json"
+    assert paid.database == "case_03"
+    assert str(paid.selection) == "fixtures/reference/aegis-transfer-v26-selection.json"
+    assert str(paid.scorer) == "fixtures/reference/aegis-transfer-v26-scorer.json"
+    assert str(paid.protocol) == "fixtures/reference/aegis-transfer-v26-three-model-protocol.json"
     assert not hasattr(export, "confirm_paid_api")
+    assert str(export.scorer) == "fixtures/reference/aegis-transfer-v26-scorer.json"
+    assert str(export.protocol) == (
+        "fixtures/reference/aegis-transfer-v26-three-model-protocol.json"
+    )
 
 
 def test_aegis_transfer_run_requires_explicit_paid_api_confirmation() -> None:
@@ -290,6 +308,51 @@ def test_aegis_transfer_run_requires_explicit_paid_api_confirmation() -> None:
     args = _parser().parse_args([*arguments, "--confirm-paid-api"])
 
     assert args.confirm_paid_api is True
+    assert not hasattr(args, "model")
+
+
+def test_aegis_opus_diagnostic_is_fixed_to_one_paid_graph_cell() -> None:
+    arguments = [
+        "aegis-transfer-opus-diagnostic",
+        "--cases-dir",
+        "cases",
+        "--meta-dir",
+        "meta",
+        "--archive",
+        "segments",
+        "--run-dir",
+        "instance",
+        "--source-audit-output",
+        "audit.json",
+        "--scorer-audit-output",
+        "scorer.json",
+        "--output",
+        "run.json",
+    ]
+
+    with pytest.raises(SystemExit):
+        _parser().parse_args(arguments)
+    args = _parser().parse_args([*arguments, "--confirm-paid-api"])
+
+    assert args.confirm_paid_api is True
+    assert args.database == "case_02"
+    assert str(args.selection) == "fixtures/reference/aegis-transfer-v25-selection.json"
+    assert not hasattr(args, "model")
+
+
+def test_aegis_shadow_score_is_provider_free_and_uses_v26_calibration() -> None:
+    args = _parser().parse_args(
+        [
+            "aegis-transfer-shadow-score",
+            "--run-report",
+            "run.json",
+            "--output",
+            "shadow.json",
+        ]
+    )
+
+    assert str(args.scorer) == ("fixtures/reference/aegis-transfer-v26-calibration-scorer.json")
+    assert not hasattr(args, "confirm_paid_api")
     assert not hasattr(args, "model")
 
 

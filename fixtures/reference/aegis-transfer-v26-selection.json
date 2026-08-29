@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "selection_strategy": "fresh-source-observable-mechanism-v1",
+  "selection_seed": "semantic-rca-v1-aegis-transfer",
+  "selection_phase": "before_agent_trajectory",
+  "case_role": "measurement",
+  "consumed_parent_manifests": [
+    {
+      "name": "aegis-selection.json",
+      "sha256": "6131b704f0fbfdf8fb35ac9850838994f971371924d6392821fa01c37fb94607"
+    },
+    {
+      "name": "aegis-transfer-v25-selection.json",
+      "sha256": "abf26bb81b6ddb5920682f6fae6ffddb13770a0d2deeb2fa4b9db93dafe859df"
+    }
+  ],
+  "consumed_source_cases": [
+    "ts0-ts-security-service-request-replace-method-j6gpxx",
+    "ts8-ts-route-plan-service-request-delay-5dmjfm"
+  ],
+  "eligible_unconsumed_candidates": [
+    "ts2-ts-train-service-exception-plrfk2"
+  ],
+  "ranked_unconsumed_candidates": [
+    "ts2-ts-train-service-exception-plrfk2"
+  ],
+  "agent_case_id": "aegis-transfer-003",
+  "source": {
+    "artifact_record": "https://zenodo.org/records/19522409",
+    "artifact_filename": "FSE_26_RCA_dataset_study_reviewer.tar.gz",
+    "artifact_md5": "16f0743b6feb20838f856d6e441e0c7b",
+    "source_dataset_record": "https://zenodo.org/records/17105974",
+    "data_redistributed": false
+  },
+  "selected_case": {
+    "source_case": "ts2-ts-train-service-exception-plrfk2",
+    "fault_type": "JVMException",
+    "ground_truth_services": [
+      "ts-train-service"
+    ],
+    "normal_window": [
+      1752841317,
+      1752841557
+    ],
+    "abnormal_window": [
+      1752841557,
+      1752841796
+    ],
+    "declared_edge": null,
+    "mechanism_evidence": {
+      "predicate": "source_declared_jvm_exception",
+      "service_name": "ts-train-service",
+      "method_name": "retrieveByName",
+      "normal_error_span_count": 0,
+      "normal_exception_log_count": 0,
+      "abnormal_error_span_count": 1981,
+      "abnormal_exception_log_count": 1981
+    },
+    "normal_raw_edge_set": {
+      "edge_count": 40,
+      "witness_count": 11368,
+      "sha256": "0c9746ee21907d4240bccf58eeca082ca6177577733bbeea82dc82ac29290d5e"
+    },
+    "abnormal_raw_edge_set": {
+      "edge_count": 29,
+      "witness_count": 4072,
+      "sha256": "987a96514a03aae9e3237bdd44ff8f1c8189082e1508cf0bfaafa8d51070cb90"
+    }
+  }
+}

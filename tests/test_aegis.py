@@ -11,6 +11,7 @@ import pytest
 
 from semantic_rca_bench.datasets import aegis
 from semantic_rca_bench.datasets.aegis import AegisAuditError, AegisRepository, audit_cohort
+from semantic_rca_bench.selection import deterministic_rank
 
 _NORMAL_START = 1_700_000_000
 _ABNORMAL_START = _NORMAL_START + 300
@@ -32,6 +33,7 @@ def _write_case(
     *,
     invalid: bool = False,
     response_body: str | None = None,
+    start_time: str | None = None,
 ) -> None:
     root = cases_dir / name
     root.mkdir(parents=True)
@@ -53,7 +55,8 @@ def _write_case(
             {
                 "injection_name": name,
                 "status": 2,
-                "start_time": datetime.fromtimestamp(_ABNORMAL_START, UTC).isoformat(),
+                "start_time": start_time
+                or datetime.fromtimestamp(_ABNORMAL_START, UTC).isoformat(),
                 "display_config": json.dumps(
                     {
                         "injection_point": {
@@ -71,6 +74,7 @@ def _write_case(
     )
 
     trace_fields = [
+        ("time", pa.uint64()),
         ("trace_id", pa.large_string()),
         ("span_id", pa.large_string()),
         ("parent_span_id", pa.large_string()),
@@ -100,7 +104,16 @@ def _write_case(
             else 1_000_000_000
         )
         trace_id = f"{name}-{period}"
+        client_start = (
+            _NORMAL_START + 1 if period == "normal" else _ABNORMAL_START + 1
+        ) * 1_000_000_000
+        server_start = client_start + (
+            3_070_000_000
+            if fault_type == "HTTPRequestDelay" and period == "abnormal"
+            else 1_000_000
+        )
         values = {
+            "time": [client_start, server_start],
             "trace_id": [trace_id, trace_id],
             "span_id": ["client", "server"],
             "parent_span_id": ["", "client"],
@@ -312,6 +325,27 @@ def test_aegis_body_rejection_reads_source_schema(tmp_path: Path) -> None:
         audit_cohort(cases_dir, meta_dir)
 
 
+def test_aegis_audit_rejects_timezone_dependent_injection_time(tmp_path: Path) -> None:
+    case = (
+        "ts8-ts-route-plan-service-request-delay-5dmjfm",
+        "HTTPRequestDelay",
+        "route-plan",
+        "travel2",
+    )
+    cases_dir = tmp_path / "cases"
+    _write_case(
+        cases_dir,
+        *case,
+        {"delay_duration": 3.07},
+        start_time=datetime.fromtimestamp(_ABNORMAL_START, UTC).replace(tzinfo=None).isoformat(),
+    )
+    meta_dir = tmp_path / "meta"
+    _write_meta(meta_dir, [case])
+
+    with pytest.raises(AegisAuditError, match="explicit timezone"):
+        audit_cohort(cases_dir, meta_dir)
+
+
 def test_aegis_audit_rejects_frozen_selection_drift(tmp_path: Path) -> None:
     case = (
         "ts0-ts-security-service-request-replace-method-j6gpxx",
@@ -349,6 +383,22 @@ def test_aegis_audit_rejects_frozen_selection_drift(tmp_path: Path) -> None:
 
     with pytest.raises(AegisAuditError, match="selection_seed"):
         audit_cohort(cases_dir, meta_dir, selection_path=manifest)
+
+
+def test_fresh_selection_manifest_binds_consumed_parents_before_trajectory() -> None:
+    root = Path("fixtures/reference")
+    manifest = json.loads((root / "aegis-transfer-v26-selection.json").read_text())
+
+    assert manifest["selection_phase"] == "before_agent_trajectory"
+    assert manifest["case_role"] == "measurement"
+    assert manifest["agent_case_id"] not in {"aegis-transfer-001", "aegis-transfer-002"}
+    for parent in manifest["consumed_parent_manifests"]:
+        assert hashlib.sha256((root / parent["name"]).read_bytes()).hexdigest() == parent["sha256"]
+    assert (
+        deterministic_rank(manifest["eligible_unconsumed_candidates"], manifest["selection_seed"])
+        == manifest["ranked_unconsumed_candidates"]
+    )
+    assert manifest["selected_case"]["source_case"] == manifest["ranked_unconsumed_candidates"][0]
 
 
 def test_aegis_repository_verifies_and_extracts_only_dataset(tmp_path: Path, monkeypatch) -> None:

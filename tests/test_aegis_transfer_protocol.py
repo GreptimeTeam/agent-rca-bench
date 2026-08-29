@@ -11,7 +11,7 @@ from semantic_rca_bench.aegis_transfer_protocol import (
     load_transfer_protocol_fixture,
 )
 from semantic_rca_bench.aegis_transfer_scorer import (
-    DELAY_SCORER_FIXTURE,
+    FORMAL_SCORER_FIXTURE,
     load_transfer_scorer_fixture,
     source_transfer_audit_sha256,
 )
@@ -22,13 +22,13 @@ def _audits() -> tuple[dict[str, object], dict[str, object]]:
     source = {
         "selection_audit": {
             "frozen_selection_gate": {
-                "manifest_name": "aegis-transfer-v25-selection.json",
+                "manifest_name": "aegis-transfer-v26-selection.json",
                 "pass": True,
             }
         },
         "case": {
             "agent_facing": {
-                "case_id": "aegis-transfer-002",
+                "case_id": "aegis-transfer-003",
                 "fault_taxonomy": [],
             }
         },
@@ -36,7 +36,7 @@ def _audits() -> tuple[dict[str, object], dict[str, object]]:
     }
     scorer_audit = {
         "source_transfer_audit_sha256": source_transfer_audit_sha256(source),
-        "fixture_sha256": hashlib.sha256(DELAY_SCORER_FIXTURE.read_bytes()).hexdigest(),
+        "fixture_sha256": hashlib.sha256(FORMAL_SCORER_FIXTURE.read_bytes()).hexdigest(),
         "no_model_gates": {"all_passed": True},
     }
     return source, scorer_audit
@@ -44,14 +44,14 @@ def _audits() -> tuple[dict[str, object], dict[str, object]]:
 
 def test_three_model_protocol_freezes_cache_schedule_and_inference_boundary() -> None:
     fixture = load_transfer_protocol_fixture()
-    scorer = load_transfer_scorer_fixture(DELAY_SCORER_FIXTURE)
+    scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     source, scorer_audit = _audits()
 
     audit = audit_transfer_protocol(
         fixture,
         DEFAULT_PROTOCOL_FIXTURE,
         scorer,
-        DELAY_SCORER_FIXTURE,
+        FORMAL_SCORER_FIXTURE,
         source,
         scorer_audit,
     )
@@ -80,7 +80,7 @@ def test_three_model_protocol_drift_fails_closed(tmp_path: Path) -> None:
 
 def test_three_model_protocol_requires_source_and_scorer_gates() -> None:
     fixture = load_transfer_protocol_fixture()
-    scorer = load_transfer_scorer_fixture(DELAY_SCORER_FIXTURE)
+    scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     source, scorer_audit = _audits()
     source["no_model_gates"]["all_passed"] = False
 
@@ -88,7 +88,7 @@ def test_three_model_protocol_requires_source_and_scorer_gates() -> None:
         fixture,
         DEFAULT_PROTOCOL_FIXTURE,
         scorer,
-        DELAY_SCORER_FIXTURE,
+        FORMAL_SCORER_FIXTURE,
         source,
         scorer_audit,
     )
@@ -100,7 +100,7 @@ def test_three_model_protocol_requires_source_and_scorer_gates() -> None:
 
 def test_protocol_scorer_accepts_runner_contract_for_each_frozen_model() -> None:
     protocol = load_transfer_protocol_fixture()
-    scorer = load_transfer_scorer_fixture(DELAY_SCORER_FIXTURE)
+    scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
 
     for model in (contract.model for contract in protocol.models):
         run = AgentRun(
