@@ -11,6 +11,7 @@ from semantic_rca_bench.report import (
     _exact_sign_p_value,
     _paired_primary_comparisons,
     _primary_metric_value,
+    _raw_input_breakdown,
     _runner_reported_token_total,
     case_context,
     render_report,
@@ -136,6 +137,29 @@ def test_claude_subscription_does_not_double_count_cached_input() -> None:
     }
 
     assert _runner_reported_token_total(run, accounting) == 300
+
+
+def test_openai_cache_breakdown_drives_usage_and_cost() -> None:
+    run = {
+        "usage": {"input_tokens": 30, "output_tokens": 5},
+        "responses": [
+            {
+                "usage": {
+                    "input_tokens": 120,
+                    "input_tokens_details": {
+                        "cached_tokens": 80,
+                        "cache_write_tokens": 10,
+                    },
+                    "output_tokens": 5,
+                }
+            }
+        ],
+    }
+
+    assert _raw_input_breakdown(run) == (30, 80, 10, True)
+    assert _estimated_api_cost(run, MODEL_PRICING["gpt-5.6-sol"]) == pytest.approx(
+        (30 * 4 + 80 * 0.4 + 10 * 5 + 5 * 20) / 1_000_000
+    )
 
 
 def test_render_report_embeds_data_and_escapes_script_end(tmp_path) -> None:
@@ -275,17 +299,14 @@ def test_primary_metrics_infer_over_case_medians_not_run_pairs() -> None:
         {
             "runs": [
                 _primary_item(0, "raw", 100, 12),
-                _primary_item(0, "table_semantics", 70, 10),
                 _primary_item(0, "semantic_graph", 40, 8),
                 _primary_item(1, "raw", 100, 12),
-                _primary_item(1, "table_semantics", 80, 10),
                 _primary_item(1, "semantic_graph", 60, 8),
             ]
         },
         {
             "runs": [
                 _primary_item(0, "raw", 100, 12),
-                _primary_item(0, "table_semantics", 130, 14),
                 _primary_item(0, "semantic_graph", 100, 12),
             ]
         },
@@ -297,29 +318,27 @@ def test_primary_metrics_infer_over_case_medians_not_run_pairs() -> None:
         for item in comparisons
         if item["metric"] == "rows_returned"
         and item["candidate"] == "semantic_graph"
-        and item["baseline"] == "table_semantics"
+        and item["baseline"] == "raw"
     )
 
     assert graph_rows["run_pair_descriptive"] == {
         "observations": 3,
-        "better": 3,
+        "better": 2,
         "worse": 0,
-        "ties": 0,
-        "median_delta": -30.0,
+        "ties": 1,
+        "median_delta": -40.0,
     }
     assert graph_rows["case_level_inference"] == {
         "observations": 2,
-        "better": 2,
+        "better": 1,
         "worse": 0,
-        "ties": 0,
-        "median_delta": -27.5,
-        "exact_two_sided_sign_test_p_value": 0.5,
+        "ties": 1,
+        "median_delta": -25.0,
+        "exact_two_sided_sign_test_p_value": 1.0,
         "holm_adjusted_p_value": 1.0,
-        "multiplicity_family_size": 4,
+        "multiplicity_family_size": 2,
     }
-    assert not any(
-        item["candidate"] == "semantic_graph" and item["baseline"] == "raw" for item in comparisons
-    )
+    assert len(comparisons) == 2
     assert _exact_sign_p_value(19, 5) == pytest.approx(0.00661075)
 
 

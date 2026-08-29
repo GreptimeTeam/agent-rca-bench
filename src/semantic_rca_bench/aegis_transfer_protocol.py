@@ -17,8 +17,8 @@ from semantic_rca_bench.contracts import AgentRun, AgentRunner, Visibility
 from semantic_rca_bench.protocol import benchmark_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "aegis-transfer-three-model-v5"
-DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v27-three-model-protocol.json")
+PROTOCOL_REVISION = "aegis-transfer-four-model-v6"
+DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v28-four-model-protocol.json")
 
 
 class TransferModelContract(BaseModel):
@@ -83,9 +83,9 @@ def load_transfer_protocol_fixture(
     specification = {
         "version": 2,
         "agent_case_id": "aegis-transfer-003",
-        "benchmark_protocol_version": 27,
+        "benchmark_protocol_version": 28,
         "selection_fixture": "fixtures/reference/aegis-transfer-v27-selection.json",
-        "scorer_fixture": "fixtures/reference/aegis-transfer-v27-scorer.json",
+        "scorer_fixture": "fixtures/reference/aegis-transfer-v28-scorer.json",
         "models": (
             (
                 "deepseek-v4-pro",
@@ -104,6 +104,12 @@ def load_transfer_protocol_fixture(
                 "anthropic",
                 "anthropic-messages",
                 "ephemeral-request-cache-control",
+            ),
+            (
+                "gpt-5.6-sol",
+                "openai",
+                "openai-responses",
+                "implicit-prefix-30m",
             ),
         ),
     }
@@ -137,7 +143,7 @@ def load_transfer_protocol_fixture(
         fixture.max_tool_calls != 48
         or fixture.max_turns != 58
         or fixture.max_tokens != 4096
-        or fixture.repetitions_per_model != 3
+        or fixture.repetitions_per_model != 2
         or fixture.treatment_order_seed != 0
         or fixture.parallel_runs != 1
         or fixture.sampling != "provider-default; no seed sent"
@@ -219,7 +225,7 @@ def audit_transfer_protocol(
             scorer_audit.get("source_transfer_audit_sha256")
             == source_transfer_audit_sha256(source_audit)
         ),
-        "three_model_roster": len(fixture.models) == 3,
+        "four_model_roster": len(fixture.models) == 4,
         "scorer_audit_model_in_roster": (
             scorer_fixture.canonical_api_runner.model in roster_models
         ),
@@ -236,7 +242,12 @@ def audit_transfer_protocol(
             and scorer_fixture.canonical_api_runner.sampling == fixture.sampling
         ),
         "prompt_cache_enabled_for_all_models": all(
-            model.prompt_cache in {"provider-automatic-prefix", "ephemeral-request-cache-control"}
+            model.prompt_cache
+            in {
+                "provider-automatic-prefix",
+                "ephemeral-request-cache-control",
+                "implicit-prefix-30m",
+            }
             for model in fixture.models
         ),
         "paid_execution_requires_new_approval": (

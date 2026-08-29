@@ -259,7 +259,7 @@ def test_graph_destination_type_can_be_proven_by_the_exact_result_set() -> None:
 
 def test_valid_trace_self_join_matches_complete_canonical_edge_set() -> None:
     evaluation = evaluate_graph_run(
-        _run(Visibility.TABLE_SEMANTICS, _sql_trace()),
+        _run(Visibility.RAW, _sql_trace()),
         RCA100,
         _canonical_result(),
         database="case_04",
@@ -275,7 +275,7 @@ def test_trace_query_without_parent_child_join_is_rejected() -> None:
         "",
     )
     evaluation = evaluate_graph_run(
-        _run(Visibility.TABLE_SEMANTICS, _sql_trace(query)),
+        _run(Visibility.RAW, _sql_trace(query)),
         RCA100,
         _canonical_result(),
         database="case_04",
@@ -291,7 +291,7 @@ def test_trace_time_bounds_under_or_are_rejected() -> None:
         "(c.timestamp >= '2026-04-23 03:00:00' OR 1 = 0)",
     )
     evaluation = evaluate_graph_run(
-        _run(Visibility.TABLE_SEMANTICS, _sql_trace(query)),
+        _run(Visibility.RAW, _sql_trace(query)),
         RCA100,
         _canonical_result(),
         database="case_04",
@@ -311,7 +311,7 @@ def test_trace_window_on_server_alias_does_not_scope_the_client() -> None:
         )
     )
     evaluation = evaluate_graph_run(
-        _run(Visibility.TABLE_SEMANTICS, _sql_trace(query)),
+        _run(Visibility.RAW, _sql_trace(query)),
         RCA100,
         _canonical_result(),
         database="case_04",
@@ -350,7 +350,7 @@ def test_trace_citation_with_extra_columns_is_rejected() -> None:
     trace = trace.model_copy(update={"output": output.model_dump(mode="json")})
 
     evaluation = evaluate_graph_run(
-        _run(Visibility.TABLE_SEMANTICS, trace),
+        _run(Visibility.RAW, trace),
         RCA100,
         _canonical_result(),
         database="case_04",

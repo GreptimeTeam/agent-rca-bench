@@ -9,7 +9,6 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 class Visibility(StrEnum):
     RAW = "raw"
-    TABLE_SEMANTICS = "table_semantics"
     SEMANTIC_GRAPH = "semantic_graph"
 
 

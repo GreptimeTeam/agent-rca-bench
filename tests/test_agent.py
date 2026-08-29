@@ -12,6 +12,7 @@ from semantic_rca_bench.agent import (
     _describe_table_tool,
     _execute_sql_tool,
     _incident_prompt,
+    _openai_client,
     _search_table_semantics_tool,
     _semantic_graph_output,
     _semantic_graph_query,
@@ -59,23 +60,39 @@ def test_non_deepseek_model_uses_anthropic_endpoint(monkeypatch) -> None:
     assert calls == [client]
 
 
+def test_openai_client_uses_dedicated_api_credential(monkeypatch) -> None:
+    calls = []
+
+    def fake_client(**kwargs):
+        calls.append(kwargs)
+        return kwargs
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+    monkeypatch.setattr(agent_module.openai, "OpenAI", fake_client)
+
+    client = _openai_client()
+
+    assert client == {"api_key": "test-openai-key"}
+    assert calls == [client]
+
+
 def test_tools_expose_only_allowed_semantic_capabilities() -> None:
     raw_profile = str(_describe_table_tool(Visibility.RAW)["description"])
-    table_profile = str(_describe_table_tool(Visibility.TABLE_SEMANTICS)["description"])
+    graph_profile = str(_describe_table_tool(Visibility.SEMANTIC_GRAPH)["description"])
     graph_sql = str(_execute_sql_tool(Visibility.SEMANTIC_GRAPH)["description"])
     raw_sql = str(_execute_sql_tool(Visibility.RAW)["description"])
 
     assert "semantic metadata" not in raw_profile
-    assert "semantic metadata" in table_profile
+    assert "semantic metadata" in graph_profile
     assert "semantic_entities" not in raw_sql
     assert "semantic_entities" in graph_sql
     assert "semantic_relationships" in graph_sql
     assert "entity_id_attrs" in graph_sql
     assert "confidence is derivation certainty" in graph_sql
     assert "Missing edges" in graph_sql
-    assert "metadata_quality" in table_profile
-    assert "entity_declarations" in table_profile
-    assert "scope lists namespace or environment columns" in table_profile
+    assert "metadata_quality" in graph_profile
+    assert "entity_declarations" in graph_profile
+    assert "scope lists namespace or environment columns" in graph_profile
     assert "unmatched_count" in graph_sql
     assert "duration_max" in graph_sql
 
@@ -205,10 +222,10 @@ def test_graph_query_tool_is_only_available_in_graph_treatment() -> None:
 
 def test_semantic_catalog_search_is_hidden_from_raw_treatment() -> None:
     raw_names = {tool["name"] for tool in _agent_tools(Visibility.RAW, [], None)}
-    table_names = {tool["name"] for tool in _agent_tools(Visibility.TABLE_SEMANTICS, [], None)}
+    graph_names = {tool["name"] for tool in _agent_tools(Visibility.SEMANTIC_GRAPH, [], None)}
 
     assert "search_table_semantics" not in raw_names
-    assert "search_table_semantics" in table_names
+    assert "search_table_semantics" in graph_names
 
 
 def test_semantic_catalog_search_explains_metadata_boundary() -> None:
@@ -417,6 +434,143 @@ def test_deepseek_uses_automatic_cache_and_counts_native_usage(monkeypatch) -> N
     assert result.usage.input_tokens == 20
     assert result.usage.output_tokens == 5
     assert "cache_control" not in requests[0]
+
+
+def test_openai_responses_runner_replays_output_items_and_counts_cache_usage(monkeypatch) -> None:
+    diagnosis = {
+        "affected_component": "checkout",
+        "causal_dependency": None,
+        "causal_scope": "component",
+        "causal_operation": None,
+        "fault_category": "cpu",
+        "mechanism_code": "cpu_saturation",
+        "fault_type": "cpu saturation",
+        "confidence": 0.7,
+        "evidence": [],
+        "alternative_candidates": [],
+        "explanation": "CPU saturation is the most likely cause.",
+    }
+
+    class Response:
+        def __init__(self, output, raw_output, usage):
+            self.output = output
+            self._raw_output = raw_output
+            self._usage = usage
+            self.usage = SimpleNamespace(output_tokens=usage["output_tokens"])
+
+        def model_dump(self, *, mode: str) -> dict[str, object]:
+            assert mode == "json"
+            return {"output": self._raw_output, "usage": self._usage}
+
+    first_raw_output = [
+        {
+            "type": "reasoning",
+            "id": "reasoning-1",
+            "encrypted_content": "opaque-reasoning",
+        },
+        {
+            "type": "function_call",
+            "id": "item-1",
+            "call_id": "call-1",
+            "name": "execute_sql",
+            "arguments": '{"query":"SELECT 1"}',
+        },
+    ]
+    responses = iter(
+        [
+            Response(
+                [
+                    SimpleNamespace(type="reasoning"),
+                    SimpleNamespace(
+                        type="function_call",
+                        call_id="call-1",
+                        name="execute_sql",
+                        arguments='{"query":"SELECT 1"}',
+                    ),
+                ],
+                first_raw_output,
+                {
+                    "input_tokens": 120,
+                    "input_tokens_details": {
+                        "cached_tokens": 100,
+                        "cache_write_tokens": 10,
+                    },
+                    "output_tokens": 5,
+                },
+            ),
+            Response(
+                [
+                    SimpleNamespace(
+                        type="function_call",
+                        call_id="call-2",
+                        name="submit_diagnosis",
+                        arguments=json.dumps(diagnosis),
+                    )
+                ],
+                [
+                    {
+                        "type": "function_call",
+                        "id": "item-2",
+                        "call_id": "call-2",
+                        "name": "submit_diagnosis",
+                        "arguments": json.dumps(diagnosis),
+                    }
+                ],
+                {
+                    "input_tokens": 50,
+                    "input_tokens_details": {
+                        "cached_tokens": 20,
+                        "cache_write_tokens": 0,
+                    },
+                    "output_tokens": 6,
+                },
+            ),
+        ]
+    )
+    requests = []
+
+    def create(**kwargs):
+        requests.append(kwargs)
+        return next(responses)
+
+    provider = SimpleNamespace(responses=SimpleNamespace(create=create))
+    monkeypatch.setattr(agent_module, "_openai_client", lambda: provider)
+    gateway = SimpleNamespace(
+        client=SimpleNamespace(),
+        execute=lambda _: QueryResult(
+            query_id="q1",
+            columns=["value"],
+            rows=[[1]],
+            elapsed_seconds=0.01,
+        ),
+    )
+
+    result = run_agent(
+        gateway,  # type: ignore[arg-type]
+        CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
+        Visibility.RAW,
+        model="gpt-5.6-sol",
+        max_tool_calls=2,
+    )
+
+    assert result.diagnosis is not None
+    assert result.usage.input_tokens == 40
+    assert result.usage.output_tokens == 11
+    assert len(result.tool_calls) == 1
+    assert requests[0]["store"] is False
+    assert requests[0]["include"] == ["reasoning.encrypted_content"]
+    assert requests[0]["prompt_cache_key"].startswith("semantic-rca-raw-")
+    assert requests[0]["prompt_cache_options"] == {"mode": "implicit", "ttl": "30m"}
+    assert all(
+        tool["type"] == "function" and tool["strict"] is False for tool in requests[0]["tools"]
+    )
+    second_input = requests[1]["input"]
+    assert first_raw_output[0] in second_input
+    function_output = next(
+        item for item in second_input if item.get("type") == "function_call_output"
+    )
+    assert function_output["call_id"] == "call-1"
+    assert json.loads(function_output["output"])["query_id"] == "q01"
 
 
 def test_invalid_provider_usage_is_persisted_with_raw_response(monkeypatch) -> None:

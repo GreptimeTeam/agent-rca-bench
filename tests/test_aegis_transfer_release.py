@@ -3,7 +3,7 @@ from semantic_rca_bench.aegis_transfer_release import _measurement_model_summary
 
 def test_efficiency_pairs_do_not_require_unrelated_citation_integrity() -> None:
     runs = []
-    for position, visibility in enumerate(("raw", "table_semantics", "semantic_graph")):
+    for position, visibility in enumerate(("raw", "semantic_graph")):
         auditable = visibility == "semantic_graph"
         runs.append(
             {
@@ -30,5 +30,5 @@ def test_efficiency_pairs_do_not_require_unrelated_citation_integrity() -> None:
     summary = _measurement_model_summary(runs, "deepseek-v4-flash")
 
     assert summary["successful_runs"] == 1
-    assert summary["efficiency_eligible_runs"] == 3
-    assert summary["paired_treatment_deltas"]["table_semantics_minus_raw"]["eligible_pairs"] == 1
+    assert summary["efficiency_eligible_runs"] == 2
+    assert summary["paired_treatment_deltas"]["semantic_graph_minus_raw"]["eligible_pairs"] == 1

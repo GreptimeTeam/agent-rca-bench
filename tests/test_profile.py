@@ -148,7 +148,7 @@ def test_raw_profile_does_not_read_semantics() -> None:
 
 def test_semantic_profile_returns_structured_facts() -> None:
     client = StubClient()
-    result = TableProfiler(client, Visibility.TABLE_SEMANTICS).describe("traces")
+    result = TableProfiler(client, Visibility.SEMANTIC_GRAPH).describe("traces")
 
     semantics = result["semantics"]
     assert semantics["signal_type"] == "trace"
@@ -160,7 +160,7 @@ def test_semantic_profile_returns_structured_facts() -> None:
 def test_semantic_search_ranks_tables_by_matched_concepts() -> None:
     client = StubClient()
 
-    result = TableProfiler(client, Visibility.TABLE_SEMANTICS).search(
+    result = TableProfiler(client, Visibility.SEMANTIC_GRAPH).search(
         "redis memory",
         signal_type="metric",
         limit=2,
@@ -182,7 +182,7 @@ def test_raw_visibility_cannot_search_semantic_catalog() -> None:
 def test_semantic_search_does_not_rank_fields_omitted_from_sql_predicate() -> None:
     client = StubClient()
 
-    result = TableProfiler(client, Visibility.TABLE_SEMANTICS).search("prometheus")
+    result = TableProfiler(client, Visibility.SEMANTIC_GRAPH).search("prometheus")
 
     assert result["matched_table_count"] == 0
     assert result["matches"] == []
@@ -196,7 +196,7 @@ def test_semantic_search_keeps_io_as_one_token_and_drops_one_letter_terms() -> N
 
 
 def test_semantic_search_matches_short_terms_at_token_boundaries() -> None:
-    result = TableProfiler(StubClient(), Visibility.TABLE_SEMANTICS).search("I/O")
+    result = TableProfiler(StubClient(), Visibility.SEMANTIC_GRAPH).search("I/O")
 
     assert result["matched_table_count"] == 1
     assert result["matches"][0]["table"] == "system_io_w_s"
@@ -204,7 +204,7 @@ def test_semantic_search_matches_short_terms_at_token_boundaries() -> None:
 
 
 def test_semantic_search_expands_common_io_direction_abbreviations() -> None:
-    result = TableProfiler(StubClient(), Visibility.TABLE_SEMANTICS).search("write I/O")
+    result = TableProfiler(StubClient(), Visibility.SEMANTIC_GRAPH).search("write I/O")
 
     assert result["matches"][0]["table"] == "system_io_w_s"
     assert result["matches"][0]["matched_terms"] == ["write", "io"]

@@ -59,7 +59,7 @@ def _run(*, query: str | None = None, result: QueryResult | None = None) -> Disc
     result = result.model_copy(update={"query_id": "q01"})
     return DiscoveryAgentRun(
         run_id="run",
-        visibility=Visibility.TABLE_SEMANTICS,
+        visibility=Visibility.SEMANTIC_GRAPH,
         model="test-model",
         runner=AgentRunner.API,
         answer=DiscoveryAnswer(
@@ -362,7 +362,7 @@ def test_discovery_api_runner_uses_fixed_budget_and_turn_limit(monkeypatch) -> N
     run = run_discovery_agent(
         SimpleNamespace(client=SimpleNamespace(database="case_market_01")),
         MARKET,
-        Visibility.TABLE_SEMANTICS,
+        Visibility.SEMANTIC_GRAPH,
         runner=AgentRunner.API,
         model="test-model",
     )
@@ -373,6 +373,7 @@ def test_discovery_api_runner_uses_fixed_budget_and_turn_limit(monkeypatch) -> N
         "execute_sql",
         "describe_table",
         "search_table_semantics",
+        "query_semantic_graph",
     }
     assert MARKET.target_table not in captured["user_prompt"]
     assert run.turn_limit == 22

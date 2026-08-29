@@ -25,7 +25,8 @@ def run_orders(
 
 def benchmark_protocol() -> dict[str, object]:
     return {
-        "version": 27,
+        "version": 28,
+        "treatments": ["raw", "semantic_graph"],
         "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-entity-roles-v3",
         "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
         "semantic_graph": "half-open-window-key-deduplicated-diagnostics-query-tool-v7",
@@ -40,8 +41,8 @@ def benchmark_protocol() -> dict[str, object]:
         "case_context": "baseline-availability-v1",
         "database_load": "client-query-boundary-v1",
         "alert": "dataset-native-when-available-v1",
-        "agent_runner": "provider-specific-prompt-cache-and-partial-audit-preserved-v7",
-        "model_usage": "typed-cache-inclusion-and-provider-native-breakdown-v3",
+        "agent_runner": "anthropic-messages-and-openai-responses-v8",
+        "model_usage": "typed-cache-inclusion-and-provider-native-breakdown-v4",
         "diagnosis": "typed-causal-scope-operation-and-global-mechanism-v2",
         "investigation_prompt": "case-invariant-symmetric-hypothesis-discrimination-v2",
     }
@@ -57,8 +58,8 @@ def require_current_protocol(version: int) -> None:
 
 def discovery_protocol() -> dict[str, object]:
     return {
-        "version": 2,
-        "treatments": ["raw", "table_semantics"],
+        "version": 3,
+        "treatments": ["raw", "semantic_graph"],
         "task": "frozen-table-localization-and-temporal-evidence-v1",
         "scorer": "current-database-qualified-cited-query-canonical-result-v2",
         "tool_budget": 12,
@@ -74,8 +75,8 @@ def discovery_protocol() -> dict[str, object]:
 
 def graph_protocol() -> dict[str, object]:
     return {
-        "version": 3,
-        "treatments": ["table_semantics", "semantic_graph"],
+        "version": 4,
+        "treatments": ["raw", "semantic_graph"],
         "task": "direct-callee-max-error-red-evidence-v1",
         "scorer": "result-proven-destination-type-canonical-edge-set-v2",
         "window": "minute-aligned-half-open-v1",

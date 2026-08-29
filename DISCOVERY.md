@@ -1,9 +1,9 @@
 # Discovery micro-benchmark protocol
 
 This protocol isolates telemetry-table discovery and temporal evidence retrieval
-from end-to-end root-cause analysis (RCA). It tests whether Table Semantics helps
-an agent find a relevant signal in a wide schema and compare that signal across
-a declared incident boundary.
+from end-to-end root-cause analysis (RCA). It tests whether GreptimeDB Semantic Graph
+helps an agent find a relevant signal in a wide schema and compare that signal
+across a declared incident boundary.
 
 The micro-benchmark does not ask the agent to infer the affected component,
 fault mechanism, dependency, or onset. The task prompt supplies the component,
@@ -15,11 +15,11 @@ remain hidden.
 Run two paired treatments over the same ingested case:
 
 1. `raw`: `execute_sql` and raw `describe_table` access.
-2. `table_semantics`: the raw tools plus `search_table_semantics` and semantic
-   table profiles.
+2. `semantic_graph`: the complete Semantic Graph tool surface, including
+   `search_table_semantics`, semantic table profiles, and graph queries.
 
-Do not include Semantic Graph in this benchmark. Graph adds a different
-discovery mechanism and does not help isolate the Table Semantics delta.
+The task remains table discovery. The benchmark does not treat table semantics as a separate
+product treatment or attempt to attribute the result to one internal Graph capability.
 
 Use the same model, prompt, database, 12-call visible safety cap, and execution
 limits for both treatments. The API runner uses a 22-turn limit so a model that
@@ -100,7 +100,7 @@ Do not use an LLM judge. Invalid JSON, a missing citation, a truncated evidence
 result, a call rejected by the cap, or a runner failure counts as an
 unsuccessful run.
 
-The primary outcome is paired task success for `table_semantics` versus `raw`.
+The primary outcome is paired task success for `semantic_graph` versus `raw`.
 Within one case, report run-pair improvements, regressions, ties, and efficiency
 only as descriptive model variation; do not attach an inferential p-value to
 repetitions. Cross-case inference first takes the median jointly successful

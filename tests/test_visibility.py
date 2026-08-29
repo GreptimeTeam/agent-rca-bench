@@ -36,13 +36,12 @@ def test_raw_hides_semantic_surfaces() -> None:
     assert result.rows == []
 
 
-def test_table_semantics_hides_graph() -> None:
-    gateway = QueryGateway(StubClient(), Visibility.TABLE_SEMANTICS)  # type: ignore[arg-type]
+def test_semantic_graph_exposes_table_and_graph_surfaces() -> None:
+    gateway = QueryGateway(StubClient(), Visibility.SEMANTIC_GRAPH)  # type: ignore[arg-type]
     gateway.execute(
         "SELECT * FROM information_schema.table_semantics WHERE table_schema = 'benchmark_db'"
     )
-    with pytest.raises(QueryRejected):
-        gateway.execute("SELECT * FROM greptime_private.semantic_relationships")
+    gateway.execute("SELECT * FROM greptime_private.semantic_relationships")
 
 
 def test_graph_cannot_read_declared_storage() -> None:
@@ -66,7 +65,7 @@ def test_rejects_cross_database_query() -> None:
 
 
 def test_information_schema_query_requires_database_scope() -> None:
-    gateway = QueryGateway(StubClient(), Visibility.TABLE_SEMANTICS)  # type: ignore[arg-type]
+    gateway = QueryGateway(StubClient(), Visibility.SEMANTIC_GRAPH)  # type: ignore[arg-type]
 
     with pytest.raises(QueryRejected, match="must filter table_schema"):
         gateway.execute("SELECT table_name FROM information_schema.table_semantics")
@@ -85,14 +84,14 @@ def test_information_schema_query_requires_database_scope() -> None:
 def test_information_schema_scope_cannot_be_satisfied_by_text_or_bypass(
     query: str,
 ) -> None:
-    gateway = QueryGateway(StubClient(), Visibility.TABLE_SEMANTICS)  # type: ignore[arg-type]
+    gateway = QueryGateway(StubClient(), Visibility.SEMANTIC_GRAPH)  # type: ignore[arg-type]
 
     with pytest.raises(QueryRejected, match="AND-conjunctive"):
         gateway.execute(query)
 
 
 def test_information_schema_scope_accepts_qualified_conjunctive_predicate() -> None:
-    gateway = QueryGateway(StubClient(), Visibility.TABLE_SEMANTICS)  # type: ignore[arg-type]
+    gateway = QueryGateway(StubClient(), Visibility.SEMANTIC_GRAPH)  # type: ignore[arg-type]
 
     gateway.execute(
         "SELECT t.table_name FROM information_schema.tables AS t "
@@ -101,7 +100,7 @@ def test_information_schema_scope_accepts_qualified_conjunctive_predicate() -> N
 
 
 def test_information_schema_scope_rejects_predicate_from_nested_select() -> None:
-    gateway = QueryGateway(StubClient(), Visibility.TABLE_SEMANTICS)  # type: ignore[arg-type]
+    gateway = QueryGateway(StubClient(), Visibility.SEMANTIC_GRAPH)  # type: ignore[arg-type]
 
     with pytest.raises(QueryRejected, match="AND-conjunctive"):
         gateway.execute(
@@ -128,7 +127,7 @@ def test_discovery_filters_before_applying_row_limit() -> None:
 
     gateway = QueryGateway(
         CrowdedClient(),  # type: ignore[arg-type]
-        Visibility.TABLE_SEMANTICS,
+        Visibility.SEMANTIC_GRAPH,
         max_rows=1,
     )
 

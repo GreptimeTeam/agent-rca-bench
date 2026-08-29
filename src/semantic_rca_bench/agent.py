@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -13,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import anthropic
+import openai
 from pydantic import ValidationError
 
 from semantic_rca_bench.contracts import (
@@ -61,6 +63,7 @@ class StructuredAgentResult:
 
 ANTHROPIC_KEYCHAIN_SERVICE = "semantic-rca-bench-anthropic"
 DEEPSEEK_KEYCHAIN_SERVICE = "semantic-rca-bench-deepseek"
+OPENAI_KEYCHAIN_SERVICE = "semantic-rca-bench-openai"
 DEEPSEEK_ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
 
 TABLE_SEMANTICS_GUIDE = """
@@ -459,6 +462,23 @@ def run_structured_api_agent(
         max_turns = max_tool_calls + 10
     if max_turns < max_tool_calls + 1:
         raise ValueError("max_turns must allow every tool call and a final output turn")
+    if _uses_openai_responses(model):
+        return _run_openai_structured_api_agent(
+            gateway,
+            case_input,
+            visibility,
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            investigation_tools=investigation_tools,
+            output_tool=output_tool,
+            validate_output=validate_output,
+            max_tool_calls=max_tool_calls,
+            max_turns=max_turns,
+            max_tokens=max_tokens,
+            semantic_coverage=semantic_coverage,
+            prompt_cache=prompt_cache,
+        )
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_prompt}]
     session = InvestigationSession(
         gateway,
@@ -602,6 +622,182 @@ def run_structured_api_agent(
     )
 
 
+def _run_openai_structured_api_agent(
+    gateway: QueryGateway,
+    case_input: CaseInput,
+    visibility: Visibility,
+    *,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    investigation_tools: list[dict[str, object]],
+    output_tool: dict[str, object],
+    validate_output: Callable[[object], dict[str, object]],
+    max_tool_calls: int,
+    max_turns: int,
+    max_tokens: int,
+    semantic_coverage: dict[str, object] | None,
+    prompt_cache: bool,
+) -> StructuredAgentResult:
+    session = InvestigationSession(
+        gateway,
+        case_input,
+        visibility,
+        max_tool_calls=max_tool_calls,
+        semantic_coverage=semantic_coverage,
+        investigation_tools=investigation_tools,
+    )
+    responses: list[dict[str, object]] = []
+    usage = AgentUsage()
+    started = time.monotonic()
+    output_tool_name = str(output_tool["name"])
+    input_items: list[dict[str, object]] = [{"role": "user", "content": user_prompt}]
+    tools = [_openai_function_tool(tool) for tool in [*investigation_tools, output_tool]]
+    try:
+        client = _openai_client()
+    except Exception as error:
+        return _structured_result(
+            session,
+            usage,
+            responses,
+            started,
+            error=f"agent provider failed: {error}",
+        )
+
+    for _ in range(max_turns):
+        request: dict[str, object] = {
+            "model": model,
+            "instructions": system_prompt,
+            "input": deepcopy(input_items),
+            "tools": tools,
+            "max_output_tokens": max_tokens,
+            "parallel_tool_calls": True,
+            "include": ["reasoning.encrypted_content"],
+            "store": False,
+        }
+        if prompt_cache:
+            request["prompt_cache_key"] = _openai_prompt_cache_key(
+                visibility,
+                system_prompt,
+                tools,
+            )
+            request["prompt_cache_options"] = {"mode": "implicit", "ttl": "30m"}
+        try:
+            response = client.responses.create(**request)
+        except Exception as error:
+            return _structured_result(
+                session,
+                usage,
+                responses,
+                started,
+                error=f"agent provider failed: {error}",
+            )
+        try:
+            raw_response = response.model_dump(mode="json")
+            responses.append(raw_response)
+            usage.input_tokens += _uncached_input_tokens(raw_response)
+            usage.output_tokens += int(response.usage.output_tokens)
+            output_items = list(response.output)
+            raw_output_items = raw_response.get("output")
+            if not isinstance(raw_output_items, list):
+                raise AgentError("OpenAI response has no output item list")
+            input_items.extend(raw_output_items)
+        except Exception as error:
+            return _structured_result(
+                session,
+                usage,
+                responses,
+                started,
+                error=f"invalid provider response: {error}",
+            )
+
+        tool_calls = [
+            item for item in output_items if getattr(item, "type", None) == "function_call"
+        ]
+        try:
+            parsed_calls = [_openai_function_call(item) for item in tool_calls]
+        except AgentError as error:
+            return _structured_result(
+                session,
+                usage,
+                responses,
+                started,
+                error=f"invalid provider response: {error}",
+            )
+        output_call = next(
+            (item for item in parsed_calls if item[1] == output_tool_name),
+            None,
+        )
+        output_error: str | None = None
+        if output_call is not None:
+            _, _, output_arguments = output_call
+            try:
+                output = validate_output(output_arguments)
+            except (ValidationError, ValueError, TypeError) as error:
+                output_error = str(error)
+            else:
+                for _, tool_name, arguments in parsed_calls:
+                    if tool_name != output_tool_name:
+                        session.reject_unexecuted(
+                            tool_name,
+                            arguments,
+                            "not executed because the same response submitted valid final output",
+                        )
+                return _structured_result(
+                    session,
+                    usage,
+                    responses,
+                    started,
+                    output=output,
+                )
+
+        if not tool_calls:
+            input_items.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Continue the investigation or call {output_tool_name}. "
+                        f"You have {session.remaining} investigation tool calls remaining."
+                    ),
+                }
+            )
+            continue
+
+        for call_id, tool_name, arguments in parsed_calls:
+            if tool_name == output_tool_name:
+                invocation = ToolInvocation(
+                    content=f"invalid final output: {output_error}",
+                    is_error=True,
+                    remaining=session.remaining,
+                )
+            else:
+                invocation = session.invoke(tool_name, arguments)
+            input_items.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": invocation.content,
+                }
+            )
+        input_items.append(
+            {
+                "role": "user",
+                "content": (
+                    f"Investigation budget: {session.remaining} tool calls remain. "
+                    f"Call {output_tool_name} before the budget reaches zero."
+                ),
+            }
+        )
+
+    return _structured_result(
+        session,
+        usage,
+        responses,
+        started,
+        error=f"agent did not submit final output within {max_turns} turns",
+    )
+
+
 def _structured_result(
     session: InvestigationSession,
     usage: AgentUsage,
@@ -635,13 +831,73 @@ def _anthropic_client(model: str) -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=api_key)
 
 
+def _openai_client() -> openai.OpenAI:
+    api_key = _api_credential("OPENAI_API_KEY", OPENAI_KEYCHAIN_SERVICE)
+    return openai.OpenAI(api_key=api_key)
+
+
+def _uses_openai_responses(model: str) -> bool:
+    return model.startswith(("gpt-", "o1", "o3", "o4"))
+
+
+def _openai_function_tool(tool: dict[str, object]) -> dict[str, object]:
+    return {
+        "type": "function",
+        "name": tool["name"],
+        "description": tool["description"],
+        "parameters": tool["input_schema"],
+        "strict": False,
+    }
+
+
+def _openai_prompt_cache_key(
+    visibility: Visibility,
+    system_prompt: str,
+    tools: list[dict[str, object]],
+) -> str:
+    surface = json.dumps(
+        {"system_prompt": system_prompt, "tools": tools},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(surface.encode()).hexdigest()[:20]
+    return f"semantic-rca-{visibility.value}-{digest}"
+
+
+def _openai_function_call(item: object) -> tuple[str, str, dict[str, object]]:
+    call_id = getattr(item, "call_id", None)
+    name = getattr(item, "name", None)
+    arguments = getattr(item, "arguments", None)
+    if not isinstance(call_id, str) or not call_id:
+        raise AgentError("OpenAI function call has no call_id")
+    if not isinstance(name, str) or not name:
+        raise AgentError("OpenAI function call has no name")
+    if not isinstance(arguments, str):
+        raise AgentError("OpenAI function call arguments are not JSON text")
+    try:
+        decoded = json.loads(arguments)
+    except json.JSONDecodeError as error:
+        raise AgentError(f"OpenAI function call arguments are invalid JSON: {error}") from error
+    if not isinstance(decoded, dict):
+        raise AgentError("OpenAI function call arguments must decode to an object")
+    return call_id, name, decoded
+
+
 def _uncached_input_tokens(response: dict[str, object]) -> int:
     raw_usage = response.get("usage")
     if not isinstance(raw_usage, dict):
         raise AgentError("provider response has no usage object")
     if "prompt_cache_hit_tokens" in raw_usage and "prompt_cache_miss_tokens" in raw_usage:
         return int(raw_usage["prompt_cache_miss_tokens"] or 0)
-    return int(raw_usage.get("input_tokens", 0) or 0)
+    input_tokens = int(raw_usage.get("input_tokens", 0) or 0)
+    details = raw_usage.get("input_tokens_details")
+    if isinstance(details, dict):
+        cached = int(details.get("cached_tokens", 0) or 0)
+        cache_write = int(details.get("cache_write_tokens", 0) or 0)
+        if cached < 0 or cache_write < 0 or cached + cache_write > input_tokens:
+            raise AgentError("provider cache token breakdown exceeds input_tokens")
+        return input_tokens - cached - cache_write
+    return input_tokens
 
 
 def _api_credential(environment_variable: str, keychain_service: str) -> str:

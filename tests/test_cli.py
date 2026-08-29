@@ -37,11 +37,11 @@ from semantic_rca_bench.protocol import (
 def test_run_orders_rotate_every_level_through_each_position() -> None:
     levels = list(Visibility)
 
-    orders = _run_orders(levels, repetitions=3, seed=7)
+    orders = _run_orders(levels, repetitions=2, seed=7)
 
-    assert len(orders) == 3
+    assert len(orders) == 2
     assert all(set(order) == set(levels) for order in orders)
-    for position in range(3):
+    for position in range(2):
         assert {order[position] for order in orders} == set(levels)
 
 
@@ -57,15 +57,15 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v27-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v28-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
 
 
 def test_noncurrent_protocol_cannot_start_new_agent_execution() -> None:
-    require_current_protocol(27)
+    require_current_protocol(28)
 
-    with pytest.raises(ValueError, match="does not match current protocol v27"):
-        require_current_protocol(25)
+    with pytest.raises(ValueError, match="does not match current protocol v28"):
+        require_current_protocol(27)
 
 
 def test_run_accepts_subscription_runners() -> None:
@@ -174,7 +174,7 @@ def test_aegis_transfer_scorer_audit_uses_frozen_fixture_by_default() -> None:
         ]
     )
 
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v27-scorer.json"
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v28-scorer.json"
 
 
 def test_aegis_transfer_protocol_audit_uses_measurement_fixtures_without_paid_flag() -> None:
@@ -190,8 +190,8 @@ def test_aegis_transfer_protocol_audit_uses_measurement_fixtures_without_paid_fl
         ]
     )
 
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v27-scorer.json"
-    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v27-three-model-protocol.json")
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v28-scorer.json"
+    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v28-four-model-protocol.json")
     assert not hasattr(args, "confirm_paid_api")
 
 
@@ -230,9 +230,9 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v27-scorer.json"
+    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v28-scorer.json"
     assert str(preflight.protocol) == (
-        "fixtures/reference/aegis-transfer-v27-three-model-protocol.json"
+        "fixtures/reference/aegis-transfer-v28-four-model-protocol.json"
     )
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
@@ -256,12 +256,12 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
     assert paid.confirm_paid_api is True
     assert paid.database == "case_03"
     assert str(paid.selection) == "fixtures/reference/aegis-transfer-v27-selection.json"
-    assert str(paid.scorer) == "fixtures/reference/aegis-transfer-v27-scorer.json"
-    assert str(paid.protocol) == "fixtures/reference/aegis-transfer-v27-three-model-protocol.json"
+    assert str(paid.scorer) == "fixtures/reference/aegis-transfer-v28-scorer.json"
+    assert str(paid.protocol) == "fixtures/reference/aegis-transfer-v28-four-model-protocol.json"
     assert not hasattr(export, "confirm_paid_api")
-    assert str(export.scorer) == "fixtures/reference/aegis-transfer-v27-scorer.json"
+    assert str(export.scorer) == "fixtures/reference/aegis-transfer-v28-scorer.json"
     assert str(export.protocol) == (
-        "fixtures/reference/aegis-transfer-v27-three-model-protocol.json"
+        "fixtures/reference/aegis-transfer-v28-four-model-protocol.json"
     )
 
 
@@ -293,7 +293,7 @@ def test_aegis_transfer_run_requires_explicit_paid_api_confirmation() -> None:
     assert str(args.selection) == (
         "fixtures/reference/aegis-transfer-v27-calibration-selection.json"
     )
-    assert str(args.scorer) == ("fixtures/reference/aegis-transfer-v27-calibration-scorer.json")
+    assert str(args.scorer) == ("fixtures/reference/aegis-transfer-v28-calibration-scorer.json")
     assert not hasattr(args, "model")
 
 
@@ -332,7 +332,7 @@ def test_discovery_cli_freezes_balanced_two_treatment_schedule() -> None:
 
     assert args.repetitions == 2
     assert args.runner == "codex-subscription"
-    assert discovery_protocol()["treatments"] == ["raw", "table_semantics"]
+    assert discovery_protocol()["treatments"] == ["raw", "semantic_graph"]
     assert discovery_protocol()["prompt"] == "case-preserving-double-quoted-identifiers-v2"
     assert "discovery_micro_benchmark" not in benchmark_protocol()
 
@@ -344,7 +344,7 @@ def test_graph_cli_freezes_balanced_two_treatment_schedule() -> None:
 
     assert args.repetitions == 2
     assert args.runner == "codex-subscription"
-    assert graph_protocol()["treatments"] == ["table_semantics", "semantic_graph"]
+    assert graph_protocol()["treatments"] == ["raw", "semantic_graph"]
     assert "graph_micro_benchmark" not in benchmark_protocol()
 
 
@@ -457,9 +457,9 @@ def test_discovery_summary_pairs_success_and_efficiency_by_repetition() -> None:
     summary = _discovery_run_pair_descriptive(
         [
             item(0, "raw", False, None, None, None),
-            item(0, "table_semantics", True, 4, 10, 2),
+            item(0, "semantic_graph", True, 4, 10, 2),
             item(1, "raw", True, 6, 40, 3),
-            item(1, "table_semantics", True, 4, 10, 2),
+            item(1, "semantic_graph", True, 4, 10, 2),
         ]
     )
 
@@ -482,7 +482,7 @@ def test_discovery_summary_pairs_success_and_efficiency_by_repetition() -> None:
     assert "sign_test_p_value" not in json.dumps(summary)
 
 
-def test_graph_summary_pairs_semantic_graph_against_table_semantics() -> None:
+def test_graph_summary_pairs_semantic_graph_against_raw() -> None:
     def item(repetition, visibility, success, tools, rows):
         return {
             "repetition": repetition,
@@ -496,9 +496,9 @@ def test_graph_summary_pairs_semantic_graph_against_table_semantics() -> None:
 
     summary = _graph_run_pair_descriptive(
         [
-            item(0, "table_semantics", False, None, None),
+            item(0, "raw", False, None, None),
             item(0, "semantic_graph", True, 2, 10),
-            item(1, "table_semantics", True, 5, 40),
+            item(1, "raw", True, 5, 40),
             item(1, "semantic_graph", True, 2, 10),
         ]
     )

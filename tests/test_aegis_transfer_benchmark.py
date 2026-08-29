@@ -255,8 +255,8 @@ def test_canonical_transfer_wiring_balances_positions_and_uses_graph_envelope(mo
     )
 
     assert report["execution"] == {
-        "expected_runs": 9,
-        "completed_runs": 9,
+        "expected_runs": 4,
+        "completed_runs": 4,
         "runner_errors": 0,
         "budget_exhaustions": 0,
         "complete": True,
@@ -271,10 +271,10 @@ def test_canonical_transfer_wiring_balances_positions_and_uses_graph_envelope(mo
     assert all(
         window is None for level, window, _, _ in calls if level is not Visibility.SEMANTIC_GRAPH
     )
-    for position in range(3):
+    for position in range(2):
         assert {
-            report["runs"][repetition * 3 + position]["run"]["visibility"]
-            for repetition in range(3)
+            report["runs"][repetition * 2 + position]["run"]["visibility"]
+            for repetition in range(2)
         } == {level.value for level in Visibility}
     assert all(call[2].fault_taxonomy == [] for call in calls)
     assert all(call[3]["max_tool_calls"] == 48 for call in calls)

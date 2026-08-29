@@ -18,16 +18,14 @@
 
 ### Semantic layer causal measurement
 
-这是项目的主要研究问题。对同一个模型、case 和 telemetry，比较三个嵌套 treatment：
+这是项目的主要研究问题。对同一个模型、case 和 telemetry，比较两个 treatment：
 
 - `raw`
-- `table_semantics`
 - `semantic_graph`
 
-分别估计：
-
-- `table_semantics - raw`
-- `semantic_graph - table_semantics`
+估计 `semantic_graph - raw`。`semantic_graph` 表示完整的 GreptimeDB Semantic Graph
+产品面，包括 table semantics、entity、relationship 和诊断字段。Table semantics 不是独立
+treatment；需要归因内部能力时，应使用单独的 ablation protocol，不能混入主 benchmark。
 
 同一比较中的模型、prompt、case window、runner contract、工具预算、turn/timeout policy 和数据库内容必须一致。不同模型的能力差异不能混入 semantic-layer effect。
 
@@ -49,7 +47,7 @@
 - RCA validity：affected component、fault mechanism、evidence citation，以及有 canonical truth 时的 onset 和 causal dependency
 - Investigation efficiency：rows、calls、tokens、time 和可比较时的 cost
 - Agent reliability：runner failure、invalid tool call、budget exhaustion、repeated call 和 structured-output failure
-- Semantic utilization：catalog、table profile、Graph 使用方式，以及每个模型的 Table/Graph uplift
+- Semantic utilization：catalog、table profile 和 Graph 的使用方式，以及每个模型的 Graph uplift
 
 不要把异构 taxonomy、不同 treatment 或不同 runner 的结果压成一个不透明总分。优先发布 valid-completion rate、分层结果和 correctness-efficiency Pareto frontier。
 
@@ -63,7 +61,7 @@
   `database_load.rows_returned`（combined report 中为 `rows_returned`）和
   `evaluation.correct_completion_tool_calls`。两者使用冻结 protocol 定义的同一个
   eligibility guardrail。通用 RCA v23 guardrail 要求正确 diagnosis、至少一条 citation、
-  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v27 使用分层契约：
+  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v28 使用分层契约：
   diagnosis 正确、全部 required evidence claim 由 execution-valid citation 覆盖、且无
   runner error/budget hit 时可比较效率；无关的额外无效 citation 只使
   `auditable_completion=false`，不能抹掉已经成立的 required evidence 或效率轨迹。
@@ -106,7 +104,7 @@
 
 ## Benchmark 1.0 与研究结论边界
 
-`v24`、`v25`、`v26`、`v27` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
+`v24`、`v25`、`v26`、`v27`、`v28` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
 scorer 和实验装置的迭代，不是公开发布版本。冻结前的运行均为研发实验；当前代码不为
 旧研发周期保留 loader、scorer、resume、renderer 或其他兼容层。
 
@@ -120,9 +118,9 @@ scorer 和实验装置的迭代，不是公开发布版本。冻结前的运行�
 第一个公开版本是可执行、可审计的 benchmark 产品，不以证明跨系统普遍效果为
 完成条件。1.0 至少需要交付：
 
-1. 冻结且版本化的 benchmark specification、nested treatments、canonical API runner contract、deterministic scorer 和 case-level 统计方法。
+1. 冻结且版本化的 benchmark specification、paired treatments、canonical API runner contract、deterministic scorer 和 case-level 统计方法。
 2. 第三方可执行的数据获取、ingestion、no-model audit、agent run、public audit artifact export 和 report generation workflow。
-3. 一个小型、固定且可合法公开复现的 reference cohort，覆盖 Table-positive、Graph-positive 和 Graph-negative applicability roles；不要求用 case 数量证明总体效果。
+3. 一个小型、固定且可合法公开复现的 reference cohort，覆盖 Semantic Graph positive 和 negative applicability roles；不要求用 case 数量证明总体效果。
 4. 从 retrieval micro-benchmark 到完整 RCA 的 correctness-preserving transfer demonstration，并公开每个 case 的 effect size、负结果和 applicability boundary。
 5. Machine-readable public summary、sanitized audit-artifact hashes、reproduction commands、英文与中文报告，以及已知限制。
 

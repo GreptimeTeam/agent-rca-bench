@@ -2,8 +2,7 @@
 
 This protocol isolates witnessed service-call retrieval from end-to-end
 root-cause analysis (RCA). It tests whether the Semantic Graph helps an agent
-identify a direct callee with anomalous RED evidence after Table Semantics has
-already been exposed.
+identify a direct callee with anomalous RED evidence.
 
 The task does not ask for a root cause, affected component, causal dependency,
 fault mechanism, or onset. This keeps the result independent of the disputed
@@ -13,9 +12,9 @@ RCA100 component labels and of any unavailable dependency ground truth.
 
 Run two paired treatments over the same isolated case database:
 
-1. `table_semantics`: ordinary telemetry queries, semantic catalog search, and
-   semantic table profiles.
-2. `semantic_graph`: Table Semantics plus `query_semantic_graph`.
+1. `raw`: ordinary telemetry and schema queries.
+2. `semantic_graph`: the complete Semantic Graph tool surface, including semantic catalog
+   search, semantic table profiles, and `query_semantic_graph`.
 
 Use the same model, prompt, database, 12-call visible safety cap, and execution
 limits for both treatments. The API runner uses a 22-turn limit. The supported
@@ -74,7 +73,7 @@ The agent returns one structured object:
 The citation must cover every direct callee of the supplied caller. A query
 prefiltered to the submitted destination cannot prove that it is the maximum.
 
-In `table_semantics`, the citation must be a successful, untruncated SQL result
+In `raw`, the citation must be a successful, untruncated SQL result
 with exactly these fields: `src_type`, `src_id`, `dst_type`, `dst_id`,
 `rel_type`, `provenance`, `request_count`, and `error_count`. The query must read
 only the current database's trace table, pair client and server spans, scope the
@@ -104,8 +103,8 @@ deduplicated Graph aggregation. Their normalized edge sets must be identical.
 Invalid output, a missing citation, truncation, runner failure, or tool-cap
 rejection counts as an unsuccessful run. No LLM judge is used.
 
-The primary outcome is paired task success for `semantic_graph` versus
-`table_semantics`. Within one case, run-pair directions and efficiency are
+The primary outcome is paired task success for `semantic_graph` versus `raw`.
+Within one case, run-pair directions and efficiency are
 descriptive only and carry no inferential p-value. Cross-case inference first
 takes the median jointly successful run-pair delta per case. For pairs in which
 both treatments succeed, report tool calls and GreptimeDB rows returned through

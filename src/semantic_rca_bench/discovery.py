@@ -152,8 +152,8 @@ def run_discovery_agent(
     model: str,
     max_tool_calls: int = DISCOVERY_MAX_TOOL_CALLS,
 ) -> DiscoveryAgentRun:
-    if visibility not in {Visibility.RAW, Visibility.TABLE_SEMANTICS}:
-        raise ValueError("discovery benchmark supports only raw and table_semantics")
+    if visibility not in {Visibility.RAW, Visibility.SEMANTIC_GRAPH}:
+        raise ValueError("discovery benchmark supports only raw and semantic_graph")
     case_input = CaseInput(
         case_token=uuid.uuid4().hex,
         time_start=min(fixture.baseline.start, fixture.incident.start),
@@ -323,7 +323,7 @@ def audit_discovery_fixture(
     query = canonical_evidence_query(fixture)
     result = client.query(query, max_rows=10)
     predicate_match = evidence_predicate_matches(result, fixture)
-    catalog = TableProfiler(client, Visibility.TABLE_SEMANTICS).search(
+    catalog = TableProfiler(client, Visibility.SEMANTIC_GRAPH).search(
         fixture.signal,
         signal_type="metric",
         limit=50,

@@ -1,7 +1,7 @@
 [project]
 name = "semantic-rca-bench"
 version = "0.1.0"
-description = "Paired RCA evaluation for GreptimeDB table semantics and semantic graph"
+description = "Paired RCA evaluation for GreptimeDB Semantic Graph"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11,<3.12"
@@ -12,6 +12,7 @@ dependencies = [
   "huggingface-hub>=0.34.0",
   "mcp>=1.27.0,<2",
   "opentelemetry-proto>=1.36.0",
+  "openai>=2.0.0",
   "protobuf>=5.29.0",
   "pyarrow>=20.0.0",
   "pydantic>=2.11.0",

@@ -31,7 +31,7 @@ from semantic_rca_bench.evaluation import is_valid_evidence_trace
 from semantic_rca_bench.report import MODEL_PRICING, _estimated_api_cost, _raw_input_breakdown
 
 ARTIFACT_SCHEMA_VERSION = 1
-DEFAULT_MEASUREMENT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v27-scorer.json")
+DEFAULT_MEASUREMENT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v28-scorer.json")
 
 
 def build_measurement_artifact(
@@ -364,7 +364,7 @@ def _measurement_model_summary(
     pricing: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     treatments = {}
-    for visibility in ("raw", "table_semantics", "semantic_graph"):
+    for visibility in ("raw", "semantic_graph"):
         cells = [run for run in runs if run["visibility"] == visibility]
         treatment = {
             "runs": len(cells),
@@ -393,10 +393,7 @@ def _measurement_model_summary(
 def _paired_treatment_deltas(runs: list[dict[str, object]]) -> dict[str, object]:
     by_cell = {(int(run["repetition"]), str(run["visibility"])): run for run in runs}
     output = {}
-    for name, left, right in (
-        ("table_semantics_minus_raw", "raw", "table_semantics"),
-        ("semantic_graph_minus_table_semantics", "table_semantics", "semantic_graph"),
-    ):
+    for name, left, right in (("semantic_graph_minus_raw", "raw", "semantic_graph"),):
         pairs = []
         for repetition in sorted({int(run["repetition"]) for run in runs}):
             left_run = by_cell[(repetition, left)]

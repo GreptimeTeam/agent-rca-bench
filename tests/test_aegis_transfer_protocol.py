@@ -42,7 +42,7 @@ def _audits() -> tuple[dict[str, object], dict[str, object]]:
     return source, scorer_audit
 
 
-def test_three_model_protocol_freezes_cache_schedule_and_inference_boundary() -> None:
+def test_four_model_protocol_freezes_cache_schedule_and_inference_boundary() -> None:
     fixture = load_transfer_protocol_fixture()
     scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     source, scorer_audit = _audits()
@@ -56,12 +56,11 @@ def test_three_model_protocol_freezes_cache_schedule_and_inference_boundary() ->
         scorer_audit,
     )
 
-    assert audit["expected_paid_runs"] == 27
+    assert audit["expected_paid_runs"] == 16
     assert audit["paid_execution_authorized"] is False
     assert audit["orders_per_model"] == [
-        ["raw", "semantic_graph", "table_semantics"],
-        ["semantic_graph", "table_semantics", "raw"],
-        ["table_semantics", "raw", "semantic_graph"],
+        ["raw", "semantic_graph"],
+        ["semantic_graph", "raw"],
     ]
     assert audit["no_model_gates"]["prompt_cache_enabled_for_all_models"]
     assert audit["no_model_gates"]["benchmark_protocol_match"]
@@ -72,7 +71,7 @@ def test_three_model_protocol_freezes_cache_schedule_and_inference_boundary() ->
     assert audit["inference"]["correctness_pooled_across_models"] is False
 
 
-def test_three_model_protocol_drift_fails_closed(tmp_path: Path) -> None:
+def test_four_model_protocol_drift_fails_closed(tmp_path: Path) -> None:
     raw = json.loads(DEFAULT_PROTOCOL_FIXTURE.read_text())
     raw["models"][2]["prompt_cache"] = "disabled"
     path = tmp_path / "protocol.json"
@@ -82,7 +81,7 @@ def test_three_model_protocol_drift_fails_closed(tmp_path: Path) -> None:
         load_transfer_protocol_fixture(path)
 
 
-def test_three_model_protocol_requires_source_and_scorer_gates() -> None:
+def test_four_model_protocol_requires_source_and_scorer_gates() -> None:
     fixture = load_transfer_protocol_fixture()
     scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     source, scorer_audit = _audits()

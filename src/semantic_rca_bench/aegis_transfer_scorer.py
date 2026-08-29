@@ -39,8 +39,8 @@ from semantic_rca_bench.protocol import benchmark_protocol
 
 CALIBRATION_SCORER_REVISION = "aegis-transfer-request-delay-v3"
 FORMAL_SCORER_REVISION = "aegis-transfer-jvm-exception-v1"
-CALIBRATION_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v27-calibration-scorer.json")
-FORMAL_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v27-scorer.json")
+CALIBRATION_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v28-calibration-scorer.json")
+FORMAL_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v28-scorer.json")
 _SCORER_IDENTITIES = {
     CALIBRATION_SCORER_REVISION: (
         "aegis-transfer-002",
@@ -184,7 +184,7 @@ def canonical_api_runner_contract(*, model: str) -> dict[str, object]:
         "max_tool_calls": 48,
         "max_turns": 58,
         "max_tokens": 4096,
-        "repetitions": 3,
+        "repetitions": 2,
         "treatment_order_seed": 0,
         "parallel_runs": 1,
         "sampling": "provider-default; no seed sent",

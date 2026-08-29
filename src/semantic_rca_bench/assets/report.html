@@ -14,7 +14,6 @@
       --muted: #67706a;
       --border: #d6d2c8;
       --raw: #737b76;
-      --table: #c56b36;
       --graph: #167d72;
       --ok: #167d50;
       --bad: #bd3e3e;
@@ -30,7 +29,6 @@
         --muted: #aab4ad;
         --border: #344039;
         --raw: #aab4ad;
-        --table: #ee9864;
         --graph: #4fc4b7;
         --ok: #5fd092;
         --bad: #f17c78;
@@ -73,7 +71,6 @@
     .prediction span { color: var(--muted); }
     __REPORT_COLUMN_CSS__
     .series-raw { --series: var(--raw); }
-    .series-table_semantics { --series: var(--table); }
     .series-semantic_graph { --series: var(--graph); }
     .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
     .case-picker { display: flex; gap: 12px; align-items: center; margin: 14px 0 22px; }
@@ -215,8 +212,7 @@
       const cases = report.cases || [report];
       const labels = {
         raw: 'Raw telemetry',
-        table_semantics: 'Table semantics',
-        semantic_graph: 'Table semantics + Semantic Graph',
+        semantic_graph: 'GreptimeDB Semantic Graph',
       };
       const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       const num = value => new Intl.NumberFormat('en-US', {maximumFractionDigits: 1}).format(Number(value || 0));
@@ -271,6 +267,13 @@
           total.cacheRead += Number(usage.cache_read_input_tokens || 0);
           total.cacheCreate += Number(usage.cache_creation_input_tokens || 0);
           total.uncached += Number(usage.input_tokens || 0);
+          total.breakdown = true;
+        } else if (usage.input_tokens_details && typeof usage.input_tokens_details === 'object') {
+          const cached = Number(usage.input_tokens_details.cached_tokens || 0);
+          const cacheWrite = Number(usage.input_tokens_details.cache_write_tokens || 0);
+          total.cacheRead += cached;
+          total.cacheCreate += cacheWrite;
+          total.uncached += Number(usage.input_tokens || 0) - cached - cacheWrite;
           total.breakdown = true;
         }
         return total;
@@ -532,6 +535,30 @@
         document.querySelectorAll('.session-panel').forEach(p => p.hidden = p.id !== `session-${key}`);
       }
 
+      const responseBlocks = response => {
+        if (Array.isArray(response.content)) return response.content;
+        if (!Array.isArray(response.output)) return [];
+        return response.output.flatMap(item => {
+          if (item.type === 'function_call') {
+            let input = {};
+            try { input = JSON.parse(item.arguments || '{}'); } catch (_) { input = {raw_arguments: item.arguments}; }
+            return [{type: 'tool_use', name: item.name, input}];
+          }
+          if (item.type === 'message' && Array.isArray(item.content)) {
+            return item.content
+              .filter(block => block.type === 'output_text')
+              .map(block => ({type: 'text', text: block.text}));
+          }
+          if (item.type === 'reasoning') {
+            const summary = Array.isArray(item.summary)
+              ? item.summary.map(part => part.text || '').filter(Boolean).join('\n')
+              : '';
+            return [{type: 'thinking', thinking: summary}];
+          }
+          return [];
+        });
+      };
+
       function renderSession(item, id, tabId, hidden) {
         const run = runOf(item), ev = evaluationOf(item), d = run.diagnosis || {};
         const databaseLoad = databaseLoadOf(item);
@@ -542,7 +569,7 @@
         let cursor = 0;
         let rejectedCursor = 0;
         const turns = (run.responses || []).map((response, index) => {
-          const blocks = response.content || [];
+          const blocks = responseBlocks(response);
           const names = blocks.filter(b => b.type === 'tool_use').map(b => b.name);
           const body = blocks.map(block => {
             if (block.type === 'text') return `<div class="assistant-text">${esc(block.text)}</div>`;
@@ -565,7 +592,7 @@
             ? 'usage unavailable'
             : `${num(usage.input_tokens)} in · ${num(usage.output_tokens)} out`;
           return `<details class="turn series-${esc(run.visibility)}" ${index === 0 ? 'open' : ''}>
-            <summary><span class="turn-title">Turn ${String(index + 1).padStart(2, '0')} · ${esc(names.join(' + ') || response.stop_reason || 'analysis')}</span><span class="turn-meta">${turnUsage}</span></summary>
+            <summary><span class="turn-title">Turn ${String(index + 1).padStart(2, '0')} · ${esc(names.join(' + ') || response.stop_reason || response.status || 'analysis')}</span><span class="turn-meta">${turnUsage}</span></summary>
             <div class="turn-body">${body || '<span class="muted">No content blocks.</span>'}</div>
           </details>`;
         }).join('');

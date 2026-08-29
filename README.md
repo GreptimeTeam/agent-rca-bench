@@ -1,15 +1,13 @@
 # Semantic RCA Bench
 
-This project measures the marginal effect of GreptimeDB's table semantic layer
-and semantic graph on an LLM agent performing root-cause analysis.
+This project measures whether GreptimeDB Semantic Graph changes the efficiency
+of an LLM agent performing root-cause analysis.
 
-The benchmark uses three nested visibility modes over the same ingested data:
+The benchmark uses two visibility modes over the same ingested data:
 
 - `raw`: telemetry tables and ordinary schema metadata only.
-- `table_semantics`: adds a table profile over `information_schema.table_semantics`.
-- `semantic_graph`: includes Table Semantics, then adds the computed entity and relationship
-  tables plus a graph coverage summary. Reports display this cumulative treatment as
-  `Table Semantics + Semantic Graph`.
+- `semantic_graph`: the complete GreptimeDB Semantic Graph surface, including table semantics,
+  computed entities and relationships, and a graph coverage summary.
 
 The semantic tools simulate the context assembly planned for the GreptimeDB MCP
 server. The benchmark does not treat the raw system tables as a complete agent
@@ -117,9 +115,27 @@ snapshot is recorded in generated reports. A scored comparison must use one
 model for every visibility treatment; results from different models measure a
 model change, not a semantic-layer effect.
 
+OpenAI models use `OPENAI_API_KEY` or the `semantic-rca-bench-openai` Keychain
+service. The runner uses the Responses API with `store=false`, replays every
+response output item between tool turns, and requests encrypted reasoning items
+for stateless continuity. GPT-5.6 uses implicit 30-minute prefix caching, and
+reports account for uncached input, cache writes, cache reads, and output
+separately:
+
+```bash
+read -s "BENCH_KEY?OpenAI API key: "; echo
+security add-generic-password -U -a "$USER" \
+  -s semantic-rca-bench-openai -w "$BENCH_KEY"
+unset BENCH_KEY
+uv run semantic-rca run \
+  --report .reports/smoke-<run-id>.json \
+  --model gpt-5.6-sol \
+  --repetitions 2
+```
+
 The runner uses a seeded treatment order and rotates it once per repetition.
-Three repetitions place each of the three treatments in every execution
-position once. Reports mark cross-treatment latency as confounded when the
+Two repetitions place both treatments in both execution positions once. Reports mark
+cross-treatment latency as confounded when the
 schedule is not position-balanced. The runner applies the same base prompt,
 model, tool-call cap, and database to every level, and withholds ground truth
 until deterministic scoring. Each completed
@@ -137,6 +153,8 @@ generally additive to `request_count`, and `duration_max` uses the same populati
 sum and count. Table profiles distinguish the identity qualifier from separately reported scope
 columns. A nine-cell v26 calibration used only the consumed delay case. Protocol v27 retains the
 same agent-visible surface and hardens its no-model audit contract before any fresh-case run. The
+v28 cycle reduces the main comparison to Raw versus the complete GreptimeDB Semantic Graph surface
+and adds the OpenAI Responses API runner. The
 agent establishes the failing operation, uses discriminating queries instead of unconditional
 resource sweeps, and compares the same operation across the change point. The
 API runner sets its turn limit above the visible tool-call cap and records turn
@@ -148,7 +166,7 @@ returned rows and calls through a correct diagnosis with at least one
 execution-valid evidence citation as the RCA efficiency metrics. Both metrics
 use the same eligibility guardrail. Each case contributes the median eligible
 run-pair delta to inference; repetitions remain descriptive, and Holm adjustment
-covers the four primary tests. The protocol gives the agent the selected
+covers the two primary tests. The protocol gives the agent the selected
 dataset's fault taxonomy and requires one canonical fault mechanism from that
 taxonomy. The evaluator scores the mechanism by normalized equality. The diagnosis reports
 the directly affected workload or infrastructure component separately from an
@@ -171,7 +189,7 @@ aggregating Rate, Error, and Duration (RED) fields. It also distinguishes
 external alert identifiers from canonical graph entity IDs and tells the agent
 to discover graph endpoints before filtering by ID.
 
-Table Semantics and Graph treatments also expose semantic catalog search. It
+The Semantic Graph treatment also exposes semantic catalog search. It
 searches table names, semantic options, and entity declarations across the
 incident database, then ranks candidates by matched concepts. The tokenizer
 normalizes slash abbreviations such as `I/O` to `io`, removes one-letter terms
@@ -266,13 +284,14 @@ also completed. Their scorer used server duration for a fault injected between c
 start, required a hidden exact fault label, and constrained evidence to the canonical aggregate.
 The resulting zero eligible pairs are not a model-quality or semantic-layer result. Historical
 reports and the sanitized v25 artifact remain immutable records. The current runtime only accepts
-v27 for new agent execution and does not rescore, resume, or export earlier development report,
-scorer, or protocol schemas. A non-v27 execution request fails before contacting a provider.
+v28 for new agent execution and does not rescore, resume, or export earlier development report,
+scorer, or protocol schemas. A non-v28 execution request fails before contacting a provider.
 
-Protocol v27 retains the consumed delay case as development calibration and selects a fresh
-source-observable JVM exception case for measurement. The agent sees only `aegis-transfer-003`, an empty
-fault taxonomy, and the incident windows. Source labels, the source case name, and
-`causal_graph.json` remain outside the agent input and ingestion path.
+Protocol v28 reuses the trajectory-blind v27 selection of a fresh, source-observable JVM exception
+case for measurement. It compares Raw with the complete GreptimeDB Semantic Graph surface and adds
+OpenAI Responses API support. The agent sees only `aegis-transfer-003`, an empty fault taxonomy,
+and the incident windows. Source labels, the source case name, and `causal_graph.json` remain
+outside the agent input and ingestion path.
 
 Run the complete provider-free gate sequence before requesting paid execution:
 
@@ -282,29 +301,29 @@ uv run semantic-rca aegis-transfer-audit \
   --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
   --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
   --selection fixtures/reference/aegis-transfer-v27-selection.json \
-  --run-dir .instances/aegis-transfer-v27-source-01 \
+  --run-dir .instances/aegis-transfer-v28-source-01 \
   --database case_03 \
-  --output .reports/aegis-transfer-v27-source.json
+  --output .reports/aegis-transfer-v28-source.json
 
 uv run semantic-rca aegis-transfer-scorer-audit \
-  --transfer-audit .reports/aegis-transfer-v27-source.json \
-  --scorer fixtures/reference/aegis-transfer-v27-scorer.json \
-  --output .reports/aegis-transfer-v27-scorer.json
+  --transfer-audit .reports/aegis-transfer-v28-source.json \
+  --scorer fixtures/reference/aegis-transfer-v28-scorer.json \
+  --output .reports/aegis-transfer-v28-scorer.json
 
 uv run semantic-rca aegis-transfer-protocol-audit \
-  --source-audit .reports/aegis-transfer-v27-source.json \
-  --scorer-audit .reports/aegis-transfer-v27-scorer.json \
-  --scorer fixtures/reference/aegis-transfer-v27-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v27-three-model-protocol.json \
-  --output .reports/aegis-transfer-v27-protocol.json
+  --source-audit .reports/aegis-transfer-v28-source.json \
+  --scorer-audit .reports/aegis-transfer-v28-scorer.json \
+  --scorer fixtures/reference/aegis-transfer-v28-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v28-four-model-protocol.json \
+  --output .reports/aegis-transfer-v28-protocol.json
 
 uv run semantic-rca aegis-transfer-formal-preflight \
-  --source-audit .reports/aegis-transfer-v27-source.json \
-  --scorer-audit .reports/aegis-transfer-v27-scorer.json \
-  --protocol-audit .reports/aegis-transfer-v27-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v27-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v27-three-model-protocol.json \
-  --output .reports/aegis-transfer-v27-formal.json
+  --source-audit .reports/aegis-transfer-v28-source.json \
+  --scorer-audit .reports/aegis-transfer-v28-scorer.json \
+  --protocol-audit .reports/aegis-transfer-v28-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v28-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v28-four-model-protocol.json \
+  --output .reports/aegis-transfer-v28-formal.json
 ```
 
 The source oracle requires zero `retrieveByName` Error spans and zero exception logs during the
@@ -316,7 +335,7 @@ The Graph equality audit derives its comparison strategy from source boundary co
 that can be represented by `observed_at` minute bins must pass normal and abnormal raw/Graph exact
 equality separately and also pass the combined-window comparison. If both periods contain clients
 in the same minute, separate Graph periods are not representable; the audit records that fact and
-requires exact equality over the contiguous union. The selected v27 source follows the latter path.
+requires exact equality over the contiguous union. The selected source follows the latter path.
 Its normalized union contains 40 edges and has the same hash on both sides. Two independent
 ingestions produce the same source-semantic hash.
 
@@ -330,7 +349,7 @@ the exact source values. The no-model audit also proves that ASCII case normaliz
 free for service identity and the stored OTel role/status domains, so the scorer accepts equivalent
 `LOWER` or `UPPER` predicates without accepting a broader identity or enum set.
 
-Protocol v27 reports `diagnosis_correct`, `required_evidence_covered`, `citation_integrity`,
+Protocol v28 reports `diagnosis_correct`, `required_evidence_covered`, `citation_integrity`,
 `execution_reliability`, `auditable_completion`, and `efficiency_eligible` separately. The primary
 efficiency comparison requires correct structured diagnosis, required claim coverage, and reliable
 execution. An unrelated invalid extra citation blocks auditable completion without changing
@@ -338,9 +357,10 @@ diagnosis correctness or erasing valid required evidence. Every citation used to
 claim must still be execution-valid. Free-text `fault_type` is explanatory; the scored mechanism is
 the global, case-independent `mechanism_code`.
 
-The formal fixture freezes `deepseek-v4-pro`, `claude-sonnet-5`, and `claude-opus-4-8`. Each model
-runs three position-balanced repetitions over Raw, Table Semantics, and Semantic Graph, for 27
-cells. DeepSeek uses provider-managed prefix caching. Claude uses ephemeral request cache control.
+The formal fixture freezes `deepseek-v4-pro`, `claude-sonnet-5`, `claude-opus-4-8`, and
+`gpt-5.6-sol`. Each model runs two position-balanced repetitions over Raw and GreptimeDB Semantic
+Graph, for 16 cells. DeepSeek uses provider-managed prefix caching. Claude uses ephemeral request
+cache control. OpenAI uses implicit 30-minute prefix caching through the Responses API.
 Preflight records zero completed cells and does not read credentials, start GreptimeDB, or call a
 provider.
 
@@ -353,14 +373,14 @@ uv run semantic-rca aegis-transfer-formal-run \
   --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
   --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
   --selection fixtures/reference/aegis-transfer-v27-selection.json \
-  --run-dir .instances/aegis-transfer-v27-paid-01 \
+  --run-dir .instances/aegis-transfer-v28-paid-01 \
   --database case_03 \
-  --report .reports/aegis-transfer-v27-formal.json \
-  --source-audit-output .reports/aegis-transfer-v27-paid-01-source.json \
-  --scorer-audit-output .reports/aegis-transfer-v27-paid-01-scorer.json \
-  --protocol-audit-output .reports/aegis-transfer-v27-paid-01-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v27-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v27-three-model-protocol.json \
+  --report .reports/aegis-transfer-v28-formal.json \
+  --source-audit-output .reports/aegis-transfer-v28-paid-01-source.json \
+  --scorer-audit-output .reports/aegis-transfer-v28-paid-01-scorer.json \
+  --protocol-audit-output .reports/aegis-transfer-v28-paid-01-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v28-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v28-four-model-protocol.json \
   --confirm-paid-api
 ```
 
@@ -372,18 +392,18 @@ new audit output paths, and a new explicit approval. The preflight binds the pri
 content so a later pricing-table update cannot invalidate an in-progress report or alter its
 exported cost estimate.
 
-After all 27 cells complete, export the sanitized measurement artifact without a provider or
+After all 16 cells complete, export the sanitized measurement artifact without a provider or
 database connection:
 
 ```bash
 uv run semantic-rca aegis-transfer-measurement-export \
-  --run-report .reports/aegis-transfer-v27-formal.json \
-  --source-audit .reports/aegis-transfer-v27-paid-01-source.json \
-  --scorer-audit .reports/aegis-transfer-v27-paid-01-scorer.json \
-  --protocol-audit .reports/aegis-transfer-v27-paid-01-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v27-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v27-three-model-protocol.json \
-  --output artifacts/measurement/aegis-transfer-v27-three-model.json
+  --run-report .reports/aegis-transfer-v28-formal.json \
+  --source-audit .reports/aegis-transfer-v28-paid-01-source.json \
+  --scorer-audit .reports/aegis-transfer-v28-paid-01-scorer.json \
+  --protocol-audit .reports/aegis-transfer-v28-paid-01-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v28-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v28-four-model-protocol.json \
+  --output artifacts/measurement/aegis-transfer-v28-four-model.json
 ```
 
 The exporter deterministically rescores every cell. It excludes provider responses, free-form
@@ -398,7 +418,7 @@ the result carries the same query ID, and the evidence claim is non-empty.
 Catalog and schema discovery are not incident evidence. This check prevents
 failed or fabricated references from unlocking efficiency metrics, but it does
 not prove that the cited rows support the diagnosis. The Aegis transfer scorer
-adds a source-specific deterministic evidence-support predicate. Protocol v27
+adds a source-specific deterministic evidence-support predicate. Protocol v28
 also requires each citation to declare the structured claim types it supports,
 then evaluates causal-scope coverage, mechanism coverage, referential integrity,
 and execution reliability separately. The generic RCA scorer still does not
@@ -410,7 +430,8 @@ Raw response usage keeps those fields so reports reconstruct total model-visible
 input and billing. Anthropic API requests enable automatic
 5-minute prompt caching. DeepSeek context caching is enabled by the provider and
 requires no request flag; its Anthropic-compatible endpoint ignores
-`cache_control`. Codex reads exactly one cumulative
+`cache_control`. OpenAI Responses requests use implicit 30-minute caching and
+persist `cached_tokens` and `cache_write_tokens` in raw usage. Codex reads exactly one cumulative
 `turn.completed` event and persists input including cache without a cache
 breakdown. Claude adds input, cache creation, and cache reads into
 `input_tokens`. Provider context includes system prompts, tool schemas, prior
@@ -421,11 +442,11 @@ usage provides that split.
 
 The implemented `discovery-audit` command checks the frozen evidence query and
 catalog top-five gate without calling a model. `discovery-run` is a separate,
-model-invoking command for the paired Raw/Table Semantics pilot. See
+model-invoking command for the paired Raw/Semantic Graph task. See
 `DISCOVERY.md` for the exact fixtures, scoring contract, and commands.
 
-The separate [`GRAPH.md`](GRAPH.md) protocol compares Table Semantics with
-Table Semantics plus Semantic Graph on witnessed service-call retrieval. Its
+The separate [`GRAPH.md`](GRAPH.md) protocol compares Raw with GreptimeDB Semantic Graph on
+witnessed service-call retrieval. Its
 `graph-audit` command independently reconstructs calls from raw spans and
 requires exact equality with the Graph edge set before any model run.
 

@@ -949,7 +949,7 @@ def discovery_run(args: argparse.Namespace) -> int:
         raise ValueError("discovery repetitions must be a positive multiple of 2")
     source, fixture, endpoint, database = _discovery_source(args.report, args.fixture)
     runner = AgentRunner(args.runner)
-    levels = [Visibility.RAW, Visibility.TABLE_SEMANTICS]
+    levels = [Visibility.RAW, Visibility.SEMANTIC_GRAPH]
     orders = _run_orders(levels, args.repetitions, args.seed)
     output = args.output or _discovery_output(fixture.fixture_id, runner, args.model)
     expected = {
@@ -1107,7 +1107,7 @@ def graph_run(args: argparse.Namespace) -> int:
         args.report, args.fixture
     )
     runner = AgentRunner(args.runner)
-    levels = [Visibility.TABLE_SEMANTICS, Visibility.SEMANTIC_GRAPH]
+    levels = [Visibility.RAW, Visibility.SEMANTIC_GRAPH]
     orders = _run_orders(levels, args.repetitions, args.seed)
     output = args.output or _graph_output(fixture.fixture_id, runner, args.model)
     expected = {
@@ -1241,17 +1241,17 @@ def _discovery_run_pair_descriptive(runs: list[object]) -> dict[str, object]:
     paired = []
     for repetition in sorted({key[0] for key in by_key}):
         raw = by_key.get((repetition, Visibility.RAW.value))
-        semantics = by_key.get((repetition, Visibility.TABLE_SEMANTICS.value))
-        if raw is not None and semantics is not None:
-            paired.append((raw, semantics))
+        graph = by_key.get((repetition, Visibility.SEMANTIC_GRAPH.value))
+        if raw is not None and graph is not None:
+            paired.append((raw, graph))
 
     improvements = regressions = ties = 0
-    for raw, semantics in paired:
+    for raw, graph in paired:
         raw_success = _discovery_success(raw)
-        semantics_success = _discovery_success(semantics)
-        if semantics_success and not raw_success:
+        graph_success = _discovery_success(graph)
+        if graph_success and not raw_success:
             improvements += 1
-        elif raw_success and not semantics_success:
+        elif raw_success and not graph_success:
             regressions += 1
         else:
             ties += 1
@@ -1264,14 +1264,14 @@ def _discovery_run_pair_descriptive(runs: list[object]) -> dict[str, object]:
     ):
         deltas: list[float] = []
         better = worse = metric_ties = 0
-        for raw, semantics in paired:
-            if not _discovery_success(raw) or not _discovery_success(semantics):
+        for raw, graph in paired:
+            if not _discovery_success(raw) or not _discovery_success(graph):
                 continue
             raw_value = _discovery_metric(raw, metric)
-            semantics_value = _discovery_metric(semantics, metric)
-            if raw_value is None or semantics_value is None:
+            graph_value = _discovery_metric(graph, metric)
+            if raw_value is None or graph_value is None:
                 continue
-            delta = semantics_value - raw_value
+            delta = graph_value - raw_value
             deltas.append(delta)
             if delta < 0:
                 better += 1
@@ -1327,18 +1327,18 @@ def _graph_run_pair_descriptive(runs: list[object]) -> dict[str, object]:
 
     paired = []
     for repetition in sorted({key[0] for key in by_key}):
-        table = by_key.get((repetition, Visibility.TABLE_SEMANTICS.value))
+        raw = by_key.get((repetition, Visibility.RAW.value))
         graph = by_key.get((repetition, Visibility.SEMANTIC_GRAPH.value))
-        if table is not None and graph is not None:
-            paired.append((table, graph))
+        if raw is not None and graph is not None:
+            paired.append((raw, graph))
 
     improvements = regressions = ties = 0
-    for table, graph in paired:
-        table_success = _graph_success(table)
+    for raw, graph in paired:
+        raw_success = _graph_success(raw)
         graph_success = _graph_success(graph)
-        if graph_success and not table_success:
+        if graph_success and not raw_success:
             improvements += 1
-        elif table_success and not graph_success:
+        elif raw_success and not graph_success:
             regressions += 1
         else:
             ties += 1
@@ -1347,14 +1347,14 @@ def _graph_run_pair_descriptive(runs: list[object]) -> dict[str, object]:
     for metric in ("tool_calls_through_evidence", "rows_returned_through_evidence"):
         deltas: list[float] = []
         better = worse = metric_ties = 0
-        for table, graph in paired:
-            if not _graph_success(table) or not _graph_success(graph):
+        for raw, graph in paired:
+            if not _graph_success(raw) or not _graph_success(graph):
                 continue
-            table_value = _graph_metric(table, metric)
+            raw_value = _graph_metric(raw, metric)
             graph_value = _graph_metric(graph, metric)
-            if table_value is None or graph_value is None:
+            if raw_value is None or graph_value is None:
                 continue
-            delta = graph_value - table_value
+            delta = graph_value - raw_value
             deltas.append(delta)
             if delta < 0:
                 better += 1

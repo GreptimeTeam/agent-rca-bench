@@ -8,8 +8,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from statistics import median
 
-from semantic_rca_bench.protocol import discovery_protocol, graph_protocol
-
 DISCOVERY_REPORT_FILES = (
     "discovery-v2-measurement-codex-luna-market-c1-email-read.json",
     "discovery-v2-measurement-codex-luna-market-c2-email-write.json",
@@ -23,6 +21,37 @@ GRAPH_REPORT_FILES = (
     "graph-v3-measurement-codex-luna-hs4-geo.json",
     "graph-v3-measurement-codex-luna-hs1-rate.json",
 )
+
+# These contracts belong to the immutable v2/v3 input reports named above. They
+# are artifact inputs, not runtime support for retired benchmark protocols.
+FROZEN_DISCOVERY_PROTOCOL = {
+    "version": 2,
+    "treatments": ["raw", "table_semantics"],
+    "task": "frozen-table-localization-and-temporal-evidence-v1",
+    "scorer": "current-database-qualified-cited-query-canonical-result-v2",
+    "tool_budget": 12,
+    "api_turn_limit": 22,
+    "subscription_turn_limit": None,
+    "subscription_process_timeout_seconds": 1800,
+    "catalog": "token-safe-io-direction-aware-v1",
+    "prompt": "case-preserving-double-quoted-identifiers-v2",
+    "case_role": "explicit-development-or-measurement-v1",
+    "fixture_binding": "source-case-matched-external-fixture-v1",
+}
+FROZEN_GRAPH_PROTOCOL = {
+    "version": 3,
+    "treatments": ["table_semantics", "semantic_graph"],
+    "task": "direct-callee-max-error-red-evidence-v1",
+    "scorer": "result-proven-destination-type-canonical-edge-set-v2",
+    "window": "minute-aligned-half-open-v1",
+    "tool_budget": 12,
+    "api_turn_limit": 22,
+    "subscription_turn_limit": None,
+    "subscription_process_timeout_seconds": 1800,
+    "case_role": "explicit-development-or-measurement-v1",
+    "fixture_binding": "source-case-matched-external-fixture-v1",
+    "selection": "manifest-ranked-prior-trajectory-excluded-v1",
+}
 
 
 def _sha256(path: Path) -> str:
@@ -275,7 +304,7 @@ def build_formal_measurement_summary(repo_root: Path) -> dict[str, object]:
                 "selection_manifest_sha256": _sha256(discovery_selection),
                 **summarize_benchmark(
                     [reports / name for name in DISCOVERY_REPORT_FILES],
-                    expected_protocol=discovery_protocol(),
+                    expected_protocol=FROZEN_DISCOVERY_PROTOCOL,
                     expected_source_cases=_selected_sources(
                         discovery_selection, "selected_after_no_model_gate"
                     ),
@@ -294,7 +323,7 @@ def build_formal_measurement_summary(repo_root: Path) -> dict[str, object]:
                 "selection_manifest_sha256": _sha256(graph_selection),
                 **summarize_benchmark(
                     [reports / name for name in GRAPH_REPORT_FILES],
-                    expected_protocol=graph_protocol(),
+                    expected_protocol=FROZEN_GRAPH_PROTOCOL,
                     expected_source_cases=_selected_sources(
                         graph_selection, "selected_after_source_gate"
                     ),

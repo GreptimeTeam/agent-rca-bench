@@ -14,7 +14,7 @@ but it must record every lossy or synthetic protocol field.
 | OpenRCA 1.0 Bank | OpenRCA Bank | Wide enterprise metric schema and legacy multimodal telemetry | Included | Not applicable: no standard entity identity or span roles |
 | OpenRCA 1.0 Market | OpenRCA Market | Multi-level node, pod, and service failures over wide legacy telemetry | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
 | OpenRCA 1.0 Telecom | OpenRCA Telecom | Independent telecom/database system with metrics and traces but no logs | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
-| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v24-v26 development evidence plus a frozen protocol v27 measurement preflight | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
+| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v24-v27 development evidence plus a frozen protocol v28 measurement preflight | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
 | OpenRCA 2.0 ops-lite | Hotel Reservation | Native OTel and verified causal paths | Provisional; internal protocol-formal measurement only | Positive when standard client/server spans witness service calls |
 | Amazon PetShop | Amazon PetShop | Component-level causal RCA over service metrics | Rejected | Metric-only; no incident-local mechanism label or continuous baseline |
 | AnoMod TrainTicket | TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
@@ -385,8 +385,10 @@ therefore rejected rather than repaired.
   source edge set, then compares the complete raw and Graph edge sets over the contiguous union.
   The union has 40 edges, and both sides have SHA-256
   `adde43389704b978531ae025cd478907a4eb0c7be473f361b746c96606d07d45`.
-- `fixtures/reference/aegis-transfer-v27-three-model-protocol.json` freezes 27 API cells over
-  `deepseek-v4-pro`, `claude-sonnet-5`, and `claude-opus-4-8`. The two independent final source
+- `fixtures/reference/aegis-transfer-v28-four-model-protocol.json` freezes 16 API cells over Raw
+  and GreptimeDB Semantic Graph for `deepseek-v4-pro`, `claude-sonnet-5`,
+  `claude-opus-4-8`, and `gpt-5.6-sol`. It reuses the trajectory-blind v27 selection while binding
+  the v28 scorer and runner surface. The two independent final source
   audits have the same semantic hash,
   `6ee4f3c43dfffca8e63195f2d614a70be63b75663a9a54a1c03a44c3b9d38428`. Preflight does not
   authorize or execute any provider call.

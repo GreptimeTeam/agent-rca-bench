@@ -29,7 +29,7 @@ from semantic_rca_bench.protocol import benchmark_protocol, require_current_prot
 from semantic_rca_bench.report import MODEL_PRICING
 
 FORMAL_REPORT_SCHEMA_VERSION = 2
-FORMAL_REPORT_MODE = "aegis-transfer-three-model-api-run"
+FORMAL_REPORT_MODE = "aegis-transfer-api-run"
 
 FormalAgent = Callable[..., AgentRun]
 ReportUpdate = Callable[[dict[str, object]], None]

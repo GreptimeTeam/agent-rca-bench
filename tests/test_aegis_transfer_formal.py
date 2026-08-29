@@ -325,7 +325,7 @@ def test_preflight_expands_frozen_schedule_without_provider_access(monkeypatch) 
 
     report, *_ = _preflight()
 
-    assert len(report["schedule"]) == 27
+    assert len(report["schedule"]) == 16
     assert report["execution"]["completed_runs"] == 0
     assert report["authorization"] == {
         "paid_api_required": True,
@@ -333,10 +333,11 @@ def test_preflight_expands_frozen_schedule_without_provider_access(monkeypatch) 
         "confirmation_scope": "per invocation; supplied out of band and never persisted",
         "preflight_calls_provider": False,
     }
-    assert [cell["model"] for cell in report["schedule"][::9]] == [
+    assert [cell["model"] for cell in report["schedule"][::4]] == [
         "deepseek-v4-pro",
         "claude-sonnet-5",
         "claude-opus-4-8",
+        "gpt-5.6-sol",
     ]
     assert (
         report["bindings"]["scorer_fixture_sha256"]
@@ -377,23 +378,25 @@ def test_preflight_binds_pricing_snapshot_across_resume(monkeypatch) -> None:
         )
 
 
-def test_v27_formal_protocol_binds_fresh_case_and_strong_model_roster() -> None:
+def test_v28_formal_protocol_binds_fresh_case_and_strong_model_roster() -> None:
     protocol = load_transfer_protocol_fixture(DEFAULT_PROTOCOL_FIXTURE)
     scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     schedule = formal_schedule(protocol)
 
     assert protocol.agent_case_id == scorer.agent_case_id == "aegis-transfer-003"
-    assert protocol.benchmark_protocol_version == 27
+    assert protocol.benchmark_protocol_version == 28
     assert [model.model for model in protocol.models] == [
         "deepseek-v4-pro",
         "claude-sonnet-5",
         "claude-opus-4-8",
+        "gpt-5.6-sol",
     ]
-    assert len(schedule) == 27
-    assert [cell["model"] for cell in schedule[::9]] == [
+    assert len(schedule) == 16
+    assert [cell["model"] for cell in schedule[::4]] == [
         "deepseek-v4-pro",
         "claude-sonnet-5",
         "claude-opus-4-8",
+        "gpt-5.6-sol",
     ]
 
 
@@ -467,8 +470,8 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window(monkeypatch
     )
 
     assert report["execution"] == {
-        "expected_runs": 27,
-        "completed_runs": 27,
+        "expected_runs": 16,
+        "completed_runs": 16,
         "runner_errors": 0,
         "budget_exhaustions": 0,
         "complete": True,
@@ -518,7 +521,7 @@ def test_formal_runner_persists_failed_cell_and_continues_batch(monkeypatch) -> 
         run_agent_fn=failed_agent,
     )
 
-    assert calls == 27
+    assert calls == 16
     assert report["runs"][0]["model"] == first_model
     assert report["runs"][0]["run"]["error"] == "provider unavailable"
     assert report["execution"]["runner_errors"] == 1
@@ -609,7 +612,7 @@ def test_formal_runner_checks_protocol_with_wrapped_agent(monkeypatch) -> None:
         raise RuntimeError(f"protocol guard called for v{version}")
 
     monkeypatch.setattr(formal_module, "require_current_protocol", reject_protocol)
-    with pytest.raises(RuntimeError, match="protocol guard called for v27"):
+    with pytest.raises(RuntimeError, match="protocol guard called for v28"):
         execute_formal_runs(
             _Client(),  # type: ignore[arg-type]
             _case(),
@@ -750,10 +753,11 @@ def test_measurement_export_rescores_all_models_and_removes_private_payloads(mon
         "deepseek-v4-pro",
         "claude-sonnet-5",
         "claude-opus-4-8",
+        "gpt-5.6-sol",
     }
-    assert len(artifact["experiment"]["runs"]) == 27
+    assert len(artifact["experiment"]["runs"]) == 16
     assert all(
-        report["successful_runs"] == 9
+        report["successful_runs"] == 4
         for report in artifact["experiment"]["model_reports"].values()
     )
     serialized = str(artifact)

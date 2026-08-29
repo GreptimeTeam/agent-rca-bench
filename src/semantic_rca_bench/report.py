@@ -14,6 +14,19 @@ CASE_REPORT_SCHEMA_VERSION = 5
 COMBINED_REPORT_SCHEMA_VERSION = 6
 
 MODEL_PRICING = {
+    "gpt-5.6-sol": {
+        "currency": "USD",
+        "input_per_million": 4.0,
+        "input_cache_write_per_million": 5.0,
+        "input_cache_hit_per_million": 0.4,
+        "output_per_million": 20.0,
+        "checked_at": "2026-08-30",
+        "note": (
+            "Promotional pricing is available at least through 2026-11-21. "
+            "Cache writes cost 1.25 times uncached input."
+        ),
+        "source": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+    },
     "claude-opus-4-8": {
         "currency": "USD",
         "input_per_million": 5.0,
@@ -116,6 +129,22 @@ def _raw_input_breakdown(run: Mapping[str, object]) -> tuple[int, int, int, bool
             cache_creation += int(usage.get("cache_creation_input_tokens", 0) or 0)
             uncached += int(usage.get("input_tokens", 0) or 0)
             breakdown_responses += 1
+        else:
+            details = usage.get("input_tokens_details")
+            if isinstance(details, Mapping):
+                input_tokens = int(usage.get("input_tokens", 0) or 0)
+                cached = int(details.get("cached_tokens", 0) or 0)
+                cache_write = int(details.get("cache_write_tokens", 0) or 0)
+                if (
+                    input_tokens >= 0
+                    and cached >= 0
+                    and cache_write >= 0
+                    and cached + cache_write <= input_tokens
+                ):
+                    uncached += input_tokens - cached - cache_write
+                    cache_read += cached
+                    cache_creation += cache_write
+                    breakdown_responses += 1
     return (
         uncached,
         cache_read,
@@ -292,10 +321,7 @@ def _paired_primary_comparisons(
 ) -> list[dict[str, object]]:
     output = []
     for metric in ("rows_returned", "correct_completion_tool_calls"):
-        for candidate, baseline in (
-            ("table_semantics", "raw"),
-            ("semantic_graph", "table_semantics"),
-        ):
+        for candidate, baseline in (("semantic_graph", "raw"),):
             run_pair_deltas = []
             case_deltas = []
             for report in case_reports:

@@ -9,14 +9,15 @@ Measure whether GreptimeDB's semantic surfaces improve the investigation
 efficiency of an LLM agent performing root-cause analysis over real, labeled
 failure telemetry without reducing diagnosis validity.
 
-For every case, compare three nested treatments over identical telemetry:
+For every case, compare two treatments over identical telemetry:
 
 1. `raw`: telemetry tables and ordinary schema metadata.
-2. `table_semantics`: raw access plus Table Semantics.
-3. `semantic_graph`: Table Semantics plus computed entities and relationships.
+2. `semantic_graph`: the complete GreptimeDB Semantic Graph surface, including
+   table semantics, computed entities and relationships, and diagnostic fields.
 
-The benchmark measures `table_semantics - raw` and
-`semantic_graph - table_semantics`. It does not assume either delta is positive.
+The benchmark measures `semantic_graph - raw`. It does not assume the delta is positive.
+Table semantics is an internal Graph capability, not a main treatment. A separate
+ablation protocol may isolate internal contributions without changing the main comparison.
 Returned rows, tool calls, model tokens, and elapsed time are efficiency
 outcomes. Correct task output is an eligibility guardrail for comparing
 completion efficiency, not the primary treatment effect. Accuracy changes may
@@ -140,7 +141,7 @@ the same deterministic rule to a replacement.
 - Label cases as `development` or `measurement`. Never use a case for formal
   measurement after its failures influenced the protocol or prompt.
 - Compare treatment latency only when every treatment appears equally often in
-  every execution position. With three treatments, one repetition is not
+  every execution position. With two treatments, one repetition is not
   position-balanced.
 - Report correctness per dataset when answer taxonomies differ. Do not sum
   heterogeneous labels into one accuracy number.
@@ -150,7 +151,7 @@ The pre-registered primary efficiency metrics are GreptimeDB rows returned and
 tool calls through a jointly correct diagnosis with at least one valid evidence
 citation. Apply the same eligibility guardrail to both metrics. For each case,
 take the median eligible run-pair delta; use the case medians for the exact
-two-sided sign test and adjust the four primary tests with Holm's method. Run-pair
+two-sided sign test and adjust the two primary tests with Holm's method. Run-pair
 directions are descriptive only. Discovery ordering and other trajectory metrics
 are exploratory and cannot support headline claims.
 
@@ -198,7 +199,7 @@ therefore be compared only within the same model, runner, protocol, and case.
 
 ## Benchmark 1.0 release gate and research-claim gate
 
-Protocol labels such as v24 through v27 identify internal development cycles. They record changes
+Protocol labels such as v24 through v28 identify internal development cycles. They record changes
 to the harness and make development experiments interpretable; they are not release versions. The
 current tree does not preserve runtime compatibility with earlier development protocols.
 
@@ -210,14 +211,14 @@ The tagged tree must deterministically rescore the published sanitized trajector
 the report. Reinvoking a provider is a replication run and is not expected to reproduce model text
 byte for byte.
 
-The current Discovery v2 and Graph v3 results are mechanism evidence, not a
+The completed Discovery v2 and Graph v3 results are mechanism evidence, not a
 powered estimate of a general semantic-layer effect and not yet a public 1.0
 cohort. Benchmark product readiness and confirmatory research readiness are
 separate milestones.
 
 Benchmark 1.0 requires a frozen specification and canonical API runner, a small
-legally reproducible cohort covering Table-positive, Graph-positive, and
-Graph-negative roles, one fresh end-to-end transfer demonstration, and public
+legally reproducible cohort covering Semantic Graph positive and negative roles,
+one fresh end-to-end transfer demonstration, and public
 artifacts from which a third party can reproduce scoring and primary metrics.
 It does not require multiple models, many system families, or statistical power
 for a population claim. Results must be labeled as evidence over the fixed
@@ -288,11 +289,15 @@ minute-representable boundary requires independent normal and abnormal raw/Graph
 combined-window equality. When both source periods contain clients in the same `observed_at` minute,
 the audit proves that separate Graph periods are not representable and requires exact equality over
 the contiguous union instead. The selected v27 case follows the latter path. Two independent
-ingestion runs produce the same source-semantic hash. The formal protocol freezes
-`deepseek-v4-pro`, `claude-sonnet-5`, and `claude-opus-4-8`, with three position-balanced
-repetitions for each treatment and model.
-Preflight freezes 27 unauthorized cells. The remaining transfer gate is explicit approval and paid
-execution; no v27 provider call has run.
+ingestion runs produce the same source-semantic hash. No v27 model cell ran.
+
+Protocol v28 removes `table_semantics` as a standalone treatment. The main experiment compares
+Raw with the complete GreptimeDB Semantic Graph surface; internal table semantics remain available
+inside the Graph treatment. It adds `gpt-5.6-sol` through the OpenAI Responses API alongside
+`deepseek-v4-pro`, `claude-sonnet-5`, and `claude-opus-4-8`. Each model runs two position-balanced
+repetitions over the two treatments, for 16 cells. OpenAI runs use stateless output-item replay and
+implicit 30-minute prompt caching. The remaining transfer gate is a fresh provider-free audit,
+followed by explicit approval for paid execution; no v28 provider call has run.
 This selection exhausts the pinned reviewer cohort under the supported-mechanism rule: after
 the v24 method-replacement and v25 delay cases are consumed, the v27 JVM-exception case is the only
 remaining eligible candidate. A later fresh transfer case therefore requires a new pinned cohort
@@ -500,6 +505,11 @@ scorer-only correction accepted destination type proven by the exact canonical
 result instead of requiring a redundant query argument; saved trajectories were
 rescored without rerunning a model. These results validate the retrieval
 mechanism but are not an RCA or measurement effect.
+
+The current Discovery v3 and Graph v4 protocols compare `raw` with
+`semantic_graph`. They do not preserve `table_semantics` as a standalone
+treatment. Earlier Table-versus-Raw and Graph-versus-Table results remain
+development ablations and are not mixed with the current paired comparison.
 
 The fresh trajectory-blind Discovery and Graph selection described here was the
 next stage at that point and is now complete. Its results and current limitations

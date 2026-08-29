@@ -170,8 +170,8 @@ def run_graph_agent(
     model: str,
     max_tool_calls: int = GRAPH_MAX_TOOL_CALLS,
 ) -> GraphAgentRun:
-    if visibility not in {Visibility.TABLE_SEMANTICS, Visibility.SEMANTIC_GRAPH}:
-        raise ValueError("graph benchmark supports only table_semantics and semantic_graph")
+    if visibility not in {Visibility.RAW, Visibility.SEMANTIC_GRAPH}:
+        raise ValueError("graph benchmark supports only raw and semantic_graph")
     case_input = _case_input(gateway.client.database, fixture)
     tools = _investigation_tools(visibility, [], semantic_coverage)
     system_prompt = graph_system_prompt()
