@@ -33,7 +33,7 @@ def _write_table(path: Path, values: dict[str, list[object]], schema: pa.Schema)
 
 def _selected_case_fixture(
     tmp_path: Path,
-    selection_path: Path = Path("fixtures/reference/aegis-transfer-v26-calibration-selection.json"),
+    selection_path: Path = Path("fixtures/reference/aegis-transfer-v27-calibration-selection.json"),
     *,
     injection_start: str = "2025-07-20T12:36:50Z",
 ):
@@ -229,7 +229,7 @@ def _formal_selected_case_fixture(tmp_path: Path):
     return load_selected_case(
         cases_dir,
         meta_dir,
-        Path("fixtures/reference/aegis-transfer-v26-selection.json"),
+        Path("fixtures/reference/aegis-transfer-v27-selection.json"),
         database="case_03",
     )
 
@@ -295,7 +295,7 @@ def test_jvm_exception_gate_requires_clean_baseline_and_both_anomalous_signals()
 
 def test_selected_loader_rejects_unfrozen_opaque_case_mapping(tmp_path: Path) -> None:
     selection = json.loads(
-        Path("fixtures/reference/aegis-transfer-v26-calibration-selection.json").read_text()
+        Path("fixtures/reference/aegis-transfer-v27-calibration-selection.json").read_text()
     )
     selection["agent_case_id"] = "aegis-transfer-003"
     selection_path = tmp_path / "selection.json"
@@ -631,8 +631,14 @@ def test_id_remap_and_source_identity_mismatch_fail_no_model_gate(tmp_path: Path
         "id_remapping": {"pass": False},
         "source_identity": {
             "service_counts_match": False,
+            "log_service_counts_match": True,
             "span_kind_counts_match": True,
             "status_code_counts_match": True,
+            "case_normalization_unambiguous": {
+                "service_name": True,
+                "span_kind": True,
+                "span_status_code": True,
+            },
         },
     }
 
@@ -651,3 +657,51 @@ def test_id_remap_and_source_identity_mismatch_fail_no_model_gate(tmp_path: Path
     assert not gates["id_remapping_zero"]
     assert not gates["stored_source_identity_match"]
     assert not gates["all_passed"]
+
+
+def test_case_normalization_collision_fails_no_model_gate(tmp_path: Path) -> None:
+    case = _selected_case_fixture(tmp_path)
+    source = {
+        "frozen_edge_sets_match": True,
+        "trace_windows_exact": True,
+        "source_window_boundaries_accounted": True,
+        "source_identity_valid": True,
+        "reference_causal_graph_read": False,
+        "reference_causal_graph_ingested": False,
+    }
+    stored = {
+        "protocol_rejections_zero": True,
+        "stored_row_counts_match": True,
+        "id_remapping": {"pass": True},
+        "source_identity": {
+            "service_counts_match": True,
+            "log_service_counts_match": True,
+            "span_kind_counts_match": True,
+            "status_code_counts_match": True,
+            "case_normalization_unambiguous": {
+                "service_name": False,
+                "span_kind": True,
+                "span_status_code": True,
+            },
+        },
+    }
+
+    gates = no_model_gates(
+        case,
+        {"verified": True},
+        source,
+        stored,
+        {
+            "exact_edge_set_equality": True,
+            "period_raw_replay_exact": True,
+            "graph_window_strategy_proof": {"pass": True},
+        },
+        {"pass": True},
+        isolated=True,
+        frozen_selection=True,
+        semantic_surface_contract=True,
+    )
+
+    assert gates["stored_source_identity_match"] is True
+    assert gates["case_normalized_predicates_source_equivalent"] is False
+    assert gates["all_passed"] is False

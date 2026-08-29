@@ -154,8 +154,8 @@ two-sided sign test and adjust the four primary tests with Holm's method. Run-pa
 directions are descriptive only. Discovery ordering and other trajectory metrics
 are exploratory and cannot support headline claims.
 
-Protocol v26 makes the transfer guardrail explicit instead of collapsing it
-into one success bit. `diagnosis_correct` covers the affected component,
+Protocol v26 introduced, and protocol v27 retains, a transfer guardrail that does not collapse
+the result into one success bit. `diagnosis_correct` covers the affected component,
 conditional dependency, causal scope, causal operation, category, and mechanism code.
 `required_evidence_covered`
 requires claim-typed evidence for the causal scope and mechanism.
@@ -198,7 +198,7 @@ therefore be compared only within the same model, runner, protocol, and case.
 
 ## Benchmark 1.0 release gate and research-claim gate
 
-Protocol labels such as v24, v25, and v26 identify internal development cycles. They record changes
+Protocol labels such as v24 through v27 identify internal development cycles. They record changes
 to the harness and make development experiments interpretable; they are not release versions. The
 current tree does not preserve runtime compatibility with earlier development protocols.
 
@@ -251,16 +251,25 @@ labels to equal a hidden token, and constrained mechanism evidence to the canoni
 shape. The 27 cells completed without runner errors or budget exhaustion, but their zero eligible
 pairs do not measure model ability or semantic-layer efficiency under a valid contract.
 
-Protocol v26 corrects the delay observable to `server.timestamp - client.timestamp`, uses a
-case-independent structured mechanism ontology, types evidence by claim, and accepts equivalent
+Protocol v26 corrected the delay observable to `server.timestamp - client.timestamp`, introduced
+a case-independent structured mechanism ontology, typed evidence by claim, and accepted equivalent
 threshold proofs while retaining AST-verified edge, operation, role, parent, identity, and
 half-open-window constraints. The consumed v25 case is bound to v26 only as a development
-calibration fixture. V24/v25 files are immutable records only. The current runtime does not load,
-validate, rescore, resume, or export their schemas.
+calibration fixture. Its nine `deepseek-v4-flash` cells completed with no runner error or budget
+exhaustion. One Semantic Graph run produced the correct structured diagnosis, but no run executed a
+complete Client/Server start-gap transition proof; the calibration therefore did not establish an
+eligible efficiency pair. The observed failure is model investigation behavior rather than a
+scorer false negative. The v27 cycle starts before any fresh-case model call. It fixes fail-closed
+audit metadata and makes evidence validation depend on SQL semantics rather than one surface
+spelling: the source audit proves case normalization cannot merge identities or OTel enum values,
+while the scorer requires every role, identity, parent, operation, and window predicate to remain
+an effective filter in one telemetry scope. Earlier fixture files are immutable records only. The
+current runtime does not rescore, resume, or export their report, scorer, or protocol schemas.
 
-The fresh v26 measurement selection was computed before agent trajectory from all
-source-observable, graph-eligible Aegis cases supported end to end by the v26 transfer loader,
-oracle, and scorer after excluding the exact v24 and v25 parent manifests. The supported source
+The fresh v27 measurement selection preserves the trajectory-blind v26 selection bytes and was
+computed before agent trajectory from all source-observable, graph-eligible Aegis cases supported
+end to end by the transfer loader, oracle, and scorer after excluding the exact v24 and v25 parent
+manifests. The supported source
 predicates are the Client-to-Server start gap and JVM exception predicates; source-observable
 restart and memory-pressure predicates are not silently admitted without a matching transfer
 pipeline. The frozen selection selects the single-component JVM exception case as opaque ID
@@ -269,23 +278,23 @@ pipeline. The frozen selection selects the single-component JVM exception case a
 requires `causal_dependency=null`, and scores the global `application_error` mechanism. It accepts
 equivalent complete-window evidence without prescribing one SQL statement.
 
-Before the first v26 model cell, the agent-visible Semantic Graph relationship projection was
-frozen against the current GreptimeDB contract with `unmatched_count` and `duration_max` in
-addition to the existing RED fields. The benchmark has one current Semantic Graph query surface;
+Before any `aegis-transfer-003` model cell, the agent-visible Semantic Graph relationship
+projection was frozen against the current GreptimeDB contract with `unmatched_count` and
+`duration_max` in addition to the existing RED fields. The benchmark has one current Semantic Graph query surface;
 it does not retain a runtime branch for the earlier experimental GreptimeDB shape.
 
-The v26 Graph equality gate selects its comparison strategy from the source boundary evidence. A
+The v27 Graph equality gate selects its comparison strategy from the source boundary evidence. A
 minute-representable boundary requires independent normal and abnormal raw/Graph equality plus
 combined-window equality. When both source periods contain clients in the same `observed_at` minute,
 the audit proves that separate Graph periods are not representable and requires exact equality over
-the contiguous union instead. The selected v26 case follows the latter path. Two independent
+the contiguous union instead. The selected v27 case follows the latter path. Two independent
 ingestion runs produce the same source-semantic hash. The formal protocol freezes
-`deepseek-v4-pro`, `claude-sonnet-5`,
-and `claude-opus-4-8`, with three position-balanced repetitions for each treatment and model.
+`deepseek-v4-pro`, `claude-sonnet-5`, and `claude-opus-4-8`, with three position-balanced
+repetitions for each treatment and model.
 Preflight freezes 27 unauthorized cells. The remaining transfer gate is explicit approval and paid
-execution; no v26 provider call has run.
-This selection exhausts the pinned reviewer cohort under the v26 supported-mechanism rule: after
-the v24 method-replacement and v25 delay cases are consumed, the v26 JVM-exception case is the only
+execution; no v27 provider call has run.
+This selection exhausts the pinned reviewer cohort under the supported-mechanism rule: after
+the v24 method-replacement and v25 delay cases are consumed, the v27 JVM-exception case is the only
 remaining eligible candidate. A later fresh transfer case therefore requires a new pinned cohort
 or a separately frozen expansion of end-to-end mechanism support; it cannot reuse a consumed case.
 Raw `.reports/` trajectories are not the release contract because they contain
@@ -366,7 +375,7 @@ duration-based scorer did not measure the declared start-gap mechanism. The sani
 development artifact is tracked at `artifacts/development/aegis-transfer-v24-deepseek.json`; it is
 a release-format regression, not the fresh 1.0 measurement result. The v25 27-cell artifact is
 retained for audit and development analysis, not promoted to a valid measurement. Private
-no-model reports remain local audit inputs. The v26 no-model grader, fresh selection, source
+no-model reports remain local audit inputs. The v27 no-model grader, fresh selection, source
 replay, exact equality audit, mechanism gate, formal protocol, resume binding, and sanitized
 exporter are complete. The next action is to review the frozen model roster and cost estimate, then
 explicitly approve or reject the 27-cell paid API execution. Catalog broad-recall, powered

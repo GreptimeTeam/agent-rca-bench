@@ -31,7 +31,7 @@ from semantic_rca_bench.evaluation import is_valid_evidence_trace
 from semantic_rca_bench.report import MODEL_PRICING, _estimated_api_cost, _raw_input_breakdown
 
 ARTIFACT_SCHEMA_VERSION = 1
-DEFAULT_MEASUREMENT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v26-scorer.json")
+DEFAULT_MEASUREMENT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v27-scorer.json")
 
 
 def build_measurement_artifact(

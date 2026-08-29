@@ -173,7 +173,10 @@ def _source_audit() -> dict[str, object]:
             "expected_result": expected,
             "pass": True,
         },
-        "no_model_gates": {"all_passed": True},
+        "no_model_gates": {
+            "all_passed": True,
+            "case_normalized_predicates_source_equivalent": True,
+        },
     }
 
 
@@ -294,6 +297,32 @@ def test_scorer_audit_checks_model_against_revision_contract(tmp_path: Path) -> 
     audit = audit_transfer_scorer(_source_audit(), mutated, fixture_path)
 
     assert audit["no_model_gates"]["canonical_runner_contract_match"] is False
+    assert audit["no_model_gates"]["all_passed"] is False
+
+
+def test_scorer_audit_reports_unknown_revision_as_failed_gate(tmp_path: Path) -> None:
+    fixture = load_transfer_scorer_fixture(SCORER_PATH)
+    mutated = fixture.model_copy(update={"scorer_revision": "unknown-revision"})
+    fixture_path = tmp_path / "scorer.json"
+    fixture_path.write_text(mutated.model_dump_json())
+
+    audit = audit_transfer_scorer(_source_audit(), mutated, fixture_path)
+
+    assert audit["no_model_gates"]["canonical_runner_contract_match"] is False
+    assert audit["no_model_gates"]["all_passed"] is False
+
+
+def test_scorer_audit_requires_case_normalization_domain_proof() -> None:
+    source = _source_audit()
+    source["no_model_gates"].pop("case_normalized_predicates_source_equivalent")
+
+    audit = audit_transfer_scorer(
+        source,
+        load_transfer_scorer_fixture(SCORER_PATH),
+        SCORER_PATH,
+    )
+
+    assert audit["no_model_gates"]["source_transfer_audit_match"] is False
     assert audit["no_model_gates"]["all_passed"] is False
 
 

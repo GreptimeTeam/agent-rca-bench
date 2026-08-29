@@ -63,7 +63,7 @@
   `database_load.rows_returned`（combined report 中为 `rows_returned`）和
   `evaluation.correct_completion_tool_calls`。两者使用冻结 protocol 定义的同一个
   eligibility guardrail。通用 RCA v23 guardrail 要求正确 diagnosis、至少一条 citation、
-  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v26 改为分层契约：
+  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v27 使用分层契约：
   diagnosis 正确、全部 required evidence claim 由 execution-valid citation 覆盖、且无
   runner error/budget hit 时可比较效率；无关的额外无效 citation 只使
   `auditable_completion=false`，不能抹掉已经成立的 required evidence 或效率轨迹。
@@ -79,6 +79,9 @@
 - Latency 只有在 treatment execution position 平衡、服务器负载可比时才能跨 treatment 解释。
 - Dataset taxonomy 不同的 correctness 结果分 corpus 报告，除非存在经过论证的共同 scoring contract。
 - 优先使用 deterministic scorer。不得为了得到目标结论引入 LLM judge。
+- Scorer 判断证据语义，不要求 agent 复刻 canonical SQL 的表面写法。只有 no-model audit
+  能证明查询等价且不会扩大源数据集合时，才接受大小写归一化等语法变体；被中和、缩窄
+  或扩大证据范围的谓词必须 fail closed。
 - Protocol、prompt、scorer、selection、runner representation 或主要指标发生实质变化时，升级 protocol，并禁止与旧 protocol 混合统计。
 
 ## Dataset 与 source fidelity
@@ -103,7 +106,7 @@
 
 ## Benchmark 1.0 与研究结论边界
 
-`v24`、`v25`、`v26` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
+`v24`、`v25`、`v26`、`v27` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
 scorer 和实验装置的迭代，不是公开发布版本。冻结前的运行均为研发实验；当前代码不为
 旧研发周期保留 loader、scorer、resume、renderer 或其他兼容层。
 

@@ -41,6 +41,8 @@ def _start_gap_query(parent_operator: str = "=") -> str:
     AND c.service_name = 'ts-route-plan-service'
     AND s.service_name = 'ts-travel2-service'
     AND s.span_name = 'POST /api/v1/travel2service/trips/left'
+    AND c.timestamp >= '2025-07-20T12:32:50Z'
+    AND c.timestamp < '2025-07-20T12:40:49Z'
 )
 SELECT period, COUNT(*) AS span_count,
        MIN(server_start_gap_ns) AS min_start_gap_ns,
@@ -72,6 +74,26 @@ def _start_gap_result(*, abnormal_confirmations: int = 2) -> QueryResult:
             ],
         ],
         elapsed_seconds=0,
+    )
+
+
+def _detached_duration_query() -> str:
+    wrong_source = """), wrong AS (
+  SELECT CASE
+           WHEN c.timestamp >= '2025-07-20T12:32:50Z'
+            AND c.timestamp < '2025-07-20T12:36:50Z' THEN 'normal'
+           WHEN c.timestamp >= '2025-07-20T12:36:50Z'
+            AND c.timestamp < '2025-07-20T12:40:49Z' THEN 'abnormal'
+         END AS period,
+         c.duration_nano AS server_start_gap_ns
+  FROM traces c
+  WHERE c.timestamp >= '2025-07-20T12:32:50Z'
+    AND c.timestamp < '2025-07-20T12:40:49Z'
+)"""
+    return (
+        _start_gap_query()
+        .replace(")\nSELECT period", f"{wrong_source}\nSELECT period", 1)
+        .replace("FROM paired\nGROUP BY period", "FROM wrong\nGROUP BY period")
     )
 
 
@@ -181,7 +203,7 @@ def _run(
     graph = _graph_result()
     mechanism = mechanism_result or _start_gap_result()
     return AgentRun(
-        run_id="v26-synthetic",
+        run_id="v27-synthetic",
         visibility=Visibility.SEMANTIC_GRAPH,
         model="deepseek-v4-flash",
         runner=AgentRunner.API,
@@ -220,7 +242,7 @@ def _run(
     )
 
 
-def test_v26_scores_structured_diagnosis_evidence_and_execution_separately() -> None:
+def test_v27_scores_structured_diagnosis_evidence_and_execution_separately() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(), load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE)
     )
@@ -236,7 +258,7 @@ def test_v26_scores_structured_diagnosis_evidence_and_execution_separately() -> 
     assert evaluation.success is True
 
 
-def test_v26_free_text_fault_type_does_not_drive_structured_correctness() -> None:
+def test_v27_free_text_fault_type_does_not_drive_structured_correctness() -> None:
     run = _run()
     assert run.diagnosis is not None
     run = run.model_copy(
@@ -255,7 +277,7 @@ def test_v26_free_text_fault_type_does_not_drive_structured_correctness() -> Non
     assert evaluation.diagnosis_correct is True
 
 
-def test_v26_wrong_structured_mechanism_fails_even_with_correct_free_text() -> None:
+def test_v27_wrong_structured_mechanism_fails_even_with_correct_free_text() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(mechanism_code=MechanismCode.CONNECTION_FAILURE),
         load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
@@ -266,7 +288,7 @@ def test_v26_wrong_structured_mechanism_fails_even_with_correct_free_text() -> N
     assert evaluation.efficiency_eligible is False
 
 
-def test_v26_invalid_extra_citation_is_reliability_not_diagnosis_failure() -> None:
+def test_v27_invalid_extra_citation_is_reliability_not_diagnosis_failure() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(extra_invalid_citation=True),
         load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
@@ -280,7 +302,7 @@ def test_v26_invalid_extra_citation_is_reliability_not_diagnosis_failure() -> No
     assert evaluation.success is False
 
 
-def test_v26_accepts_threshold_proof_without_canonical_source_counts() -> None:
+def test_v27_accepts_threshold_proof_without_canonical_source_counts() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(mechanism_result=_start_gap_result()),
         load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
@@ -289,7 +311,7 @@ def test_v26_accepts_threshold_proof_without_canonical_source_counts() -> None:
     assert evaluation.mechanism_evidence_match is True
 
 
-def test_v26_rejects_singleton_wrong_parent_and_server_duration_evidence() -> None:
+def test_v27_rejects_singleton_wrong_parent_and_server_duration_evidence() -> None:
     fixture = load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE)
     singleton = evaluate_aegis_transfer_run(
         _run(mechanism_result=_start_gap_result(abnormal_confirmations=1)), fixture
@@ -305,7 +327,7 @@ def test_v26_rejects_singleton_wrong_parent_and_server_duration_evidence() -> No
     assert duration_only.mechanism_evidence_match is False
 
 
-def test_v26_does_not_double_count_repeated_singleton_evidence() -> None:
+def test_v27_does_not_double_count_repeated_singleton_evidence() -> None:
     run = _run(mechanism_result=_start_gap_result(abnormal_confirmations=1))
     assert run.diagnosis is not None
     repeated_result = _start_gap_result(abnormal_confirmations=1).model_copy(
@@ -340,7 +362,7 @@ def test_v26_does_not_double_count_repeated_singleton_evidence() -> None:
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_v26_accepts_raw_paired_timestamps_without_prescribed_aggregation() -> None:
+def test_v27_accepts_raw_paired_timestamps_without_prescribed_aggregation() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(query=_raw_timestamp_query(), mechanism_result=_raw_timestamp_result()),
         load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
@@ -381,7 +403,7 @@ def test_v26_accepts_raw_paired_timestamps_without_prescribed_aggregation() -> N
         ),
     ],
 )
-def test_v26_malformed_start_gap_rows_fail_closed(query: str, result: QueryResult) -> None:
+def test_v27_malformed_start_gap_rows_fail_closed(query: str, result: QueryResult) -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(query=query, mechanism_result=result),
         load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
@@ -390,7 +412,7 @@ def test_v26_malformed_start_gap_rows_fail_closed(query: str, result: QueryResul
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_v26_invalid_optional_minimum_fails_closed() -> None:
+def test_v27_invalid_optional_minimum_fails_closed() -> None:
     result = _start_gap_result().model_copy(
         update={
             "rows": [
@@ -408,7 +430,7 @@ def test_v26_invalid_optional_minimum_fails_closed() -> None:
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_v26_rejects_result_aliases_not_derived_from_start_gap() -> None:
+def test_v27_rejects_result_aliases_not_derived_from_start_gap() -> None:
     query = (
         _start_gap_query()
         .replace(
@@ -429,7 +451,7 @@ def test_v26_rejects_result_aliases_not_derived_from_start_gap() -> None:
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_v26_excludes_time_bins_that_cross_non_minute_window_boundaries() -> None:
+def test_v27_excludes_time_bins_that_cross_non_minute_window_boundaries() -> None:
     result = QueryResult(
         query_id="q02",
         columns=["bucket", "span_count", "max_gap_ns"],
@@ -448,7 +470,7 @@ def test_v26_excludes_time_bins_that_cross_non_minute_window_boundaries() -> Non
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_v26_rejects_narrowed_window_and_reversed_start_gap() -> None:
+def test_v27_rejects_narrowed_window_and_reversed_start_gap() -> None:
     fixture = load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE)
     narrowed = _start_gap_query().replace(
         "2025-07-20T12:40:49Z",
@@ -466,6 +488,84 @@ def test_v26_rejects_narrowed_window_and_reversed_start_gap() -> None:
         evaluate_aegis_transfer_run(_run(query=reversed_gap), fixture).mechanism_evidence_match
         is False
     )
+
+
+def test_v27_accepts_equivalent_case_normalized_pair_scope() -> None:
+    query = (
+        _start_gap_query()
+        .replace(
+            "c.span_kind = 'SPAN_KIND_CLIENT'",
+            "UPPER(c.span_kind) = 'SPAN_KIND_CLIENT'",
+        )
+        .replace(
+            "s.span_kind = 'SPAN_KIND_SERVER'",
+            "LOWER(s.span_kind) = 'span_kind_server'",
+        )
+        .replace(
+            "c.service_name = 'ts-route-plan-service'",
+            "LOWER(c.service_name) = 'ts-route-plan-service'",
+        )
+        .replace(
+            "s.service_name = 'ts-travel2-service'",
+            "s.service_name IN ('ts-travel2-service')",
+        )
+    )
+    for value in (
+        "2025-07-20T12:32:50Z",
+        "2025-07-20T12:36:50Z",
+        "2025-07-20T12:40:49Z",
+    ):
+        query = query.replace(f"'{value}'", f"TIMESTAMP '{value}'")
+
+    evaluation = evaluate_aegis_transfer_run(
+        _run(query=query), load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE)
+    )
+
+    assert evaluation.mechanism_evidence_match is True
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        _start_gap_query().replace(
+            "c.span_kind = 'SPAN_KIND_CLIENT'",
+            "(c.span_kind = 'SPAN_KIND_CLIENT' OR 1 = 1)",
+        ),
+        _start_gap_query().replace(
+            "s.parent_span_id = c.span_id",
+            "(s.parent_span_id = c.span_id OR 1 = 1)",
+        ),
+        _start_gap_query().replace(
+            "    AND c.timestamp >= '2025-07-20T12:32:50Z'\n"
+            "    AND c.timestamp < '2025-07-20T12:40:49Z'\n",
+            "",
+        ),
+        _start_gap_query().replace(
+            "c.service_name = 'ts-route-plan-service'",
+            "c.service_name IN ('ts-route-plan-service', 'ts-route-service')",
+        ),
+        _start_gap_query().replace(
+            "c.span_kind = 'SPAN_KIND_CLIENT'",
+            "LOWER(c.span_kind) = 'SPAN_KIND_CLIENT'",
+        ),
+        _start_gap_query().replace(
+            "CASE\n"
+            "           WHEN c.timestamp >= '2025-07-20T12:32:50Z'\n"
+            "            AND c.timestamp < '2025-07-20T12:36:50Z' THEN 'normal'\n"
+            "           WHEN c.timestamp >= '2025-07-20T12:36:50Z'\n"
+            "            AND c.timestamp < '2025-07-20T12:40:49Z' THEN 'abnormal'\n"
+            "         END AS period",
+            "'normal' AS period",
+        ),
+        _detached_duration_query(),
+    ],
+)
+def test_v27_rejects_neutralized_or_incomplete_pair_scope(query: str) -> None:
+    evaluation = evaluate_aegis_transfer_run(
+        _run(query=query), load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE)
+    )
+
+    assert evaluation.mechanism_evidence_match is False
 
 
 def _exception_query() -> str:
@@ -536,7 +636,7 @@ def _exception_run(
     )
     output = result or _exception_result()
     return AgentRun(
-        run_id="v26-formal-synthetic",
+        run_id="v27-formal-synthetic",
         visibility=Visibility.RAW,
         model="deepseek-v4-pro",
         runner=AgentRunner.API,
@@ -570,7 +670,7 @@ def _exception_run(
     )
 
 
-def test_formal_v26_accepts_component_scoped_exception_transition() -> None:
+def test_formal_v27_accepts_component_scoped_exception_transition() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _exception_run(), load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     )
@@ -581,16 +681,28 @@ def test_formal_v26_accepts_component_scoped_exception_transition() -> None:
     assert evaluation.success is True
 
 
-def test_formal_v26_accepts_case_normalized_source_predicates() -> None:
+def test_formal_v27_accepts_case_normalized_source_predicates() -> None:
     query = (
         _exception_query()
         .replace(
+            "service_name = 'ts-train-service'",
+            "LOWER(service_name) = LOWER('TS-TRAIN-SERVICE')",
+        )
+        .replace(
+            "span_status_code = 'STATUS_CODE_ERROR'",
+            "UPPER(span_status_code) = 'STATUS_CODE_ERROR'",
+        )
+        .replace(
             "span_name LIKE '%retrieveByName%'",
-            "LOWER(span_name) LIKE '%retrievebyname%'",
+            "LOWER(span_name) = LOWER('TrainController.retrieveByName')",
         )
         .replace(
             "level IN ('ERROR', 'SEVERE', 'FATAL')",
             "UPPER(level) IN ('ERROR', 'SEVERE', 'FATAL')",
+        )
+        .replace(
+            "LOWER(line) LIKE '%exception%'",
+            "LOWER(line) LIKE LOWER('%EXCEPTION%')",
         )
     )
 
@@ -607,16 +719,23 @@ def test_formal_v26_accepts_case_normalized_source_predicates() -> None:
     [
         _exception_query().replace(
             "service_name = 'ts-train-service'",
-            "LOWER(service_name) = 'ts-train-service'",
-            1,
+            "LOWER(service_name) = 'ts-route-service'",
         ),
         _exception_query().replace(
             "span_status_code = 'STATUS_CODE_ERROR'",
-            "UPPER(span_status_code) = 'STATUS_CODE_ERROR'",
+            "UPPER(span_status_code) = 'STATUS_CODE_OK'",
+        ),
+        _exception_query().replace(
+            "service_name = 'ts-train-service'",
+            "UPPER(service_name) = 'ts-train-service'",
+        ),
+        _exception_query().replace(
+            "span_status_code = 'STATUS_CODE_ERROR'",
+            "LOWER(span_status_code) = 'STATUS_CODE_ERROR'",
         ),
     ],
 )
-def test_formal_v26_does_not_case_fold_source_identity_or_status(query: str) -> None:
+def test_formal_v27_rejects_wrong_case_normalized_identity_or_status(query: str) -> None:
     evaluation = evaluate_aegis_transfer_run(
         _exception_run(query=query), load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     )
@@ -625,7 +744,65 @@ def test_formal_v26_does_not_case_fold_source_identity_or_status(query: str) -> 
     assert evaluation.success is False
 
 
-def test_formal_v26_causal_operation_is_part_of_primary_correctness() -> None:
+def test_formal_v27_rejects_case_mismatched_raw_operation_predicate() -> None:
+    query = _exception_query().replace(
+        "span_name LIKE '%retrieveByName%'",
+        "span_name LIKE '%retrievebyname%'",
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        _exception_run(query=query), load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    )
+
+    assert evaluation.mechanism_evidence_match is False
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        _exception_query().replace(
+            "span_name LIKE '%retrieveByName%'",
+            "span_name LIKE '%retrieveByName%foo'",
+        ),
+        _exception_query().replace(
+            "LOWER(line) LIKE '%exception%'",
+            "LOWER(line) LIKE '%exception%NullPointer%'",
+        ),
+        _exception_query().replace(
+            "span_name LIKE '%retrieveByName%'",
+            "span_name IN ('TrainController.retrieveByName', 'listTrains')",
+        ),
+    ],
+)
+def test_formal_v27_rejects_narrowed_mechanism_predicates(query: str) -> None:
+    evaluation = evaluate_aegis_transfer_run(
+        _exception_run(query=query), load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    )
+
+    assert evaluation.mechanism_evidence_match is False
+
+
+def test_formal_v27_accepts_singleton_service_in_and_typed_timestamps() -> None:
+    query = _exception_query().replace(
+        "service_name = 'ts-train-service'",
+        "service_name IN ('ts-train-service')",
+    )
+    for value in (
+        "2025-07-18T12:21:57Z",
+        "2025-07-18T12:25:57Z",
+        "2025-07-18T12:29:56Z",
+    ):
+        query = query.replace(f"'{value}'", f"TIMESTAMP '{value}'")
+
+    evaluation = evaluate_aegis_transfer_run(
+        _exception_run(query=query), load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    )
+
+    assert evaluation.mechanism_evidence_match is True
+    assert evaluation.success is True
+
+
+def test_formal_v27_causal_operation_is_part_of_primary_correctness() -> None:
     fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
 
     for operation in (
@@ -646,7 +823,7 @@ def test_formal_v26_causal_operation_is_part_of_primary_correctness() -> None:
     assert missing.causal_operation_match is False
 
 
-def test_formal_v26_component_scope_requires_null_dependency() -> None:
+def test_formal_v27_component_scope_requires_null_dependency() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _exception_run(dependency="ts-route-plan-service"),
         load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
@@ -656,7 +833,7 @@ def test_formal_v26_component_scope_requires_null_dependency() -> None:
     assert evaluation.diagnosis_correct is False
 
 
-def test_formal_v26_rejects_hardcoded_or_nonfilter_exception_evidence() -> None:
+def test_formal_v27_rejects_hardcoded_or_nonfilter_exception_evidence() -> None:
     fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     hardcoded = _exception_query().replace(
         "COALESCE(SUM(e.error_span_count), 0) AS error_span_count",
@@ -698,7 +875,7 @@ def test_formal_v26_rejects_hardcoded_or_nonfilter_exception_evidence() -> None:
     ).success
 
 
-def test_formal_v26_binds_filters_to_each_telemetry_select() -> None:
+def test_formal_v27_binds_filters_to_each_telemetry_select() -> None:
     fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     dead_status_predicate = _exception_query().replace(
         "span_status_code = 'STATUS_CODE_ERROR'",
@@ -727,7 +904,7 @@ def test_formal_v26_binds_filters_to_each_telemetry_select() -> None:
     ).mechanism_evidence_match
 
 
-def test_formal_v26_requires_aggregate_periods_to_follow_source_timestamps() -> None:
+def test_formal_v27_requires_aggregate_periods_to_follow_source_timestamps() -> None:
     fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     mislabeled_period = _exception_query().replace("THEN 'normal'", "THEN 'abnormal'", 1)
     boundary_case = (
@@ -761,7 +938,7 @@ def test_formal_v26_requires_aggregate_periods_to_follow_source_timestamps() -> 
     ).mechanism_evidence_match
 
 
-def test_formal_v26_rejects_wrong_scope_window_and_incomplete_mechanism() -> None:
+def test_formal_v27_rejects_wrong_scope_window_and_incomplete_mechanism() -> None:
     fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     mutations = (
         _exception_query().replace("ts-train-service", "ts-route-plan-service"),
@@ -789,7 +966,7 @@ def test_formal_v26_rejects_wrong_scope_window_and_incomplete_mechanism() -> Non
     ).mechanism_evidence_match
 
 
-def test_formal_v26_malformed_combined_result_fails_closed() -> None:
+def test_formal_v27_malformed_combined_result_fails_closed() -> None:
     malformed = QueryResult(
         query_id="q01",
         columns=["period", "error_span_count", "exception_log_count"],
@@ -845,7 +1022,7 @@ LEFT JOIN observations o ON o.period = p.period
 GROUP BY p.period"""
 
 
-def test_formal_v26_accepts_split_trace_and_log_aggregates() -> None:
+def test_formal_v27_accepts_split_trace_and_log_aggregates() -> None:
     base = _exception_run()
     assert base.diagnosis is not None
     traces: list[ToolTrace] = []
@@ -891,7 +1068,7 @@ def test_formal_v26_accepts_split_trace_and_log_aggregates() -> None:
     assert evaluation.success is True
 
 
-def test_formal_v26_malformed_split_aggregate_fails_closed() -> None:
+def test_formal_v27_malformed_split_aggregate_fails_closed() -> None:
     run = _exception_run()
     malformed = QueryResult(
         query_id="q01",
@@ -914,7 +1091,7 @@ def test_formal_v26_malformed_split_aggregate_fails_closed() -> None:
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_formal_v26_accepts_equivalent_filter_and_count_expressions() -> None:
+def test_formal_v27_accepts_equivalent_filter_and_count_expressions() -> None:
     base = _exception_run()
     assert base.diagnosis is not None
     traces: list[ToolTrace] = []
@@ -971,7 +1148,7 @@ def test_formal_v26_accepts_equivalent_filter_and_count_expressions() -> None:
     assert evaluation.success is True
 
 
-def test_formal_v26_graph_entity_does_not_substitute_for_mechanism_evidence() -> None:
+def test_formal_v27_graph_entity_does_not_substitute_for_mechanism_evidence() -> None:
     run = _exception_run()
     assert run.diagnosis is not None
     result = QueryResult(

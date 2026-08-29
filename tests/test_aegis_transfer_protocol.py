@@ -22,7 +22,7 @@ def _audits() -> tuple[dict[str, object], dict[str, object]]:
     source = {
         "selection_audit": {
             "frozen_selection_gate": {
-                "manifest_name": "aegis-transfer-v26-selection.json",
+                "manifest_name": "aegis-transfer-v27-selection.json",
                 "pass": True,
             }
         },

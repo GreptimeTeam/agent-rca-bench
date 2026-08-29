@@ -387,7 +387,7 @@ def test_aegis_audit_rejects_frozen_selection_drift(tmp_path: Path) -> None:
 
 def test_fresh_selection_manifest_binds_consumed_parents_before_trajectory() -> None:
     root = Path("fixtures/reference")
-    manifest = json.loads((root / "aegis-transfer-v26-selection.json").read_text())
+    manifest = json.loads((root / "aegis-transfer-v27-selection.json").read_text())
 
     assert manifest["selection_phase"] == "before_agent_trajectory"
     assert manifest["selection_strategy"] == ("fresh-source-observable-supported-mechanism-v2")
@@ -435,10 +435,10 @@ def test_fresh_selection_manifest_binds_consumed_parents_before_trajectory() -> 
         ),
     ],
 )
-def test_v26_fresh_selection_only_admits_end_to_end_supported_mechanisms(
+def test_fresh_selection_only_admits_end_to_end_supported_mechanisms(
     mechanism: dict[str, object], supported: bool
 ) -> None:
-    assert aegis._v26_transfer_mechanism_supported(mechanism) is supported
+    assert aegis._transfer_mechanism_supported(mechanism) is supported
 
 
 def test_aegis_repository_verifies_and_extracts_only_dataset(tmp_path: Path, monkeypatch) -> None:

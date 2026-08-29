@@ -17,8 +17,8 @@ from semantic_rca_bench.contracts import AgentRun, AgentRunner, Visibility
 from semantic_rca_bench.protocol import benchmark_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "aegis-transfer-three-model-v3"
-DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v26-three-model-protocol.json")
+PROTOCOL_REVISION = "aegis-transfer-three-model-v5"
+DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v27-three-model-protocol.json")
 
 
 class TransferModelContract(BaseModel):
@@ -83,9 +83,9 @@ def load_transfer_protocol_fixture(
     specification = {
         "version": 2,
         "agent_case_id": "aegis-transfer-003",
-        "benchmark_protocol_version": 26,
-        "selection_fixture": "fixtures/reference/aegis-transfer-v26-selection.json",
-        "scorer_fixture": "fixtures/reference/aegis-transfer-v26-scorer.json",
+        "benchmark_protocol_version": 27,
+        "selection_fixture": "fixtures/reference/aegis-transfer-v27-selection.json",
+        "scorer_fixture": "fixtures/reference/aegis-transfer-v27-scorer.json",
         "models": (
             (
                 "deepseek-v4-pro",

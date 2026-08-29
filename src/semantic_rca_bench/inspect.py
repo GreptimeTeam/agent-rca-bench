@@ -260,12 +260,12 @@ def summarize_semantic_surfaces(surfaces: dict[str, object]) -> dict[str, object
 def _scope_declaration_count(
     result: tuple[list[str], list[list[object]]] | None,
 ) -> int | None:
-    if not result:
-        return 0
+    if result is None:
+        return None
     columns, rows = result
     declarations_index = _column_index(columns, "entity_declarations")
     if declarations_index is None:
-        return 0
+        return None
     count = 0
     for row in rows:
         if not isinstance(row, list) or len(row) <= declarations_index:

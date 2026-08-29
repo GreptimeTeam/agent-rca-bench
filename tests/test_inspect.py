@@ -99,6 +99,28 @@ def test_malformed_entity_declaration_row_fails_surface_contract() -> None:
     assert contract["current"] is False
 
 
+def test_unavailable_entity_declarations_are_not_reported_as_well_formed() -> None:
+    coverage = summarize_semantic_surfaces(
+        {
+            "entity_declarations": {"error": "query failed"},
+            "entities": {
+                "columns": ["scoped_observation_count"],
+                "rows": [],
+            },
+            "relationships": {
+                "columns": ["max_window_unmatched_count", "max_request_duration"],
+                "rows": [],
+            },
+        }
+    )
+
+    contract = coverage["surface_contract"]
+    assert contract["scope_declaration_count"] is None
+    assert contract["table_entity_declarations_queryable"] is False
+    assert contract["table_entity_declarations_well_formed"] is False
+    assert contract["current"] is False
+
+
 class StubClient:
     def __init__(self, results: list[QueryResult] | None = None) -> None:
         self.queries: list[str] = []

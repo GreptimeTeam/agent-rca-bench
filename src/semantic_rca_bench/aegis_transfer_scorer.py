@@ -11,6 +11,7 @@ from pathlib import Path
 import sqlglot
 from pydantic import BaseModel, ConfigDict
 from sqlglot import exp
+from sqlglot.optimizer.scope import Scope, build_scope
 
 from semantic_rca_bench.contracts import (
     AgentRun,
@@ -38,8 +39,8 @@ from semantic_rca_bench.protocol import benchmark_protocol
 
 CALIBRATION_SCORER_REVISION = "aegis-transfer-request-delay-v3"
 FORMAL_SCORER_REVISION = "aegis-transfer-jvm-exception-v1"
-CALIBRATION_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v26-calibration-scorer.json")
-FORMAL_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v26-scorer.json")
+CALIBRATION_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v27-calibration-scorer.json")
+FORMAL_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v27-scorer.json")
 _SCORER_IDENTITIES = {
     CALIBRATION_SCORER_REVISION: (
         "aegis-transfer-002",
@@ -167,7 +168,7 @@ class StartGapQueryScope:
     statement: exp.Expression
     client_alias: str
     server_alias: str
-    client_window_epochs: frozenset[int]
+    aggregate_periods_bound: bool
     gap_output_columns: frozenset[str]
     timestamp_output_sources: dict[str, frozenset[str]]
     projections: dict[str, tuple[exp.Expression, ...]]
@@ -566,6 +567,49 @@ def audit_transfer_scorer(
     if fixture.mechanism_evidence.predicate == "source_declared_http_client_server_start_gap":
         cases.update(
             {
+                "equivalent_case_normalized_pair_scope": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            "c.span_kind = 'SPAN_KIND_CLIENT'",
+                            "UPPER(c.span_kind) = 'SPAN_KIND_CLIENT'",
+                        )
+                        .replace(
+                            "s.span_kind = 'SPAN_KIND_SERVER'",
+                            "LOWER(s.span_kind) = 'span_kind_server'",
+                        )
+                        .replace(
+                            f"c.service_name = '{fixture.ground_truth.affected_component}'",
+                            "LOWER(c.service_name) = "
+                            f"'{fixture.ground_truth.affected_component.lower()}'",
+                        )
+                        .replace(
+                            f"s.service_name = '{fixture.ground_truth.causal_dependency}'",
+                            f"s.service_name IN ('{fixture.ground_truth.causal_dependency}')",
+                        ),
+                    ),
+                    True,
+                ),
+                "neutralized_client_role": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            "c.span_kind = 'SPAN_KIND_CLIENT'",
+                            "(c.span_kind = 'SPAN_KIND_CLIENT' OR 1 = 1)",
+                        ),
+                    ),
+                    False,
+                ),
+                "neutralized_parent_relation": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            "s.parent_span_id = c.span_id",
+                            "(s.parent_span_id = c.span_id OR 1 = 1)",
+                        ),
+                    ),
+                    False,
+                ),
                 "wrong_parent_relation": (
                     _replace_trace_query(
                         canonical_run,
@@ -601,6 +645,20 @@ def audit_transfer_scorer(
     elif fixture.mechanism_evidence.predicate == "source_declared_jvm_exception":
         cases.update(
             {
+                "equivalent_case_normalized_predicates": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            f"service_name = '{fixture.ground_truth.affected_component}'",
+                            "LOWER(service_name) = LOWER("
+                            f"'{fixture.ground_truth.affected_component.upper()}')",
+                        ).replace(
+                            "span_status_code = 'STATUS_CODE_ERROR'",
+                            "UPPER(span_status_code) = 'STATUS_CODE_ERROR'",
+                        ),
+                    ),
+                    True,
+                ),
                 "wrong_source_span_status": (
                     _replace_trace_query(
                         canonical_run,
@@ -749,13 +807,13 @@ def audit_transfer_scorer(
         and fixture.ground_truth.source_fault_type not in agent_payload
         and (not isinstance(source_case, str) or source_case not in agent_payload)
     )
+    scorer_identity = _SCORER_IDENTITIES.get(fixture.scorer_revision)
     gates = {
         "source_transfer_audit_match": source_gate_match,
         "canonical_runner_contract_match": (
-            fixture.canonical_api_runner.model_dump(mode="json")
-            == canonical_api_runner_contract(
-                model=_SCORER_IDENTITIES[fixture.scorer_revision][2],
-            )
+            scorer_identity is not None
+            and fixture.canonical_api_runner.model_dump(mode="json")
+            == canonical_api_runner_contract(model=scorer_identity[2])
         ),
         "opaque_agent_input": opaque_case_gate,
         "scorer_regressions": scorer_regressions_pass,
@@ -946,7 +1004,7 @@ def _jvm_exception_query_scope(
         fixture.ground_truth.causal_operation or "",
     )
     operation_tokens = {
-        token.lower()
+        token
         for operation in operations
         for token in (operation, operation.rsplit(".", 1)[-1])
         if token
@@ -967,13 +1025,19 @@ def _jvm_exception_query_scope(
             ):
                 return None
             observed_telemetry_scopes.add(scope_identity)
-            if not _has_column_eq_literal(table_scope, "service_name", service):
+            if not _has_column_in_literals(
+                table_scope,
+                "service_name",
+                {service},
+                allow_case_normalization=True,
+            ):
                 return None
             if table == "traces" and (
                 not _has_column_in_literals(
                     table_scope,
                     "span_status_code",
                     {"STATUS_CODE_ERROR"},
+                    allow_case_normalization=True,
                 )
                 or not any(
                     _has_column_text_fragment(
@@ -1025,6 +1089,8 @@ def _column_eq_literal_count(
     statement: exp.Expression,
     column_name: str,
     literal_value: str,
+    *,
+    allow_case_normalization: bool = False,
 ) -> int:
     count = 0
     for equality in statement.find_all(exp.EQ):
@@ -1034,14 +1100,13 @@ def _column_eq_literal_count(
             (equality.this, equality.expression),
             (equality.expression, equality.this),
         ):
-            if (
-                isinstance(column, exp.Column)
-                and column.name.lower() == column_name.lower()
-                and isinstance(value, exp.Literal)
-                and value.is_string
-                and str(value.this) == literal_value
-                and _is_positive_filter_predicate(equality)
-            ):
+            if _column_literal_matches(
+                column,
+                value,
+                column_name,
+                literal_value,
+                allow_case_normalization=allow_case_normalization,
+            ) and _is_positive_filter_predicate(equality):
                 count += 1
     return count
 
@@ -1050,8 +1115,18 @@ def _has_column_eq_literal(
     statement: exp.Expression,
     column_name: str,
     literal_value: str,
+    *,
+    allow_case_normalization: bool = False,
 ) -> bool:
-    return _column_eq_literal_count(statement, column_name, literal_value) > 0
+    return (
+        _column_eq_literal_count(
+            statement,
+            column_name,
+            literal_value,
+            allow_case_normalization=allow_case_normalization,
+        )
+        > 0
+    )
 
 
 def _has_column_like_fragment(
@@ -1064,15 +1139,22 @@ def _has_column_like_fragment(
     for like in statement.find_all(exp.Like, exp.ILike):
         if not _belongs_to_select_scope(like, statement):
             continue
-        target_matches = (
-            isinstance(like.this, exp.Column) and like.this.name.lower() == column_name.lower()
-        ) or (allow_case_normalization and _case_normalized_column(like.this, column_name))
-        value = like.expression
+        normalization = _column_normalization(like.this, column_name)
+        target_matches = isinstance(like.this, exp.Column) and (
+            like.this.name.lower() == column_name.lower()
+        )
+        if normalization is not None:
+            target_matches = allow_case_normalization
+        value = _evaluated_string_literal(like.expression)
+        if isinstance(like, exp.ILike) and value is not None:
+            value = value.lower()
+            expected_fragment = fragment.lower()
+        else:
+            expected_fragment = _normalize_string(fragment, normalization)
         if (
             target_matches
-            and isinstance(value, exp.Literal)
-            and value.is_string
-            and fragment.lower() in str(value.this).lower()
+            and value is not None
+            and _like_pattern_covers_fragment(value, expected_fragment)
             and _is_positive_filter_predicate(like)
         ):
             return True
@@ -1099,24 +1181,27 @@ def _has_column_text_fragment(
         ):
             continue
         if isinstance(comparison, exp.EQ):
-            pairs = (
+            pairs: tuple[tuple[exp.Expression, exp.Expression], ...] = (
                 (comparison.this, comparison.expression),
                 (comparison.expression, comparison.this),
             )
         else:
             pairs = tuple((comparison.this, value) for value in comparison.expressions)
-        if any(
-            (
-                isinstance(column, exp.Column)
-                and column.name.lower() == column_name.lower()
-                or allow_case_normalization
-                and _case_normalized_column(column, column_name)
+        matches = []
+        for column, value in pairs:
+            normalization = _column_normalization(column, column_name)
+            target_matches = isinstance(column, exp.Column) and (
+                column.name.lower() == column_name.lower()
             )
-            and isinstance(value, exp.Literal)
-            and value.is_string
-            and fragment.lower() in str(value.this).lower()
-            for column, value in pairs
-        ):
+            if normalization is not None:
+                target_matches = allow_case_normalization
+            literal = _evaluated_string_literal(value)
+            matches.append(
+                target_matches
+                and literal is not None
+                and _normalize_string(fragment, normalization) in literal
+            )
+        if matches and (all(matches) if isinstance(comparison, exp.In) else any(matches)):
             return True
     return False
 
@@ -1128,58 +1213,92 @@ def _has_column_in_literals(
     *,
     allow_case_normalization: bool = False,
 ) -> bool:
-    if any(_has_column_eq_literal(statement, column_name, value) for value in allowed_values):
+    if any(
+        _has_column_eq_literal(
+            statement,
+            column_name,
+            value,
+            allow_case_normalization=allow_case_normalization,
+        )
+        for value in allowed_values
+    ):
         return True
-    normalized_allowed_values = {value.lower() for value in allowed_values}
-    if allow_case_normalization:
-        for equality in statement.find_all(exp.EQ):
-            if not _belongs_to_select_scope(
-                equality, statement
-            ) or not _is_positive_filter_predicate(equality):
-                continue
-            for column, value in (
-                (equality.this, equality.expression),
-                (equality.expression, equality.this),
-            ):
-                if (
-                    _case_normalized_column(column, column_name)
-                    and isinstance(value, exp.Literal)
-                    and value.is_string
-                    and str(value.this).lower() in normalized_allowed_values
-                ):
-                    return True
     for inclusion in statement.find_all(exp.In):
         if not _belongs_to_select_scope(inclusion, statement):
             continue
-        target_matches = (
-            isinstance(inclusion.this, exp.Column) and inclusion.this.name.lower() == column_name
-        ) or (allow_case_normalization and _case_normalized_column(inclusion.this, column_name))
-        if not target_matches:
+        normalization = _column_normalization(inclusion.this, column_name)
+        if normalization is None and not (
+            isinstance(inclusion.this, exp.Column)
+            and inclusion.this.name.lower() == column_name.lower()
+        ):
+            continue
+        if normalization is not None and not allow_case_normalization:
             continue
         values = {
-            str(item.this)
+            value
             for item in inclusion.expressions
-            if isinstance(item, exp.Literal) and item.is_string
+            if (value := _evaluated_string_literal(item)) is not None
         }
-        normalized_target = allow_case_normalization and _case_normalized_column(
-            inclusion.this, column_name
-        )
-        expected_values = normalized_allowed_values if normalized_target else allowed_values
-        compared_values = {value.lower() for value in values} if normalized_target else values
+        expected_values = {_normalize_string(value, normalization) for value in allowed_values}
         if (
-            compared_values
-            and compared_values <= expected_values
+            len(values) == len(inclusion.expressions)
+            and values
+            and values <= expected_values
             and _is_positive_filter_predicate(inclusion)
         ):
             return True
     return False
 
 
-def _case_normalized_column(expression: exp.Expression, column_name: str) -> bool:
+def _column_normalization(expression: exp.Expression, column_name: str) -> str | None:
     if not isinstance(expression, (exp.Lower, exp.Upper)):
-        return False
+        return None
     column = expression.this
-    return isinstance(column, exp.Column) and column.name.lower() == column_name.lower()
+    if not isinstance(column, exp.Column) or column.name.lower() != column_name.lower():
+        return None
+    return "lower" if isinstance(expression, exp.Lower) else "upper"
+
+
+def _column_literal_matches(
+    column: exp.Expression,
+    value: exp.Expression,
+    column_name: str,
+    literal_value: str,
+    *,
+    allow_case_normalization: bool,
+) -> bool:
+    if isinstance(column, exp.Column) and column.name.lower() == column_name.lower():
+        return _evaluated_string_literal(value) == literal_value
+    normalization = _column_normalization(column, column_name)
+    return (
+        allow_case_normalization
+        and normalization is not None
+        and _evaluated_string_literal(value) == _normalize_string(literal_value, normalization)
+    )
+
+
+def _evaluated_string_literal(expression: exp.Expression) -> str | None:
+    if isinstance(expression, exp.Literal) and expression.is_string:
+        return str(expression.this)
+    if isinstance(expression, (exp.Lower, exp.Upper)):
+        value = expression.this
+        if not isinstance(value, exp.Literal) or not value.is_string:
+            return None
+        literal_normalization = "lower" if isinstance(expression, exp.Lower) else "upper"
+        return _normalize_string(str(value.this), literal_normalization)
+    return None
+
+
+def _normalize_string(value: str, normalization: str | None) -> str:
+    if normalization == "lower":
+        return value.lower()
+    if normalization == "upper":
+        return value.upper()
+    return value
+
+
+def _like_pattern_covers_fragment(pattern: str, fragment: str) -> bool:
+    return "_" not in pattern and "\\" not in pattern and pattern.replace("%", "") == fragment
 
 
 def _table_select_scopes(statement: exp.Expression, table_name: str) -> tuple[exp.Select, ...]:
@@ -1246,6 +1365,7 @@ def _time_bounds(
     time_column: str,
     *,
     filters_only: bool,
+    table_alias: str | None = None,
 ) -> set[tuple[str, int]]:
     bounds: set[tuple[str, int]] = set()
     comparison_types = (
@@ -1267,10 +1387,10 @@ def _time_bounds(
                 if not (
                     isinstance(column, exp.Column)
                     and column.name.lower() == time_column.lower()
-                    and isinstance(value, exp.Literal)
+                    and (table_alias is None or column.table.lower() == table_alias.lower())
                 ):
                     continue
-                epoch = _timestamp_literal_epoch(value)
+                epoch = _timestamp_expression_epoch(value)
                 if epoch is not None:
                     bounds.add((operator, epoch))
     return bounds
@@ -1281,6 +1401,8 @@ def _scope_binds_period(
     time_column: str,
     periods: set[str],
     fixture: AegisTransferScorerFixture,
+    *,
+    table_alias: str | None = None,
 ) -> bool:
     period_projections = [
         projection
@@ -1320,7 +1442,12 @@ def _scope_binds_period(
             continue
         period = str(value.this).lower()
         if period in expected:
-            observed[period] = _time_bounds(condition, time_column, filters_only=False)
+            observed[period] = _time_bounds(
+                condition,
+                time_column,
+                filters_only=False,
+                table_alias=table_alias,
+            )
     if all(observed.get(period) == bounds for period, bounds in expected.items()):
         return True
 
@@ -1488,12 +1615,13 @@ def _start_gap_evidence_from_trace(
 
     normalized = normalize_start_gap_evidence(result)
     if normalized is not None:
-        if not {
-            "min_start_gap_ns",
-            "max_start_gap_ns",
-        }.issubset(scope.gap_output_columns):
-            return None
-        if fixture.normal_window[1] not in scope.client_window_epochs:
+        if (
+            not {
+                "min_start_gap_ns",
+                "max_start_gap_ns",
+            }.issubset(scope.gap_output_columns)
+            or not scope.aggregate_periods_bound
+        ):
             return None
         normal = normalized.get("normal", {})
         abnormal = normalized.get("abnormal", {})
@@ -1539,69 +1667,107 @@ def _start_gap_query_scope(
     statement = _parse_single_statement(query)
     if statement is None or any(statement.find_all(exp.Limit)):
         return None
-    trace_aliases = {
-        table.alias_or_name.lower()
-        for table in statement.find_all(exp.Table)
-        if table.name.lower() == "traces"
-    }
-    if len(trace_aliases) < 2:
-        return None
-    client_aliases = (
-        _aliases_matching_literal(statement, "span_kind", "SPAN_KIND_CLIENT")
-        & _aliases_matching_literal(
-            statement,
-            "service_name",
-            fixture.ground_truth.affected_component,
-        )
-        & trace_aliases
-    )
-    server_aliases = (
-        _aliases_matching_literal(statement, "span_kind", "SPAN_KIND_SERVER")
-        & _aliases_matching_literal(
-            statement,
-            "service_name",
-            fixture.ground_truth.causal_dependency,
-        )
-        & _aliases_matching_literal(
-            statement,
-            "span_name",
-            str(fixture.mechanism_evidence.span_name),
-        )
-        & trace_aliases
-    )
-    if len(client_aliases) != 1 or len(server_aliases) != 1:
-        return None
-    client_alias = next(iter(client_aliases))
-    server_alias = next(iter(server_aliases))
-    if client_alias == server_alias:
-        return None
-    equalities = list(statement.find_all(exp.EQ))
-    if not (
-        _has_qualified_column_equality(
-            equalities,
-            client_alias,
-            "trace_id",
-            server_alias,
-            "trace_id",
-        )
-        and _has_qualified_column_equality(
-            equalities,
-            server_alias,
-            "parent_span_id",
-            client_alias,
-            "span_id",
-        )
-    ):
-        return None
     if any(
         _identity_literal_comparison(comparison)
         for comparison in statement.find_all(exp.EQ, exp.In)
     ):
         return None
-    window_epochs = _timestamp_literal_epochs_for_alias(statement, client_alias)
-    if not {fixture.normal_window[0], fixture.abnormal_window[1]}.issubset(window_epochs):
+    candidates: list[tuple[exp.Select, str, str]] = []
+    for select in statement.find_all(exp.Select):
+        direct_tables = [
+            table
+            for table in select.find_all(exp.Table)
+            if table.find_ancestor(exp.Select) is select
+        ]
+        if len(direct_tables) != 2 or any(
+            table.name.lower() != "traces" for table in direct_tables
+        ):
+            continue
+        trace_aliases = {table.alias_or_name.lower() for table in direct_tables}
+        if len(trace_aliases) != 2:
+            continue
+        client_aliases = (
+            _aliases_matching_literal(
+                select,
+                "span_kind",
+                "SPAN_KIND_CLIENT",
+                allow_case_normalization=True,
+            )
+            & _aliases_matching_literal(
+                select,
+                "service_name",
+                fixture.ground_truth.affected_component,
+                allow_case_normalization=True,
+            )
+            & trace_aliases
+        )
+        server_aliases = (
+            _aliases_matching_literal(
+                select,
+                "span_kind",
+                "SPAN_KIND_SERVER",
+                allow_case_normalization=True,
+            )
+            & _aliases_matching_literal(
+                select,
+                "service_name",
+                str(fixture.ground_truth.causal_dependency),
+                allow_case_normalization=True,
+            )
+            & _aliases_matching_literal(
+                select,
+                "span_name",
+                str(fixture.mechanism_evidence.span_name),
+            )
+            & trace_aliases
+        )
+        if len(client_aliases) != 1 or len(server_aliases) != 1:
+            continue
+        client_alias = next(iter(client_aliases))
+        server_alias = next(iter(server_aliases))
+        if client_alias == server_alias:
+            continue
+        equalities = [
+            equality
+            for equality in select.find_all(exp.EQ)
+            if _belongs_to_select_scope(equality, select)
+        ]
+        if not (
+            _has_qualified_column_equality(
+                equalities,
+                client_alias,
+                "trace_id",
+                server_alias,
+                "trace_id",
+            )
+            and _has_qualified_column_equality(
+                equalities,
+                server_alias,
+                "parent_span_id",
+                client_alias,
+                "span_id",
+            )
+        ):
+            continue
+        client_bounds = _time_bounds(
+            select,
+            "timestamp",
+            filters_only=True,
+            table_alias=client_alias,
+        )
+        if client_bounds != {
+            ("gte", fixture.normal_window[0]),
+            ("lt", fixture.abnormal_window[1]),
+        }:
+            continue
+        candidates.append((select, client_alias, server_alias))
+    if len(candidates) != 1:
         return None
-    projections = _select_projections(statement)
+    source_scope, client_alias, server_alias = candidates[0]
+    result_lineage = _result_lineage_selects(statement, source_scope)
+    if result_lineage is None:
+        return None
+    projections = _select_projections(result_lineage)
     timestamp_sources = _timestamp_output_sources(projections)
     gap_outputs = _gap_output_columns(
         projections,
@@ -1612,7 +1778,13 @@ def _start_gap_query_scope(
         statement=statement,
         client_alias=client_alias,
         server_alias=server_alias,
-        client_window_epochs=frozenset(window_epochs),
+        aggregate_periods_bound=_scope_binds_period(
+            source_scope,
+            "timestamp",
+            {"normal", "abnormal"},
+            fixture,
+            table_alias=client_alias,
+        ),
         gap_output_columns=frozenset(gap_outputs),
         timestamp_output_sources={
             key: frozenset(value) for key, value in timestamp_sources.items()
@@ -1636,22 +1808,43 @@ def _aliases_matching_literal(
     statement: exp.Expression,
     column_name: str,
     literal_value: str,
+    *,
+    allow_case_normalization: bool = False,
 ) -> set[str]:
     matches = set()
-    for equality in statement.find_all(exp.EQ):
-        for column, value in (
-            (equality.this, equality.expression),
-            (equality.expression, equality.this),
+    for comparison in statement.find_all(exp.EQ, exp.In):
+        if not _belongs_to_select_scope(comparison, statement) or not _is_positive_filter_predicate(
+            comparison
         ):
-            if (
-                isinstance(column, exp.Column)
-                and isinstance(value, exp.Literal)
-                and value.is_string
-                and column.name.lower() == column_name.lower()
-                and str(value.this).lower() == literal_value.lower()
-                and column.table
+            continue
+        pairs = (
+            (
+                (comparison.this, comparison.expression),
+                (comparison.expression, comparison.this),
+            )
+            if isinstance(comparison, exp.EQ)
+            else tuple((comparison.this, value) for value in comparison.expressions)
+        )
+        if isinstance(comparison, exp.In) and len(comparison.expressions) != 1:
+            continue
+        for column, value in pairs:
+            if not _column_literal_matches(
+                column,
+                value,
+                column_name,
+                literal_value,
+                allow_case_normalization=allow_case_normalization,
             ):
-                matches.add(column.table.lower())
+                continue
+            source_column = (
+                column
+                if isinstance(column, exp.Column)
+                else column.this
+                if isinstance(column, (exp.Lower, exp.Upper))
+                else None
+            )
+            if isinstance(source_column, exp.Column) and source_column.table:
+                matches.add(source_column.table.lower())
     return matches
 
 
@@ -1674,38 +1867,41 @@ def _has_qualified_column_equality(
             (equality.expression.table.lower(), equality.expression.name.lower()),
         }
         == expected
+        and _is_positive_filter_predicate(equality)
         for equality in equalities
     )
 
 
-def _timestamp_literal_epochs_for_alias(
+def _result_lineage_selects(
     statement: exp.Expression,
-    table_alias: str,
-) -> set[int]:
-    epochs = set()
-    for comparison_type in (exp.GT, exp.GTE, exp.LT, exp.LTE):
-        for comparison in statement.find_all(comparison_type):
-            for column, value in (
-                (comparison.this, comparison.expression),
-                (comparison.expression, comparison.this),
-            ):
-                if (
-                    isinstance(column, exp.Column)
-                    and column.table.lower() == table_alias
-                    and column.name.lower() == "timestamp"
-                    and isinstance(value, exp.Literal)
-                ):
-                    epoch = _timestamp_literal_epoch(value)
-                    if epoch is not None:
-                        epochs.add(epoch)
-    return epochs
+    source_select: exp.Select,
+) -> tuple[exp.Select, ...] | None:
+    root = build_scope(statement)
+    if root is None:
+        return None
+    scopes: list[Scope] = []
+    pending = [root]
+    while pending:
+        scope = pending.pop()
+        if any(scope is observed for observed in scopes):
+            continue
+        scopes.append(scope)
+        for source in scope.sources.values():
+            if isinstance(source, Scope):
+                pending.append(source)
+            elif isinstance(source, exp.Table) and scope.expression is not source_select:
+                return None
+    selects = tuple(
+        scope.expression for scope in scopes if isinstance(scope.expression, exp.Select)
+    )
+    return selects if any(select is source_select for select in selects) else None
 
 
 def _select_projections(
-    statement: exp.Expression,
+    selects: tuple[exp.Select, ...],
 ) -> dict[str, list[exp.Expression]]:
     projections: dict[str, list[exp.Expression]] = {}
-    for select in statement.find_all(exp.Select):
+    for select in selects:
         for projection in select.expressions:
             alias = projection.alias_or_name.lower()
             if alias:
@@ -1846,7 +2042,7 @@ def _flexible_period_start_gap_result(
         return None
     if min_index is not None and columns[min_index] not in scope.gap_output_columns:
         return None
-    if fixture.normal_window[1] not in scope.client_window_epochs:
+    if not scope.aggregate_periods_bound:
         return None
     threshold = int(fixture.mechanism_evidence.threshold_ns or 0)
     threshold_is_bound = threshold_index is not None and _threshold_output_is_bound(
@@ -2158,8 +2354,20 @@ def _strict_int_literal(literal: exp.Literal) -> int | None:
     return int(value)
 
 
-def _timestamp_literal_epoch(literal: exp.Literal) -> int | None:
-    value = str(literal.this)
+def _timestamp_expression_epoch(expression: exp.Expression) -> int | None:
+    if isinstance(expression, exp.Cast):
+        target = expression.args.get("to")
+        if not isinstance(target, exp.DataType) or target.this not in {
+            exp.DataType.Type.DATE,
+            exp.DataType.Type.DATETIME,
+            exp.DataType.Type.TIMESTAMP,
+            exp.DataType.Type.TIMESTAMPTZ,
+        }:
+            return None
+        expression = expression.this
+    if not isinstance(expression, exp.Literal):
+        return None
+    value = str(expression.this)
     if value.isdigit() and len(value) == 10:
         return int(value)
     try:
@@ -2231,6 +2439,7 @@ def _transfer_audit_matches_fixture(
             and mechanism_details_match
             and isinstance(gates, dict)
             and gates["all_passed"] is True
+            and gates["case_normalized_predicates_source_equivalent"] is True
         )
     except (KeyError, TypeError):
         return False

@@ -181,7 +181,7 @@ def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
 def _add_aegis_formal_environment_arguments(
     parser: argparse.ArgumentParser,
     *,
-    selection: Path = Path("fixtures/reference/aegis-transfer-v26-selection.json"),
+    selection: Path = Path("fixtures/reference/aegis-transfer-v27-selection.json"),
     database: str = "case_03",
 ) -> None:
     parser.add_argument("--cases-dir", type=Path, required=True)
@@ -293,7 +293,7 @@ def _parser() -> argparse.ArgumentParser:
     aegis_transfer_run = subparsers.add_parser("aegis-transfer-run")
     _add_aegis_formal_environment_arguments(
         aegis_transfer_run,
-        selection=Path("fixtures/reference/aegis-transfer-v26-calibration-selection.json"),
+        selection=Path("fixtures/reference/aegis-transfer-v27-calibration-selection.json"),
         database="case_02",
     )
     aegis_transfer_run.add_argument(

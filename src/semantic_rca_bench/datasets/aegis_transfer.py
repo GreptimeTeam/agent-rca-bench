@@ -329,6 +329,9 @@ def _validate_frozen_mechanism(
 
 def source_audit(case: AegisTransferCase) -> dict[str, object]:
     metric_audit = _metric_sample_audit(case)
+    log_service_counts, log_service_identity_valid = _source_string_distribution(
+        case.log_paths, "service_name"
+    )
     trace_windows = {
         period: _source_trace_window_audit(path, window)
         for period, path, window in zip(
@@ -395,13 +398,15 @@ def source_audit(case: AegisTransferCase) -> dict[str, object]:
         "metric_representation": metric_audit,
         "signal_windows": signal_windows,
         "trace_windows": trace_windows,
+        "source_log_service_counts": log_service_counts,
         "source_window_boundary_anomalies": boundary_anomalies,
         "frozen_edge_checks": frozen_checks,
         "source_identity_valid": all(
             bool(window["identity_valid"]) and bool(window["span_identity_unique"])
             for window in trace_windows.values()
         )
-        and combined_trace_identity_unique,
+        and combined_trace_identity_unique
+        and log_service_identity_valid,
         "combined_trace_identity_unique": combined_trace_identity_unique,
         "all_signal_timestamps_in_declared_windows": all(
             bool(window["all_rows_in_declared_window"]) for window in signal_windows.values()
@@ -512,10 +517,15 @@ def validate_stored_rows(
             "rejected_rows": counts.rejected_trace_spans,
         },
     }
-    stored_services = _group_counts(client, "service_name")
-    stored_roles = _group_counts(client, "span_kind")
-    stored_statuses = _group_counts(client, "span_status_code")
+    stored_services = _group_counts(client, "traces", "service_name")
+    stored_roles = _group_counts(client, "traces", "span_kind")
+    stored_statuses = _group_counts(client, "traces", "span_status_code")
+    stored_log_services = _group_counts(client, "logs", "service_name")
     expected_services = _combined_trace_distribution(source, "service_counts")
+    source_log_services = source.get("source_log_service_counts")
+    if not isinstance(source_log_services, dict):
+        raise AegisAuditError("source log service distribution is malformed")
+    expected_log_services = {str(key): int(value) for key, value in source_log_services.items()}
     expected_roles = {
         f"SPAN_KIND_{key.upper()}": value
         for key, value in _combined_trace_distribution(source, "span_kind_counts").items()
@@ -524,6 +534,7 @@ def validate_stored_rows(
         f"STATUS_CODE_{key.upper()}": value
         for key, value in _combined_trace_distribution(source, "status_code_counts").items()
     }
+    service_values = {*expected_services, *expected_log_services}
     return {
         "source_row_counts": source_counts,
         "protocol_counts": protocol,
@@ -542,12 +553,20 @@ def validate_stored_rows(
             "source_service_counts": expected_services,
             "stored_service_counts": stored_services,
             "service_counts_match": expected_services == stored_services,
+            "source_log_service_counts": expected_log_services,
+            "stored_log_service_counts": stored_log_services,
+            "log_service_counts_match": expected_log_services == stored_log_services,
             "source_span_kind_counts": expected_roles,
             "stored_span_kind_counts": stored_roles,
             "span_kind_counts_match": expected_roles == stored_roles,
             "source_status_code_counts": expected_statuses,
             "stored_status_code_counts": stored_statuses,
             "status_code_counts_match": expected_statuses == stored_statuses,
+            "case_normalization_unambiguous": {
+                "service_name": _ascii_case_normalization_unambiguous(service_values),
+                "span_kind": _ascii_case_normalization_unambiguous(set(expected_roles)),
+                "span_status_code": _ascii_case_normalization_unambiguous(set(expected_statuses)),
+            },
         },
         "semantic_signal_sources": [
             {"table_name": str(row[0]), "signal_type": str(row[1]), "source": str(row[2])}
@@ -1070,10 +1089,16 @@ def no_model_gates(
             identity.get(field) is True
             for field in (
                 "service_counts_match",
+                "log_service_counts_match",
                 "span_kind_counts_match",
                 "status_code_counts_match",
             )
         ),
+        "case_normalized_predicates_source_equivalent": all(
+            value is True for value in identity.get("case_normalization_unambiguous", {}).values()
+        )
+        and set(identity.get("case_normalization_unambiguous", {}))
+        == {"service_name", "span_kind", "span_status_code"},
         "raw_graph_exact_edge_set_equality": equality.get("exact_edge_set_equality") is True,
         "stored_period_raw_edges_match_source": equality.get("period_raw_replay_exact") is True,
         "graph_window_strategy_proven": equality.get("graph_window_strategy_proof", {}).get("pass")
@@ -1420,9 +1445,32 @@ def _combined_trace_distribution(source: dict[str, object], field: str) -> dict[
     return dict(sorted(result.items()))
 
 
-def _group_counts(client: GreptimeClient, column: str) -> dict[str, int]:
+def _source_string_distribution(
+    paths: tuple[Path, ...], column: str
+) -> tuple[dict[str, int], bool]:
+    counts: Counter[str] = Counter()
+    valid = True
+    for path in paths:
+        parquet = pq.ParquetFile(path)
+        for batch in parquet.iter_batches(columns=[column], batch_size=100_000):
+            for scalar in batch.column(0):
+                if not scalar.is_valid or scalar.as_py() == "":
+                    valid = False
+                    continue
+                counts[str(scalar.as_py())] += 1
+    return dict(sorted(counts.items())), valid
+
+
+def _ascii_case_normalization_unambiguous(values: set[str]) -> bool:
+    if not values or any(not value.isascii() for value in values):
+        return False
+    return len({value.lower() for value in values}) == len(values)
+
+
+def _group_counts(client: GreptimeClient, table: str, column: str) -> dict[str, int]:
+    identifier = table.replace('"', '""')
     result = client.query(
-        f'SELECT "{column}", COUNT(*) FROM traces GROUP BY "{column}" ORDER BY "{column}"',
+        f'SELECT "{column}", COUNT(*) FROM "{identifier}" GROUP BY "{column}" ORDER BY "{column}"',
         max_rows=None,
     )
     return {str(row[0]): int(row[1]) for row in result.rows}

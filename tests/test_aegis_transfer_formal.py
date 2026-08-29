@@ -92,7 +92,7 @@ def _source_audit() -> dict[str, object]:
         "selection_audit": {
             "selection": {"seed": "seed"},
             "frozen_selection_gate": {
-                "manifest_name": "aegis-transfer-v26-selection.json",
+                "manifest_name": "aegis-transfer-v27-selection.json",
                 "pass": True,
             },
         },
@@ -162,7 +162,10 @@ def _source_audit() -> dict[str, object]:
             "pass": True,
         },
         "semantic_surfaces": {"coverage": {"graph": {"status": "relational"}}},
-        "no_model_gates": {"all_passed": True},
+        "no_model_gates": {
+            "all_passed": True,
+            "case_normalized_predicates_source_equivalent": True,
+        },
         "exclusive_instance": {
             "ports": {"http": 40000},
             "process_stopped_by_command": False,
@@ -374,13 +377,13 @@ def test_preflight_binds_pricing_snapshot_across_resume(monkeypatch) -> None:
         )
 
 
-def test_v26_formal_protocol_binds_fresh_case_and_strong_model_roster() -> None:
+def test_v27_formal_protocol_binds_fresh_case_and_strong_model_roster() -> None:
     protocol = load_transfer_protocol_fixture(DEFAULT_PROTOCOL_FIXTURE)
     scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     schedule = formal_schedule(protocol)
 
     assert protocol.agent_case_id == scorer.agent_case_id == "aegis-transfer-003"
-    assert protocol.benchmark_protocol_version == 26
+    assert protocol.benchmark_protocol_version == 27
     assert [model.model for model in protocol.models] == [
         "deepseek-v4-pro",
         "claude-sonnet-5",
@@ -606,7 +609,7 @@ def test_formal_runner_checks_protocol_with_wrapped_agent(monkeypatch) -> None:
         raise RuntimeError(f"protocol guard called for v{version}")
 
     monkeypatch.setattr(formal_module, "require_current_protocol", reject_protocol)
-    with pytest.raises(RuntimeError, match="protocol guard called for v26"):
+    with pytest.raises(RuntimeError, match="protocol guard called for v27"):
         execute_formal_runs(
             _Client(),  # type: ignore[arg-type]
             _case(),

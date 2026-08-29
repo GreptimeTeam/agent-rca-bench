@@ -57,14 +57,14 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v26-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v27-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
 
 
 def test_noncurrent_protocol_cannot_start_new_agent_execution() -> None:
-    require_current_protocol(26)
+    require_current_protocol(27)
 
-    with pytest.raises(ValueError, match="does not match current protocol v26"):
+    with pytest.raises(ValueError, match="does not match current protocol v27"):
         require_current_protocol(25)
 
 
@@ -141,7 +141,7 @@ def test_aegis_transfer_audit_requires_exclusive_run_directory() -> None:
     )
 
     assert args.database == "case_03"
-    assert str(args.selection) == "fixtures/reference/aegis-transfer-v26-selection.json"
+    assert str(args.selection) == "fixtures/reference/aegis-transfer-v27-selection.json"
     assert str(args.run_dir) == "instance"
 
 
@@ -174,7 +174,7 @@ def test_aegis_transfer_scorer_audit_uses_frozen_fixture_by_default() -> None:
         ]
     )
 
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v26-scorer.json"
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v27-scorer.json"
 
 
 def test_aegis_transfer_protocol_audit_uses_measurement_fixtures_without_paid_flag() -> None:
@@ -190,8 +190,8 @@ def test_aegis_transfer_protocol_audit_uses_measurement_fixtures_without_paid_fl
         ]
     )
 
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v26-scorer.json"
-    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v26-three-model-protocol.json")
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v27-scorer.json"
+    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v27-three-model-protocol.json")
     assert not hasattr(args, "confirm_paid_api")
 
 
@@ -230,9 +230,9 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v26-scorer.json"
+    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v27-scorer.json"
     assert str(preflight.protocol) == (
-        "fixtures/reference/aegis-transfer-v26-three-model-protocol.json"
+        "fixtures/reference/aegis-transfer-v27-three-model-protocol.json"
     )
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
@@ -255,13 +255,13 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
 
     assert paid.confirm_paid_api is True
     assert paid.database == "case_03"
-    assert str(paid.selection) == "fixtures/reference/aegis-transfer-v26-selection.json"
-    assert str(paid.scorer) == "fixtures/reference/aegis-transfer-v26-scorer.json"
-    assert str(paid.protocol) == "fixtures/reference/aegis-transfer-v26-three-model-protocol.json"
+    assert str(paid.selection) == "fixtures/reference/aegis-transfer-v27-selection.json"
+    assert str(paid.scorer) == "fixtures/reference/aegis-transfer-v27-scorer.json"
+    assert str(paid.protocol) == "fixtures/reference/aegis-transfer-v27-three-model-protocol.json"
     assert not hasattr(export, "confirm_paid_api")
-    assert str(export.scorer) == "fixtures/reference/aegis-transfer-v26-scorer.json"
+    assert str(export.scorer) == "fixtures/reference/aegis-transfer-v27-scorer.json"
     assert str(export.protocol) == (
-        "fixtures/reference/aegis-transfer-v26-three-model-protocol.json"
+        "fixtures/reference/aegis-transfer-v27-three-model-protocol.json"
     )
 
 
@@ -291,9 +291,9 @@ def test_aegis_transfer_run_requires_explicit_paid_api_confirmation() -> None:
     assert args.confirm_paid_api is True
     assert args.database == "case_02"
     assert str(args.selection) == (
-        "fixtures/reference/aegis-transfer-v26-calibration-selection.json"
+        "fixtures/reference/aegis-transfer-v27-calibration-selection.json"
     )
-    assert str(args.scorer) == ("fixtures/reference/aegis-transfer-v26-calibration-scorer.json")
+    assert str(args.scorer) == ("fixtures/reference/aegis-transfer-v27-calibration-scorer.json")
     assert not hasattr(args, "model")
 
 

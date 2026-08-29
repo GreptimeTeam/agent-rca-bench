@@ -131,11 +131,12 @@ and Claude subscription runners. Protocol v24 added provider-specific API prompt
 caching and native cache-usage accounting. Protocol v25 added provisional causal-hypothesis
 triage. Protocol v26 makes that method case-invariant and symmetric across mechanism classes,
 adds structured causal scope and mechanism fields, and routes cited results to typed claims. The
-v26 Semantic Graph tool also exposes `unmatched_count` and `duration_max` from the current
+Semantic Graph tool also exposes `unmatched_count` and `duration_max` from the current
 GreptimeDB relationship contract. It preserves their source populations: `unmatched_count` is not
 generally additive to `request_count`, and `duration_max` uses the same population as the duration
 sum and count. Table profiles distinguish the identity qualifier from separately reported scope
-columns. No v26 model cell ran before this representation was frozen. The
+columns. A nine-cell v26 calibration used only the consumed delay case. Protocol v27 retains the
+same agent-visible surface and hardens its no-model audit contract before any fresh-case run. The
 agent establishes the failing operation, uses discriminating queries instead of unconditional
 resource sweeps, and compares the same operation across the change point. The
 API runner sets its turn limit above the visible tool-call cap and records turn
@@ -265,11 +266,11 @@ also completed. Their scorer used server duration for a fault injected between c
 start, required a hidden exact fault label, and constrained evidence to the canonical aggregate.
 The resulting zero eligible pairs are not a model-quality or semantic-layer result. Historical
 reports and the sanitized v25 artifact remain immutable records. The current runtime only accepts
-v26 and does not load, rescore, resume, or export v24/v25 schemas. A non-v26 execution request
-fails before contacting a provider.
+v27 for new agent execution and does not rescore, resume, or export earlier development report,
+scorer, or protocol schemas. A non-v27 execution request fails before contacting a provider.
 
-Protocol v26 retains the consumed delay case as development calibration and selects a fresh source-
-observable JVM exception case for measurement. The agent sees only `aegis-transfer-003`, an empty
+Protocol v27 retains the consumed delay case as development calibration and selects a fresh
+source-observable JVM exception case for measurement. The agent sees only `aegis-transfer-003`, an empty
 fault taxonomy, and the incident windows. Source labels, the source case name, and
 `causal_graph.json` remain outside the agent input and ingestion path.
 
@@ -280,30 +281,30 @@ uv run semantic-rca aegis-transfer-audit \
   --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
   --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
   --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
-  --selection fixtures/reference/aegis-transfer-v26-selection.json \
-  --run-dir .instances/aegis-transfer-v26-source-01 \
+  --selection fixtures/reference/aegis-transfer-v27-selection.json \
+  --run-dir .instances/aegis-transfer-v27-source-01 \
   --database case_03 \
-  --output .reports/aegis-transfer-v26-source.json
+  --output .reports/aegis-transfer-v27-source.json
 
 uv run semantic-rca aegis-transfer-scorer-audit \
-  --transfer-audit .reports/aegis-transfer-v26-source.json \
-  --scorer fixtures/reference/aegis-transfer-v26-scorer.json \
-  --output .reports/aegis-transfer-v26-scorer.json
+  --transfer-audit .reports/aegis-transfer-v27-source.json \
+  --scorer fixtures/reference/aegis-transfer-v27-scorer.json \
+  --output .reports/aegis-transfer-v27-scorer.json
 
 uv run semantic-rca aegis-transfer-protocol-audit \
-  --source-audit .reports/aegis-transfer-v26-source.json \
-  --scorer-audit .reports/aegis-transfer-v26-scorer.json \
-  --scorer fixtures/reference/aegis-transfer-v26-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v26-three-model-protocol.json \
-  --output .reports/aegis-transfer-v26-protocol.json
+  --source-audit .reports/aegis-transfer-v27-source.json \
+  --scorer-audit .reports/aegis-transfer-v27-scorer.json \
+  --scorer fixtures/reference/aegis-transfer-v27-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v27-three-model-protocol.json \
+  --output .reports/aegis-transfer-v27-protocol.json
 
 uv run semantic-rca aegis-transfer-formal-preflight \
-  --source-audit .reports/aegis-transfer-v26-source.json \
-  --scorer-audit .reports/aegis-transfer-v26-scorer.json \
-  --protocol-audit .reports/aegis-transfer-v26-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v26-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v26-three-model-protocol.json \
-  --output .reports/aegis-transfer-v26-formal.json
+  --source-audit .reports/aegis-transfer-v27-source.json \
+  --scorer-audit .reports/aegis-transfer-v27-scorer.json \
+  --protocol-audit .reports/aegis-transfer-v27-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v27-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v27-three-model-protocol.json \
+  --output .reports/aegis-transfer-v27-formal.json
 ```
 
 The source oracle requires zero `retrieveByName` Error spans and zero exception logs during the
@@ -315,18 +316,21 @@ The Graph equality audit derives its comparison strategy from source boundary co
 that can be represented by `observed_at` minute bins must pass normal and abnormal raw/Graph exact
 equality separately and also pass the combined-window comparison. If both periods contain clients
 in the same minute, separate Graph periods are not representable; the audit records that fact and
-requires exact equality over the contiguous union. The selected v26 source follows the latter path.
+requires exact equality over the contiguous union. The selected v27 source follows the latter path.
 Its normalized union contains 40 edges and has the same hash on both sides. Two independent
 ingestions produce the same source-semantic hash.
 
 The scorer accepts a combined aggregate, separate trace and log aggregates, or complete raw rows.
-It requires the exact service, operation, source Error status, exception log predicate, and complete
+It requires the source service, operation, Error status, exception log predicate, and complete
 half-open windows. It rejects identity cherry-picking, truncated results, `LIMIT`, hard-coded
 aggregate aliases, predicates neutralized by `OR` or `NOT`, and required predicates placed only in
 an unrelated nested query. Aggregate period labels must be derived from the source timestamp; time
-literals in projections do not substitute for exact positive window filters.
+literals in projections do not substitute for exact positive window filters. Ingestion preserves
+the exact source values. The no-model audit also proves that ASCII case normalization is collision
+free for service identity and the stored OTel role/status domains, so the scorer accepts equivalent
+`LOWER` or `UPPER` predicates without accepting a broader identity or enum set.
 
-Protocol v26 reports `diagnosis_correct`, `required_evidence_covered`, `citation_integrity`,
+Protocol v27 reports `diagnosis_correct`, `required_evidence_covered`, `citation_integrity`,
 `execution_reliability`, `auditable_completion`, and `efficiency_eligible` separately. The primary
 efficiency comparison requires correct structured diagnosis, required claim coverage, and reliable
 execution. An unrelated invalid extra citation blocks auditable completion without changing
@@ -348,15 +352,15 @@ uv run semantic-rca aegis-transfer-formal-run \
   --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
   --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
   --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
-  --selection fixtures/reference/aegis-transfer-v26-selection.json \
-  --run-dir .instances/aegis-transfer-v26-paid-01 \
+  --selection fixtures/reference/aegis-transfer-v27-selection.json \
+  --run-dir .instances/aegis-transfer-v27-paid-01 \
   --database case_03 \
-  --report .reports/aegis-transfer-v26-formal.json \
-  --source-audit-output .reports/aegis-transfer-v26-paid-01-source.json \
-  --scorer-audit-output .reports/aegis-transfer-v26-paid-01-scorer.json \
-  --protocol-audit-output .reports/aegis-transfer-v26-paid-01-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v26-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v26-three-model-protocol.json \
+  --report .reports/aegis-transfer-v27-formal.json \
+  --source-audit-output .reports/aegis-transfer-v27-paid-01-source.json \
+  --scorer-audit-output .reports/aegis-transfer-v27-paid-01-scorer.json \
+  --protocol-audit-output .reports/aegis-transfer-v27-paid-01-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v27-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v27-three-model-protocol.json \
   --confirm-paid-api
 ```
 
@@ -373,13 +377,13 @@ database connection:
 
 ```bash
 uv run semantic-rca aegis-transfer-measurement-export \
-  --run-report .reports/aegis-transfer-v26-formal.json \
-  --source-audit .reports/aegis-transfer-v26-paid-01-source.json \
-  --scorer-audit .reports/aegis-transfer-v26-paid-01-scorer.json \
-  --protocol-audit .reports/aegis-transfer-v26-paid-01-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v26-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v26-three-model-protocol.json \
-  --output artifacts/measurement/aegis-transfer-v26-three-model.json
+  --run-report .reports/aegis-transfer-v27-formal.json \
+  --source-audit .reports/aegis-transfer-v27-paid-01-source.json \
+  --scorer-audit .reports/aegis-transfer-v27-paid-01-scorer.json \
+  --protocol-audit .reports/aegis-transfer-v27-paid-01-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v27-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v27-three-model-protocol.json \
+  --output artifacts/measurement/aegis-transfer-v27-three-model.json
 ```
 
 The exporter deterministically rescores every cell. It excludes provider responses, free-form
@@ -394,7 +398,7 @@ the result carries the same query ID, and the evidence claim is non-empty.
 Catalog and schema discovery are not incident evidence. This check prevents
 failed or fabricated references from unlocking efficiency metrics, but it does
 not prove that the cited rows support the diagnosis. The Aegis transfer scorer
-adds a source-specific deterministic evidence-support predicate. Protocol v26
+adds a source-specific deterministic evidence-support predicate. Protocol v27
 also requires each citation to declare the structured claim types it supports,
 then evaluates causal-scope coverage, mechanism coverage, referential integrity,
 and execution reliability separately. The generic RCA scorer still does not

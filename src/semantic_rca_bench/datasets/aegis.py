@@ -524,7 +524,7 @@ def _validate_fresh_observable_selection(
         for case in cases
         if case.get("graph_source_eligible") is True
         and str(case.get("source_case")) not in consumed_set
-        and _v26_transfer_mechanism_supported(case.get("mechanism_evidence"))
+        and _transfer_mechanism_supported(case.get("mechanism_evidence"))
     )
     ranked = deterministic_rank(eligible, str(observable.get("seed"))) if eligible else []
     if not ranked or selected.get("source_case") != ranked[0]:
@@ -539,7 +539,7 @@ def _validate_fresh_observable_selection(
     if (
         case.get("graph_source_eligible") is not True
         or not isinstance(mechanism, dict)
-        or not _v26_transfer_mechanism_supported(mechanism)
+        or not _transfer_mechanism_supported(mechanism)
         or not isinstance(trace_windows, dict)
         or not isinstance(selected_mechanism, dict)
     ):
@@ -660,7 +660,7 @@ def _selected_mechanism_projection(
     return projected
 
 
-def _v26_transfer_mechanism_supported(mechanism: object) -> bool:
+def _transfer_mechanism_supported(mechanism: object) -> bool:
     if not isinstance(mechanism, dict):
         return False
     if mechanism.get("predicate") == "source_declared_jvm_exception":
