@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "selection_strategy": "fresh-source-observable-mechanism-v1",
+  "selection_strategy": "fresh-source-observable-supported-mechanism-v2",
   "selection_seed": "semantic-rca-v1-aegis-transfer",
   "selection_phase": "before_agent_trajectory",
   "case_role": "measurement",

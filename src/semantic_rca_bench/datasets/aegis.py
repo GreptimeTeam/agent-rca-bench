@@ -187,7 +187,7 @@ def _validate_frozen_selection(audit: dict[str, object], selection_path: Path) -
         return _validate_sequential_selection(audit, selection_path, manifest)
     if manifest.get("selection_strategy") == "consumed-v25-case-development-recalibration-v1":
         return _validate_recalibration_selection(audit, selection_path, manifest)
-    if manifest.get("selection_strategy") == "fresh-source-observable-mechanism-v1":
+    if manifest.get("selection_strategy") == "fresh-source-observable-supported-mechanism-v2":
         return _validate_fresh_observable_selection(audit, selection_path, manifest)
     selection = audit["selection"]
     if not isinstance(selection, dict):
@@ -518,9 +518,14 @@ def _validate_fresh_observable_selection(
         or not isinstance(selected, dict)
     ):
         raise AegisAuditError("source audit is incomplete for fresh selection")
-    eligible = [
-        name for name in observable.get("eligible_set", []) if name not in set(consumed_cases)
-    ]
+    consumed_set = set(consumed_cases)
+    eligible = sorted(
+        str(case["source_case"])
+        for case in cases
+        if case.get("graph_source_eligible") is True
+        and str(case.get("source_case")) not in consumed_set
+        and _v26_transfer_mechanism_supported(case.get("mechanism_evidence"))
+    )
     ranked = deterministic_rank(eligible, str(observable.get("seed"))) if eligible else []
     if not ranked or selected.get("source_case") != ranked[0]:
         raise AegisAuditError("fresh selection is not the first unconsumed eligible candidate")
@@ -534,7 +539,7 @@ def _validate_fresh_observable_selection(
     if (
         case.get("graph_source_eligible") is not True
         or not isinstance(mechanism, dict)
-        or mechanism.get("predicate_match") is not True
+        or not _v26_transfer_mechanism_supported(mechanism)
         or not isinstance(trace_windows, dict)
         or not isinstance(selected_mechanism, dict)
     ):
@@ -574,7 +579,7 @@ def _validate_fresh_observable_selection(
     }
     expected = {
         "source": manifest.get("source"),
-        "selection_strategy": "fresh-source-observable-mechanism-v1",
+        "selection_strategy": "fresh-source-observable-supported-mechanism-v2",
         "selection_seed": manifest.get("selection_seed"),
         "consumed_parent_manifests": parents,
         "consumed_source_cases": manifest.get("consumed_source_cases"),
@@ -648,11 +653,21 @@ def _selected_mechanism_projection(
             "abnormal_exception_log_count",
         )
     else:
-        return {"predicate": mechanism.get("predicate")}
+        raise AegisAuditError(f"unsupported fresh transfer mechanism predicate: {predicate}")
     projected = {key: mechanism.get(key) for key in fields}
     if "start_gap_predicate" in projected:
         projected["predicate"] = projected.pop("start_gap_predicate")
     return projected
+
+
+def _v26_transfer_mechanism_supported(mechanism: object) -> bool:
+    if not isinstance(mechanism, dict):
+        return False
+    if mechanism.get("predicate") == "source_declared_jvm_exception":
+        return mechanism.get("predicate_match") is True
+    if mechanism.get("start_gap_predicate") == "source_declared_http_client_server_start_gap":
+        return mechanism.get("start_gap_predicate_match") is True
+    return False
 
 
 def _edge_set_summary(value: object) -> dict[str, object] | None:

@@ -70,11 +70,12 @@ or transformation that shaped the rows. semantic_options contains signal-specifi
 metric type, unit, temporality, original name, or trace conventions. metadata_quality says whether
 metric metadata was declared by the source or inferred; it describes semantic-metadata certainty,
 not telemetry quality. entity_declarations lists entities contributed by the table: entity_type is
-the kind, id is the ordered list of identifying columns, id_qualifier optionally scopes the first
-id value, descriptive lists non-identifying attributes, origin says declared or convention-derived,
-and superseded_by records a preferred declaration. Null or missing semantic fields mean unknown,
-not an opposite fact. Use the profile to map generic observability concepts to physical columns;
-do not treat it as incident evidence by itself.
+the kind; id is the ordered list of identifying columns; id_qualifier names one optional column
+folded into the first id component; scope lists namespace or environment columns exposed separately
+from identity; descriptive lists non-identifying attributes; origin says declared or
+convention-derived; and superseded_by records a preferred declaration. Null or missing semantic
+fields mean unknown, not an opposite fact. Use the profile to map generic observability concepts to
+physical columns; do not treat it as incident evidence by itself.
 """.strip()
 
 SEMANTIC_GRAPH_GUIDE = """
@@ -91,7 +92,10 @@ dst_type/dst_id and rel_type names the relationship. provenance says how it was 
 attribute, declared, or agent. confidence is derivation certainty, not entity health, RCA
 confidence, or correction for sampling. request_count, error_count, duration_sum, and
 duration_count are windowed RED observations; duration_sum/duration_count gives mean duration when
-duration_count is nonzero. attributes contains edge-specific facts. Deduplicate topology by
+duration_count is nonzero. unmatched_count reports client spans without a paired server span;
+it is not generally additive to request_count because an unmatched-only window uses that same
+client population for both fields. duration_max is the longest request in the same population as
+duration_sum and duration_count. attributes contains edge-specific facts. Deduplicate topology by
 (src_type, src_id, dst_type, dst_id, rel_type, provenance) across windows. Missing edges can result
 from no dependency, missing instrumentation, sampling, access filtering, or a narrow time window;
 absence alone does not prove entities are unrelated.
@@ -840,7 +844,9 @@ def _semantic_graph_tool(
         "fields are entity_type, entity_id, entity_id_attrs, and scope. Relationship direction "
         "is src_type/src_id to dst_type/dst_id; rel_type and provenance describe the edge; "
         "confidence is derivation certainty; request_count, error_count, duration_sum, and "
-        "duration_count are windowed observations. Missing rows do not prove no relationship. "
+        "duration_count are windowed observations. unmatched_count reports unpaired client spans "
+        "and is not generally additive to request_count; duration_max is the longest request in "
+        "the duration population. Missing rows do not prove no relationship. "
         "Identifiers from alerts or telemetry providers are not Semantic Graph entity IDs unless "
         "an entity query returns that exact ID."
     )
@@ -946,17 +952,21 @@ def _semantic_graph_query(
         SELECT src_type, src_id, dst_type, dst_id, rel_type, provenance,
                MAX(confidence) AS confidence,
                SUM(request_count) AS request_count,
+               SUM(unmatched_count) AS unmatched_count,
                SUM(error_count) AS error_count,
                SUM(duration_sum) AS duration_sum,
-               SUM(duration_count) AS duration_count
+               SUM(duration_count) AS duration_count,
+               MAX(duration_max) AS duration_max
         FROM (
             SELECT window_start, window_end, src_type, src_id, dst_type, dst_id,
                    rel_type, provenance,
                    MAX(confidence) AS confidence,
                    MAX(request_count) AS request_count,
+                   MAX(unmatched_count) AS unmatched_count,
                    MAX(error_count) AS error_count,
                    MAX(duration_sum) AS duration_sum,
-                   MAX(duration_count) AS duration_count
+                   MAX(duration_count) AS duration_count,
+                   MAX(duration_max) AS duration_max
             FROM greptime_private.semantic_relationships
             WHERE {where}
             GROUP BY window_start, window_end, src_type, src_id, dst_type, dst_id,

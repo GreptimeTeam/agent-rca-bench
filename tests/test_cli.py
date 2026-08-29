@@ -61,10 +61,10 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
 
-def test_retired_protocol_cannot_start_new_agent_execution() -> None:
+def test_noncurrent_protocol_cannot_start_new_agent_execution() -> None:
     require_current_protocol(26)
 
-    with pytest.raises(ValueError, match="v25 is retired"):
+    with pytest.raises(ValueError, match="does not match current protocol v26"):
         require_current_protocol(25)
 
 
@@ -93,25 +93,6 @@ def test_run_accepts_subscription_runners() -> None:
     assert codex.runner == "codex-subscription"
     assert codex.model == "gpt-5.6-luna"
     assert claude.runner == "claude-subscription"
-
-
-def test_aegis_transfer_export_is_no_model_and_uses_historical_fixture() -> None:
-    args = _parser().parse_args(
-        [
-            "aegis-transfer-export",
-            "--run-report",
-            "run.json",
-            "--source-audit",
-            "source.json",
-            "--scorer-audit",
-            "scorer.json",
-            "--output",
-            "release.json",
-        ]
-    )
-
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-scorer-v24-pilot.json"
-    assert not hasattr(args, "confirm_paid_api")
 
 
 def test_case_role_defaults_to_development_and_accepts_measurement() -> None:
@@ -159,8 +140,8 @@ def test_aegis_transfer_audit_requires_exclusive_run_directory() -> None:
         ]
     )
 
-    assert args.database == "case_01"
-    assert str(args.selection) == "fixtures/reference/aegis-selection.json"
+    assert args.database == "case_03"
+    assert str(args.selection) == "fixtures/reference/aegis-transfer-v26-selection.json"
     assert str(args.run_dir) == "instance"
 
 
@@ -193,7 +174,7 @@ def test_aegis_transfer_scorer_audit_uses_frozen_fixture_by_default() -> None:
         ]
     )
 
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-scorer.json"
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v26-scorer.json"
 
 
 def test_aegis_transfer_protocol_audit_uses_measurement_fixtures_without_paid_flag() -> None:
@@ -308,51 +289,11 @@ def test_aegis_transfer_run_requires_explicit_paid_api_confirmation() -> None:
     args = _parser().parse_args([*arguments, "--confirm-paid-api"])
 
     assert args.confirm_paid_api is True
-    assert not hasattr(args, "model")
-
-
-def test_aegis_opus_diagnostic_is_fixed_to_one_paid_graph_cell() -> None:
-    arguments = [
-        "aegis-transfer-opus-diagnostic",
-        "--cases-dir",
-        "cases",
-        "--meta-dir",
-        "meta",
-        "--archive",
-        "segments",
-        "--run-dir",
-        "instance",
-        "--source-audit-output",
-        "audit.json",
-        "--scorer-audit-output",
-        "scorer.json",
-        "--output",
-        "run.json",
-    ]
-
-    with pytest.raises(SystemExit):
-        _parser().parse_args(arguments)
-    args = _parser().parse_args([*arguments, "--confirm-paid-api"])
-
-    assert args.confirm_paid_api is True
     assert args.database == "case_02"
-    assert str(args.selection) == "fixtures/reference/aegis-transfer-v25-selection.json"
-    assert not hasattr(args, "model")
-
-
-def test_aegis_shadow_score_is_provider_free_and_uses_v26_calibration() -> None:
-    args = _parser().parse_args(
-        [
-            "aegis-transfer-shadow-score",
-            "--run-report",
-            "run.json",
-            "--output",
-            "shadow.json",
-        ]
+    assert str(args.selection) == (
+        "fixtures/reference/aegis-transfer-v26-calibration-selection.json"
     )
-
     assert str(args.scorer) == ("fixtures/reference/aegis-transfer-v26-calibration-scorer.json")
-    assert not hasattr(args, "confirm_paid_api")
     assert not hasattr(args, "model")
 
 
@@ -405,6 +346,11 @@ def test_graph_cli_freezes_balanced_two_treatment_schedule() -> None:
     assert args.runner == "codex-subscription"
     assert graph_protocol()["treatments"] == ["table_semantics", "semantic_graph"]
     assert "graph_micro_benchmark" not in benchmark_protocol()
+
+
+def test_current_transfer_protocol_binds_the_extended_semantic_surface() -> None:
+    assert benchmark_protocol()["semantic_graph"].endswith("v7")
+    assert benchmark_protocol()["table_profile"].endswith("entity-roles-v3")
 
 
 def test_discovery_runner_persists_failed_cells_and_continues(monkeypatch, tmp_path) -> None:

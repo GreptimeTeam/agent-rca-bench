@@ -75,6 +75,9 @@ def test_tools_expose_only_allowed_semantic_capabilities() -> None:
     assert "Missing edges" in graph_sql
     assert "metadata_quality" in table_profile
     assert "entity_declarations" in table_profile
+    assert "scope lists namespace or environment columns" in table_profile
+    assert "unmatched_count" in graph_sql
+    assert "duration_max" in graph_sql
 
 
 def test_graph_tool_reports_active_coverage() -> None:
@@ -649,6 +652,9 @@ def test_graph_relationship_query_supplies_window_scope_and_deduplication() -> N
     assert "greptime_private.semantic_relationships" in query
     assert "SELECT window_start, window_end" in query
     assert "MAX(request_count) AS request_count" in query
+    assert "MAX(unmatched_count) AS unmatched_count" in query
+    assert "SUM(unmatched_count) AS unmatched_count" in query
+    assert query.count("MAX(duration_max) AS duration_max") == 2
     assert "GROUP BY window_start, window_end, src_type, src_id, dst_type, dst_id" in query
     assert "observed_at >= '2026-04-25 05:18:12'" in query
     assert "observed_at < '2026-04-25 05:28:12'" in query

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -15,9 +14,7 @@ from statistics import median
 
 from semantic_rca_bench.aegis_transfer_benchmark import (
     TransferEnvironmentConfig,
-    build_opus_graph_diagnostic_report,
     build_transfer_run_report,
-    execute_opus_graph_diagnostic,
     execute_transfer_runs,
     prepare_transfer_environment,
 )
@@ -33,18 +30,13 @@ from semantic_rca_bench.aegis_transfer_protocol import (
     load_transfer_protocol_fixture,
 )
 from semantic_rca_bench.aegis_transfer_release import (
-    DEFAULT_PILOT_SCORER_FIXTURE,
     build_measurement_artifact_from_files,
-    build_release_artifact_from_files,
 )
 from semantic_rca_bench.aegis_transfer_scorer import (
     CALIBRATION_SCORER_FIXTURE,
-    DEFAULT_SCORER_FIXTURE,
-    DELAY_SCORER_FIXTURE,
     FORMAL_SCORER_FIXTURE,
     audit_transfer_scorer,
     load_transfer_scorer_fixture,
-    shadow_score_legacy_transfer_run,
 )
 from semantic_rca_bench.agent import run_agent
 from semantic_rca_bench.contracts import (
@@ -152,7 +144,12 @@ from semantic_rca_bench.protocol import (
 from semantic_rca_bench.protocol import (
     run_orders as _run_orders,
 )
-from semantic_rca_bench.report import TOKEN_ACCOUNTING, case_context, render_reports
+from semantic_rca_bench.report import (
+    CASE_REPORT_SCHEMA_VERSION,
+    TOKEN_ACCOUNTING,
+    case_context,
+    render_reports,
+)
 from semantic_rca_bench.subscription import run_subscription_agent
 
 DEFAULT_GREPTIMEDB_REPO = Path("/Users/dennis/programming/rust/greptimedb")
@@ -179,20 +176,6 @@ def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
         choices=["development", "measurement"],
         default="development",
     )
-
-
-def _add_aegis_transfer_environment_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--cases-dir", type=Path, required=True)
-    parser.add_argument("--meta-dir", type=Path, required=True)
-    parser.add_argument("--archive", type=Path, required=True)
-    parser.add_argument(
-        "--selection",
-        type=Path,
-        default=Path("fixtures/reference/aegis-selection.json"),
-    )
-    parser.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
-    parser.add_argument("--run-dir", type=Path, required=True)
-    parser.add_argument("--database", default="case_01")
 
 
 def _add_aegis_formal_environment_arguments(
@@ -241,7 +224,7 @@ def _parser() -> argparse.ArgumentParser:
     aegis_fetch.add_argument("--output", type=Path, required=True)
 
     aegis_transfer = subparsers.add_parser("aegis-transfer-audit")
-    _add_aegis_transfer_environment_arguments(aegis_transfer)
+    _add_aegis_formal_environment_arguments(aegis_transfer)
     aegis_transfer.add_argument("--output", type=Path, required=True)
 
     aegis_transfer_scorer = subparsers.add_parser("aegis-transfer-scorer-audit")
@@ -249,18 +232,9 @@ def _parser() -> argparse.ArgumentParser:
     aegis_transfer_scorer.add_argument(
         "--scorer",
         type=Path,
-        default=DEFAULT_SCORER_FIXTURE,
+        default=FORMAL_SCORER_FIXTURE,
     )
     aegis_transfer_scorer.add_argument("--output", type=Path, required=True)
-
-    aegis_transfer_shadow = subparsers.add_parser("aegis-transfer-shadow-score")
-    aegis_transfer_shadow.add_argument("--run-report", type=Path, required=True)
-    aegis_transfer_shadow.add_argument(
-        "--scorer",
-        type=Path,
-        default=CALIBRATION_SCORER_FIXTURE,
-    )
-    aegis_transfer_shadow.add_argument("--output", type=Path, required=True)
 
     aegis_transfer_protocol = subparsers.add_parser("aegis-transfer-protocol-audit")
     aegis_transfer_protocol.add_argument("--source-audit", type=Path, required=True)
@@ -317,11 +291,15 @@ def _parser() -> argparse.ArgumentParser:
     )
 
     aegis_transfer_run = subparsers.add_parser("aegis-transfer-run")
-    _add_aegis_transfer_environment_arguments(aegis_transfer_run)
+    _add_aegis_formal_environment_arguments(
+        aegis_transfer_run,
+        selection=Path("fixtures/reference/aegis-transfer-v26-calibration-selection.json"),
+        database="case_02",
+    )
     aegis_transfer_run.add_argument(
         "--scorer",
         type=Path,
-        default=DEFAULT_SCORER_FIXTURE,
+        default=CALIBRATION_SCORER_FIXTURE,
     )
     aegis_transfer_run.add_argument("--source-audit-output", type=Path, required=True)
     aegis_transfer_run.add_argument("--scorer-audit-output", type=Path, required=True)
@@ -332,38 +310,6 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         help="acknowledge that the command executes the frozen paid API run",
     )
-
-    aegis_transfer_diagnostic = subparsers.add_parser("aegis-transfer-opus-diagnostic")
-    _add_aegis_formal_environment_arguments(
-        aegis_transfer_diagnostic,
-        selection=Path("fixtures/reference/aegis-transfer-v25-selection.json"),
-        database="case_02",
-    )
-    aegis_transfer_diagnostic.add_argument(
-        "--scorer",
-        type=Path,
-        default=DELAY_SCORER_FIXTURE,
-    )
-    aegis_transfer_diagnostic.add_argument("--source-audit-output", type=Path, required=True)
-    aegis_transfer_diagnostic.add_argument("--scorer-audit-output", type=Path, required=True)
-    aegis_transfer_diagnostic.add_argument("--output", type=Path, required=True)
-    aegis_transfer_diagnostic.add_argument(
-        "--confirm-paid-api",
-        action="store_true",
-        required=True,
-        help="acknowledge one paid claude-opus-4-8 Semantic Graph diagnostic cell",
-    )
-
-    aegis_transfer_export = subparsers.add_parser("aegis-transfer-export")
-    aegis_transfer_export.add_argument("--run-report", type=Path, required=True)
-    aegis_transfer_export.add_argument("--source-audit", type=Path, required=True)
-    aegis_transfer_export.add_argument("--scorer-audit", type=Path, required=True)
-    aegis_transfer_export.add_argument(
-        "--scorer",
-        type=Path,
-        default=DEFAULT_PILOT_SCORER_FIXTURE,
-    )
-    aegis_transfer_export.add_argument("--output", type=Path, required=True)
 
     aegis_measurement_export = subparsers.add_parser("aegis-transfer-measurement-export")
     aegis_measurement_export.add_argument("--run-report", type=Path, required=True)
@@ -532,58 +478,6 @@ def aegis_transfer_scorer_audit(args: argparse.Namespace) -> int:
     write_json(args.output, report)
     print(args.output)
     return 0 if report["no_model_gates"]["all_passed"] else 1
-
-
-def aegis_transfer_shadow_score(args: argparse.Namespace) -> int:
-    if args.output.exists():
-        raise ValueError(f"refusing to overwrite shadow-score artifact: {args.output}")
-    fixture = load_transfer_scorer_fixture(args.scorer)
-    report = _read_json_object(args.run_report)
-    runs = report.get("runs")
-    if not isinstance(runs, list):
-        raise ValueError("Aegis transfer run report has no runs array")
-    cells = []
-    for index, item in enumerate(runs):
-        if not isinstance(item, dict):
-            raise ValueError("Aegis transfer run report contains a malformed run cell")
-        run = AgentRun.model_validate(item.get("run"))
-        cells.append(
-            {
-                "cell_index": item.get("cell_index", index),
-                "model": run.model,
-                "visibility": run.visibility.value,
-                "repetition": item.get("repetition"),
-                "shadow_evaluation": shadow_score_legacy_transfer_run(run, fixture),
-            }
-        )
-    output = {
-        "artifact_schema_version": 1,
-        "mode": "aegis-transfer-v26-descriptive-shadow-score",
-        "measurement_eligible": False,
-        "reason": (
-            "post-hoc scoring of consumed trajectories; missing v26 output fields are not inferred"
-        ),
-        "input_sha256": {
-            "run_report": hashlib.sha256(args.run_report.read_bytes()).hexdigest(),
-            "scorer_fixture": hashlib.sha256(args.scorer.read_bytes()).hexdigest(),
-        },
-        "cells": cells,
-        "summary": {
-            "runs": len(cells),
-            "structured_contract_complete": sum(
-                cell["shadow_evaluation"]["structured_contract_complete"] is True for cell in cells
-            ),
-            "declared_edge_match": sum(
-                cell["shadow_evaluation"]["declared_edge_match"] is True for cell in cells
-            ),
-            "mechanism_evidence_match": sum(
-                cell["shadow_evaluation"]["mechanism_evidence_match"] is True for cell in cells
-            ),
-        },
-    }
-    write_json(args.output, output)
-    print(args.output)
-    return 0
 
 
 def aegis_transfer_protocol_audit(args: argparse.Namespace) -> int:
@@ -764,68 +658,6 @@ def aegis_transfer_run(args: argparse.Namespace) -> int:
         )
         else 1
     )
-
-
-def aegis_transfer_opus_diagnostic(args: argparse.Namespace) -> int:
-    if args.confirm_paid_api is not True:
-        raise ValueError("Opus diagnostic requires explicit paid API confirmation")
-    output_paths = (args.source_audit_output, args.scorer_audit_output, args.output)
-    if len({path.resolve() for path in output_paths}) != len(output_paths):
-        raise ValueError("Opus diagnostic output paths must be distinct")
-    for path in output_paths:
-        if path.exists():
-            raise ValueError(f"refusing to overwrite Opus diagnostic artifact: {path}")
-    fixture = load_transfer_scorer_fixture(args.scorer)
-    require_current_protocol(fixture.canonical_api_runner.benchmark_protocol_version)
-    source_report = None
-    scorer_report = None
-    run_report = None
-    try:
-        with prepare_transfer_environment(_transfer_environment_config(args)) as prepared:
-            source_report = prepared.source_audit
-            scorer_report = audit_transfer_scorer(source_report, fixture, args.scorer)
-            run_report = build_opus_graph_diagnostic_report(
-                prepared.case,
-                fixture,
-                args.scorer,
-                source_report,
-                scorer_report,
-                prepared.semantic_coverage,
-            )
-            write_json(args.source_audit_output, source_report)
-            write_json(args.scorer_audit_output, scorer_report)
-            write_formal_report(args.output, run_report)
-            execute_opus_graph_diagnostic(
-                prepared.client,
-                prepared.case,
-                fixture,
-                run_report,
-                on_update=lambda report: write_formal_report(args.output, report),
-            )
-    finally:
-        if source_report is not None:
-            write_json(args.source_audit_output, source_report)
-        if scorer_report is not None:
-            write_json(args.scorer_audit_output, scorer_report)
-        if run_report is not None:
-            write_formal_report(args.output, run_report)
-    execution = run_report["execution"]
-    print(args.output)
-    return 0 if execution["complete"] and execution["runner_errors"] == 0 else 1
-
-
-def aegis_transfer_export(args: argparse.Namespace) -> int:
-    if args.output.exists():
-        raise ValueError(f"refusing to overwrite Aegis transfer release artifact: {args.output}")
-    artifact = build_release_artifact_from_files(
-        args.run_report,
-        args.source_audit,
-        args.scorer_audit,
-        args.scorer,
-    )
-    write_json(args.output, artifact)
-    print(args.output)
-    return 0
 
 
 def aegis_transfer_measurement_export(args: argparse.Namespace) -> int:
@@ -1689,6 +1521,7 @@ def run(args: argparse.Namespace) -> int:
     if output.exists():
         result = json.loads(output.read_text())
         expected = {
+            "report_schema_version": CASE_REPORT_SCHEMA_VERSION,
             "source_report": str(args.report),
             "runner": args.runner,
             "model": args.model,
@@ -1699,8 +1532,7 @@ def run(args: argparse.Namespace) -> int:
             "protocol": benchmark_protocol(),
             "token_accounting": TOKEN_ACCOUNTING[args.runner],
         }
-        if "runner_jobs" in result:
-            expected["runner_jobs"] = runner_jobs
+        expected["runner_jobs"] = runner_jobs
         mismatches = {
             key: (result.get(key), value)
             for key, value in expected.items()
@@ -1710,7 +1542,7 @@ def run(args: argparse.Namespace) -> int:
             raise ValueError(f"cannot resume incompatible report: {mismatches}")
     else:
         result = {
-            "report_schema_version": 5,
+            "report_schema_version": CASE_REPORT_SCHEMA_VERSION,
             "source_report": str(args.report),
             "case": source["case"],
             "ingest": source.get("ingest", {}),
@@ -1932,8 +1764,6 @@ def main() -> None:
             code = aegis_transfer_audit(args)
         elif args.command == "aegis-transfer-scorer-audit":
             code = aegis_transfer_scorer_audit(args)
-        elif args.command == "aegis-transfer-shadow-score":
-            code = aegis_transfer_shadow_score(args)
         elif args.command == "aegis-transfer-protocol-audit":
             code = aegis_transfer_protocol_audit(args)
         elif args.command == "aegis-transfer-formal-preflight":
@@ -1942,10 +1772,6 @@ def main() -> None:
             code = aegis_transfer_formal_run(args)
         elif args.command == "aegis-transfer-run":
             code = aegis_transfer_run(args)
-        elif args.command == "aegis-transfer-opus-diagnostic":
-            code = aegis_transfer_opus_diagnostic(args)
-        elif args.command == "aegis-transfer-export":
-            code = aegis_transfer_export(args)
         elif args.command == "aegis-transfer-measurement-export":
             code = aegis_transfer_measurement_export(args)
         elif args.command == "smoke":

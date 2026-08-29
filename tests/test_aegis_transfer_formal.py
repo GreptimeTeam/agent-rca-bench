@@ -26,7 +26,6 @@ from semantic_rca_bench.aegis_transfer_protocol import (
 )
 from semantic_rca_bench.aegis_transfer_release import build_measurement_artifact
 from semantic_rca_bench.aegis_transfer_scorer import (
-    DELAY_SCORER_FIXTURE,
     FORMAL_SCORER_FIXTURE,
     audit_transfer_scorer,
     load_transfer_scorer_fixture,
@@ -36,10 +35,13 @@ from semantic_rca_bench.contracts import (
     AgentRunner,
     AgentUsage,
     CaseInput,
+    CausalScope,
     DatabaseLoad,
     Diagnosis,
     Evidence,
+    EvidenceClaimType,
     FaultCategory,
+    MechanismCode,
     QueryResult,
     ToolTrace,
     Visibility,
@@ -47,55 +49,29 @@ from semantic_rca_bench.contracts import (
 from semantic_rca_bench.datasets.aegis_transfer import (
     AegisTransferCase,
     AegisTransferGroundTruth,
+    canonical_mechanism_evidence_query,
 )
-
-LEGACY_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v25-three-model-protocol.json")
-
-
-def _query() -> str:
-    return """WITH paired AS (
-  SELECT CASE
-           WHEN c.timestamp >= '2025-07-20 12:32:50'
-            AND c.timestamp < '2025-07-20 12:36:50' THEN 'normal'
-           WHEN c.timestamp >= '2025-07-20 12:36:50'
-            AND c.timestamp < '2025-07-20 12:40:49' THEN 'abnormal'
-         END AS period,
-         s.duration_nano AS server_duration_ns
-  FROM traces c
-  JOIN traces s ON c.trace_id = s.trace_id AND s.parent_span_id = c.span_id
-  WHERE c.span_kind = 'SPAN_KIND_CLIENT'
-    AND s.span_kind = 'SPAN_KIND_SERVER'
-    AND c.service_name = 'ts-route-plan-service'
-    AND s.service_name = 'ts-travel2-service'
-    AND s.span_name = 'POST /api/v1/travel2service/trips/left'
-    AND c.timestamp >= '2025-07-20 12:32:50'
-    AND c.timestamp < '2025-07-20 12:40:49'
-)
-SELECT period, COUNT(*) AS span_count, MAX(server_duration_ns) AS max_duration_ns
-FROM paired
-GROUP BY period
-ORDER BY period"""
 
 
 def _result() -> QueryResult:
     return QueryResult(
         query_id="private-query-id",
-        columns=["period", "span_count", "max_duration_ns"],
-        rows=[["abnormal", 25, 3_252_068_825], ["normal", 37, 846_092_899]],
+        columns=["period", "error_span_count", "exception_log_count"],
+        rows=[["normal", 0, 0], ["abnormal", 1981, 1981]],
         elapsed_seconds=12.5,
     )
 
 
 def _source_audit() -> dict[str, object]:
     expected = {
-        "normal": {"count": 37, "max_duration_ns": 846_092_899},
-        "abnormal": {"count": 25, "max_duration_ns": 3_252_068_825},
+        "normal": {"error_span_count": 0, "exception_log_count": 0},
+        "abnormal": {"error_span_count": 1981, "exception_log_count": 1981},
     }
     edge = {
         "src_type": "service",
-        "src_id": "ts-route-plan-service",
+        "src_id": "ts-train-service",
         "dst_type": "service",
-        "dst_id": "ts-travel2-service",
+        "dst_id": "ts-route-plan-service",
         "rel_type": "calls",
         "provenance": "trace",
         "request_count": 62,
@@ -116,27 +92,27 @@ def _source_audit() -> dict[str, object]:
         "selection_audit": {
             "selection": {"seed": "seed"},
             "frozen_selection_gate": {
-                "manifest_name": "aegis-transfer-v25-selection.json",
+                "manifest_name": "aegis-transfer-v26-selection.json",
                 "pass": True,
             },
         },
         "case": {
             "agent_facing": {
-                "case_id": "aegis-transfer-002",
-                "time_start": 1753014770,
-                "time_end": 1753015249,
-                "alert_time": 1753015010,
+                "case_id": "aegis-transfer-003",
+                "time_start": 1752841317,
+                "time_end": 1752841796,
+                "alert_time": 1752841557,
                 "fault_taxonomy": [],
             },
             "source_mapping": {
-                "agent_case_id": "aegis-transfer-002",
-                "source_case": "ts8-ts-route-plan-service-request-delay-5dmjfm",
+                "agent_case_id": "aegis-transfer-003",
+                "source_case": "ts2-ts-train-service-exception-plrfk2",
             },
-            "normal_window": [1753014770, 1753015010],
-            "abnormal_window": [1753015010, 1753015249],
-            "ground_truth_services": ["ts-route-plan-service", "ts-travel2-service"],
-            "declared_edge": ["ts-route-plan-service", "ts-travel2-service"],
-            "fault_type": "HTTPRequestDelay",
+            "normal_window": [1752841317, 1752841557],
+            "abnormal_window": [1752841557, 1752841796],
+            "ground_truth_services": ["ts-train-service"],
+            "declared_edge": None,
+            "fault_type": "JVMException",
         },
         "greptimedb": {"head": "head", "branch": "branch"},
         "source_audit": {"source_row_counts": {"trace_rows": 62}},
@@ -167,17 +143,18 @@ def _source_audit() -> dict[str, object]:
             "graph_edge_set_sha256": "edge-hash",
             "exact_edge_set_equality": True,
             "window_contract": {
-                "source_window": [1753014770, 1753015249],
-                "graph_observed_window": [1753014720, 1753015260],
+                "source_window": [1752841317, 1752841796],
+                "graph_observed_window": [1752841260, 1752841800],
             },
         },
         "mechanism_evidence": {
-            "predicate": "source_declared_http_delay_threshold",
-            "declared_edge": ["ts-route-plan-service", "ts-travel2-service"],
+            "predicate": "source_declared_jvm_exception",
+            "declared_edge": None,
             "declared_edge_match": True,
-            "span_name": "POST /api/v1/travel2service/trips/left",
-            "declared_delay_ns": 3_070_000_000,
-            "query": _query(),
+            "service_name": "ts-train-service",
+            "method_name": "retrieveByName",
+            "observable": "error spans and exception logs",
+            "query": canonical_mechanism_evidence_query(_case()),
             "result": _result().model_dump(mode="json"),
             "normalized_result": expected,
             "expected_result": expected,
@@ -196,45 +173,51 @@ def _source_audit() -> dict[str, object]:
 def _case() -> AegisTransferCase:
     paths = (Path("normal.parquet"), Path("abnormal.parquet"))
     return AegisTransferCase(
-        agent_case_id="aegis-transfer-002",
-        source_case="ts8-ts-route-plan-service-request-delay-5dmjfm",
+        agent_case_id="aegis-transfer-003",
+        source_case="ts2-ts-train-service-exception-plrfk2",
         dataset="dataset",
         system="Train Ticket",
         root=Path("case"),
         input=CaseInput(
-            case_token="aegis-transfer-002",
-            time_start=1753014770,
-            time_end=1753015249,
-            alert_time=1753015010,
-            database="case_02",
+            case_token="aegis-transfer-003",
+            time_start=1752841317,
+            time_end=1752841796,
+            alert_time=1752841557,
+            database="case_03",
             fault_taxonomy=[],
         ),
         ground_truth=AegisTransferGroundTruth(
-            services=("ts-route-plan-service", "ts-travel2-service"),
-            declared_edge=("ts-route-plan-service", "ts-travel2-service"),
-            fault_type="HTTPRequestDelay",
+            services=("ts-train-service",),
+            declared_edge=None,
+            fault_type="JVMException",
         ),
-        normal_window=(1753014770, 1753015010),
-        abnormal_window=(1753015010, 1753015249),
+        normal_window=(1752841317, 1752841557),
+        abnormal_window=(1752841557, 1752841796),
         gauge_paths=paths,
         sum_paths=paths,
         histogram_paths=paths,
         log_paths=paths,
         trace_paths=paths,
-        selected_manifest={},
+        selected_manifest={
+            "mechanism_evidence": {
+                "predicate": "source_declared_jvm_exception",
+                "service_name": "ts-train-service",
+                "method_name": "retrieveByName",
+            }
+        },
     )
 
 
 def _audits():
     source = _source_audit()
-    scorer_fixture = load_transfer_scorer_fixture(DELAY_SCORER_FIXTURE)
-    protocol_fixture = load_transfer_protocol_fixture(LEGACY_PROTOCOL_FIXTURE)
-    scorer = audit_transfer_scorer(source, scorer_fixture, DELAY_SCORER_FIXTURE)
+    scorer_fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    protocol_fixture = load_transfer_protocol_fixture(DEFAULT_PROTOCOL_FIXTURE)
+    scorer = audit_transfer_scorer(source, scorer_fixture, FORMAL_SCORER_FIXTURE)
     protocol = audit_transfer_protocol(
         protocol_fixture,
-        LEGACY_PROTOCOL_FIXTURE,
+        DEFAULT_PROTOCOL_FIXTURE,
         scorer_fixture,
-        DELAY_SCORER_FIXTURE,
+        FORMAL_SCORER_FIXTURE,
         source,
         scorer,
     )
@@ -248,9 +231,9 @@ def _preflight():
         scorer,
         protocol,
         scorer_fixture,
-        DELAY_SCORER_FIXTURE,
+        FORMAL_SCORER_FIXTURE,
         protocol_fixture,
-        LEGACY_PROTOCOL_FIXTURE,
+        DEFAULT_PROTOCOL_FIXTURE,
     )
     return report, source, scorer, protocol, scorer_fixture, protocol_fixture
 
@@ -264,12 +247,24 @@ def _agent_run(visibility: Visibility, model: str, *, error: str | None = None) 
         runner=AgentRunner.API,
         diagnosis=(
             Diagnosis(
-                affected_component="ts-route-plan-service",
-                causal_dependency="ts-travel2-service",
-                fault_category=FaultCategory.DELAY,
-                fault_type="HTTP request delay",
+                affected_component="ts-train-service",
+                causal_dependency=None,
+                causal_scope=CausalScope.COMPONENT,
+                causal_operation="TrainController.retrieveByName",
+                fault_category=FaultCategory.OTHER,
+                mechanism_code=MechanismCode.APPLICATION_ERROR,
+                fault_type="JVM exception in retrieveByName",
                 confidence=1,
-                evidence=[Evidence(query_id=result.query_id, claim="private evidence claim")],
+                evidence=[
+                    Evidence(
+                        query_id=result.query_id,
+                        claim="private evidence claim",
+                        claim_types=[
+                            EvidenceClaimType.CAUSAL_SCOPE,
+                            EvidenceClaimType.FAULT_MECHANISM,
+                        ],
+                    )
+                ],
                 explanation="private provider explanation",
             )
             if error is None
@@ -280,7 +275,7 @@ def _agent_run(visibility: Visibility, model: str, *, error: str | None = None) 
             [
                 ToolTrace(
                     tool_name="execute_sql",
-                    input={"query": _query()},
+                    input={"query": canonical_mechanism_evidence_query(_case())},
                     query_id=result.query_id,
                     output=result.model_dump(mode="json"),
                     database_load=DatabaseLoad(query_count=1, rows_returned=2),
@@ -297,7 +292,7 @@ def _agent_run(visibility: Visibility, model: str, *, error: str | None = None) 
 
 
 class _Client:
-    database = "case_02"
+    database = "case_03"
 
     @contextmanager
     def measure_query_load(self):
@@ -313,9 +308,9 @@ def _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture):
         protocol,
         {"graph": {"status": "relational"}},
         scorer_fixture,
-        DELAY_SCORER_FIXTURE,
+        FORMAL_SCORER_FIXTURE,
         protocol_fixture,
-        LEGACY_PROTOCOL_FIXTURE,
+        DEFAULT_PROTOCOL_FIXTURE,
     )
 
 
@@ -336,17 +331,17 @@ def test_preflight_expands_frozen_schedule_without_provider_access(monkeypatch) 
         "preflight_calls_provider": False,
     }
     assert [cell["model"] for cell in report["schedule"][::9]] == [
-        "deepseek-v4-flash",
         "deepseek-v4-pro",
         "claude-sonnet-5",
+        "claude-opus-4-8",
     ]
     assert (
         report["bindings"]["scorer_fixture_sha256"]
-        == hashlib.sha256(DELAY_SCORER_FIXTURE.read_bytes()).hexdigest()
+        == hashlib.sha256(FORMAL_SCORER_FIXTURE.read_bytes()).hexdigest()
     )
     assert (
         report["bindings"]["protocol_fixture_sha256"]
-        == hashlib.sha256(LEGACY_PROTOCOL_FIXTURE.read_bytes()).hexdigest()
+        == hashlib.sha256(DEFAULT_PROTOCOL_FIXTURE.read_bytes()).hexdigest()
     )
 
 
@@ -355,27 +350,27 @@ def test_preflight_binds_pricing_snapshot_across_resume(monkeypatch) -> None:
     frozen = json.loads(json.dumps(report["pricing_snapshot"]))
     monkeypatch.setitem(
         formal_module.MODEL_PRICING,
-        "deepseek-v4-flash",
+        "deepseek-v4-pro",
         {"input_per_million": 999, "output_per_million": 999},
     )
 
     validate_formal_report(
         report,
         scorer_fixture,
-        DELAY_SCORER_FIXTURE,
+        FORMAL_SCORER_FIXTURE,
         protocol_fixture,
-        LEGACY_PROTOCOL_FIXTURE,
+        DEFAULT_PROTOCOL_FIXTURE,
     )
     assert report["pricing_snapshot"] == frozen
 
-    report["pricing_snapshot"]["deepseek-v4-flash"]["input_per_million"] = 998
+    report["pricing_snapshot"]["deepseek-v4-pro"]["input_per_million"] = 998
     with pytest.raises(ValueError, match="pricing snapshot binding drifted"):
         validate_formal_report(
             report,
             scorer_fixture,
-            DELAY_SCORER_FIXTURE,
+            FORMAL_SCORER_FIXTURE,
             protocol_fixture,
-            LEGACY_PROTOCOL_FIXTURE,
+            DEFAULT_PROTOCOL_FIXTURE,
         )
 
 
@@ -422,9 +417,9 @@ def test_preflight_command_writes_report_without_provider_access(monkeypatch, tm
             "--protocol-audit",
             str(inputs["protocol"]),
             "--scorer",
-            str(DELAY_SCORER_FIXTURE),
+            str(FORMAL_SCORER_FIXTURE),
             "--protocol",
-            str(LEGACY_PROTOCOL_FIXTURE),
+            str(DEFAULT_PROTOCOL_FIXTURE),
             "--output",
             str(output),
         ]
@@ -434,7 +429,8 @@ def test_preflight_command_writes_report_without_provider_access(monkeypatch, tm
     assert json.loads(output.read_text())["authorization"]["reusable_confirmation_stored"] is False
 
 
-def test_formal_runner_executes_exact_schedule_and_uses_graph_window() -> None:
+def test_formal_runner_executes_exact_schedule_and_uses_graph_window(monkeypatch) -> None:
+    monkeypatch.setattr(formal_module, "require_current_protocol", lambda version: None)
     report, source, scorer, protocol, scorer_fixture, protocol_fixture = _preflight()
     _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture)
     calls = []
@@ -448,9 +444,9 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window() -> None:
             _Client(),  # type: ignore[arg-type]
             _case(),
             scorer_fixture,
-            DELAY_SCORER_FIXTURE,
+            FORMAL_SCORER_FIXTURE,
             protocol_fixture,
-            LEGACY_PROTOCOL_FIXTURE,
+            DEFAULT_PROTOCOL_FIXTURE,
             report,
             paid_api_confirmed=False,
             run_agent_fn=fake_agent,
@@ -459,9 +455,9 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window() -> None:
         _Client(),  # type: ignore[arg-type]
         _case(),
         scorer_fixture,
-        DELAY_SCORER_FIXTURE,
+        FORMAL_SCORER_FIXTURE,
         protocol_fixture,
-        LEGACY_PROTOCOL_FIXTURE,
+        DEFAULT_PROTOCOL_FIXTURE,
         report,
         paid_api_confirmed=True,
         run_agent_fn=fake_agent,
@@ -478,7 +474,7 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window() -> None:
         item["model"] for item in report["schedule"]
     ]
     assert all(
-        window == (1753014720, 1753015260)
+        window == (1752841260, 1752841800)
         for window, visibility, _ in calls
         if visibility is Visibility.SEMANTIC_GRAPH
     )
@@ -491,7 +487,8 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window() -> None:
     )
 
 
-def test_formal_runner_persists_failed_cell_and_continues_batch() -> None:
+def test_formal_runner_persists_failed_cell_and_continues_batch(monkeypatch) -> None:
+    monkeypatch.setattr(formal_module, "require_current_protocol", lambda version: None)
     report, source, scorer, protocol, scorer_fixture, protocol_fixture = _preflight()
     _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture)
     first_model = report["schedule"][0]["model"]
@@ -510,9 +507,9 @@ def test_formal_runner_persists_failed_cell_and_continues_batch() -> None:
         _Client(),  # type: ignore[arg-type]
         _case(),
         scorer_fixture,
-        DELAY_SCORER_FIXTURE,
+        FORMAL_SCORER_FIXTURE,
         protocol_fixture,
-        LEGACY_PROTOCOL_FIXTURE,
+        DEFAULT_PROTOCOL_FIXTURE,
         report,
         paid_api_confirmed=True,
         run_agent_fn=failed_agent,
@@ -529,15 +526,16 @@ def test_formal_runner_persists_failed_cell_and_continues_batch() -> None:
         scorer,
         protocol,
         scorer_fixture,
-        DELAY_SCORER_FIXTURE,
+        FORMAL_SCORER_FIXTURE,
         protocol_fixture,
-        LEGACY_PROTOCOL_FIXTURE,
+        DEFAULT_PROTOCOL_FIXTURE,
     )
     assert artifact["experiment"]["runs"][0]["execution"]["runner_error"] is True
     assert "provider unavailable" not in str(artifact)
 
 
-def test_formal_runner_persists_and_rejects_wrong_scheduled_model() -> None:
+def test_formal_runner_persists_and_rejects_wrong_scheduled_model(monkeypatch) -> None:
+    monkeypatch.setattr(formal_module, "require_current_protocol", lambda version: None)
     report, source, scorer, protocol, scorer_fixture, protocol_fixture = _preflight()
     _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture)
 
@@ -549,9 +547,9 @@ def test_formal_runner_persists_and_rejects_wrong_scheduled_model() -> None:
             _Client(),  # type: ignore[arg-type]
             _case(),
             scorer_fixture,
-            DELAY_SCORER_FIXTURE,
+            FORMAL_SCORER_FIXTURE,
             protocol_fixture,
-            LEGACY_PROTOCOL_FIXTURE,
+            DEFAULT_PROTOCOL_FIXTURE,
             report,
             paid_api_confirmed=True,
             run_agent_fn=wrong_model_agent,
@@ -563,9 +561,9 @@ def test_formal_runner_persists_and_rejects_wrong_scheduled_model() -> None:
         validate_formal_report(
             report,
             scorer_fixture,
-            DELAY_SCORER_FIXTURE,
+            FORMAL_SCORER_FIXTURE,
             protocol_fixture,
-            LEGACY_PROTOCOL_FIXTURE,
+            DEFAULT_PROTOCOL_FIXTURE,
         )
 
 
@@ -588,10 +586,40 @@ def test_formal_resume_rejects_nonprefix_or_tampered_evaluation() -> None:
         validate_formal_report(
             report,
             scorer_fixture,
-            DELAY_SCORER_FIXTURE,
+            FORMAL_SCORER_FIXTURE,
             protocol_fixture,
-            LEGACY_PROTOCOL_FIXTURE,
+            DEFAULT_PROTOCOL_FIXTURE,
         )
+
+
+def test_formal_runner_checks_protocol_with_wrapped_agent(monkeypatch) -> None:
+    report, source, scorer, protocol, scorer_fixture, protocol_fixture = _preflight()
+    _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture)
+    called = False
+
+    def wrapped_agent(gateway, case_input, visibility, **kwargs):
+        nonlocal called
+        called = True
+        return _agent_run(visibility, kwargs["model"])
+
+    def reject_protocol(version: int) -> None:
+        raise RuntimeError(f"protocol guard called for v{version}")
+
+    monkeypatch.setattr(formal_module, "require_current_protocol", reject_protocol)
+    with pytest.raises(RuntimeError, match="protocol guard called for v26"):
+        execute_formal_runs(
+            _Client(),  # type: ignore[arg-type]
+            _case(),
+            scorer_fixture,
+            FORMAL_SCORER_FIXTURE,
+            protocol_fixture,
+            DEFAULT_PROTOCOL_FIXTURE,
+            report,
+            paid_api_confirmed=True,
+            run_agent_fn=wrapped_agent,
+        )
+
+    assert called is False
 
 
 def test_formal_source_binding_ignores_instance_metadata_but_not_edges() -> None:
@@ -644,7 +672,36 @@ def test_formal_source_binding_ignores_period_query_metadata_but_not_edge_semant
     assert formal_source_semantic_sha256(source) != first
 
 
+def test_formal_source_binding_sanitizes_split_graph_replay_metadata() -> None:
+    source = _source_audit()
+    source["edge_equality"]["period_graph_replay"] = {
+        period: {
+            "graph_observed_window": [1, 2],
+            "graph_edge_query": "SELECT edge",
+            "graph_edge_result": {"query_id": f"{period}-one", "elapsed_seconds": 1},
+            "normalized_graph_edges": [{"request_count": 1}],
+            "normalized_raw_edges": [{"request_count": 1}],
+            "graph_edge_set_sha256": "same",
+            "raw_edge_set_sha256": "same",
+            "exact_raw_graph_edge_set_equality": True,
+        }
+        for period in ("normal", "abnormal")
+    }
+    first = formal_source_semantic_sha256(source)
+    source["edge_equality"]["period_graph_replay"]["normal"]["graph_edge_result"] = {
+        "query_id": "normal-two",
+        "elapsed_seconds": 99,
+    }
+
+    assert formal_source_semantic_sha256(source) == first
+    source["edge_equality"]["period_graph_replay"]["normal"]["normalized_graph_edges"][0][
+        "request_count"
+    ] = 2
+    assert formal_source_semantic_sha256(source) != first
+
+
 def test_measurement_export_rescores_all_models_and_removes_private_payloads(monkeypatch) -> None:
+    monkeypatch.setattr(formal_module, "require_current_protocol", lambda version: None)
     report, source, scorer, protocol, scorer_fixture, protocol_fixture = _preflight()
     _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture)
 
@@ -655,9 +712,9 @@ def test_measurement_export_rescores_all_models_and_removes_private_payloads(mon
         _Client(),  # type: ignore[arg-type]
         _case(),
         scorer_fixture,
-        DELAY_SCORER_FIXTURE,
+        FORMAL_SCORER_FIXTURE,
         protocol_fixture,
-        LEGACY_PROTOCOL_FIXTURE,
+        DEFAULT_PROTOCOL_FIXTURE,
         report,
         paid_api_confirmed=True,
         run_agent_fn=fake_agent,
@@ -665,7 +722,7 @@ def test_measurement_export_rescores_all_models_and_removes_private_payloads(mon
     frozen_pricing = json.loads(json.dumps(report["pricing_snapshot"]))
     monkeypatch.setitem(
         release_module.MODEL_PRICING,
-        "deepseek-v4-flash",
+        "deepseek-v4-pro",
         {"input_per_million": 999, "output_per_million": 999},
     )
     artifact = build_measurement_artifact(
@@ -674,22 +731,22 @@ def test_measurement_export_rescores_all_models_and_removes_private_payloads(mon
         scorer,
         protocol,
         scorer_fixture,
-        DELAY_SCORER_FIXTURE,
+        FORMAL_SCORER_FIXTURE,
         protocol_fixture,
-        LEGACY_PROTOCOL_FIXTURE,
+        DEFAULT_PROTOCOL_FIXTURE,
     )
 
     assert artifact["analysis_role"] == "measurement"
     assert artifact["experiment"]["cross_model_pooling"] is False
     assert artifact["experiment"]["pricing_snapshot"] == frozen_pricing
     assert (
-        artifact["experiment"]["model_reports"]["deepseek-v4-flash"]["usage"]["pricing"]
-        == frozen_pricing["deepseek-v4-flash"]
+        artifact["experiment"]["model_reports"]["deepseek-v4-pro"]["usage"]["pricing"]
+        == frozen_pricing["deepseek-v4-pro"]
     )
     assert set(artifact["experiment"]["model_reports"]) == {
-        "deepseek-v4-flash",
         "deepseek-v4-pro",
         "claude-sonnet-5",
+        "claude-opus-4-8",
     }
     assert len(artifact["experiment"]["runs"]) == 27
     assert all(

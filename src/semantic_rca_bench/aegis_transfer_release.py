@@ -9,6 +9,7 @@ from statistics import median
 
 from semantic_rca_bench.aegis_transfer_formal import (
     formal_source_semantic_sha256,
+    period_graph_replay_semantics,
     period_raw_replay_semantics,
     validate_formal_report,
 )
@@ -19,10 +20,8 @@ from semantic_rca_bench.aegis_transfer_protocol import (
     load_transfer_protocol_fixture,
 )
 from semantic_rca_bench.aegis_transfer_scorer import (
-    SCORER_REVISION,
     AegisTransferEvaluation,
     AegisTransferScorerFixture,
-    evaluate_aegis_transfer_run,
     load_transfer_scorer_fixture,
     sha256_file,
     source_transfer_audit_sha256,
@@ -32,147 +31,7 @@ from semantic_rca_bench.evaluation import is_valid_evidence_trace
 from semantic_rca_bench.report import MODEL_PRICING, _estimated_api_cost, _raw_input_breakdown
 
 ARTIFACT_SCHEMA_VERSION = 1
-DEFAULT_PILOT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-scorer-v24-pilot.json")
 DEFAULT_MEASUREMENT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v26-scorer.json")
-
-
-def load_pilot_scorer_fixture(
-    path: Path = DEFAULT_PILOT_SCORER_FIXTURE,
-) -> AegisTransferScorerFixture:
-    fixture = AegisTransferScorerFixture.model_validate_json(path.read_text())
-    if (
-        fixture.version != 1
-        or fixture.scorer_revision != SCORER_REVISION
-        or fixture.case_role != "measurement"
-        or fixture.canonical_api_runner.benchmark_protocol_version != 24
-    ):
-        raise ValueError("unsupported Aegis transfer pilot scorer fixture")
-    return fixture
-
-
-def build_release_artifact(
-    run_report: dict[str, object],
-    source_audit: dict[str, object],
-    scorer_audit: dict[str, object],
-    fixture: AegisTransferScorerFixture,
-    *,
-    private_input_sha256: Mapping[str, str] | None = None,
-) -> dict[str, object]:
-    _validate_bindings(run_report, source_audit, scorer_audit, fixture)
-    source = _source_payload(source_audit)
-    runs = _run_payloads(run_report, fixture)
-    payload = {
-        "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
-        "artifact_type": "aegis-transfer-development-result",
-        "publication_status": (
-            "sanitized development result; contains no source telemetry rows or provider payloads"
-        ),
-        "analysis_role": "development",
-        "historical_run_case_role": run_report["case_role"],
-        "reclassification_reason": (
-            "The protocol v24 pilot trajectories informed the protocol v25 investigation prompt."
-        ),
-        "license": {
-            **_mapping(source_audit, "license"),
-            "artifact_schema_and_benchmark_metadata": "Apache-2.0",
-            "derived_source_facts": (
-                "Source dataset record declares CC-BY-4.0; reviewer artifact data coverage "
-                "remains unclear."
-            ),
-            "source_telemetry_redistributed": False,
-        },
-        "source": source,
-        "scorer": {
-            "revision": fixture.scorer_revision,
-            "agent_case_id": fixture.agent_case_id,
-            "ground_truth": fixture.ground_truth.model_dump(mode="json"),
-            "normal_window": list(fixture.normal_window),
-            "abnormal_window": list(fixture.abnormal_window),
-            "mechanism_evidence": fixture.mechanism_evidence.model_dump(
-                mode="json", exclude_none=True
-            ),
-            "no_model_gates": _mapping(scorer_audit, "no_model_gates"),
-            "synthetic_regressions": {
-                name: {
-                    "expected_success": item.get("expected_success"),
-                    "observed_success": item.get("observed_success"),
-                    "pass": item.get("pass"),
-                }
-                for name, value in _mapping(scorer_audit, "synthetic_regressions").items()
-                if isinstance((item := value), dict)
-            },
-        },
-        "experiment": {
-            "protocol": _mapping(run_report, "protocol"),
-            "canonical_api_runner": _mapping(run_report, "canonical_api_runner"),
-            "case": _mapping(run_report, "case"),
-            "graph_window_contract": _mapping(run_report, "graph_window_contract"),
-            "semantic_coverage": _mapping(run_report, "semantic_coverage"),
-            "orders": _list(run_report, "orders"),
-            "execution": _mapping(run_report, "execution"),
-            "runs": runs,
-            "descriptive_summary": _descriptive_summary(runs),
-            "usage_summary": _usage_summary(runs, fixture.canonical_api_runner.model),
-        },
-        "sanitization": {
-            "excluded": [
-                "provider responses and thinking",
-                "run IDs and provider tool-call IDs",
-                "diagnosis explanations, alternatives, and evidence claim text",
-                "non-mechanism SQL result rows",
-                "query IDs and elapsed timings",
-                "local paths, ports, process metadata, and environment data",
-                "source telemetry rows, label files, and archives",
-            ],
-            "included_derived_data": [
-                "normalized service-call edge sets and counts",
-                "mechanism query schemas, row counts, and result hashes",
-                "parsed diagnosis fields and deterministic scorer outputs",
-                "query and row counts plus aggregate token usage",
-            ],
-        },
-    }
-    report = {
-        **payload,
-        "integrity": {
-            "semantic_payload_sha256": canonical_sha256(payload),
-            "source_semantic_sha256": canonical_sha256(source),
-            "private_input_sha256": dict(sorted((private_input_sha256 or {}).items())),
-            "private_run_bindings": {
-                "source_transfer_audit_sha256": run_report["source_transfer_audit_sha256"],
-                "scorer_audit_sha256": run_report["scorer_audit_sha256"],
-                "scorer_fixture_sha256": run_report["scorer_fixture_sha256"],
-            },
-            "semantic_hash_scope": (
-                "all artifact fields except integrity; excludes private file hashes and "
-                "run-local IDs, timings, ports, processes, and paths"
-            ),
-        },
-    }
-    return report
-
-
-def build_release_artifact_from_files(
-    run_path: Path,
-    source_audit_path: Path,
-    scorer_audit_path: Path,
-    fixture_path: Path = DEFAULT_PILOT_SCORER_FIXTURE,
-) -> dict[str, object]:
-    inputs = {
-        "run_report": run_path,
-        "source_audit": source_audit_path,
-        "scorer_audit": scorer_audit_path,
-        "scorer_fixture": fixture_path,
-    }
-    values = {name: _load_object(path) for name, path in inputs.items() if name != "scorer_fixture"}
-    fixture = load_pilot_scorer_fixture(fixture_path)
-    return build_release_artifact(
-        values["run_report"],
-        values["source_audit"],
-        values["scorer_audit"],
-        fixture,
-        private_input_sha256={name: sha256_file(path) for name, path in inputs.items()},
-    )
 
 
 def build_measurement_artifact(
@@ -209,7 +68,6 @@ def build_measurement_artifact(
         model.model: _measurement_model_summary(
             [run for run in runs if run["model"] == model.model],
             model.model,
-            structured=scorer_fixture.version == 2,
             pricing=_mapping(pricing_snapshot, model.model),
         )
         for model in protocol_fixture.models
@@ -324,61 +182,6 @@ def canonical_sha256(value: object) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def _validate_bindings(
-    run_report: dict[str, object],
-    source_audit: dict[str, object],
-    scorer_audit: dict[str, object],
-    fixture: AegisTransferScorerFixture,
-) -> None:
-    if run_report.get("mode") != "aegis-transfer-canonical-api-run":
-        raise ValueError("input is not an Aegis transfer canonical API run")
-    if run_report.get("case_role") != fixture.case_role:
-        raise ValueError("run report case role does not match the historical fixture")
-    protocol = _mapping(run_report, "protocol")
-    if protocol.get("version") != fixture.canonical_api_runner.benchmark_protocol_version:
-        raise ValueError("run report protocol does not match the historical fixture")
-    execution = _mapping(run_report, "execution")
-    if (
-        execution.get("complete") is not True
-        or execution.get("completed_runs") != execution.get("expected_runs")
-        or execution.get("runner_errors") != 0
-        or execution.get("budget_exhaustions") != 0
-    ):
-        raise ValueError("run report is incomplete or contains runner failures")
-    fixture_sha256 = canonical_sha256(fixture.model_dump(mode="json", exclude_none=True))
-    source_sha256 = source_transfer_audit_sha256(source_audit)
-    scorer_sha256 = canonical_sha256(scorer_audit)
-    expected = {
-        "source_transfer_audit_sha256": source_sha256,
-        "scorer_audit_sha256": scorer_sha256,
-        "scorer_fixture_sha256": fixture_sha256,
-    }
-    mismatches = {
-        key: (run_report.get(key), value)
-        for key, value in expected.items()
-        if run_report.get(key) != value
-    }
-    if mismatches:
-        raise ValueError(f"run report input bindings do not match: {mismatches}")
-    if scorer_audit.get("source_transfer_audit_sha256") != source_sha256:
-        raise ValueError("scorer audit is not bound to the source audit")
-    if scorer_audit.get("fixture_sha256") != fixture_sha256:
-        raise ValueError("scorer audit is not bound to the historical fixture")
-    for name, gates in (
-        ("source", source_audit.get("no_model_gates")),
-        ("scorer", scorer_audit.get("no_model_gates")),
-    ):
-        if not isinstance(gates, dict) or gates.get("all_passed") is not True:
-            raise ValueError(f"{name} no-model gates did not pass")
-    if run_report.get("canonical_api_runner") != fixture.canonical_api_runner.model_dump(
-        mode="json"
-    ):
-        raise ValueError("run report canonical API runner drifted")
-    case = _mapping(run_report, "case")
-    if case.get("case_id") != fixture.agent_case_id or case.get("fault_taxonomy") != []:
-        raise ValueError("run report agent input is not opaque")
-
-
 def _source_payload(source_audit: dict[str, object]) -> dict[str, object]:
     case = _mapping(source_audit, "case")
     equality = _mapping(source_audit, "edge_equality")
@@ -409,7 +212,9 @@ def _source_payload(source_audit: dict[str, object]) -> dict[str, object]:
             "graph_edge_query": equality.get("graph_edge_query"),
             "period_raw_replay": period_raw_replay_semantics(equality),
             "period_raw_replay_exact": equality.get("period_raw_replay_exact"),
-            "unified_window_proof": equality.get("unified_window_proof"),
+            "period_graph_replay": period_graph_replay_semantics(equality),
+            "period_graph_replay_exact": equality.get("period_graph_replay_exact"),
+            "graph_window_strategy_proof": equality.get("graph_window_strategy_proof"),
             "normalized_raw_edges": equality.get("normalized_raw_edges"),
             "normalized_graph_edges": equality.get("normalized_graph_edges"),
             "raw_edge_set_sha256": equality.get("raw_edge_set_sha256"),
@@ -481,40 +286,6 @@ def _ingestion_payload(ingestion: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _run_payloads(
-    run_report: dict[str, object], fixture: AegisTransferScorerFixture
-) -> list[dict[str, object]]:
-    result = []
-    seen = set()
-    for item in _list(run_report, "runs"):
-        if not isinstance(item, dict):
-            raise ValueError("run report contains a malformed run cell")
-        run = AgentRun.model_validate(item.get("run"))
-        recorded_payload = item.get("evaluation")
-        if not isinstance(recorded_payload, dict):
-            raise ValueError("stored run evaluation is malformed")
-        recorded = AegisTransferEvaluation.model_validate(recorded_payload)
-        evaluated = evaluate_aegis_transfer_run(run, fixture)
-        evaluated_payload = evaluated.model_dump(mode="json")
-        if any(
-            evaluated_payload.get(key) != value
-            for key, value in recorded_payload.items()
-            if key != "failure_reasons"
-        ):
-            raise ValueError("stored run evaluation does not match deterministic rescoring")
-        key = (int(item.get("repetition", -1)), run.visibility.value)
-        if key in seen:
-            raise ValueError(f"duplicate run cell: {key}")
-        seen.add(key)
-        result.append(_run_payload(item, run, recorded, fixture))
-    expected = fixture.canonical_api_runner.repetitions * len(
-        fixture.canonical_api_runner.visibility_levels
-    )
-    if len(result) != expected:
-        raise ValueError(f"expected {expected} run cells, found {len(result)}")
-    return result
-
-
 def _validate_measurement_bindings(
     run_report: dict[str, object],
     source_audit: dict[str, object],
@@ -578,7 +349,6 @@ def _measurement_run_payloads(
             item,
             run,
             evaluated,
-            scorer_fixture,
             pricing=_mapping(pricing_snapshot, run.model),
         )
         payload["cell_index"] = item.get("cell_index")
@@ -591,7 +361,6 @@ def _measurement_model_summary(
     runs: list[dict[str, object]],
     model: str,
     *,
-    structured: bool,
     pricing: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     treatments = {}
@@ -600,44 +369,28 @@ def _measurement_model_summary(
         treatment = {
             "runs": len(cells),
             "successful_runs": sum(
-                (
-                    _auditable_completion(_mapping(cell, "evaluation"))
-                    if structured
-                    else _mapping(cell, "evaluation").get("success") is True
-                )
-                for cell in cells
+                _auditable_completion(_mapping(cell, "evaluation")) for cell in cells
+            ),
+            "efficiency_eligible_runs": sum(
+                _efficiency_eligible(_mapping(cell, "evaluation")) for cell in cells
             ),
         }
-        if structured:
-            treatment["efficiency_eligible_runs"] = sum(
-                _efficiency_eligible(_mapping(cell, "evaluation")) for cell in cells
-            )
         treatments[visibility] = treatment
     report = {
         "inference_role": "within-model case-level description",
-        "successful_runs": sum(
-            (
-                _auditable_completion(_mapping(run, "evaluation"))
-                if structured
-                else _mapping(run, "evaluation").get("success") is True
-            )
-            for run in runs
-        ),
+        "successful_runs": sum(_auditable_completion(_mapping(run, "evaluation")) for run in runs),
         "total_runs": len(runs),
         "treatments": treatments,
-        "paired_treatment_deltas": _paired_treatment_deltas(runs, structured=structured),
+        "paired_treatment_deltas": _paired_treatment_deltas(runs),
         "usage": _usage_summary(runs, model, pricing=pricing),
-    }
-    if structured:
-        report["efficiency_eligible_runs"] = sum(
+        "efficiency_eligible_runs": sum(
             _efficiency_eligible(_mapping(run, "evaluation")) for run in runs
-        )
+        ),
+    }
     return report
 
 
-def _paired_treatment_deltas(
-    runs: list[dict[str, object]], *, structured: bool
-) -> dict[str, object]:
+def _paired_treatment_deltas(runs: list[dict[str, object]]) -> dict[str, object]:
     by_cell = {(int(run["repetition"]), str(run["visibility"])): run for run in runs}
     output = {}
     for name, left, right in (
@@ -649,12 +402,7 @@ def _paired_treatment_deltas(
             left_run = by_cell[(repetition, left)]
             right_run = by_cell[(repetition, right)]
             eligible = all(
-                (
-                    _efficiency_eligible(_mapping(run, "evaluation"))
-                    if structured
-                    else _mapping(run, "evaluation").get("success") is True
-                )
-                for run in (left_run, right_run)
+                _efficiency_eligible(_mapping(run, "evaluation")) for run in (left_run, right_run)
             )
             pairs.append(
                 {
@@ -715,7 +463,6 @@ def _run_payload(
     item: dict[str, object],
     run: AgentRun,
     evaluation: AegisTransferEvaluation,
-    fixture: AegisTransferScorerFixture,
     *,
     pricing: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
@@ -741,18 +488,12 @@ def _run_payload(
                 and is_valid_evidence_trace(matches)
             ),
             "supports_mechanism": entry.query_id in supporting_ids,
+            "supports_causal_scope": entry.query_id in causal_scope_ids,
+            "supports_fault_mechanism": entry.query_id in mechanism_ids,
+            "claim_types": [claim.value for claim in entry.claim_types],
         }
-        if fixture.version == 2:
-            citation.update(
-                {
-                    "supports_causal_scope": entry.query_id in causal_scope_ids,
-                    "supports_fault_mechanism": entry.query_id in mechanism_ids,
-                    "claim_types": [claim.value for claim in entry.claim_types],
-                }
-            )
         citations.append(citation)
-        mechanism_query_ids = mechanism_ids if fixture.version == 2 else supporting_ids
-        if entry.query_id in mechanism_query_ids and len(matches) == 1:
+        if entry.query_id in mechanism_ids and len(matches) == 1:
             trace = matches[0]
             output = trace.output if isinstance(trace.output, dict) else {}
             result_payload = {
@@ -783,7 +524,6 @@ def _run_payload(
     database_load = _mapping(item, "database_load")
     evaluation_payload = evaluation.model_dump(mode="json")
     for field in (
-        "valid_completion",
         "correct_completion_tool_calls",
         "tool_calls_through_mechanism_evidence",
         "rows_returned_through_mechanism_evidence",
@@ -796,17 +536,14 @@ def _run_payload(
     evaluation_payload["supporting_evidence_ordinals"] = [
         citation["ordinal"] for citation in citations if citation["supports_mechanism"] is True
     ]
-    if fixture.version == 2:
-        evaluation_payload["causal_scope_evidence_ordinals"] = [
-            citation["ordinal"]
-            for citation in citations
-            if citation["supports_causal_scope"] is True
-        ]
-        evaluation_payload["mechanism_evidence_ordinals"] = [
-            citation["ordinal"]
-            for citation in citations
-            if citation["supports_fault_mechanism"] is True
-        ]
+    evaluation_payload["causal_scope_evidence_ordinals"] = [
+        citation["ordinal"] for citation in citations if citation["supports_causal_scope"] is True
+    ]
+    evaluation_payload["mechanism_evidence_ordinals"] = [
+        citation["ordinal"]
+        for citation in citations
+        if citation["supports_fault_mechanism"] is True
+    ]
     diagnosis_payload = None
     if diagnosis is not None:
         diagnosis_payload = {
@@ -816,21 +553,14 @@ def _run_payload(
             "fault_type": diagnosis.fault_type,
             "onset_time": diagnosis.onset_time,
             "confidence": diagnosis.confidence,
+            "causal_scope": (
+                diagnosis.causal_scope.value if diagnosis.causal_scope is not None else None
+            ),
+            "causal_operation": diagnosis.causal_operation,
+            "mechanism_code": (
+                diagnosis.mechanism_code.value if diagnosis.mechanism_code is not None else None
+            ),
         }
-        if fixture.version == 2:
-            diagnosis_payload.update(
-                {
-                    "causal_scope": (
-                        diagnosis.causal_scope.value if diagnosis.causal_scope is not None else None
-                    ),
-                    "causal_operation": diagnosis.causal_operation,
-                    "mechanism_code": (
-                        diagnosis.mechanism_code.value
-                        if diagnosis.mechanism_code is not None
-                        else None
-                    ),
-                }
-            )
     return {
         "repetition": int(item.get("repetition", 0)),
         "position": int(item.get("position", 0)),
@@ -867,67 +597,12 @@ def _run_payload(
     }
 
 
-def _descriptive_summary(runs: list[dict[str, object]]) -> dict[str, object]:
-    structured = any("auditable_completion" in _mapping(run, "evaluation") for run in runs)
-    treatments = {}
-    for visibility in sorted({str(run["visibility"]) for run in runs}):
-        cells = [run for run in runs if run["visibility"] == visibility]
-        treatment = {
-            "runs": len(cells),
-            "successful_runs": sum(
-                (
-                    _auditable_completion(_mapping(cell, "evaluation"))
-                    if structured
-                    else _mapping(cell, "evaluation").get("success") is True
-                )
-                for cell in cells
-            ),
-            "median_tool_calls_executed": median(
-                int(_mapping(cell, "execution").get("tool_calls_executed", 0)) for cell in cells
-            ),
-            "median_rows_returned": median(
-                int(_mapping(_mapping(cell, "execution"), "database_load").get("rows_returned", 0))
-                for cell in cells
-            ),
-        }
-        if structured:
-            treatment["efficiency_eligible_runs"] = sum(
-                _efficiency_eligible(_mapping(cell, "evaluation")) for cell in cells
-            )
-        treatments[visibility] = treatment
-    successful_runs = sum(
-        (
-            _auditable_completion(_mapping(run, "evaluation"))
-            if structured
-            else _mapping(run, "evaluation").get("success") is True
-        )
-        for run in runs
-    )
-    report = {
-        "inference_role": (
-            "descriptive only; no run passed the valid-completion guardrail"
-            if successful_runs == 0
-            else "descriptive only; repetitions are not independent cases"
-        ),
-        "successful_runs": successful_runs,
-        "total_runs": len(runs),
-        "treatments": treatments,
-    }
-    if structured:
-        report["efficiency_eligible_runs"] = sum(
-            _efficiency_eligible(_mapping(run, "evaluation")) for run in runs
-        )
-    return report
-
-
 def _efficiency_eligible(evaluation: Mapping[str, object]) -> bool:
-    value = evaluation.get("efficiency_eligible")
-    return value is True if value is not None else evaluation.get("success") is True
+    return evaluation.get("efficiency_eligible") is True
 
 
 def _auditable_completion(evaluation: Mapping[str, object]) -> bool:
-    value = evaluation.get("auditable_completion")
-    return value is True if value is not None else evaluation.get("success") is True
+    return evaluation.get("auditable_completion") is True
 
 
 def _usage_summary(

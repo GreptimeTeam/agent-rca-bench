@@ -64,6 +64,10 @@ def test_three_model_protocol_freezes_cache_schedule_and_inference_boundary() ->
         ["table_semantics", "raw", "semantic_graph"],
     ]
     assert audit["no_model_gates"]["prompt_cache_enabled_for_all_models"]
+    assert audit["no_model_gates"]["benchmark_protocol_match"]
+    assert audit["benchmark_protocol_version"] == audit["current_benchmark_protocol_version"]
+    assert audit["no_model_gates"]["scorer_audit_model_in_roster"]
+    assert scorer.canonical_api_runner.model == "deepseek-v4-pro"
     assert audit["no_model_gates"]["all_passed"]
     assert audit["inference"]["correctness_pooled_across_models"] is False
 

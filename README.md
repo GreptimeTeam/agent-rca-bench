@@ -131,6 +131,11 @@ and Claude subscription runners. Protocol v24 added provider-specific API prompt
 caching and native cache-usage accounting. Protocol v25 added provisional causal-hypothesis
 triage. Protocol v26 makes that method case-invariant and symmetric across mechanism classes,
 adds structured causal scope and mechanism fields, and routes cited results to typed claims. The
+v26 Semantic Graph tool also exposes `unmatched_count` and `duration_max` from the current
+GreptimeDB relationship contract. It preserves their source populations: `unmatched_count` is not
+generally additive to `request_count`, and `duration_max` uses the same population as the duration
+sum and count. Table profiles distinguish the identity qualifier from separately reported scope
+columns. No v26 model cell ran before this representation was frozen. The
 agent establishes the failing operation, uses discriminating queries instead of unconditional
 resource sweeps, and compares the same operation across the change point. The
 API runner sets its turn limit above the visible tool-call cap and records turn
@@ -151,6 +156,13 @@ publishes conflicting structured component labels. A predicted causal
 dependency remains diagnostic output; no dependency accuracy field exists
 until a source publishes a canonical dependency label. Confidence remains a
 diagnostic calibration signal and does not contribute to correctness.
+
+These protocol numbers identify internal development cycles, not public
+releases. Results produced before the release freeze remain development
+experiments even when a case has a trajectory-blind measurement role. A public
+report is produced from one frozen commit and binds itself to the corresponding
+Git release tag. Reproduction checks out that tag; current code does not retain
+runtime compatibility with earlier development protocols.
 
 The Graph treatment has a dedicated query tool that applies the half-open
 incident window and groups each relationship by window and edge identity before
@@ -247,58 +259,14 @@ parent-child spans. The audit applies the frozen selection gate in
 license boundary, exclusions, and selected case. Use `aegis-audit` instead when
 you already have a verified, extracted artifact.
 
-After the source audit passes, run the selected-case production-protocol and
-Graph equality gate in a fresh managed instance:
-
-```bash
-uv run semantic-rca aegis-transfer-audit \
-  --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
-  --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
-  --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
-  --run-dir .instances/aegis-transfer-001 \
-  --database case_01 \
-  --output .reports/aegis-transfer-audit.json
-```
-
-The command starts and stops only its own loopback GreptimeDB process. The run
-directory must not already exist. It replays metrics and traces through OTLP
-and logs through Loki, rejects protocol loss or identifier remapping, and writes
-the complete normalized raw and Graph edge sets plus their hashes. Because the
-publisher windows start at second 38, equality uses one minimal minute-aligned
-envelope around the complete normal-plus-abnormal source window. The source
-audit proves that the envelope adds no telemetry rows. Frozen normal and
-abnormal method evidence continues to use the original publisher half-open
-windows. This is a no-model gate; it does not run or authorize the transfer
-experiment.
-
-After the transfer audit passes, validate the frozen transfer scorer without
-calling a model:
-
-```bash
-uv run semantic-rca aegis-transfer-scorer-audit \
-  --transfer-audit .reports/aegis-transfer-audit.json \
-  --output .reports/aegis-transfer-scorer-audit.json
-```
-
-The command binds the source audit to
-`fixtures/reference/aegis-transfer-scorer.json`. The fixture freezes the
-directed two-service answer, accepted HTTP method-replacement labels, complete
-`GET`/`OPTIONS` evidence predicate, and canonical API runner contract. The
-scorer requires a cited, successful SQL result from a Client-to-Server
-parent-child join. One citation can prove the complete predicate, or multiple
-unique citations can prove non-overlapping parts whose normalized union exactly
-matches the predicate. A single-service answer, reversed edge, invalid citation,
-wrong parent relation, duplicate evidence cell, or missing evidence row fails
-the audit. The agent input contains the opaque case ID and no fault taxonomy.
-
 Protocol v24 and v25 model runs are complete historical development runs. V25 executed all 27
 three-model cells without runner errors or budget exhaustion, and one later Opus Graph diagnostic
 also completed. Their scorer used server duration for a fault injected between client and server
 start, required a hidden exact fault label, and constrained evidence to the canonical aggregate.
 The resulting zero eligible pairs are not a model-quality or semantic-layer result. Historical
-reports and the sanitized v25 artifact remain readable, but v24/v25 fixtures are retired for new
-agent execution. An execution request bound to either retired protocol fails before contacting a
-provider.
+reports and the sanitized v25 artifact remain immutable records. The current runtime only accepts
+v26 and does not load, rescore, resume, or export v24/v25 schemas. A non-v26 execution request
+fails before contacting a provider.
 
 Protocol v26 retains the consumed delay case as development calibration and selects a fresh source-
 observable JVM exception case for measurement. The agent sees only `aegis-transfer-003`, an empty
@@ -343,11 +311,13 @@ normal window, followed by repeated observations of both signals during the abno
 stored aggregate is 0/0 to 1,981/1,981. The case has one source-labeled component and no declared
 dependency edge; the loader and scorer do not invent one.
 
-The source boundary is not minute-aligned, and the shared Graph minute contains Client spans from
-both periods. The audit therefore proves each stored period's raw edge set against its full source
-edge set, then compares raw and Graph over the only exactly representable contiguous union. The
-normalized union contains 40 edges and has the same hash on both sides. Two independent ingestions
-produce the same source-semantic hash.
+The Graph equality audit derives its comparison strategy from source boundary counts. A boundary
+that can be represented by `observed_at` minute bins must pass normal and abnormal raw/Graph exact
+equality separately and also pass the combined-window comparison. If both periods contain clients
+in the same minute, separate Graph periods are not representable; the audit records that fact and
+requires exact equality over the contiguous union. The selected v26 source follows the latter path.
+Its normalized union contains 40 edges and has the same hash on both sides. Two independent
+ingestions produce the same source-semantic hash.
 
 The scorer accepts a combined aggregate, separate trace and log aggregates, or complete raw rows.
 It requires the exact service, operation, source Error status, exception log predicate, and complete
@@ -360,8 +330,9 @@ Protocol v26 reports `diagnosis_correct`, `required_evidence_covered`, `citation
 `execution_reliability`, `auditable_completion`, and `efficiency_eligible` separately. The primary
 efficiency comparison requires correct structured diagnosis, required claim coverage, and reliable
 execution. An unrelated invalid extra citation blocks auditable completion without changing
-diagnosis correctness. Free-text `fault_type` is explanatory; the scored mechanism is the global,
-case-independent `mechanism_code`.
+diagnosis correctness or erasing valid required evidence. Every citation used to cover a required
+claim must still be execution-valid. Free-text `fault_type` is explanatory; the scored mechanism is
+the global, case-independent `mechanism_code`.
 
 The formal fixture freezes `deepseek-v4-pro`, `claude-sonnet-5`, and `claude-opus-4-8`. Each model
 runs three position-balanced repetitions over Raw, Table Semantics, and Semantic Graph, for 27
@@ -416,25 +387,6 @@ explanations, evidence claim text, source rows, query IDs, timings, local paths,
 For mechanism queries, it publishes only SQL, columns, row counts, truncation state, and a result
 hash. It reports paired efficiency deltas within each model and never pools correctness across
 models.
-
-Export a deterministic development artifact from the retained private reports without calling a
-model or database:
-
-```bash
-uv run semantic-rca aegis-transfer-export \
-  --run-report .reports/aegis-transfer-v24-deepseek-run.json \
-  --source-audit .reports/aegis-transfer-v24-deepseek-source-audit.json \
-  --scorer-audit .reports/aegis-transfer-v24-deepseek-scorer-audit.json \
-  --output artifacts/development/aegis-transfer-v24-deepseek.json
-```
-
-The exporter verifies the historical protocol v24 fixture bindings and deterministically rescores
-all nine runs. The public artifact retains normalized edge sets, canonical mechanism aggregates,
-parsed diagnosis fields, scorer outcomes, database-load counts, token totals, and private input
-hashes. It excludes provider responses, free-form evidence text, non-mechanism query results,
-query and run IDs, timings, process metadata, local paths, and source telemetry rows. The source
-semantic hash excludes run-local metadata; the exact private file hashes remain separate. See
-[`artifacts/README.md`](artifacts/README.md) for the code and data license boundary.
 
 Since protocol v24, end-to-end RCA counts a citation as execution-valid only when
 it uniquely identifies a successful, non-truncated SQL or Graph query result,

@@ -198,6 +198,18 @@ therefore be compared only within the same model, runner, protocol, and case.
 
 ## Benchmark 1.0 release gate and research-claim gate
 
+Protocol labels such as v24, v25, and v26 identify internal development cycles. They record changes
+to the harness and make development experiments interpretable; they are not release versions. The
+current tree does not preserve runtime compatibility with earlier development protocols.
+
+The first public report is produced only after one commit freezes the complete cohort, model roster,
+GreptimeDB revision, prompt, tools, scorer, statistics, and artifact contract. Every published cell
+is run from that frozen commit. The report records the exact commit and is released with a Git tag;
+reproduction checks out that tag rather than asking current `main` to read an older report schema.
+The tagged tree must deterministically rescore the published sanitized trajectories and regenerate
+the report. Reinvoking a provider is a replication run and is not expected to reproduce model text
+byte for byte.
+
 The current Discovery v2 and Graph v3 results are mechanism evidence, not a
 powered estimate of a general semantic-layer effect and not yet a public 1.0
 cohort. Benchmark product readiness and confirmatory research readiness are
@@ -243,25 +255,39 @@ Protocol v26 corrects the delay observable to `server.timestamp - client.timesta
 case-independent structured mechanism ontology, types evidence by claim, and accepts equivalent
 threshold proofs while retaining AST-verified edge, operation, role, parent, identity, and
 half-open-window constraints. The consumed v25 case is bound to v26 only as a development
-calibration fixture. Historical v25 validation, shadow scoring, and export remain available, but
-v24/v25 fixtures are retired for new agent execution.
+calibration fixture. V24/v25 files are immutable records only. The current runtime does not load,
+validate, rescore, resume, or export their schemas.
 
 The fresh v26 measurement selection was computed before agent trajectory from all
-source-observable, graph-eligible Aegis cases after excluding the exact v24 and v25 parent
-manifests. It selects the single-component JVM exception case as opaque ID
+source-observable, graph-eligible Aegis cases supported end to end by the v26 transfer loader,
+oracle, and scorer after excluding the exact v24 and v25 parent manifests. The supported source
+predicates are the Client-to-Server start gap and JVM exception predicates; source-observable
+restart and memory-pressure predicates are not silently admitted without a matching transfer
+pipeline. The frozen selection selects the single-component JVM exception case as opaque ID
 `aegis-transfer-003`. The source and stored oracles require a clean normal window and repeated
 `retrieveByName` Error spans plus exception logs after onset. The scorer uses `component` scope,
 requires `causal_dependency=null`, and scores the global `application_error` mechanism. It accepts
 equivalent complete-window evidence without prescribing one SQL statement.
 
-The v26 Graph equality gate uses a code-proven unified window because the source boundary shares
-one minute bin across both periods. It first compares the stored normal and abnormal raw edge sets
-independently with their full source sets. It then compares the full normalized raw and Graph edge
-sets over the only exactly representable contiguous union. Two independent ingestion runs produce
-the same source-semantic hash. The formal protocol freezes `deepseek-v4-pro`, `claude-sonnet-5`,
+Before the first v26 model cell, the agent-visible Semantic Graph relationship projection was
+frozen against the current GreptimeDB contract with `unmatched_count` and `duration_max` in
+addition to the existing RED fields. The benchmark has one current Semantic Graph query surface;
+it does not retain a runtime branch for the earlier experimental GreptimeDB shape.
+
+The v26 Graph equality gate selects its comparison strategy from the source boundary evidence. A
+minute-representable boundary requires independent normal and abnormal raw/Graph equality plus
+combined-window equality. When both source periods contain clients in the same `observed_at` minute,
+the audit proves that separate Graph periods are not representable and requires exact equality over
+the contiguous union instead. The selected v26 case follows the latter path. Two independent
+ingestion runs produce the same source-semantic hash. The formal protocol freezes
+`deepseek-v4-pro`, `claude-sonnet-5`,
 and `claude-opus-4-8`, with three position-balanced repetitions for each treatment and model.
 Preflight freezes 27 unauthorized cells. The remaining transfer gate is explicit approval and paid
 execution; no v26 provider call has run.
+This selection exhausts the pinned reviewer cohort under the v26 supported-mechanism rule: after
+the v24 method-replacement and v25 delay cases are consumed, the v26 JVM-exception case is the only
+remaining eligible candidate. A later fresh transfer case therefore requires a new pinned cohort
+or a separately frozen expansion of end-to-end mechanism support; it cannot reuse a consumed case.
 Raw `.reports/` trajectories are not the release contract because they contain
 provider payloads and local metadata.
 

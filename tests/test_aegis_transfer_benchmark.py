@@ -3,15 +3,14 @@ from pathlib import Path
 
 import pytest
 
+import semantic_rca_bench.aegis_transfer_benchmark as benchmark_module
 from semantic_rca_bench.aegis_transfer_benchmark import (
-    OPUS_DIAGNOSTIC_MODEL,
     TransferRunError,
-    build_opus_graph_diagnostic_report,
     build_transfer_run_report,
-    execute_opus_graph_diagnostic,
     execute_transfer_runs,
 )
 from semantic_rca_bench.aegis_transfer_scorer import (
+    CALIBRATION_SCORER_FIXTURE,
     audit_transfer_scorer,
     load_transfer_scorer_fixture,
     source_transfer_audit_sha256,
@@ -21,10 +20,13 @@ from semantic_rca_bench.contracts import (
     AgentRunner,
     AgentUsage,
     CaseInput,
+    CausalScope,
     DatabaseLoad,
     Diagnosis,
     Evidence,
+    EvidenceClaimType,
     FaultCategory,
+    MechanismCode,
     QueryResult,
     ToolTrace,
     Visibility,
@@ -34,45 +36,50 @@ from semantic_rca_bench.datasets.aegis_transfer import (
     AegisTransferGroundTruth,
 )
 
-SCORER_PATH = Path("fixtures/reference/aegis-transfer-scorer.json")
+SCORER_PATH = CALIBRATION_SCORER_FIXTURE
 
 
 def _query() -> str:
     return """WITH paired AS (
   SELECT CASE
-           WHEN c.timestamp >= '2025-07-19 09:52:38'
-            AND c.timestamp < '2025-07-19 09:56:38' THEN 'normal'
-           WHEN c.timestamp >= '2025-07-19 09:56:38'
-            AND c.timestamp < '2025-07-19 10:00:38' THEN 'abnormal'
+           WHEN c.timestamp >= '2025-07-20 12:32:50'
+            AND c.timestamp < '2025-07-20 12:36:50' THEN 'normal'
+           WHEN c.timestamp >= '2025-07-20 12:36:50'
+            AND c.timestamp < '2025-07-20 12:40:49' THEN 'abnormal'
          END AS period,
-         c.\"span_attributes.http.request.method\" AS client_method,
-         s.\"span_attributes.http.request.method\" AS server_method
+         CAST(s.timestamp AS BIGINT) - CAST(c.timestamp AS BIGINT) AS server_start_gap_ns
   FROM traces c
   JOIN traces s ON c.trace_id = s.trace_id AND s.parent_span_id = c.span_id
   WHERE c.span_kind = 'SPAN_KIND_CLIENT'
     AND s.span_kind = 'SPAN_KIND_SERVER'
-    AND c.service_name = 'ts-security-service'
-    AND s.service_name = 'ts-order-other-service'
+    AND c.service_name = 'ts-route-plan-service'
+    AND s.service_name = 'ts-travel2-service'
+    AND s.span_name = 'POST /api/v1/travel2service/trips/left'
+    AND c.timestamp >= '2025-07-20 12:32:50'
+    AND c.timestamp < '2025-07-20 12:40:49'
 )
-SELECT period, side, method, COUNT(*) AS span_count
-FROM (
-  SELECT period, 'server' AS side, server_method AS method FROM paired WHERE period = 'normal'
-  UNION ALL
-  SELECT period, 'client' AS side, client_method AS method FROM paired WHERE period = 'abnormal'
-  UNION ALL
-  SELECT period, 'server' AS side, server_method AS method FROM paired WHERE period = 'abnormal'
-) evidence
-GROUP BY period, side, method"""
+SELECT period, COUNT(*) AS span_count,
+       MIN(server_start_gap_ns) AS min_start_gap_ns,
+       MAX(server_start_gap_ns) AS max_start_gap_ns,
+       SUM(CASE WHEN server_start_gap_ns >= 3070000000 THEN 1 ELSE 0 END)
+         AS at_or_above_threshold
+FROM paired
+GROUP BY period"""
 
 
 def _result() -> QueryResult:
     return QueryResult(
         query_id="q01",
-        columns=["period", "side", "method", "span_count"],
+        columns=[
+            "period",
+            "span_count",
+            "min_start_gap_ns",
+            "max_start_gap_ns",
+            "at_or_above_threshold",
+        ],
         rows=[
-            ["normal", "server", "GET", 57],
-            ["abnormal", "client", "GET", 758],
-            ["abnormal", "server", "OPTIONS", 758],
+            ["normal", 37, -1_580_610, 18_958_433, 0],
+            ["abnormal", 25, 3_070_537_663, 3_111_430_672, 25],
         ],
         elapsed_seconds=0,
     )
@@ -81,26 +88,26 @@ def _result() -> QueryResult:
 def _case() -> AegisTransferCase:
     paths = (Path("normal.parquet"), Path("abnormal.parquet"))
     return AegisTransferCase(
-        agent_case_id="aegis-transfer-001",
-        source_case="ts0-ts-security-service-request-replace-method-j6gpxx",
+        agent_case_id="aegis-transfer-002",
+        source_case="ts8-ts-route-plan-service-request-delay-5dmjfm",
         dataset="dataset",
         system="Train Ticket",
         root=Path("case"),
         input=CaseInput(
-            case_token="aegis-transfer-001",
-            time_start=1752918758,
-            time_end=1752919238,
-            alert_time=1752918998,
-            database="case_01",
+            case_token="aegis-transfer-002",
+            time_start=1753014770,
+            time_end=1753015249,
+            alert_time=1753015010,
+            database="case_02",
             fault_taxonomy=[],
         ),
         ground_truth=AegisTransferGroundTruth(
-            services=("ts-order-other-service", "ts-security-service"),
-            declared_edge=("ts-security-service", "ts-order-other-service"),
-            fault_type="HTTPRequestReplaceMethod",
+            services=("ts-route-plan-service", "ts-travel2-service"),
+            declared_edge=("ts-route-plan-service", "ts-travel2-service"),
+            fault_type="HTTPRequestDelay",
         ),
-        normal_window=(1752918758, 1752918998),
-        abnormal_window=(1752918998, 1752919238),
+        normal_window=(1753014770, 1753015010),
+        abnormal_window=(1753015010, 1753015249),
         gauge_paths=paths,
         sum_paths=paths,
         histogram_paths=paths,
@@ -112,9 +119,18 @@ def _case() -> AegisTransferCase:
 
 def _source_audit() -> dict[str, object]:
     expected = {
-        "normal_server_methods": {"GET": 57},
-        "abnormal_client_methods": {"GET": 758},
-        "abnormal_server_methods": {"OPTIONS": 758},
+        "normal": {
+            "count": 37,
+            "min_start_gap_ns": -1_580_610,
+            "max_start_gap_ns": 18_958_433,
+            "at_or_above_threshold": 0,
+        },
+        "abnormal": {
+            "count": 25,
+            "min_start_gap_ns": 3_070_537_663,
+            "max_start_gap_ns": 3_111_430_672,
+            "at_or_above_threshold": 25,
+        },
     }
     return {
         "audit_schema_version": 1,
@@ -125,16 +141,16 @@ def _source_audit() -> dict[str, object]:
         "selection_audit": {"frozen_selection_gate": {"pass": True}},
         "case": {
             "agent_facing": {
-                "case_id": "aegis-transfer-001",
-                "time_start": 1752918758,
-                "time_end": 1752919238,
-                "alert_time": 1752918998,
+                "case_id": "aegis-transfer-002",
+                "time_start": 1753014770,
+                "time_end": 1753015249,
+                "alert_time": 1753015010,
                 "fault_taxonomy": [],
             },
-            "normal_window": [1752918758, 1752918998],
-            "abnormal_window": [1752918998, 1752919238],
-            "declared_edge": ["ts-security-service", "ts-order-other-service"],
-            "fault_type": "HTTPRequestReplaceMethod",
+            "normal_window": [1753014770, 1753015010],
+            "abnormal_window": [1753015010, 1753015249],
+            "declared_edge": ["ts-route-plan-service", "ts-travel2-service"],
+            "fault_type": "HTTPRequestDelay",
         },
         "greptimedb": {"head": "head"},
         "source_audit": {},
@@ -142,12 +158,15 @@ def _source_audit() -> dict[str, object]:
         "edge_equality": {
             "exact_edge_set_equality": True,
             "window_contract": {
-                "source_window": [1752918758, 1752919238],
-                "graph_observed_window": [1752918720, 1752919260],
+                "source_window": [1753014770, 1753015249],
+                "graph_observed_window": [1753014720, 1753015260],
             },
         },
         "mechanism_evidence": {
-            "predicate": "source_declared_http_method_replacement",
+            "predicate": "source_declared_http_client_server_start_gap",
+            "observable": "server.timestamp - client.timestamp",
+            "span_name": "POST /api/v1/travel2service/trips/left",
+            "declared_delay_ns": 3_070_000_000,
             "query": _query(),
             "result": _result().model_dump(mode="json"),
             "normalized_result": expected,
@@ -166,13 +185,25 @@ def _agent_run(visibility: Visibility) -> AgentRun:
         model="deepseek-v4-flash",
         runner=AgentRunner.API,
         diagnosis=Diagnosis(
-            affected_component="ts-security-service",
-            causal_dependency="ts-order-other-service",
-            fault_category=FaultCategory.OTHER,
-            fault_type="HTTP method replacement",
+            affected_component="ts-route-plan-service",
+            causal_dependency="ts-travel2-service",
+            causal_scope=CausalScope.DEPENDENCY_EDGE,
+            causal_operation="POST /api/v1/travel2service/trips/left",
+            fault_category=FaultCategory.DELAY,
+            mechanism_code=MechanismCode.CALL_PATH_DELAY,
+            fault_type="injected call-path delay",
             confidence=1,
-            evidence=[Evidence(query_id="q01", claim="paired methods changed")],
-            explanation="The paired spans show the method replacement.",
+            evidence=[
+                Evidence(
+                    query_id="q01",
+                    claim="paired timestamps cross the injected-delay threshold",
+                    claim_types=[
+                        EvidenceClaimType.CAUSAL_SCOPE,
+                        EvidenceClaimType.FAULT_MECHANISM,
+                    ],
+                )
+            ],
+            explanation="The paired spans show the injected call-path delay.",
         ),
         tool_calls=[
             ToolTrace(
@@ -191,17 +222,18 @@ def _agent_run(visibility: Visibility) -> AgentRun:
 
 
 class _Client:
-    database = "case_01"
+    database = "case_02"
 
     @contextmanager
     def measure_query_load(self):
         yield DatabaseLoad()
 
 
-def test_canonical_transfer_wiring_balances_positions_and_uses_graph_envelope() -> None:
+def test_canonical_transfer_wiring_balances_positions_and_uses_graph_envelope(monkeypatch) -> None:
+    monkeypatch.setattr(benchmark_module, "require_current_protocol", lambda version: None)
     case = _case()
     source = _source_audit()
-    fixture = load_transfer_scorer_fixture()
+    fixture = load_transfer_scorer_fixture(SCORER_PATH)
     scorer = audit_transfer_scorer(source, fixture, SCORER_PATH)
     coverage = {"graph": {"status": "relational"}}
     report = build_transfer_run_report(case, fixture, SCORER_PATH, source, scorer, coverage)
@@ -229,7 +261,7 @@ def test_canonical_transfer_wiring_balances_positions_and_uses_graph_envelope() 
     assert all(item["evaluation"]["success"] for item in report["runs"])
     assert {call[0] for call in calls} == set(Visibility)
     assert all(
-        window == (1752918720, 1752919260)
+        window == (1753014720, 1753015260)
         for level, window, _, _ in calls
         if level is Visibility.SEMANTIC_GRAPH
     )
@@ -247,57 +279,29 @@ def test_canonical_transfer_wiring_balances_positions_and_uses_graph_envelope() 
     assert all(call[3]["max_tokens"] == 4096 for call in calls)
 
 
-def test_opus_diagnostic_executes_exactly_one_graph_cell_and_is_not_measurement() -> None:
+def test_scorer_audit_checks_model_against_revision_contract(tmp_path: Path) -> None:
+    fixture = load_transfer_scorer_fixture(SCORER_PATH)
+    mutated = fixture.model_copy(
+        update={
+            "canonical_api_runner": fixture.canonical_api_runner.model_copy(
+                update={"model": "unexpected-model"}
+            )
+        }
+    )
+    fixture_path = tmp_path / "scorer.json"
+    fixture_path.write_text(mutated.model_dump_json())
+
+    audit = audit_transfer_scorer(_source_audit(), mutated, fixture_path)
+
+    assert audit["no_model_gates"]["canonical_runner_contract_match"] is False
+    assert audit["no_model_gates"]["all_passed"] is False
+
+
+def test_canonical_transfer_run_stops_after_first_runner_error(monkeypatch) -> None:
+    monkeypatch.setattr(benchmark_module, "require_current_protocol", lambda version: None)
     case = _case()
     source = _source_audit()
-    fixture = load_transfer_scorer_fixture()
-    scorer = audit_transfer_scorer(source, fixture, SCORER_PATH)
-    report = build_opus_graph_diagnostic_report(
-        case,
-        fixture,
-        SCORER_PATH,
-        source,
-        scorer,
-        {"graph": {"status": "relational"}},
-    )
-    calls = []
-
-    def fake_agent(gateway, case_input, visibility, **kwargs):
-        calls.append((gateway.semantic_graph_window, visibility, kwargs))
-        return _agent_run(visibility).model_copy(update={"model": OPUS_DIAGNOSTIC_MODEL})
-
-    execute_opus_graph_diagnostic(
-        _Client(),  # type: ignore[arg-type]
-        case,
-        fixture,
-        report,
-        run_agent_fn=fake_agent,
-    )
-
-    assert report["measurement_eligible"] is False
-    assert report["execution"]["expected_runs"] == 1
-    assert report["execution"]["complete"] is True
-    assert len(report["runs"]) == 1
-    assert calls == [
-        (
-            (1752918720, 1752919260),
-            Visibility.SEMANTIC_GRAPH,
-            {
-                "model": OPUS_DIAGNOSTIC_MODEL,
-                "max_tool_calls": 48,
-                "max_turns": 58,
-                "max_tokens": 4096,
-                "semantic_coverage": {"graph": {"status": "relational"}},
-            },
-        )
-    ]
-    assert report["runs"][0]["evaluation"]["runner_contract_match"] is True
-
-
-def test_canonical_transfer_run_stops_after_first_runner_error() -> None:
-    case = _case()
-    source = _source_audit()
-    fixture = load_transfer_scorer_fixture()
+    fixture = load_transfer_scorer_fixture(SCORER_PATH)
     scorer = audit_transfer_scorer(source, fixture, SCORER_PATH)
     report = build_transfer_run_report(
         case,
@@ -351,7 +355,7 @@ def test_canonical_transfer_run_stops_after_first_runner_error() -> None:
 def test_transfer_run_preflight_fails_before_agent_execution(mutation, message: str) -> None:
     case = _case()
     source = _source_audit()
-    fixture = load_transfer_scorer_fixture()
+    fixture = load_transfer_scorer_fixture(SCORER_PATH)
     scorer = audit_transfer_scorer(source, fixture, SCORER_PATH)
     coverage = {"graph": {"status": "relational"}}
     mutation(source, scorer, coverage)

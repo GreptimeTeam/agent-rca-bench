@@ -43,7 +43,7 @@
   },
   "canonical_api_runner": {
     "runner": "api",
-    "model": "deepseek-v4-flash",
+    "model": "deepseek-v4-pro",
     "benchmark_protocol_version": 26,
     "visibility_levels": [
       "raw",

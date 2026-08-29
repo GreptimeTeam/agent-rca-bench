@@ -2,12 +2,13 @@ import json
 
 import pytest
 
+from semantic_rca_bench.protocol import benchmark_protocol
 from semantic_rca_bench.report import (
+    CASE_REPORT_SCHEMA_VERSION,
     MODEL_PRICING,
     TOKEN_ACCOUNTING,
     _estimated_api_cost,
     _exact_sign_p_value,
-    _load_case_report,
     _paired_primary_comparisons,
     _primary_metric_value,
     _runner_reported_token_total,
@@ -15,6 +16,28 @@ from semantic_rca_bench.report import (
     render_report,
     render_reports,
 )
+
+
+def _case_report(**updates: object) -> dict[str, object]:
+    report: dict[str, object] = {
+        "report_schema_version": CASE_REPORT_SCHEMA_VERSION,
+        "runner": "api",
+        "model": "test-model",
+        "protocol": benchmark_protocol(),
+        "max_tool_calls": 48,
+        "repetitions": 1,
+        "case_role": "development",
+        "token_accounting": TOKEN_ACCOUNTING["api"],
+        "case": {"dataset": "dataset-a", "source_case": "case-a", "fault_taxonomy": []},
+        "ground_truth": {},
+        "case_context": {},
+        "ingest": {},
+        "runner_jobs": 1,
+        "orders": [],
+        "runs": [],
+    }
+    report.update(updates)
+    return report
 
 
 def test_deepseek_pricing_separates_uncached_and_cache_read_input() -> None:
@@ -120,10 +143,10 @@ def test_render_report_embeds_data_and_escapes_script_end(tmp_path) -> None:
     output = tmp_path / "pilot.html"
     source.write_text(
         json.dumps(
-            {
-                "model": "test-model",
-                "ground_truth": {"component": "checkout</script>", "fault_type": "delay"},
-                "runs": [
+            _case_report(
+                model="test-model",
+                ground_truth={"component": "checkout</script>", "fault_type": "delay"},
+                runs=[
                     {
                         "run": {
                             "responses": [
@@ -140,7 +163,7 @@ def test_render_report_embeds_data_and_escapes_script_end(tmp_path) -> None:
                         }
                     }
                 ],
-            }
+            )
         )
     )
 
@@ -163,16 +186,11 @@ def test_subscription_combined_report_hides_inapplicable_summary_columns(tmp_pat
         source = tmp_path / f"pilot-{index}.json"
         source.write_text(
             json.dumps(
-                {
-                    "runner": "codex-subscription",
-                    "model": "test-model",
-                    "protocol": {"version": 17},
-                    "max_tool_calls": 48,
-                    "repetitions": 1,
-                    "case": {"dataset": dataset, "fault_taxonomy": [dataset]},
-                    "ground_truth": {},
-                    "runs": [],
-                }
+                _case_report(
+                    runner="codex-subscription",
+                    model="test-model",
+                    case={"dataset": dataset, "fault_taxonomy": [dataset]},
+                )
             )
         )
         sources.append(source)
@@ -187,41 +205,21 @@ def test_subscription_combined_report_hides_inapplicable_summary_columns(tmp_pat
     assert "__REPORT_COLUMN_CSS__" not in document
 
 
-def test_render_reports_rejects_mixed_protocols(tmp_path) -> None:
-    sources = []
-    for version in (1, 2):
-        source = tmp_path / f"pilot-{version}.json"
-        source.write_text(
-            json.dumps(
-                {
-                    "model": "test-model",
-                    "protocol": {"version": version},
-                    "ground_truth": {},
-                    "runs": [],
-                }
-            )
-        )
-        sources.append(source)
+def test_render_reports_rejects_noncurrent_report_schema(tmp_path) -> None:
+    source = tmp_path / "old.json"
+    source.write_text(json.dumps({**_case_report(), "report_schema_version": 4}))
 
-    try:
-        render_reports(sources, tmp_path / "combined.html")
-    except ValueError as error:
-        assert "different benchmark protocols" in str(error)
-    else:
-        raise AssertionError("mixed protocols should be rejected")
+    with pytest.raises(ValueError, match="unsupported RCA report schema"):
+        render_reports([source], tmp_path / "combined.html")
 
 
 def test_render_reports_rejects_duplicate_case_identity(tmp_path) -> None:
     source = tmp_path / "pilot.json"
     source.write_text(
         json.dumps(
-            {
-                "model": "test-model",
-                "protocol": {"version": 1},
-                "case": {"dataset": "dataset-a", "source_case": "case-a"},
-                "ground_truth": {},
-                "runs": [],
-            }
+            _case_report(
+                case={"dataset": "dataset-a", "source_case": "case-a"},
+            )
         )
     )
 
@@ -251,48 +249,6 @@ def test_case_context_distinguishes_alert_history_from_known_baseline() -> None:
     assert known["known_pre_fault_seconds"] == 120
     assert known["known_post_fault_seconds"] == 480
     assert known["baseline_status"] == "known"
-
-
-def test_legacy_report_derives_budget_exhaustion_and_execution_position(tmp_path) -> None:
-    source = tmp_path / "legacy.json"
-    source.write_text(
-        json.dumps(
-            {
-                "max_tool_calls": 2,
-                "orders": [
-                    {
-                        "repetition": 0,
-                        "levels": ["semantic_graph", "raw", "table_semantics"],
-                    }
-                ],
-                "runs": [
-                    {
-                        "repetition": 0,
-                        "run": {
-                            "visibility": "raw",
-                            "responses": [
-                                {
-                                    "content": [
-                                        {"type": "tool_use", "name": "execute_sql"},
-                                        {"type": "tool_use", "name": "describe_table"},
-                                        {"type": "tool_use", "name": "execute_sql"},
-                                        {"type": "tool_use", "name": "submit_diagnosis"},
-                                    ]
-                                }
-                            ],
-                        },
-                    }
-                ],
-            }
-        )
-    )
-
-    report = _load_case_report(source)
-    item = report["runs"][0]
-
-    assert item["position"] == 1
-    assert item["run"]["tool_calls_requested"] == 3
-    assert item["run"]["tool_budget_exhausted"] is True
 
 
 def _primary_item(repetition: int, visibility: str, rows: int, calls: int) -> dict:
@@ -403,7 +359,7 @@ def test_primary_metrics_consume_canonical_valid_completion() -> None:
     assert _primary_metric_value(item, "correct_completion_tool_calls") == 3
 
 
-def test_primary_metrics_reject_legacy_evaluation_without_valid_completion() -> None:
+def test_primary_metrics_reject_evaluation_without_valid_completion() -> None:
     item = _primary_item(0, "raw", 10, 3)
     del item["evaluation"]["valid_completion"]
 

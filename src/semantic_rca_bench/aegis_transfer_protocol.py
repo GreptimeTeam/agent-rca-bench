@@ -17,7 +17,6 @@ from semantic_rca_bench.contracts import AgentRun, AgentRunner, Visibility
 from semantic_rca_bench.protocol import benchmark_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-LEGACY_PROTOCOL_REVISION = "aegis-transfer-three-model-v2"
 PROTOCOL_REVISION = "aegis-transfer-three-model-v3"
 DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v26-three-model-protocol.json")
 
@@ -81,64 +80,34 @@ def load_transfer_protocol_fixture(
     path: Path = DEFAULT_PROTOCOL_FIXTURE,
 ) -> AegisTransferProtocolFixture:
     fixture = AegisTransferProtocolFixture.model_validate_json(path.read_text())
-    specifications = {
-        LEGACY_PROTOCOL_REVISION: {
-            "version": 1,
-            "agent_case_id": "aegis-transfer-002",
-            "benchmark_protocol_version": 25,
-            "selection_fixture": "fixtures/reference/aegis-transfer-v25-selection.json",
-            "scorer_fixture": "fixtures/reference/aegis-transfer-v25-scorer.json",
-            "models": (
-                (
-                    "deepseek-v4-flash",
-                    "deepseek",
-                    "anthropic-compatible-messages",
-                    "provider-automatic-prefix",
-                ),
-                (
-                    "deepseek-v4-pro",
-                    "deepseek",
-                    "anthropic-compatible-messages",
-                    "provider-automatic-prefix",
-                ),
-                (
-                    "claude-sonnet-5",
-                    "anthropic",
-                    "anthropic-messages",
-                    "ephemeral-request-cache-control",
-                ),
+    specification = {
+        "version": 2,
+        "agent_case_id": "aegis-transfer-003",
+        "benchmark_protocol_version": 26,
+        "selection_fixture": "fixtures/reference/aegis-transfer-v26-selection.json",
+        "scorer_fixture": "fixtures/reference/aegis-transfer-v26-scorer.json",
+        "models": (
+            (
+                "deepseek-v4-pro",
+                "deepseek",
+                "anthropic-compatible-messages",
+                "provider-automatic-prefix",
             ),
-        },
-        PROTOCOL_REVISION: {
-            "version": 2,
-            "agent_case_id": "aegis-transfer-003",
-            "benchmark_protocol_version": 26,
-            "selection_fixture": "fixtures/reference/aegis-transfer-v26-selection.json",
-            "scorer_fixture": "fixtures/reference/aegis-transfer-v26-scorer.json",
-            "models": (
-                (
-                    "deepseek-v4-pro",
-                    "deepseek",
-                    "anthropic-compatible-messages",
-                    "provider-automatic-prefix",
-                ),
-                (
-                    "claude-sonnet-5",
-                    "anthropic",
-                    "anthropic-messages",
-                    "ephemeral-request-cache-control",
-                ),
-                (
-                    "claude-opus-4-8",
-                    "anthropic",
-                    "anthropic-messages",
-                    "ephemeral-request-cache-control",
-                ),
+            (
+                "claude-sonnet-5",
+                "anthropic",
+                "anthropic-messages",
+                "ephemeral-request-cache-control",
             ),
-        },
+            (
+                "claude-opus-4-8",
+                "anthropic",
+                "anthropic-messages",
+                "ephemeral-request-cache-control",
+            ),
+        ),
     }
-    specification = specifications.get(fixture.protocol_revision)
-    if specification is None:
+    if fixture.protocol_revision != PROTOCOL_REVISION:
         raise ValueError("unsupported Aegis transfer formal protocol revision")
     observed_models = tuple(
         (model.model, model.provider, model.api_transport, model.prompt_cache)
@@ -219,10 +188,11 @@ def audit_transfer_protocol(
     frozen_selection = (
         selection_audit.get("frozen_selection_gate") if isinstance(selection_audit, dict) else None
     )
+    current_benchmark_version = int(benchmark_protocol()["version"])
+    roster_models = {model.model for model in fixture.models}
     gates = {
         "benchmark_protocol_match": (
-            fixture.benchmark_protocol_version
-            == benchmark_protocol(fixture.benchmark_protocol_version)["version"]
+            fixture.benchmark_protocol_version == current_benchmark_version
         ),
         "measurement_case_match": (
             scorer_fixture.agent_case_id == fixture.agent_case_id
@@ -250,6 +220,9 @@ def audit_transfer_protocol(
             == source_transfer_audit_sha256(source_audit)
         ),
         "three_model_roster": len(fixture.models) == 3,
+        "scorer_audit_model_in_roster": (
+            scorer_fixture.canonical_api_runner.model in roster_models
+        ),
         "scorer_runner_common_contract": (
             scorer_fixture.canonical_api_runner.runner is fixture.runner
             and scorer_fixture.canonical_api_runner.visibility_levels == fixture.visibility_levels
@@ -280,6 +253,8 @@ def audit_transfer_protocol(
         "audit_schema_version": 1,
         "mode": "aegis-transfer-formal-protocol-no-model-audit",
         "protocol_revision": fixture.protocol_revision,
+        "benchmark_protocol_version": fixture.benchmark_protocol_version,
+        "current_benchmark_protocol_version": current_benchmark_version,
         "protocol_fixture_sha256": sha256_file(protocol_path),
         "agent_case_id": fixture.agent_case_id,
         "case_role": fixture.case_role,

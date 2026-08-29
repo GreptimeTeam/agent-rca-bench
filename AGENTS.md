@@ -61,9 +61,12 @@
 - Run-pair statistics 可以保留，但必须明确标为 descriptive。
 - 端到端 RCA 的预注册主要效率字段是
   `database_load.rows_returned`（combined report 中为 `rows_returned`）和
-  `evaluation.correct_completion_tool_calls`。两者都必须通过正确 diagnosis、
-  至少一条 citation、全部 citation 有效、无 runner error、无 budget hit 的
-  eligibility guardrail。
+  `evaluation.correct_completion_tool_calls`。两者使用冻结 protocol 定义的同一个
+  eligibility guardrail。通用 RCA v23 guardrail 要求正确 diagnosis、至少一条 citation、
+  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v26 改为分层契约：
+  diagnosis 正确、全部 required evidence claim 由 execution-valid citation 覆盖、且无
+  runner error/budget hit 时可比较效率；无关的额外无效 citation 只使
+  `auditable_completion=false`，不能抹掉已经成立的 required evidence 或效率轨迹。
 - 端到端 execution-valid citation 必须唯一对应一次成功、非截断的
   `execute_sql` 或 `query_semantic_graph` `QueryResult`，且 output query ID 与 citation
   一致。Schema/catalog discovery 和空 claim 不构成 evidence。这个检查只证明引用了
@@ -99,6 +102,17 @@
 - 未经用户明确授权，不运行付费全量 RCA、批量模型实验或会消耗大量 subscription quota 的任务。先执行 no-model gate 和最小验证。
 
 ## Benchmark 1.0 与研究结论边界
+
+`v24`、`v25`、`v26` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
+scorer 和实验装置的迭代，不是公开发布版本。冻结前的运行均为研发实验；当前代码不为
+旧研发周期保留 loader、scorer、resume、renderer 或其他兼容层。
+
+正式发布以 Git release tag 为复现边界。第一次完整正式运行必须从同一个冻结 commit
+执行全部纳入报告的 case 和模型；公开 artifact 记录 tag、commit、GreptimeDB revision、
+数据 checksum、protocol、selection 和 scorer hash。对应 tag 必须自带复算 scorer、主要
+指标和生成报告所需的完整代码。后续改变正式实验表面时发布新 tag，不要求 `main` 读取
+旧 tag 的报告。模型重跑用于 replication；公开的 sanitized trajectories 和 tool results
+用于确定性复算已经发布的评分与统计。
 
 第一个公开版本是可执行、可审计的 benchmark 产品，不以证明跨系统普遍效果为
 完成条件。1.0 至少需要交付：

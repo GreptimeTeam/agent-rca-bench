@@ -4,9 +4,9 @@
   "agent_case_id": "aegis-transfer-003",
   "case_role": "measurement",
   "selection_fixture": "fixtures/reference/aegis-transfer-v26-selection.json",
-  "selection_fixture_sha256": "1d5b3d05a52e064b83ae178c1f5ee9776e1bb038dad934a8254bf63ce3277a5a",
+  "selection_fixture_sha256": "e4fefe3c39e8264467ebfa9373bce39cdee2ad68b9aeea84b46b0fd4d1f90819",
   "scorer_fixture": "fixtures/reference/aegis-transfer-v26-scorer.json",
-  "scorer_fixture_sha256": "b0f3b11b0983c7878e755010a25a85e1f00375b15702c6fd80dd7828191558f5",
+  "scorer_fixture_sha256": "68e685f209082dc0dbc412983097ae9c7b01d51de600a3a3bd0c84c008bd71d7",
   "benchmark_protocol_version": 26,
   "runner": "api",
   "models": [

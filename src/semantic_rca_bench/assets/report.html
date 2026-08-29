@@ -323,10 +323,10 @@
       const runner = report.runner || cases[0]?.runner || 'api';
       document.getElementById('subtitle').textContent = `${runner} · ${report.model || cases[0]?.model || 'unknown model'} · ${cases.length} cases across ${datasets.size} datasets · ${levels.length} visibility levels`;
       document.getElementById('pilot-scope').textContent = `${cases.length} cases · ${num(totalIngest.metrics)} metrics · ${num(totalIngest.logs)} logs · ${num(totalIngest.spans)} spans`;
-      const protocol = report.protocol?.version ? `v${report.protocol.version}` : 'legacy';
+      const protocol = `v${report.protocol.version}`;
       const status = cases[0]?.server_status || {};
       document.getElementById('meta').innerHTML = [
-        ['Report schema', report.report_schema_version || 'legacy'], ['Protocol', protocol],
+        ['Report schema', report.report_schema_version], ['Protocol', protocol],
         ['Runner', runner], ['Model', report.model || cases[0]?.model || '—'],
         ['Cases', cases.length],
         ['Case role', report.case_role || cases[0]?.case_role || 'development'],
@@ -574,7 +574,7 @@
           ? 'run usage unavailable'
           : `${num(tokenTotalOf(run))} runner-reported tokens`;
         return `<article class="session-panel" id="${esc(id)}" role="tabpanel" aria-labelledby="${esc(tabId)}" ${hidden ? 'hidden' : ''}>
-          <div class="session-header"><div class="session-diagnosis"><h3>${esc(predictionOf(run))} · ${esc(d.fault_type || 'no diagnosis')}</h3><div class="confidence">Run ${Number(item.repetition || 0) + 1} · position ${item.position == null ? 'unknown' : Number(item.position) + 1} · confidence ${num((d.confidence || 0) * 100)}% · mechanism ${esc(ev.predicted_fault_type || d.fault_type || 'none')} / truth ${esc(ev.expected_fault_type || 'legacy')} · category ${esc(ev.predicted_fault_category || 'none')} / truth ${esc(ev.expected_fault_category || 'legacy')} · ${ev.valid_evidence_count || 0}/${ev.cited_evidence_count || 0} citations execution-valid · tools ${num(traces.length)}/${num(requestedToolCount(run))}${budgetHit(run) ? ' · budget reached' : ''} · ${runTokens} · ${esc(d.onset_time || 'onset not submitted')}${run.error ? ` · failed: ${esc(run.error)}` : ''}${databaseLoad ? ` · DB ${num(databaseLoad.query_count)} queries / ${num(databaseLoad.rows_returned)} rows / max concurrency ${num(databaseLoad.max_concurrency)}` : ''}</div><p>${esc(d.explanation || '')}</p></div>
+          <div class="session-header"><div class="session-diagnosis"><h3>${esc(predictionOf(run))} · ${esc(d.fault_type || 'no diagnosis')}</h3><div class="confidence">Run ${Number(item.repetition || 0) + 1} · position ${item.position == null ? 'unknown' : Number(item.position) + 1} · confidence ${num((d.confidence || 0) * 100)}% · mechanism ${esc(ev.predicted_fault_type || d.fault_type || 'none')} / truth ${esc(ev.expected_fault_type || 'unknown')} · category ${esc(ev.predicted_fault_category || 'none')} / truth ${esc(ev.expected_fault_category || 'unknown')} · ${ev.valid_evidence_count || 0}/${ev.cited_evidence_count || 0} citations execution-valid · tools ${num(traces.length)}/${num(requestedToolCount(run))}${budgetHit(run) ? ' · budget reached' : ''} · ${runTokens} · ${esc(d.onset_time || 'onset not submitted')}${run.error ? ` · failed: ${esc(run.error)}` : ''}${databaseLoad ? ` · DB ${num(databaseLoad.query_count)} queries / ${num(databaseLoad.rows_returned)} rows / max concurrency ${num(databaseLoad.max_concurrency)}` : ''}</div><p>${esc(d.explanation || '')}</p></div>
           <div class="actions"><button type="button" class="small-action" data-action="expand" data-target="${esc(id)}">Expand all</button><button type="button" class="small-action" data-action="collapse" data-target="${esc(id)}">Collapse all</button></div></div>
           <h3>Evidence</h3><ol class="evidence">${evidenceHtml}</ol>
           <h3>Interaction timeline</h3><div class="timeline">${turns}</div>

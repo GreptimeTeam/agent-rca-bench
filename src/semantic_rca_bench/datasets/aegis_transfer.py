@@ -21,7 +21,6 @@ from semantic_rca_bench.datasets.aegis import (
     ARTIFACT_RECORD,
     ARTIFACT_SIZE,
     SOURCE_DATASET_RECORD,
-    TRANSFER_AGENT_CASE_ID,
     AegisAuditError,
 )
 from semantic_rca_bench.greptimedb.client import GreptimeClient
@@ -35,14 +34,11 @@ from semantic_rca_bench.protocols.otlp import (
 )
 from semantic_rca_bench.protocols.prometheus import prometheus_metric_name
 
-AGENT_CASE_ID = TRANSFER_AGENT_CASE_ID
-SELECTED_SOURCE_CASE = "ts0-ts-security-service-request-replace-method-j6gpxx"
 DELAY_AGENT_CASE_ID = "aegis-transfer-002"
 DELAY_SOURCE_CASE = "ts8-ts-route-plan-service-request-delay-5dmjfm"
 FORMAL_AGENT_CASE_ID = "aegis-transfer-003"
 FORMAL_SOURCE_CASE = "ts2-ts-train-service-exception-plrfk2"
 FROZEN_TRANSFER_CASES = {
-    AGENT_CASE_ID: SELECTED_SOURCE_CASE,
     DELAY_AGENT_CASE_ID: DELAY_SOURCE_CASE,
     FORMAL_AGENT_CASE_ID: FORMAL_SOURCE_CASE,
 }
@@ -311,20 +307,10 @@ def _validate_frozen_mechanism(
     frozen = selected.get("mechanism_evidence")
     if not isinstance(frozen, dict):
         raise AegisAuditError("frozen mechanism evidence is missing")
-    if fault_type == "HTTPRequestReplaceMethod":
-        valid = (
-            frozen.get("predicate") == "source_declared_http_method_replacement"
-            and frozen.get("original_method") == injection_point.get("method")
-            and frozen.get("replacement_method") == display_config.get("replace_method")
-        )
-    elif fault_type == "HTTPRequestDelay":
+    if fault_type == "HTTPRequestDelay":
         declared_delay_ns = int(display_config.get("delay_duration") or 0) * 1_000_000
         valid = (
-            frozen.get("predicate")
-            in {
-                "source_declared_http_delay_threshold",
-                "source_declared_http_client_server_start_gap",
-            }
+            frozen.get("predicate") == "source_declared_http_client_server_start_gap"
             and frozen.get("span_name")
             == f"{injection_point.get('method')} {injection_point.get('route')}"
             and frozen.get("declared_delay_ns") == declared_delay_ns
@@ -611,30 +597,53 @@ def exact_edge_equality_audit(
         if not isinstance(counts, dict):
             raise AegisAuditError(f"source {period} client minute counts are missing")
         shared_boundary_counts[period] = int(counts.get(str(boundary_minute), 0))
-    graph_period_split_supported = boundary == boundary_minute
-    unified_window_proof = {
-        "normal_abnormal_windows_contiguous": case.normal_window[1] == case.abnormal_window[0],
-        "source_trace_windows_exact": source.get("trace_windows_exact") is True,
-        "stored_period_raw_edges_match_source": period_raw_replay_exact,
-        "graph_period_split_supported": graph_period_split_supported,
-        "shared_boundary_minute": boundary_minute,
-        "shared_boundary_minute_client_counts": shared_boundary_counts,
-        "unified_graph_window_required": (
-            not graph_period_split_supported and all(shared_boundary_counts.values())
-        ),
-        "reason": (
-            "observed_at is minute-binned and the non-minute normal/abnormal boundary has "
-            "client spans from both periods; only the contiguous union is representable exactly"
-        ),
-    }
-    unified_window_proof["pass"] = all(
+    graph_period_split_supported = boundary == boundary_minute or not all(
+        shared_boundary_counts.values()
+    )
+    graph_window_valid = all(
         (
-            unified_window_proof["normal_abnormal_windows_contiguous"],
-            unified_window_proof["source_trace_windows_exact"],
-            unified_window_proof["stored_period_raw_edges_match_source"],
-            unified_window_proof["unified_graph_window_required"],
+            case.normal_window[1] == case.abnormal_window[0],
+            source.get("trace_windows_exact") is True,
+            period_raw_replay_exact,
         )
     )
+    period_graph_replay: dict[str, dict[str, object]] | None = None
+    period_graph_replay_exact: bool | None = None
+    graph_period_windows: dict[str, list[int]] | None = None
+    if graph_period_split_supported:
+        if boundary == boundary_minute:
+            split = boundary
+        elif shared_boundary_counts["normal"]:
+            split = _ceil_minute(boundary)
+        else:
+            split = boundary_minute
+        observed_start, observed_end = window["graph_observed_window"]
+        graph_period_windows = {
+            "normal": [observed_start, split],
+            "abnormal": [split, observed_end],
+        }
+        period_graph_replay = {}
+        for period in PERIODS:
+            period_start, period_end = graph_period_windows[period]
+            query = canonical_graph_edge_query(period_start, period_end)
+            result = client.query(query, max_rows=None)
+            normalized = normalize_edge_result(result)
+            expected_edges = period_raw_replay[period]["normalized_stored_raw_edges"]
+            period_graph_replay[period] = {
+                "graph_observed_window": [period_start, period_end],
+                "graph_edge_query": query,
+                "graph_edge_result": result.model_dump(mode="json"),
+                "normalized_graph_edges": normalized,
+                "normalized_raw_edges": expected_edges,
+                "graph_edge_set_sha256": _edge_hash(normalized),
+                "raw_edge_set_sha256": _edge_hash(expected_edges),
+                "exact_raw_graph_edge_set_equality": normalized == expected_edges,
+            }
+        period_graph_replay_exact = all(
+            item["exact_raw_graph_edge_set_equality"] is True
+            for item in period_graph_replay.values()
+        )
+
     observed_start, observed_end = window["graph_observed_window"]
     raw_query = canonical_raw_edge_query(observed_start, observed_end)
     graph_query = canonical_graph_edge_query(observed_start, observed_end)
@@ -643,11 +652,43 @@ def exact_edge_equality_audit(
     raw_edges = normalize_edge_result(raw_result)
     graph_edges = normalize_edge_result(graph_result)
     exact = edge_results_equal(raw_result, graph_result)
+    graph_window_strategy_proof = {
+        "normal_abnormal_windows_contiguous": case.normal_window[1] == case.abnormal_window[0],
+        "source_trace_windows_exact": source.get("trace_windows_exact") is True,
+        "stored_period_raw_edges_match_source": period_raw_replay_exact,
+        "graph_period_split_supported": graph_period_split_supported,
+        "shared_boundary_minute": boundary_minute,
+        "shared_boundary_minute_client_counts": shared_boundary_counts,
+        "comparison_strategy": (
+            "separate_periods_and_contiguous_union"
+            if graph_period_split_supported
+            else "contiguous_union_only"
+        ),
+        "graph_period_windows": graph_period_windows,
+        "period_graph_replay_exact": period_graph_replay_exact,
+        "contiguous_union_raw_graph_exact": exact,
+        "graph_window_valid": graph_window_valid,
+        "unified_graph_window_required": not graph_period_split_supported,
+        "reason": (
+            "observed_at is minute-binned and the non-minute normal/abnormal boundary has "
+            "client spans from both periods; only the contiguous union is representable exactly"
+            if not graph_period_split_supported
+            else "the boundary can be represented without assigning one observed_at minute to "
+            "both periods; each period and the contiguous union are compared independently"
+        ),
+    }
+    graph_window_strategy_proof["pass"] = (
+        graph_window_valid
+        and exact
+        and (not graph_period_split_supported or period_graph_replay_exact is True)
+    )
     return {
         "window_contract": window,
         "period_raw_replay": period_raw_replay,
         "period_raw_replay_exact": period_raw_replay_exact,
-        "unified_window_proof": unified_window_proof,
+        "period_graph_replay": period_graph_replay,
+        "period_graph_replay_exact": period_graph_replay_exact,
+        "graph_window_strategy_proof": graph_window_strategy_proof,
         "raw_edge_query": raw_query,
         "raw_edge_result": raw_result.model_dump(mode="json"),
         "graph_edge_query": graph_query,
@@ -771,34 +812,7 @@ def mechanism_evidence_audit(
     if not isinstance(expected, dict):
         raise AegisAuditError("frozen mechanism evidence is missing")
     predicate = expected.get("predicate")
-    if predicate == "source_declared_http_method_replacement":
-        normalized = normalize_mechanism_evidence(result)
-        expected_result = {
-            "normal_server_methods": expected.get("normal_server_methods"),
-            "abnormal_client_methods": expected.get("abnormal_client_methods"),
-            "abnormal_server_methods": expected.get("abnormal_server_methods"),
-        }
-        mechanism_fields = {
-            "original_method": expected.get("original_method"),
-            "replacement_method": expected.get("replacement_method"),
-        }
-    elif predicate == "source_declared_http_delay_threshold":
-        normalized = normalize_delay_evidence(result)
-        expected_result = {
-            "normal": {
-                "count": expected.get("normal_count"),
-                "max_duration_ns": expected.get("normal_max_duration_ns"),
-            },
-            "abnormal": {
-                "count": expected.get("abnormal_count"),
-                "max_duration_ns": expected.get("abnormal_max_duration_ns"),
-            },
-        }
-        mechanism_fields = {
-            "span_name": expected.get("span_name"),
-            "declared_delay_ns": expected.get("declared_delay_ns"),
-        }
-    elif predicate == "source_declared_http_client_server_start_gap":
+    if predicate == "source_declared_http_client_server_start_gap":
         normalized = normalize_start_gap_evidence(result)
         expected_result = {
             "normal": {
@@ -870,7 +884,7 @@ def canonical_mechanism_evidence_query(case: AegisTransferCase) -> str:
     if evidence.get("predicate") == "source_declared_jvm_exception":
         service = _literal(str(evidence.get("service_name") or ""))
         method_name = str(evidence.get("method_name") or "")
-        method_pattern = _literal(f"%{method_name}%")
+        method_pattern = _literal(f"%{method_name.lower()}%")
         return f"""WITH periods AS (
   SELECT 'normal' AS period
   UNION ALL
@@ -885,7 +899,7 @@ def canonical_mechanism_evidence_query(case: AegisTransferCase) -> str:
   FROM traces
   WHERE service_name = {service}
     AND span_status_code = 'STATUS_CODE_ERROR'
-    AND span_name LIKE {method_pattern}
+    AND LOWER(span_name) LIKE {method_pattern}
     AND timestamp >= {normal_start} AND timestamp < {abnormal_end}
   UNION ALL
   SELECT CASE
@@ -898,7 +912,7 @@ def canonical_mechanism_evidence_query(case: AegisTransferCase) -> str:
          1 AS exception_log_count
   FROM logs
   WHERE service_name = {service}
-    AND level IN ('ERROR', 'SEVERE', 'FATAL')
+    AND UPPER(level) IN ('ERROR', 'SEVERE', 'FATAL')
     AND LOWER(line) LIKE '%exception%'
     AND greptime_timestamp >= {normal_start} AND greptime_timestamp < {abnormal_end}
 )
@@ -913,29 +927,6 @@ ORDER BY p.period"""
         raise AegisAuditError("dependency mechanism evidence requires a declared edge")
     source = _literal(case.ground_truth.declared_edge[0])
     destination = _literal(case.ground_truth.declared_edge[1])
-    if evidence.get("predicate") == "source_declared_http_delay_threshold":
-        span_name = _literal(str(evidence.get("span_name") or ""))
-        return f"""WITH paired AS (
-  SELECT CASE
-           WHEN c.timestamp >= {normal_start} AND c.timestamp < {normal_end} THEN 'normal'
-           WHEN c.timestamp >= {abnormal_start} AND c.timestamp < {abnormal_end} THEN 'abnormal'
-         END AS period,
-         s.duration_nano AS server_duration_ns
-  FROM traces c
-  JOIN traces s
-    ON c.trace_id = s.trace_id
-   AND s.parent_span_id = c.span_id
-  WHERE c.span_kind = 'SPAN_KIND_CLIENT'
-    AND s.span_kind = 'SPAN_KIND_SERVER'
-    AND c.service_name = {source}
-    AND s.service_name = {destination}
-    AND s.span_name = {span_name}
-    AND c.timestamp >= {normal_start} AND c.timestamp < {abnormal_end}
-)
-SELECT period, COUNT(*) AS span_count, MAX(server_duration_ns) AS max_duration_ns
-FROM paired
-GROUP BY period
-ORDER BY period"""
     if evidence.get("predicate") == "source_declared_http_client_server_start_gap":
         span_name = _literal(str(evidence.get("span_name") or ""))
         threshold = int(evidence.get("declared_delay_ns") or 0)
@@ -964,83 +955,7 @@ SELECT period, COUNT(*) AS span_count,
 FROM paired
 GROUP BY period
 ORDER BY period"""
-    if evidence.get("predicate") != "source_declared_http_method_replacement":
-        raise AegisAuditError("unsupported canonical mechanism evidence predicate")
-    return f"""WITH paired AS (
-  SELECT CASE
-           WHEN c.timestamp >= {normal_start} AND c.timestamp < {normal_end} THEN 'normal'
-           WHEN c.timestamp >= {abnormal_start} AND c.timestamp < {abnormal_end} THEN 'abnormal'
-         END AS period,
-         c."span_attributes.http.request.method" AS client_method,
-         s."span_attributes.http.request.method" AS server_method
-  FROM traces c
-  JOIN traces s
-    ON c.trace_id = s.trace_id
-   AND s.parent_span_id = c.span_id
-  WHERE c.span_kind = 'SPAN_KIND_CLIENT'
-    AND s.span_kind = 'SPAN_KIND_SERVER'
-    AND c.service_name = {source}
-    AND s.service_name = {destination}
-    AND c.timestamp >= {normal_start} AND c.timestamp < {abnormal_end}
-)
-SELECT period, side, method, COUNT(*) AS span_count
-FROM (
-  SELECT period, 'server' AS side, server_method AS method FROM paired WHERE period = 'normal'
-  UNION ALL
-  SELECT period, 'client' AS side, client_method AS method FROM paired WHERE period = 'abnormal'
-  UNION ALL
-  SELECT period, 'server' AS side, server_method AS method FROM paired WHERE period = 'abnormal'
-) evidence
-GROUP BY period, side, method
-ORDER BY period, side, method"""
-
-
-def normalize_mechanism_evidence(result: QueryResult) -> dict[str, dict[str, int]] | None:
-    required = ("period", "side", "method", "span_count")
-    columns = [column.lower() for column in result.columns]
-    if result.truncated or any(columns.count(column) != 1 for column in required):
-        return None
-    indexes = [columns.index(column) for column in required]
-    normalized = {
-        "normal_server_methods": {},
-        "abnormal_client_methods": {},
-        "abnormal_server_methods": {},
-    }
-    for row in result.rows:
-        period, side, method, count = (row[index] for index in indexes)
-        key = f"{period}_{side}_methods"
-        if key not in normalized or not isinstance(count, int) or isinstance(count, bool):
-            return None
-        method_name = str(method)
-        if method_name in normalized[key]:
-            return None
-        normalized[key][method_name] = count
-    return {key: dict(sorted(value.items())) for key, value in normalized.items()}
-
-
-def normalize_delay_evidence(result: QueryResult) -> dict[str, dict[str, int]] | None:
-    required = ("period", "span_count", "max_duration_ns")
-    columns = [column.lower() for column in result.columns]
-    if result.truncated or any(columns.count(column) != 1 for column in required):
-        return None
-    indexes = [columns.index(column) for column in required]
-    normalized = {}
-    for row in result.rows:
-        period, count, max_duration = (row[index] for index in indexes)
-        if (
-            period not in PERIODS
-            or period in normalized
-            or not isinstance(count, int)
-            or isinstance(count, bool)
-            or not isinstance(max_duration, int)
-            or isinstance(max_duration, bool)
-        ):
-            return None
-        normalized[str(period)] = {
-            "count": count,
-            "max_duration_ns": max_duration,
-        }
-    return {period: normalized[period] for period in PERIODS if period in normalized}
+    raise AegisAuditError("unsupported canonical mechanism evidence predicate")
 
 
 def normalize_start_gap_evidence(result: QueryResult) -> dict[str, dict[str, int]] | None:
@@ -1088,6 +1003,8 @@ def normalize_jvm_exception_evidence(
     indexes = [columns.index(column) for column in required]
     normalized = {}
     for row in result.rows:
+        if len(row) <= max(indexes):
+            return None
         period, span_count, log_count = (row[index] for index in indexes)
         if (
             period not in PERIODS
@@ -1126,6 +1043,7 @@ def no_model_gates(
     *,
     isolated: bool,
     frozen_selection: bool,
+    semantic_surface_contract: bool,
 ) -> dict[str, bool]:
     identity = stored["source_identity"]
     if not isinstance(identity, dict):
@@ -1144,6 +1062,7 @@ def no_model_gates(
             and source.get("reference_causal_graph_ingested") is False
         ),
         "exclusive_graph_source": isolated,
+        "current_semantic_surface_contract": semantic_surface_contract,
         "protocol_rejections_zero": stored.get("protocol_rejections_zero") is True,
         "stored_row_counts_match": stored.get("stored_row_counts_match") is True,
         "id_remapping_zero": stored.get("id_remapping", {}).get("pass") is True,
@@ -1157,7 +1076,8 @@ def no_model_gates(
         ),
         "raw_graph_exact_edge_set_equality": equality.get("exact_edge_set_equality") is True,
         "stored_period_raw_edges_match_source": equality.get("period_raw_replay_exact") is True,
-        "unified_graph_window_proven": equality.get("unified_window_proof", {}).get("pass") is True,
+        "graph_window_strategy_proven": equality.get("graph_window_strategy_proof", {}).get("pass")
+        is True,
         "mechanism_evidence": mechanism.get("pass") is True,
         "opaque_agent_case_id": (
             case.input.case_token == case.agent_case_id

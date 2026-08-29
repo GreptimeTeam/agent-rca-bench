@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 from semantic_rca_bench.contracts import CaseInput
@@ -35,9 +36,17 @@ def inspect_semantic_surfaces(
             GROUP BY signal_type, source
             ORDER BY signal_type, source
         """,
+        "entity_declarations": f"""
+            SELECT table_name, entity_declarations
+            FROM information_schema.table_semantics
+            WHERE table_schema = '{database}'
+              AND entity_declarations IS NOT NULL
+            ORDER BY table_name
+        """,
         "entities": f"""
             SELECT entity_type, COUNT(DISTINCT entity_id) AS distinct_entity_count,
-                   COUNT(*) AS observation_count
+                   COUNT(*) AS observation_count,
+                   COUNT(scope) AS scoped_observation_count
             FROM greptime_private.semantic_entities
             WHERE observed_at >= '{start}' AND observed_at < '{end}'
             GROUP BY entity_type
@@ -45,10 +54,14 @@ def inspect_semantic_surfaces(
         """,
         "relationships": f"""
             SELECT rel_type, COUNT(*) AS distinct_relationship_count,
-                   SUM(observation_count) AS observation_count
+                   SUM(observation_count) AS observation_count,
+                   MAX(max_window_unmatched_count) AS max_window_unmatched_count,
+                   MAX(max_request_duration) AS max_request_duration
             FROM (
                 SELECT src_type, src_id, dst_type, dst_id, rel_type,
-                       COUNT(*) AS observation_count
+                       COUNT(*) AS observation_count,
+                       MAX(unmatched_count) AS max_window_unmatched_count,
+                       MAX(duration_max) AS max_request_duration
                 FROM greptime_private.semantic_relationships
                 WHERE observed_at >= '{start}' AND observed_at < '{end}'
                 GROUP BY src_type, src_id, dst_type, dst_id, rel_type, provenance
@@ -125,8 +138,36 @@ def assert_semantic_graph_window_empty(
 
 def summarize_semantic_surfaces(surfaces: dict[str, object]) -> dict[str, object]:
     table_semantics = _result(surfaces.get("table_semantics"))
+    entity_declarations = _result(surfaces.get("entity_declarations"))
     entities = _result(surfaces.get("entities"))
     relationships = _result(surfaces.get("relationships"))
+
+    entity_columns = entities[0] if entities else []
+    relationship_columns = relationships[0] if relationships else []
+    declaration_columns = entity_declarations[0] if entity_declarations else []
+    scope_declaration_count = _scope_declaration_count(entity_declarations)
+    surface_contract = {
+        "entity_scope_queryable": "scoped_observation_count" in entity_columns,
+        "table_entity_declarations_queryable": (
+            "table_name" in declaration_columns and "entity_declarations" in declaration_columns
+        ),
+        "table_entity_declarations_well_formed": scope_declaration_count is not None,
+        "relationship_unmatched_count_queryable": (
+            "max_window_unmatched_count" in relationship_columns
+        ),
+        "relationship_duration_max_queryable": "max_request_duration" in relationship_columns,
+        "scope_declaration_count": scope_declaration_count,
+    }
+    surface_contract["current"] = all(
+        surface_contract[key] is True
+        for key in (
+            "entity_scope_queryable",
+            "table_entity_declarations_queryable",
+            "table_entity_declarations_well_formed",
+            "relationship_unmatched_count_queryable",
+            "relationship_duration_max_queryable",
+        )
+    )
 
     entity_types: dict[str, int] = {}
     if entities:
@@ -199,6 +240,7 @@ def summarize_semantic_surfaces(surfaces: dict[str, object]) -> dict[str, object
                 for row in rows
             ]
     return {
+        "surface_contract": surface_contract,
         "table_semantics": {
             "table_count": semantic_table_count,
             "groups": semantic_table_groups,
@@ -213,6 +255,34 @@ def summarize_semantic_surfaces(surfaces: dict[str, object]) -> dict[str, object
             "errors": graph_errors,
         },
     }
+
+
+def _scope_declaration_count(
+    result: tuple[list[str], list[list[object]]] | None,
+) -> int | None:
+    if not result:
+        return 0
+    columns, rows = result
+    declarations_index = _column_index(columns, "entity_declarations")
+    if declarations_index is None:
+        return 0
+    count = 0
+    for row in rows:
+        if not isinstance(row, list) or len(row) <= declarations_index:
+            return None
+        value = row[declarations_index]
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                return None
+        if not isinstance(value, list):
+            return None
+        count += sum(
+            isinstance(declaration, dict) and bool(declaration.get("scope"))
+            for declaration in value
+        )
+    return count
 
 
 def _result(value: object) -> tuple[list[str], list[list[object]]] | None:

@@ -76,7 +76,7 @@ def build_formal_preflight_report(
         ),
         "case_role": protocol_fixture.case_role,
         "case": agent_facing,
-        "benchmark_protocol": benchmark_protocol(protocol_fixture.benchmark_protocol_version),
+        "benchmark_protocol": benchmark_protocol(),
         "formal_protocol": _json_object_file(protocol_path),
         "bindings": {
             "source_semantic_sha256": source_semantic_sha256,
@@ -216,9 +216,7 @@ def execute_formal_runs(
         protocol_fixture,
         protocol_path,
     )
-    if run_agent_fn is run_agent and len(_list_of_mappings(report, "runs")) < len(
-        _list_of_mappings(report, "schedule")
-    ):
+    if len(_list_of_mappings(report, "runs")) < len(_list_of_mappings(report, "schedule")):
         require_current_protocol(protocol_fixture.benchmark_protocol_version)
     if paid_api_confirmed is not True:
         raise ValueError("formal paid API execution has not been explicitly confirmed")
@@ -290,16 +288,13 @@ def validate_formal_report(
         raise ValueError("formal scorer object does not match its bound fixture file")
     if load_transfer_protocol_fixture(protocol_path) != protocol_fixture:
         raise ValueError("formal protocol object does not match its bound fixture file")
-    report_schema_version = report.get("report_schema_version")
     if (
-        report_schema_version not in {1, FORMAL_REPORT_SCHEMA_VERSION}
+        report.get("report_schema_version") != FORMAL_REPORT_SCHEMA_VERSION
         or report.get("mode") != FORMAL_REPORT_MODE
         or report.get("case_role") != "measurement"
     ):
         raise ValueError("unsupported formal Aegis transfer report")
-    if report.get("benchmark_protocol") != benchmark_protocol(
-        protocol_fixture.benchmark_protocol_version
-    ):
+    if report.get("benchmark_protocol") != benchmark_protocol():
         raise ValueError("formal report benchmark protocol drifted")
     if report.get("formal_protocol") != _json_object_file(protocol_path):
         raise ValueError("formal report execution protocol drifted")
@@ -325,12 +320,7 @@ def validate_formal_report(
         model.model for model in protocol_fixture.models
     }:
         raise ValueError("formal report pricing snapshot is malformed")
-    if report_schema_version == 1:
-        if pricing_snapshot != {
-            model.model: MODEL_PRICING[model.model] for model in protocol_fixture.models
-        }:
-            raise ValueError("legacy formal report pricing snapshot drifted")
-    elif bindings.get("pricing_snapshot_sha256") != _canonical_sha256(pricing_snapshot):
+    if bindings.get("pricing_snapshot_sha256") != _canonical_sha256(pricing_snapshot):
         raise ValueError("formal report pricing snapshot binding drifted")
     schedule = _list_of_mappings(report, "schedule")
     if schedule != formal_schedule(protocol_fixture):
@@ -416,7 +406,9 @@ def formal_source_semantic_sha256(source_audit: dict[str, object]) -> str:
                 "raw_edge_query",
                 "graph_edge_query",
                 "period_raw_replay_exact",
-                "unified_window_proof",
+                "period_graph_replay",
+                "period_graph_replay_exact",
+                "graph_window_strategy_proof",
                 "normalized_raw_edges",
                 "normalized_graph_edges",
                 "raw_edge_set_sha256",
@@ -449,6 +441,7 @@ def formal_source_semantic_sha256(source_audit: dict[str, object]) -> str:
         "no_model_gates": source_audit.get("no_model_gates"),
     }
     payload["edge_equality"]["period_raw_replay"] = period_raw_replay_semantics(equality)
+    payload["edge_equality"]["period_graph_replay"] = period_graph_replay_semantics(equality)
     return _canonical_sha256(payload)
 
 
@@ -471,6 +464,30 @@ def period_raw_replay_semantics(equality: dict[str, object]) -> dict[str, object
                 "stored_raw_edge_set_sha256",
                 "source_raw_edge_set_sha256",
                 "exact_source_stored_edge_set_equality",
+            )
+        }
+    return result
+
+
+def period_graph_replay_semantics(equality: dict[str, object]) -> dict[str, object]:
+    replay = equality.get("period_graph_replay")
+    if not isinstance(replay, dict):
+        return {}
+    result = {}
+    for period in ("normal", "abnormal"):
+        item = replay.get(period)
+        if not isinstance(item, dict):
+            continue
+        result[period] = {
+            key: item.get(key)
+            for key in (
+                "graph_observed_window",
+                "graph_edge_query",
+                "normalized_graph_edges",
+                "normalized_raw_edges",
+                "graph_edge_set_sha256",
+                "raw_edge_set_sha256",
+                "exact_raw_graph_edge_set_equality",
             )
         }
     return result

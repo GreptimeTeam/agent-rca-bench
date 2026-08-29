@@ -8,10 +8,10 @@ import pytest
 from semantic_rca_bench.contracts import QueryResult
 from semantic_rca_bench.datasets.aegis import AegisAuditError
 from semantic_rca_bench.datasets.aegis_transfer import (
-    AGENT_CASE_ID,
+    DELAY_AGENT_CASE_ID,
+    DELAY_SOURCE_CASE,
     FORMAL_AGENT_CASE_ID,
     FORMAL_SOURCE_CASE,
-    SELECTED_SOURCE_CASE,
     _iter_traces,
     archive_checksum_status,
     canonical_mechanism_evidence_query,
@@ -20,12 +20,9 @@ from semantic_rca_bench.datasets.aegis_transfer import (
     exact_edge_equality_audit,
     graph_audit_window,
     load_selected_case,
-    mechanism_evidence_matches,
     no_model_gates,
-    normalize_delay_evidence,
     normalize_edge_result,
     normalize_jvm_exception_evidence,
-    normalize_mechanism_evidence,
 )
 
 
@@ -36,43 +33,44 @@ def _write_table(path: Path, values: dict[str, list[object]], schema: pa.Schema)
 
 def _selected_case_fixture(
     tmp_path: Path,
-    selection_path: Path = Path("fixtures/reference/aegis-selection.json"),
+    selection_path: Path = Path("fixtures/reference/aegis-transfer-v26-calibration-selection.json"),
     *,
-    injection_start: str = "2025-07-19T09:56:38Z",
+    injection_start: str = "2025-07-20T12:36:50Z",
 ):
     cases_dir = tmp_path / "cases"
     meta_dir = tmp_path / "meta"
-    root = cases_dir / SELECTED_SOURCE_CASE
+    root = cases_dir / DELAY_SOURCE_CASE
     root.mkdir(parents=True)
     meta_dir.mkdir()
     (root / ".finished").touch()
     (root / "env.json").write_text(
         json.dumps(
             {
-                "NORMAL_START": "1752918758",
-                "NORMAL_END": "1752918998",
-                "ABNORMAL_START": "1752918998",
-                "ABNORMAL_END": "1752919238",
+                "NORMAL_START": "1753014770",
+                "NORMAL_END": "1753015010",
+                "ABNORMAL_START": "1753015010",
+                "ABNORMAL_END": "1753015249",
             }
         )
     )
     (root / "injection.json").write_text(
         json.dumps(
             {
-                "injection_name": SELECTED_SOURCE_CASE,
+                "injection_name": DELAY_SOURCE_CASE,
                 "status": 2,
                 "start_time": injection_start,
                 "display_config": json.dumps(
                     {
                         "injection_point": {
-                            "app_name": "ts-security-service",
-                            "server_address": "ts-order-other-service",
-                            "method": "GET",
+                            "app_name": "ts-route-plan-service",
+                            "server_address": "ts-travel2-service",
+                            "method": "POST",
+                            "route": "/api/v1/travel2service/trips/left",
                         },
-                        "replace_method": "OPTIONS",
+                        "delay_duration": 3070,
                     }
                 ),
-                "ground_truth": {"service": ["ts-security-service", "ts-order-other-service"]},
+                "ground_truth": {"service": ["ts-route-plan-service", "ts-travel2-service"]},
             }
         )
     )
@@ -89,14 +87,14 @@ def _selected_case_fixture(
 
     _write_table(
         meta_dir / "index.parquet",
-        {"dataset": ["rcabench"], "datapack": [SELECTED_SOURCE_CASE]},
+        {"dataset": ["rcabench"], "datapack": [DELAY_SOURCE_CASE]},
         pa.schema([("dataset", pa.large_string()), ("datapack", pa.large_string())]),
     )
     _write_table(
         meta_dir / "attributes.parquet",
         {
-            "datapack": [SELECTED_SOURCE_CASE],
-            "injection.fault_type": ["HTTPRequestReplaceMethod"],
+            "datapack": [DELAY_SOURCE_CASE],
+            "injection.fault_type": ["HTTPRequestDelay"],
             "ground_truth.service_count": [2],
         },
         pa.schema(
@@ -110,9 +108,9 @@ def _selected_case_fixture(
     _write_table(
         meta_dir / "labels.parquet",
         {
-            "datapack": [SELECTED_SOURCE_CASE, SELECTED_SOURCE_CASE],
+            "datapack": [DELAY_SOURCE_CASE, DELAY_SOURCE_CASE],
             "gt.level": ["service", "service"],
-            "gt.name": ["ts-security-service", "ts-order-other-service"],
+            "gt.name": ["ts-route-plan-service", "ts-travel2-service"],
         },
         pa.schema(
             [
@@ -126,7 +124,7 @@ def _selected_case_fixture(
         cases_dir,
         meta_dir,
         selection_path,
-        database="case_01",
+        database="case_02",
     )
 
 
@@ -236,22 +234,22 @@ def _formal_selected_case_fixture(tmp_path: Path):
     )
 
 
-def test_selected_loader_keeps_dual_truth_opaque_and_never_reads_causal_graph(
+def test_calibration_loader_keeps_dual_truth_opaque_and_never_reads_causal_graph(
     tmp_path: Path,
 ) -> None:
     case = _selected_case_fixture(tmp_path)
 
-    assert case.input.case_token == AGENT_CASE_ID
+    assert case.input.case_token == DELAY_AGENT_CASE_ID
     assert case.source_case not in case.input.model_dump_json()
     assert case.ground_truth.fault_type not in case.input.model_dump_json()
     assert case.input.fault_taxonomy == []
     assert set(case.ground_truth.services) == {
-        "ts-security-service",
-        "ts-order-other-service",
+        "ts-route-plan-service",
+        "ts-travel2-service",
     }
     assert case.ground_truth.declared_edge == (
-        "ts-security-service",
-        "ts-order-other-service",
+        "ts-route-plan-service",
+        "ts-travel2-service",
     )
 
 
@@ -268,7 +266,8 @@ def test_formal_loader_preserves_component_truth_without_inventing_an_edge(
     query = canonical_mechanism_evidence_query(case)
     assert "FROM traces" in query and "FROM logs" in query
     assert "span_status_code = 'STATUS_CODE_ERROR'" in query
-    assert "span_name LIKE '%retrieveByName%'" in query
+    assert "LOWER(span_name) LIKE '%retrievebyname%'" in query
+    assert "UPPER(level) IN ('ERROR', 'SEVERE', 'FATAL')" in query
     assert "LOWER(line) LIKE '%exception%'" in query
 
 
@@ -295,7 +294,9 @@ def test_jvm_exception_gate_requires_clean_baseline_and_both_anomalous_signals()
 
 
 def test_selected_loader_rejects_unfrozen_opaque_case_mapping(tmp_path: Path) -> None:
-    selection = json.loads(Path("fixtures/reference/aegis-selection.json").read_text())
+    selection = json.loads(
+        Path("fixtures/reference/aegis-transfer-v26-calibration-selection.json").read_text()
+    )
     selection["agent_case_id"] = "aegis-transfer-003"
     selection_path = tmp_path / "selection.json"
     selection_path.write_text(json.dumps(selection))
@@ -306,7 +307,7 @@ def test_selected_loader_rejects_unfrozen_opaque_case_mapping(tmp_path: Path) ->
 
 def test_selected_loader_rejects_naive_injection_timestamp(tmp_path: Path) -> None:
     with pytest.raises(AegisAuditError, match="explicit timezone"):
-        _selected_case_fixture(tmp_path, injection_start="2025-07-19T09:56:38")
+        _selected_case_fixture(tmp_path, injection_start="2025-07-20T12:36:50")
 
 
 def test_archive_status_preserves_zero_byte_observation(tmp_path: Path) -> None:
@@ -376,11 +377,13 @@ def test_raw_edge_query_uses_native_roles_parent_relation_and_source_status() ->
     assert "http.response.status" not in query
 
 
-def test_mechanism_query_uses_trace_v1_span_attribute_columns(tmp_path: Path) -> None:
+def test_mechanism_query_uses_source_roles_parent_and_start_gap(tmp_path: Path) -> None:
     query = canonical_mechanism_evidence_query(_selected_case_fixture(tmp_path))
 
-    assert 'c."span_attributes.http.request.method"' in query
-    assert 's."span_attributes.http.request.method"' in query
+    assert "c.span_kind = 'SPAN_KIND_CLIENT'" in query
+    assert "s.span_kind = 'SPAN_KIND_SERVER'" in query
+    assert "s.parent_span_id = c.span_id" in query
+    assert "CAST(s.timestamp AS BIGINT) - CAST(c.timestamp AS BIGINT)" in query
 
 
 def test_wrong_role_or_parent_relation_cannot_match_graph_edge_set() -> None:
@@ -451,13 +454,20 @@ def test_non_minute_period_replay_proves_why_graph_equality_uses_union(
     audit = exact_edge_equality_audit(Client(), case, source)  # type: ignore[arg-type]
 
     assert audit["period_raw_replay_exact"] is True
-    assert audit["unified_window_proof"] == {
+    assert audit["period_graph_replay"] is None
+    assert audit["period_graph_replay_exact"] is None
+    assert audit["graph_window_strategy_proof"] == {
         "normal_abnormal_windows_contiguous": True,
         "source_trace_windows_exact": True,
         "stored_period_raw_edges_match_source": True,
         "graph_period_split_supported": False,
         "shared_boundary_minute": 1752841500,
         "shared_boundary_minute_client_counts": {"normal": 7, "abnormal": 2},
+        "comparison_strategy": "contiguous_union_only",
+        "graph_period_windows": None,
+        "period_graph_replay_exact": None,
+        "contiguous_union_raw_graph_exact": True,
+        "graph_window_valid": True,
         "unified_graph_window_required": True,
         "reason": (
             "observed_at is minute-binned and the non-minute normal/abnormal boundary has "
@@ -468,53 +478,140 @@ def test_non_minute_period_replay_proves_why_graph_equality_uses_union(
     assert audit["exact_edge_set_equality"] is True
 
 
-def test_method_replacement_gate_requires_every_frozen_method_condition() -> None:
-    expected = {
-        "normal_server_methods": {"GET": 57},
-        "abnormal_client_methods": {"GET": 758},
-        "abnormal_server_methods": {"OPTIONS": 758},
-    }
-    valid = QueryResult(
-        query_id="q",
-        columns=["period", "side", "method", "span_count"],
-        rows=[
-            ["normal", "server", "GET", 57],
-            ["abnormal", "client", "GET", 758],
-            ["abnormal", "server", "OPTIONS", 758],
-        ],
-        elapsed_seconds=0,
+def test_minute_aligned_period_boundary_does_not_invalidate_union_equality(
+    tmp_path: Path,
+) -> None:
+    case = _formal_selected_case_fixture(tmp_path).model_copy(
+        update={
+            "normal_window": (1752841320, 1752841560),
+            "abnormal_window": (1752841560, 1752841800),
+        }
     )
-    observed = normalize_mechanism_evidence(valid)
+    normal = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 3, 0])
+    abnormal = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 2, 1])
+    combined = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 5, 1])
 
-    assert mechanism_evidence_matches(observed, expected)
-    for key, wrong in (
-        ("normal_server_methods", {"POST": 57}),
-        ("abnormal_client_methods", {"POST": 758}),
-        ("abnormal_server_methods", {"GET": 758}),
-    ):
-        changed = {**expected, key: wrong}
-        assert not mechanism_evidence_matches(observed, changed)
+    class Client:
+        def __init__(self) -> None:
+            self.results = [normal, abnormal, normal, abnormal, combined, combined]
 
+        def query(self, query: str, *, max_rows: int | None = None) -> QueryResult:
+            assert max_rows is None
+            return self.results.pop(0)
 
-def test_delay_gate_requires_exact_counts_and_both_sides_of_threshold() -> None:
-    expected = {
-        "normal": {"count": 37, "max_duration_ns": 846_092_899},
-        "abnormal": {"count": 25, "max_duration_ns": 3_252_068_825},
+    source = {
+        "trace_windows_exact": True,
+        "trace_windows": {
+            "normal": {
+                "edge_set": normalize_edge_result(normal),
+                "client_observed_minute_counts": {"1752841560": 0},
+            },
+            "abnormal": {
+                "edge_set": normalize_edge_result(abnormal),
+                "client_observed_minute_counts": {"1752841560": 2},
+            },
+        },
     }
-    result = QueryResult(
-        query_id="q",
-        columns=["period", "span_count", "max_duration_ns"],
-        rows=[["abnormal", 25, 3_252_068_825], ["normal", 37, 846_092_899]],
-        elapsed_seconds=0,
+
+    audit = exact_edge_equality_audit(Client(), case, source)  # type: ignore[arg-type]
+
+    proof = audit["graph_window_strategy_proof"]
+    assert proof["graph_period_split_supported"] is True
+    assert proof["unified_graph_window_required"] is False
+    assert proof["graph_window_valid"] is True
+    assert proof["period_graph_replay_exact"] is True
+    assert proof["comparison_strategy"] == "separate_periods_and_contiguous_union"
+    assert proof["graph_period_windows"] == {
+        "normal": [1752841320, 1752841560],
+        "abnormal": [1752841560, 1752841800],
+    }
+    assert proof["pass"] is True
+    assert audit["period_graph_replay_exact"] is True
+    assert audit["exact_edge_set_equality"] is True
+
+
+def test_non_minute_boundary_splits_at_next_minute_when_only_normal_uses_shared_bin(
+    tmp_path: Path,
+) -> None:
+    case = _formal_selected_case_fixture(tmp_path)
+    normal = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 3, 0])
+    abnormal = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 2, 1])
+    combined = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 5, 1])
+
+    class Client:
+        def __init__(self) -> None:
+            self.results = [normal, abnormal, normal, abnormal, combined, combined]
+
+        def query(self, query: str, *, max_rows: int | None = None) -> QueryResult:
+            assert max_rows is None
+            return self.results.pop(0)
+
+    source = {
+        "trace_windows_exact": True,
+        "trace_windows": {
+            "normal": {
+                "edge_set": normalize_edge_result(normal),
+                "client_observed_minute_counts": {"1752841500": 7},
+            },
+            "abnormal": {
+                "edge_set": normalize_edge_result(abnormal),
+                "client_observed_minute_counts": {"1752841500": 0},
+            },
+        },
+    }
+
+    audit = exact_edge_equality_audit(Client(), case, source)  # type: ignore[arg-type]
+
+    proof = audit["graph_window_strategy_proof"]
+    assert proof["graph_period_windows"] == {
+        "normal": [1752841260, 1752841560],
+        "abnormal": [1752841560, 1752841800],
+    }
+    assert proof["period_graph_replay_exact"] is True
+    assert proof["pass"] is True
+
+
+def test_split_period_graph_count_mismatch_fails_window_strategy(tmp_path: Path) -> None:
+    case = _formal_selected_case_fixture(tmp_path).model_copy(
+        update={
+            "normal_window": (1752841320, 1752841560),
+            "abnormal_window": (1752841560, 1752841800),
+        }
     )
+    normal = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 3, 0])
+    abnormal = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 2, 1])
+    wrong_abnormal = _edge_result(
+        ["service", "caller", "service", "callee", "calls", "trace", 1, 1]
+    )
+    combined = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 5, 1])
 
-    observed = normalize_delay_evidence(result)
+    class Client:
+        def __init__(self) -> None:
+            self.results = [normal, abnormal, normal, wrong_abnormal, combined, combined]
 
-    assert observed == expected
-    assert mechanism_evidence_matches(observed, expected)
-    assert not mechanism_evidence_matches(observed, {**expected, "abnormal": {"count": 24}})
-    missing_normal = result.model_copy(update={"rows": [result.rows[0]]})
-    assert not mechanism_evidence_matches(normalize_delay_evidence(missing_normal), expected)
+        def query(self, query: str, *, max_rows: int | None = None) -> QueryResult:
+            assert max_rows is None
+            return self.results.pop(0)
+
+    source = {
+        "trace_windows_exact": True,
+        "trace_windows": {
+            "normal": {
+                "edge_set": normalize_edge_result(normal),
+                "client_observed_minute_counts": {"1752841560": 0},
+            },
+            "abnormal": {
+                "edge_set": normalize_edge_result(abnormal),
+                "client_observed_minute_counts": {"1752841560": 2},
+            },
+        },
+    }
+
+    audit = exact_edge_equality_audit(Client(), case, source)  # type: ignore[arg-type]
+
+    assert audit["exact_edge_set_equality"] is True
+    assert audit["period_graph_replay_exact"] is False
+    assert audit["graph_window_strategy_proof"]["pass"] is False
 
 
 def test_id_remap_and_source_identity_mismatch_fail_no_model_gate(tmp_path: Path) -> None:
@@ -548,6 +645,7 @@ def test_id_remap_and_source_identity_mismatch_fail_no_model_gate(tmp_path: Path
         {"pass": True},
         isolated=True,
         frozen_selection=True,
+        semantic_surface_contract=True,
     )
 
     assert not gates["id_remapping_zero"]

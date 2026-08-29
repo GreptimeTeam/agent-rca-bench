@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import sqlglot
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from sqlglot import exp
 
 from semantic_rca_bench.contracts import (
@@ -28,25 +28,26 @@ from semantic_rca_bench.contracts import (
     ToolTrace,
     Visibility,
 )
-from semantic_rca_bench.datasets.aegis import TRANSFER_AGENT_CASE_ID
 from semantic_rca_bench.datasets.aegis_transfer import (
-    normalize_delay_evidence,
     normalize_edge_result,
     normalize_jvm_exception_evidence,
-    normalize_mechanism_evidence,
     normalize_start_gap_evidence,
 )
 from semantic_rca_bench.evaluation import component_matches, is_valid_evidence_trace
 from semantic_rca_bench.protocol import benchmark_protocol
 
-SCORER_REVISION = "aegis-transfer-method-replacement-v3"
-DELAY_SCORER_REVISION = "aegis-transfer-request-delay-v2"
 CALIBRATION_SCORER_REVISION = "aegis-transfer-request-delay-v3"
 FORMAL_SCORER_REVISION = "aegis-transfer-jvm-exception-v1"
-DEFAULT_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-scorer.json")
-DELAY_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v25-scorer.json")
 CALIBRATION_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v26-calibration-scorer.json")
 FORMAL_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v26-scorer.json")
+_SCORER_IDENTITIES = {
+    CALIBRATION_SCORER_REVISION: (
+        "aegis-transfer-002",
+        "development",
+        "deepseek-v4-flash",
+    ),
+    FORMAL_SCORER_REVISION: ("aegis-transfer-003", "measurement", "deepseek-v4-pro"),
+}
 
 
 class TransferScorerGroundTruth(BaseModel):
@@ -60,7 +61,6 @@ class TransferScorerGroundTruth(BaseModel):
     fault_category: FaultCategory
     mechanism_code: MechanismCode | None = None
     source_fault_type: str
-    accepted_fault_type_normalizations: tuple[str, ...] = ()
 
 
 class TransferMechanismEvidence(BaseModel):
@@ -113,31 +113,27 @@ class AegisTransferEvaluation(BaseModel):
     causal_dependency_match: bool
     declared_edge_match: bool
     fault_category_match: bool
-    fault_mechanism_match: bool
     citations_execution_valid: bool
     mechanism_evidence_match: bool
     failure_reasons: list[str]
     cited_evidence_count: int
     valid_evidence_count: int
     supporting_evidence_query_ids: list[str]
-    causal_scope_evidence_query_ids: list[str] = Field(default_factory=list)
-    mechanism_evidence_query_ids: list[str] = Field(default_factory=list)
-    tool_calls_through_evidence: int | None
-    rows_returned_through_evidence: int | None
-    valid_completion: bool | None = None
+    causal_scope_evidence_query_ids: list[str]
+    mechanism_evidence_query_ids: list[str]
     correct_completion_tool_calls: int | None = None
     tool_calls_through_mechanism_evidence: int | None = None
     rows_returned_through_mechanism_evidence: int | None = None
-    causal_scope_match: bool | None = None
-    causal_operation_match: bool | None = None
-    mechanism_code_match: bool | None = None
-    diagnosis_correct: bool | None = None
-    causal_scope_evidence_match: bool | None = None
-    required_evidence_covered: bool | None = None
-    citation_integrity: bool | None = None
-    execution_reliability: bool | None = None
-    auditable_completion: bool | None = None
-    efficiency_eligible: bool | None = None
+    causal_scope_match: bool
+    causal_operation_match: bool
+    mechanism_code_match: bool
+    diagnosis_correct: bool
+    causal_scope_evidence_match: bool
+    required_evidence_covered: bool
+    citation_integrity: bool
+    execution_reliability: bool
+    auditable_completion: bool
+    efficiency_eligible: bool
 
 
 @dataclass(frozen=True)
@@ -177,11 +173,11 @@ class StartGapQueryScope:
     projections: dict[str, tuple[exp.Expression, ...]]
 
 
-def canonical_api_runner_contract(protocol_version: int | None = None) -> dict[str, object]:
-    selected_protocol = benchmark_protocol(protocol_version)
+def canonical_api_runner_contract(*, model: str) -> dict[str, object]:
+    selected_protocol = benchmark_protocol()
     return {
         "runner": AgentRunner.API.value,
-        "model": "deepseek-v4-flash",
+        "model": model,
         "benchmark_protocol_version": selected_protocol["version"],
         "visibility_levels": [level.value for level in Visibility],
         "max_tool_calls": 48,
@@ -195,79 +191,43 @@ def canonical_api_runner_contract(protocol_version: int | None = None) -> dict[s
     }
 
 
-def load_transfer_scorer_fixture(path: Path = DEFAULT_SCORER_FIXTURE) -> AegisTransferScorerFixture:
+def load_transfer_scorer_fixture(
+    path: Path = FORMAL_SCORER_FIXTURE,
+) -> AegisTransferScorerFixture:
     fixture = AegisTransferScorerFixture.model_validate_json(path.read_text())
-    supported = {
-        SCORER_REVISION: (1, TRANSFER_AGENT_CASE_ID, "development"),
-        DELAY_SCORER_REVISION: (1, "aegis-transfer-002", "measurement"),
-        CALIBRATION_SCORER_REVISION: (2, "aegis-transfer-002", "development"),
-        FORMAL_SCORER_REVISION: (2, "aegis-transfer-003", "measurement"),
-    }
-    expected_identity = supported.get(fixture.scorer_revision)
-    if expected_identity is None or fixture.version != expected_identity[0]:
+    expected_identity = _SCORER_IDENTITIES.get(fixture.scorer_revision)
+    if expected_identity is None or fixture.version != 2:
         raise ValueError("unsupported Aegis transfer scorer fixture revision")
-    if fixture.agent_case_id != expected_identity[1]:
+    if fixture.agent_case_id != expected_identity[0]:
         raise ValueError("Aegis transfer scorer fixture uses the wrong opaque case ID")
-    if fixture.case_role != expected_identity[2]:
+    if fixture.case_role != expected_identity[1]:
         raise ValueError("Aegis transfer scorer fixture uses the wrong case role")
     if fixture.canonical_api_runner.model_dump(mode="json") != canonical_api_runner_contract(
-        fixture.canonical_api_runner.benchmark_protocol_version
+        model=expected_identity[2],
     ):
         raise ValueError("Aegis transfer canonical API runner contract drifted")
-    if fixture.version == 1:
-        if not fixture.ground_truth.accepted_fault_type_normalizations:
-            raise ValueError("Aegis transfer scorer has no accepted fault mechanism labels")
-        if any(
-            value != _normalize_fault_type(value)
-            for value in fixture.ground_truth.accepted_fault_type_normalizations
-        ):
-            raise ValueError("Aegis transfer accepted fault mechanism labels are not normalized")
-        if (
-            _normalize_fault_type(fixture.ground_truth.source_fault_type)
-            not in fixture.ground_truth.accepted_fault_type_normalizations
-        ):
-            raise ValueError("Aegis transfer source fault type is not accepted by its scorer")
-    else:
-        truth = fixture.ground_truth
-        if truth.accepted_fault_type_normalizations or truth.causal_scope is None:
-            raise ValueError("Aegis transfer v26 structured diagnosis contract drifted")
-        if truth.causal_scope is CausalScope.DEPENDENCY_EDGE and not truth.causal_dependency:
-            raise ValueError("dependency-scoped scorer has no causal dependency")
-        if truth.causal_scope is CausalScope.COMPONENT and truth.causal_dependency is not None:
-            raise ValueError("component-scoped scorer must not define a causal dependency")
-        accepted_operations = truth.accepted_causal_operations or (
-            (truth.causal_operation,) if truth.causal_operation else ()
-        )
-        if truth.causal_operation and truth.causal_operation not in accepted_operations:
-            raise ValueError("canonical causal operation is not accepted by the scorer")
+    truth = fixture.ground_truth
+    if truth.causal_scope is None:
+        raise ValueError("Aegis transfer structured diagnosis contract drifted")
+    if truth.causal_scope is CausalScope.DEPENDENCY_EDGE and not truth.causal_dependency:
+        raise ValueError("dependency-scoped scorer has no causal dependency")
+    if truth.causal_scope is CausalScope.COMPONENT and truth.causal_dependency is not None:
+        raise ValueError("component-scoped scorer must not define a causal dependency")
+    accepted_operations = truth.accepted_causal_operations or (
+        (truth.causal_operation,) if truth.causal_operation else ()
+    )
+    if truth.causal_operation and truth.causal_operation not in accepted_operations:
+        raise ValueError("canonical causal operation is not accepted by the scorer")
     if fixture.normal_window[1] != fixture.abnormal_window[0]:
         raise ValueError("Aegis transfer scorer windows must be contiguous")
     predicate = fixture.mechanism_evidence.predicate
-    if predicate == "source_declared_http_method_replacement":
-        if (
-            fixture.mechanism_evidence.threshold_ns is not None
-            or fixture.mechanism_evidence.span_name is not None
-        ):
-            raise ValueError("method replacement scorer must not define delay fields")
-    elif predicate == "source_declared_http_delay_threshold":
-        expected = fixture.mechanism_evidence.expected_result
-        threshold = fixture.mechanism_evidence.threshold_ns
-        if (
-            threshold is None
-            or not fixture.mechanism_evidence.span_name
-            or set(expected) != {"normal", "abnormal"}
-            or expected["normal"].get("max_duration_ns", threshold) >= threshold
-            or expected["abnormal"].get("max_duration_ns", -1) < threshold
-        ):
-            raise ValueError("delay scorer does not prove the frozen threshold transition")
-    elif predicate == "source_declared_http_client_server_start_gap":
+    if predicate == "source_declared_http_client_server_start_gap":
         expected = fixture.mechanism_evidence.expected_result
         threshold = fixture.mechanism_evidence.threshold_ns
         normal = expected.get("normal", {})
         abnormal = expected.get("abnormal", {})
         if (
-            fixture.version != 2
-            or threshold is None
+            threshold is None
             or not fixture.mechanism_evidence.span_name
             or fixture.mechanism_evidence.observable != "server.timestamp - client.timestamp"
             or (fixture.mechanism_evidence.minimum_anomalous_observations or 0) < 2
@@ -285,8 +245,7 @@ def load_transfer_scorer_fixture(path: Path = DEFAULT_SCORER_FIXTURE) -> AegisTr
         normal = expected.get("normal", {})
         abnormal = expected.get("abnormal", {})
         if (
-            fixture.version != 2
-            or fixture.ground_truth.causal_scope is not CausalScope.COMPONENT
+            fixture.ground_truth.causal_scope is not CausalScope.COMPONENT
             or fixture.ground_truth.mechanism_code is not MechanismCode.APPLICATION_ERROR
             or fixture.mechanism_evidence.observable != "error spans and exception logs"
             or (fixture.mechanism_evidence.minimum_anomalous_observations or 0) < 2
@@ -310,133 +269,7 @@ def evaluate_aegis_transfer_run(
     *,
     expected_model: str | None = None,
 ) -> AegisTransferEvaluation:
-    if fixture.version == 1:
-        return _evaluate_legacy_transfer_run(run, fixture, expected_model=expected_model)
     return _evaluate_structured_transfer_run(run, fixture, expected_model=expected_model)
-
-
-def _evaluate_legacy_transfer_run(
-    run: AgentRun,
-    fixture: AegisTransferScorerFixture,
-    *,
-    expected_model: str | None,
-) -> AegisTransferEvaluation:
-    diagnosis = run.diagnosis
-    truth = fixture.ground_truth
-    runner_contract_match = (
-        run.runner is fixture.canonical_api_runner.runner
-        and run.model == (expected_model or fixture.canonical_api_runner.model)
-        and run.visibility in fixture.canonical_api_runner.visibility_levels
-    )
-    tool_budget_contract_match = len(run.tool_calls) <= fixture.canonical_api_runner.max_tool_calls
-    affected_match = diagnosis is not None and component_matches(
-        diagnosis.affected_component, truth.affected_component
-    )
-    if truth.causal_scope is CausalScope.COMPONENT:
-        dependency_match = diagnosis is not None and diagnosis.causal_dependency is None
-    else:
-        dependency_match = (
-            diagnosis is not None
-            and diagnosis.causal_dependency is not None
-            and truth.causal_dependency is not None
-            and component_matches(diagnosis.causal_dependency, truth.causal_dependency)
-        )
-    declared_edge_match = affected_match and dependency_match
-    category_match = diagnosis is not None and diagnosis.fault_category is truth.fault_category
-    mechanism_match = (
-        diagnosis is not None
-        and _normalize_fault_type(diagnosis.fault_type) in truth.accepted_fault_type_normalizations
-    )
-
-    evidence = diagnosis.evidence if diagnosis is not None else []
-    traces_by_query_id: dict[str, list[ToolTrace]] = {}
-    for trace in run.tool_calls:
-        if trace.query_id is not None:
-            traces_by_query_id.setdefault(trace.query_id, []).append(trace)
-    evidence_ids_unique = len({item.query_id for item in evidence}) == len(evidence)
-    valid_evidence_count = sum(
-        bool(item.claim.strip())
-        and is_valid_evidence_trace(traces_by_query_id.get(item.query_id, []))
-        for item in evidence
-    )
-    citations_execution_valid = (
-        bool(evidence) and evidence_ids_unique and valid_evidence_count == len(evidence)
-    )
-
-    support_indexes = []
-    support_query_ids = []
-    mechanism_parts = []
-    for item in evidence:
-        matches = traces_by_query_id.get(item.query_id, [])
-        if len(matches) != 1:
-            continue
-        trace = matches[0]
-        normalized = _mechanism_evidence_from_trace(trace, fixture)
-        if normalized is not None:
-            support_query_ids.append(item.query_id)
-            support_indexes.append(run.tool_calls.index(trace))
-            mechanism_parts.append(normalized)
-    merged_mechanism = _merge_mechanism_evidence(mechanism_parts, fixture)
-    mechanism_evidence_match = merged_mechanism == fixture.mechanism_evidence.expected_result
-    support_index = max(support_indexes) if mechanism_evidence_match else None
-
-    checks = {
-        "run does not use the frozen canonical API runner contract": runner_contract_match,
-        "run exceeds the frozen tool-call contract": tool_budget_contract_match,
-        "affected component does not match the declared edge source": affected_match,
-        "causal dependency does not match the declared edge destination": dependency_match,
-        "submitted directed edge does not match the frozen declared edge": declared_edge_match,
-        "fault category does not match the frozen source mechanism": category_match,
-        "fault mechanism is not accepted by the frozen scorer": mechanism_match,
-        "evidence citations are missing, duplicated, failed, truncated, or invalid": (
-            citations_execution_valid
-        ),
-        "no cited SQL result proves the complete frozen mechanism predicate": (
-            mechanism_evidence_match
-        ),
-        "runner reported an error": run.error is None,
-        "investigation tool budget was exhausted": not run.tool_budget_exhausted,
-        "run contains an invalid rejected tool call": not any(
-            item.reason_code == "invalid" for item in run.rejected_tool_calls
-        ),
-    }
-    failure_reasons = [reason for reason, passed in checks.items() if not passed]
-    calls_through_evidence = (
-        run.tool_calls[: support_index + 1] if support_index is not None else None
-    )
-    rows_through_evidence = (
-        sum(item.database_load.rows_returned for item in calls_through_evidence)
-        if calls_through_evidence is not None
-        and all(item.database_load is not None for item in calls_through_evidence)
-        else None
-    )
-    success = not failure_reasons
-    calls_to_mechanism = support_index + 1 if support_index is not None else None
-    legacy_evidence_metric = (
-        fixture.mechanism_evidence.predicate == "source_declared_http_method_replacement"
-    )
-    return AegisTransferEvaluation(
-        success=success,
-        runner_contract_match=runner_contract_match,
-        tool_budget_contract_match=tool_budget_contract_match,
-        affected_component_match=affected_match,
-        causal_dependency_match=dependency_match,
-        declared_edge_match=declared_edge_match,
-        fault_category_match=category_match,
-        fault_mechanism_match=mechanism_match,
-        citations_execution_valid=citations_execution_valid,
-        mechanism_evidence_match=mechanism_evidence_match,
-        failure_reasons=failure_reasons,
-        cited_evidence_count=len(evidence),
-        valid_evidence_count=valid_evidence_count,
-        supporting_evidence_query_ids=(support_query_ids if mechanism_evidence_match else []),
-        tool_calls_through_evidence=(calls_to_mechanism if legacy_evidence_metric else None),
-        rows_returned_through_evidence=(rows_through_evidence if legacy_evidence_metric else None),
-        valid_completion=success,
-        correct_completion_tool_calls=len(run.tool_calls) if success else None,
-        tool_calls_through_mechanism_evidence=calls_to_mechanism,
-        rows_returned_through_mechanism_evidence=rows_through_evidence,
-    )
 
 
 def _evaluate_structured_transfer_run(
@@ -580,7 +413,6 @@ def _evaluate_structured_transfer_run(
         causal_dependency_match=dependency_match,
         declared_edge_match=declared_edge_match,
         fault_category_match=category_match,
-        fault_mechanism_match=mechanism_code_match,
         citations_execution_valid=citations_execution_valid,
         mechanism_evidence_match=mechanism_evidence_match,
         failure_reasons=[reason for reason, passed in checks.items() if not passed],
@@ -593,9 +425,6 @@ def _evaluate_structured_transfer_run(
         mechanism_evidence_query_ids=(
             list(dict.fromkeys(mechanism_support_ids)) if mechanism_evidence_match else []
         ),
-        tool_calls_through_evidence=None,
-        rows_returned_through_evidence=None,
-        valid_completion=auditable_completion,
         correct_completion_tool_calls=len(run.tool_calls) if efficiency_eligible else None,
         tool_calls_through_mechanism_evidence=(
             support_index + 1 if support_index is not None else None
@@ -624,19 +453,6 @@ def audit_transfer_scorer(
     canonical_run = _canonical_synthetic_run(transfer_audit, fixture)
     cases: dict[str, tuple[AgentRun, bool]] = {
         "canonical_positive": (canonical_run, True),
-        "reversed_edge": (
-            _replace_diagnosis(
-                canonical_run,
-                affected_component=fixture.ground_truth.causal_dependency,
-                causal_dependency=fixture.ground_truth.affected_component,
-            ),
-            False,
-        ),
-        "missing_dependency": (
-            _replace_diagnosis(canonical_run, causal_dependency=None),
-            False,
-        ),
-        "wrong_mechanism": (_replace_diagnosis(canonical_run, fault_type="memory leak"), False),
         "wrong_fault_category": (
             _replace_diagnosis(
                 canonical_run,
@@ -650,18 +466,6 @@ def audit_transfer_scorer(
         ),
         "invalid_citation": (_replace_evidence_query_id(canonical_run, "missing"), False),
         "duplicated_citation": (_duplicate_evidence(canonical_run), False),
-        "wrong_parent_relation": (
-            _replace_trace_query(
-                canonical_run,
-                _canonical_trace(canonical_run)
-                .input["query"]
-                .replace(
-                    "s.parent_span_id = c.span_id",
-                    "s.parent_span_id <> c.span_id",
-                ),
-            ),
-            False,
-        ),
         "runner_error": (canonical_run.model_copy(update={"error": "runner failed"}), False),
         "budget_exhausted": (
             canonical_run.model_copy(update={"tool_budget_exhausted": True}),
@@ -692,236 +496,234 @@ def audit_transfer_scorer(
             False,
         ),
     }
-    if fixture.version == 2:
-        canonical_query = str(_canonical_trace(canonical_run).input["query"])
-        normal_start = datetime.fromtimestamp(fixture.normal_window[0], UTC).strftime(
-            "%Y-%m-%d %H:%M:%S"
+    canonical_query = str(_canonical_trace(canonical_run).input["query"])
+    normal_start = datetime.fromtimestamp(fixture.normal_window[0], UTC).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    abnormal_end = datetime.fromtimestamp(fixture.abnormal_window[1], UTC).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    narrowed_end = datetime.fromtimestamp(fixture.abnormal_window[1] - 1, UTC).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    wrong_scope = (
+        CausalScope.DEPENDENCY_EDGE
+        if fixture.ground_truth.causal_scope is CausalScope.COMPONENT
+        else CausalScope.COMPONENT
+    )
+    cases.update(
+        {
+            "wrong_affected_component": (
+                _replace_diagnosis(
+                    canonical_run,
+                    affected_component="wrong-service",
+                ),
+                False,
+            ),
+            "wrong_causal_scope": (
+                _replace_diagnosis(canonical_run, causal_scope=wrong_scope),
+                False,
+            ),
+            "wrong_causal_operation": (
+                _replace_diagnosis(canonical_run, causal_operation="POST /wrong"),
+                False,
+            ),
+            "wrong_mechanism": (
+                _replace_diagnosis(
+                    canonical_run,
+                    mechanism_code=MechanismCode.CONNECTION_FAILURE,
+                ),
+                False,
+            ),
+            "untyped_evidence": (_remove_evidence_claim_types(canonical_run), False),
+            "narrowed_outer_window": (
+                _replace_trace_query(
+                    canonical_run,
+                    canonical_query.replace(abnormal_end, narrowed_end),
+                ),
+                False,
+            ),
+        }
+    )
+    if fixture.ground_truth.causal_scope is CausalScope.COMPONENT:
+        cases["unexpected_dependency"] = (
+            _replace_diagnosis(canonical_run, causal_dependency="unexpected-service"),
+            False,
         )
-        abnormal_end = datetime.fromtimestamp(fixture.abnormal_window[1], UTC).strftime(
-            "%Y-%m-%d %H:%M:%S"
+    else:
+        cases["reversed_edge"] = (
+            _replace_diagnosis(
+                canonical_run,
+                affected_component=fixture.ground_truth.causal_dependency,
+                causal_dependency=fixture.ground_truth.affected_component,
+            ),
+            False,
         )
-        narrowed_end = datetime.fromtimestamp(fixture.abnormal_window[1] - 1, UTC).strftime(
-            "%Y-%m-%d %H:%M:%S"
+        cases["missing_dependency"] = (
+            _replace_diagnosis(canonical_run, causal_dependency=None),
+            False,
         )
-        wrong_scope = (
-            CausalScope.DEPENDENCY_EDGE
-            if fixture.ground_truth.causal_scope is CausalScope.COMPONENT
-            else CausalScope.COMPONENT
-        )
+    if fixture.mechanism_evidence.predicate == "source_declared_http_client_server_start_gap":
         cases.update(
             {
-                "reversed_edge": (
-                    _replace_diagnosis(
-                        canonical_run,
-                        affected_component="wrong-service",
-                        causal_dependency=(
-                            "unexpected-service"
-                            if fixture.ground_truth.causal_scope is CausalScope.COMPONENT
-                            else fixture.ground_truth.affected_component
-                        ),
-                    ),
-                    False,
-                ),
-                "missing_dependency": (
-                    _replace_diagnosis(
-                        canonical_run,
-                        causal_dependency=(
-                            "unexpected-service"
-                            if fixture.ground_truth.causal_scope is CausalScope.COMPONENT
-                            else None
-                        ),
-                    ),
-                    False,
-                ),
-                "wrong_causal_scope": (
-                    _replace_diagnosis(canonical_run, causal_scope=wrong_scope),
-                    False,
-                ),
-                "wrong_causal_operation": (
-                    _replace_diagnosis(canonical_run, causal_operation="POST /wrong"),
-                    False,
-                ),
-                "wrong_mechanism": (
-                    _replace_diagnosis(
-                        canonical_run,
-                        mechanism_code=MechanismCode.CONNECTION_FAILURE,
-                    ),
-                    False,
-                ),
-                "untyped_evidence": (_remove_evidence_claim_types(canonical_run), False),
-                "narrowed_outer_window": (
+                "wrong_parent_relation": (
                     _replace_trace_query(
                         canonical_run,
-                        canonical_query.replace(abnormal_end, narrowed_end),
+                        canonical_query.replace(
+                            "s.parent_span_id = c.span_id",
+                            "s.parent_span_id <> c.span_id",
+                        ),
+                    ),
+                    False,
+                ),
+                "reversed_start_gap": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            "CAST(s.timestamp AS BIGINT) - CAST(c.timestamp AS BIGINT)",
+                            "CAST(c.timestamp AS BIGINT) - CAST(s.timestamp AS BIGINT)",
+                        ),
+                    ),
+                    False,
+                ),
+                "unrelated_max_aliased_as_gap": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            "MAX(server_start_gap_ns) AS max_start_gap_ns",
+                            "MAX(server_duration_ns) AS max_start_gap_ns",
+                        ),
                     ),
                     False,
                 ),
             }
         )
-        if fixture.mechanism_evidence.predicate == "source_declared_http_client_server_start_gap":
-            cases.update(
-                {
-                    "wrong_parent_relation": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace(
-                                "s.parent_span_id = c.span_id",
-                                "s.parent_span_id <> c.span_id",
+    elif fixture.mechanism_evidence.predicate == "source_declared_jvm_exception":
+        cases.update(
+            {
+                "wrong_source_span_status": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            "span_status_code = 'STATUS_CODE_ERROR'",
+                            "span_status_code = 'STATUS_CODE_UNSET'",
+                        ),
+                    ),
+                    False,
+                ),
+                "wrong_source_service": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            fixture.ground_truth.affected_component,
+                            "wrong-service",
+                        ),
+                    ),
+                    False,
+                ),
+                "wrong_causal_operation_filter": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace("retrievebyname", "listtrains"),
+                    ),
+                    False,
+                ),
+                "symptom_only_without_exception": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace("%exception%", "%failed%"),
+                    ),
+                    False,
+                ),
+                "neutralized_service_filter": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            f"service_name = '{fixture.ground_truth.affected_component}'",
+                            (
+                                "(service_name = "
+                                f"'{fixture.ground_truth.affected_component}' OR 1 = 1)"
                             ),
+                            1,
                         ),
-                        False,
                     ),
-                    "reversed_start_gap": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace(
-                                "CAST(s.timestamp AS BIGINT) - CAST(c.timestamp AS BIGINT)",
-                                "CAST(c.timestamp AS BIGINT) - CAST(s.timestamp AS BIGINT)",
-                            ),
+                    False,
+                ),
+                "hardcoded_span_count": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            "COALESCE(SUM(e.error_span_count), 0) AS error_span_count",
+                            "1981 AS error_span_count",
                         ),
-                        False,
                     ),
-                    "unrelated_max_aliased_as_gap": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace(
-                                "MAX(server_start_gap_ns) AS max_start_gap_ns",
-                                "MAX(server_duration_ns) AS max_start_gap_ns",
-                            ),
+                    False,
+                ),
+                "wrong_aggregate_source": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            "SUM(e.error_span_count)",
+                            "SUM(e.exception_log_count)",
+                            1,
                         ),
-                        False,
                     ),
-                }
-            )
-        elif fixture.mechanism_evidence.predicate == "source_declared_jvm_exception":
-            cases.pop("wrong_parent_relation", None)
-            cases.update(
-                {
-                    "wrong_source_span_status": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace(
-                                "span_status_code = 'STATUS_CODE_ERROR'",
-                                "span_status_code = 'STATUS_CODE_UNSET'",
-                            ),
+                    False,
+                ),
+                "dead_subquery_status_predicate": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            "span_status_code = 'STATUS_CODE_ERROR'",
+                            "span_status_code = 'STATUS_CODE_UNSET' "
+                            "AND EXISTS (SELECT 1 WHERE "
+                            "span_status_code = 'STATUS_CODE_ERROR')",
                         ),
-                        False,
                     ),
-                    "wrong_source_service": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace(
-                                fixture.ground_truth.affected_component,
-                                "wrong-service",
-                            ),
+                    False,
+                ),
+                "unbounded_trace_scan": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            f"    AND timestamp >= '{normal_start}' "
+                            f"AND timestamp < '{abnormal_end}'\n",
+                            "",
+                            1,
                         ),
-                        False,
                     ),
-                    "wrong_causal_operation_filter": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace("retrieveByName", "listTrains"),
+                    False,
+                ),
+                "multiplied_trace_rows": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace(
+                            "  FROM traces\n",
+                            "  FROM traces CROSS JOIN "
+                            "(SELECT 1 AS duplicate UNION ALL "
+                            "SELECT 2 AS duplicate) copies\n",
+                            1,
                         ),
-                        False,
                     ),
-                    "symptom_only_without_exception": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace("%exception%", "%failed%"),
-                        ),
-                        False,
+                    False,
+                ),
+                "mislabeled_aggregate_period": (
+                    _replace_trace_query(
+                        canonical_run,
+                        canonical_query.replace("THEN 'normal'", "THEN 'abnormal'", 1),
                     ),
-                    "neutralized_service_filter": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace(
-                                f"service_name = '{fixture.ground_truth.affected_component}'",
-                                (
-                                    "(service_name = "
-                                    f"'{fixture.ground_truth.affected_component}' OR 1 = 1)"
-                                ),
-                                1,
-                            ),
-                        ),
-                        False,
-                    ),
-                    "hardcoded_span_count": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace(
-                                "COALESCE(SUM(e.error_span_count), 0) AS error_span_count",
-                                "1981 AS error_span_count",
-                            ),
-                        ),
-                        False,
-                    ),
-                    "wrong_aggregate_source": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace(
-                                "SUM(e.error_span_count)",
-                                "SUM(e.exception_log_count)",
-                                1,
-                            ),
-                        ),
-                        False,
-                    ),
-                    "dead_subquery_status_predicate": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace(
-                                "span_status_code = 'STATUS_CODE_ERROR'",
-                                "span_status_code = 'STATUS_CODE_UNSET' "
-                                "AND EXISTS (SELECT 1 WHERE "
-                                "span_status_code = 'STATUS_CODE_ERROR')",
-                            ),
-                        ),
-                        False,
-                    ),
-                    "unbounded_trace_scan": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace(
-                                f"    AND timestamp >= '{normal_start}' "
-                                f"AND timestamp < '{abnormal_end}'\n",
-                                "",
-                                1,
-                            ),
-                        ),
-                        False,
-                    ),
-                    "multiplied_trace_rows": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace(
-                                "  FROM traces\n",
-                                "  FROM traces CROSS JOIN "
-                                "(SELECT 1 AS duplicate UNION ALL "
-                                "SELECT 2 AS duplicate) copies\n",
-                                1,
-                            ),
-                        ),
-                        False,
-                    ),
-                    "mislabeled_aggregate_period": (
-                        _replace_trace_query(
-                            canonical_run,
-                            canonical_query.replace("THEN 'normal'", "THEN 'abnormal'", 1),
-                        ),
-                        False,
-                    ),
-                    "dirty_baseline": (
-                        _replace_mechanism_value(canonical_run, "normal", "error_span_count", 1),
-                        False,
-                    ),
-                    "missing_anomalous_logs": (
-                        _replace_mechanism_value(
-                            canonical_run, "abnormal", "exception_log_count", 0
-                        ),
-                        False,
-                    ),
-                }
-            )
+                    False,
+                ),
+                "dirty_baseline": (
+                    _replace_mechanism_value(canonical_run, "normal", "error_span_count", 1),
+                    False,
+                ),
+                "missing_anomalous_logs": (
+                    _replace_mechanism_value(canonical_run, "abnormal", "exception_log_count", 0),
+                    False,
+                ),
+            }
+        )
     for row_name in fixture.mechanism_evidence.expected_result:
         cases[f"missing_{row_name}"] = (_remove_mechanism_row(canonical_run, row_name), False)
 
@@ -952,7 +754,7 @@ def audit_transfer_scorer(
         "canonical_runner_contract_match": (
             fixture.canonical_api_runner.model_dump(mode="json")
             == canonical_api_runner_contract(
-                fixture.canonical_api_runner.benchmark_protocol_version
+                model=_SCORER_IDENTITIES[fixture.scorer_revision][2],
             )
         ),
         "opaque_agent_input": opaque_case_gate,
@@ -970,79 +772,6 @@ def audit_transfer_scorer(
         "source_transfer_audit_sha256": source_transfer_audit_sha256(transfer_audit),
         "synthetic_regressions": results,
         "no_model_gates": gates,
-    }
-
-
-def shadow_score_legacy_transfer_run(
-    run: AgentRun,
-    fixture: AegisTransferScorerFixture,
-) -> dict[str, object]:
-    if fixture.version != 2:
-        raise ValueError("legacy shadow scoring requires the v26 structured scorer")
-    diagnosis = run.diagnosis
-    evidence = diagnosis.evidence if diagnosis is not None else []
-    traces_by_query_id: dict[str, list[ToolTrace]] = {}
-    for trace in run.tool_calls:
-        if trace.query_id is not None:
-            traces_by_query_id.setdefault(trace.query_id, []).append(trace)
-    evidence_ids_unique = len({item.query_id for item in evidence}) == len(evidence)
-    valid_evidence_count = sum(
-        bool(item.claim.strip())
-        and is_valid_evidence_trace(traces_by_query_id.get(item.query_id, []))
-        for item in evidence
-    )
-    citation_integrity = (
-        bool(evidence) and evidence_ids_unique and valid_evidence_count == len(evidence)
-    )
-    causal_support = False
-    mechanism_parts = []
-    for item in evidence:
-        matches = traces_by_query_id.get(item.query_id, [])
-        if len(matches) != 1 or not is_valid_evidence_trace(matches):
-            continue
-        trace = matches[0]
-        delay_part = _start_gap_evidence_from_trace(trace, fixture)
-        causal_support = (
-            causal_support or _trace_proves_declared_edge(trace, fixture) or delay_part is not None
-        )
-        if delay_part is not None:
-            mechanism_parts.append(delay_part)
-    truth = fixture.ground_truth
-    affected_match = diagnosis is not None and component_matches(
-        diagnosis.affected_component, truth.affected_component
-    )
-    dependency_match = (
-        diagnosis is not None
-        and diagnosis.causal_dependency is not None
-        and component_matches(diagnosis.causal_dependency, truth.causal_dependency)
-    )
-    execution_reliability = (
-        run.error is None
-        and not run.tool_budget_exhausted
-        and not any(item.reason_code == "invalid" for item in run.rejected_tool_calls)
-    )
-    return {
-        "analysis_role": "descriptive shadow score; never measurement eligible",
-        "formal_eligibility": False,
-        "structured_contract_complete": bool(
-            diagnosis is not None
-            and diagnosis.causal_scope is not None
-            and diagnosis.mechanism_code is not None
-            and evidence
-            and all(item.claim_types for item in evidence)
-        ),
-        "affected_component_match": affected_match,
-        "causal_dependency_match": dependency_match,
-        "declared_edge_match": affected_match and dependency_match,
-        "fault_category_match": (
-            diagnosis is not None and diagnosis.fault_category is truth.fault_category
-        ),
-        "causal_scope_evidence_match": causal_support,
-        "mechanism_evidence_match": _start_gap_parts_prove_transition(mechanism_parts, fixture),
-        "citation_integrity": citation_integrity,
-        "execution_reliability": execution_reliability,
-        "cited_evidence_count": len(evidence),
-        "valid_evidence_count": valid_evidence_count,
     }
 
 
@@ -1204,7 +933,7 @@ def _jvm_exception_query_scope(
         return None
     if any(_identity_literal_comparison(item) for item in statement.find_all(exp.EQ, exp.In)):
         return None
-    service = fixture.ground_truth.affected_component.lower()
+    service = fixture.ground_truth.affected_component
     allowed_epochs = {
         fixture.normal_window[0],
         fixture.normal_window[1],
@@ -1244,17 +973,32 @@ def _jvm_exception_query_scope(
                 not _has_column_in_literals(
                     table_scope,
                     "span_status_code",
-                    {"status_code_error"},
+                    {"STATUS_CODE_ERROR"},
                 )
                 or not any(
-                    _has_column_text_fragment(table_scope, "span_name", token)
+                    _has_column_text_fragment(
+                        table_scope,
+                        "span_name",
+                        token,
+                        allow_case_normalization=True,
+                    )
                     for token in operation_tokens
                 )
             ):
                 return None
             if table == "logs" and not (
-                _has_column_like_fragment(table_scope, "line", "exception")
-                and _has_column_in_literals(table_scope, "level", {"error", "severe", "fatal"})
+                _has_column_like_fragment(
+                    table_scope,
+                    "line",
+                    "exception",
+                    allow_case_normalization=True,
+                )
+                and _has_column_in_literals(
+                    table_scope,
+                    "level",
+                    {"ERROR", "SEVERE", "FATAL"},
+                    allow_case_normalization=True,
+                )
             ):
                 return None
             scope_periods = _exact_scope_periods(table_scope, time_column, fixture)
@@ -1295,7 +1039,7 @@ def _column_eq_literal_count(
                 and column.name.lower() == column_name.lower()
                 and isinstance(value, exp.Literal)
                 and value.is_string
-                and str(value.this).lower() == literal_value.lower()
+                and str(value.this) == literal_value
                 and _is_positive_filter_predicate(equality)
             ):
                 count += 1
@@ -1314,14 +1058,18 @@ def _has_column_like_fragment(
     statement: exp.Expression,
     column_name: str,
     fragment: str,
+    *,
+    allow_case_normalization: bool = False,
 ) -> bool:
     for like in statement.find_all(exp.Like, exp.ILike):
         if not _belongs_to_select_scope(like, statement):
             continue
-        columns = list(like.this.find_all(exp.Column))
+        target_matches = (
+            isinstance(like.this, exp.Column) and like.this.name.lower() == column_name.lower()
+        ) or (allow_case_normalization and _case_normalized_column(like.this, column_name))
         value = like.expression
         if (
-            any(column.name.lower() == column_name.lower() for column in columns)
+            target_matches
             and isinstance(value, exp.Literal)
             and value.is_string
             and fragment.lower() in str(value.this).lower()
@@ -1335,8 +1083,15 @@ def _has_column_text_fragment(
     statement: exp.Expression,
     column_name: str,
     fragment: str,
+    *,
+    allow_case_normalization: bool = False,
 ) -> bool:
-    if _has_column_like_fragment(statement, column_name, fragment):
+    if _has_column_like_fragment(
+        statement,
+        column_name,
+        fragment,
+        allow_case_normalization=allow_case_normalization,
+    ):
         return True
     for comparison in statement.find_all(exp.EQ, exp.In):
         if not _belongs_to_select_scope(comparison, statement) or not _is_positive_filter_predicate(
@@ -1351,8 +1106,12 @@ def _has_column_text_fragment(
         else:
             pairs = tuple((comparison.this, value) for value in comparison.expressions)
         if any(
-            isinstance(column, exp.Column)
-            and column.name.lower() == column_name.lower()
+            (
+                isinstance(column, exp.Column)
+                and column.name.lower() == column_name.lower()
+                or allow_case_normalization
+                and _case_normalized_column(column, column_name)
+            )
             and isinstance(value, exp.Literal)
             and value.is_string
             and fragment.lower() in str(value.this).lower()
@@ -1366,22 +1125,61 @@ def _has_column_in_literals(
     statement: exp.Expression,
     column_name: str,
     allowed_values: set[str],
+    *,
+    allow_case_normalization: bool = False,
 ) -> bool:
     if any(_has_column_eq_literal(statement, column_name, value) for value in allowed_values):
         return True
+    normalized_allowed_values = {value.lower() for value in allowed_values}
+    if allow_case_normalization:
+        for equality in statement.find_all(exp.EQ):
+            if not _belongs_to_select_scope(
+                equality, statement
+            ) or not _is_positive_filter_predicate(equality):
+                continue
+            for column, value in (
+                (equality.this, equality.expression),
+                (equality.expression, equality.this),
+            ):
+                if (
+                    _case_normalized_column(column, column_name)
+                    and isinstance(value, exp.Literal)
+                    and value.is_string
+                    and str(value.this).lower() in normalized_allowed_values
+                ):
+                    return True
     for inclusion in statement.find_all(exp.In):
         if not _belongs_to_select_scope(inclusion, statement):
             continue
-        if not isinstance(inclusion.this, exp.Column) or inclusion.this.name.lower() != column_name:
+        target_matches = (
+            isinstance(inclusion.this, exp.Column) and inclusion.this.name.lower() == column_name
+        ) or (allow_case_normalization and _case_normalized_column(inclusion.this, column_name))
+        if not target_matches:
             continue
         values = {
-            str(item.this).lower()
+            str(item.this)
             for item in inclusion.expressions
             if isinstance(item, exp.Literal) and item.is_string
         }
-        if values and values <= allowed_values and _is_positive_filter_predicate(inclusion):
+        normalized_target = allow_case_normalization and _case_normalized_column(
+            inclusion.this, column_name
+        )
+        expected_values = normalized_allowed_values if normalized_target else allowed_values
+        compared_values = {value.lower() for value in values} if normalized_target else values
+        if (
+            compared_values
+            and compared_values <= expected_values
+            and _is_positive_filter_predicate(inclusion)
+        ):
             return True
     return False
+
+
+def _case_normalized_column(expression: exp.Expression, column_name: str) -> bool:
+    if not isinstance(expression, (exp.Lower, exp.Upper)):
+        return False
+    column = expression.this
+    return isinstance(column, exp.Column) and column.name.lower() == column_name.lower()
 
 
 def _table_select_scopes(statement: exp.Expression, table_name: str) -> tuple[exp.Select, ...]:
@@ -1585,7 +1383,7 @@ def _period_counts_from_result(
         period_index = columns.index("period")
         counts: dict[str, int] = {}
         for row in result.rows:
-            if len(row) <= max(period_index, count_index):
+            if not _row_covers(row, period_index, count_index):
                 return None
             period = str(row[period_index]).lower()
             count = _strict_int(row[count_index])
@@ -1594,6 +1392,8 @@ def _period_counts_from_result(
             counts[period] = counts.get(period, 0) + count
         return counts or None
     if len(periods) != 1 or len(result.rows) != 1:
+        return None
+    if not _row_covers(result.rows[0], count_index):
         return None
     count = _strict_int(result.rows[0][count_index])
     return {next(iter(periods)): count} if count is not None and count >= 0 else None
@@ -1638,6 +1438,8 @@ def _raw_exception_counts(
     indexes = {name: columns.index(name) for name in required}
     counts = {"normal": 0, "abnormal": 0}
     for row in result.rows:
+        if not _row_covers(row, *indexes.values()):
+            return None
         timestamp = _timestamp_ns(row[indexes[time_column]])
         if timestamp is None:
             return None
@@ -2052,8 +1854,15 @@ def _flexible_period_start_gap_result(
         columns[threshold_index],
         threshold,
     )
-    periods: dict[str, dict[str, int]] = {}
+    periods: dict[str, dict[str, int | None]] = {}
     for row in result.rows:
+        required_indexes = [period_index, count_index, max_index]
+        if min_index is not None:
+            required_indexes.append(min_index)
+        if threshold_is_bound and threshold_index is not None:
+            required_indexes.append(threshold_index)
+        if not _row_covers(row, *required_indexes):
+            return None
         period = str(row[period_index])
         if period not in {"normal", "abnormal"} or period in periods:
             return None
@@ -2065,6 +1874,7 @@ def _flexible_period_start_gap_result(
             count is None
             or count <= 0
             or maximum is None
+            or (min_index is not None and minimum is None)
             or threshold_count is None
             or not 0 <= threshold_count <= count
         ):
@@ -2110,6 +1920,8 @@ def _raw_start_gap_result(
     threshold = int(fixture.mechanism_evidence.threshold_ns or 0)
     gaps: dict[str, list[int]] = {"normal": [], "abnormal": []}
     for row in result.rows:
+        if not _row_covers(row, client_index, server_index):
+            return None
         client_ns = _timestamp_ns(row[client_index])
         server_ns = _timestamp_ns(row[server_index])
         if client_ns is None or server_ns is None:
@@ -2151,6 +1963,8 @@ def _time_binned_start_gap_result(
     abnormal_samples = 0
     confirmations = 0
     for row in result.rows:
+        if not _row_covers(row, time_index, count_index, max_index):
+            return None
         bucket_ns = _timestamp_ns(row[time_index])
         count = _strict_int(row[count_index])
         maximum = _gap_to_ns(row[max_index], columns[max_index])
@@ -2265,6 +2079,10 @@ def _unique_column(columns: list[str], predicate: Callable[[str], bool]) -> int 
     return matches[0] if len(matches) == 1 else None
 
 
+def _row_covers(row: list[object], *indexes: int) -> bool:
+    return not indexes or len(row) > max(indexes)
+
+
 def _is_count_column(value: str) -> bool:
     return value in {"n", "count", "cnt", "span_count", "sample_count"} or value.endswith("_count")
 
@@ -2276,7 +2094,7 @@ def _gap_to_ns(value: object, column: str) -> int | None:
         return round(float(value) * 1_000_000)
     if column.endswith("_us") or "gap_us" in column:
         return round(float(value) * 1_000)
-    if column.endswith("_s") and not column.endswith("_ns"):
+    if column.endswith("_s"):
         return round(float(value) * 1_000_000_000)
     return round(float(value))
 
@@ -2353,124 +2171,6 @@ def _timestamp_literal_epoch(literal: exp.Literal) -> int | None:
     return int(parsed.timestamp())
 
 
-def _mechanism_evidence_from_trace(
-    trace: ToolTrace,
-    fixture: AegisTransferScorerFixture,
-) -> dict[str, dict[str, int]] | None:
-    if (
-        trace.tool_name != "execute_sql"
-        or trace.error is not None
-        or not isinstance(trace.output, dict)
-    ):
-        return None
-    try:
-        result = QueryResult.model_validate(trace.output)
-    except ValueError:
-        return None
-    query = str(trace.input.get("query") or trace.input.get("sql") or "")
-    if fixture.mechanism_evidence.predicate == "source_declared_http_delay_threshold":
-        normalized = normalize_delay_evidence(result)
-    else:
-        normalized = normalize_mechanism_evidence(result)
-    populated_groups = {key for key, values in (normalized or {}).items() if values}
-    if (
-        result.query_id != trace.query_id
-        or result.truncated
-        or normalized is None
-        or not populated_groups
-        or not _valid_mechanism_query_scope(query, fixture, populated_groups)
-    ):
-        return None
-    return normalized
-
-
-def _valid_mechanism_query_scope(
-    query: str,
-    fixture: AegisTransferScorerFixture,
-    populated_groups: set[str],
-) -> bool:
-    statement = None
-    for dialect in ("postgres", "mysql"):
-        try:
-            statements = sqlglot.parse(query, read=dialect)
-        except sqlglot.errors.ParseError:
-            continue
-        if len(statements) == 1:
-            statement = statements[0]
-            break
-    if statement is None:
-        return False
-    if sum(table.name.lower() == "traces" for table in statement.find_all(exp.Table)) < 2:
-        return False
-    lowered = query.lower()
-    required_text = {
-        fixture.ground_truth.affected_component.lower(),
-        fixture.ground_truth.causal_dependency.lower(),
-        "span_kind_client",
-        "span_kind_server",
-    }
-    predicate = fixture.mechanism_evidence.predicate
-    if predicate == "source_declared_http_delay_threshold":
-        required_text.update(
-            (
-                "duration_nano",
-                "span_name",
-                str(fixture.mechanism_evidence.span_name).lower(),
-            )
-        )
-        window_epochs = [
-            *(fixture.normal_window if "normal" in populated_groups else ()),
-            *(fixture.abnormal_window if "abnormal" in populated_groups else ()),
-        ]
-    else:
-        required_text.add("span_attributes.http.request.method")
-        window_epochs = []
-        if "normal_server_methods" in populated_groups:
-            window_epochs.extend(fixture.normal_window)
-        if populated_groups & {"abnormal_client_methods", "abnormal_server_methods"}:
-            window_epochs.extend(fixture.abnormal_window)
-    observed_epochs = _timestamp_literal_epochs(statement)
-    if not all(epoch in observed_epochs for epoch in window_epochs):
-        return False
-    if not all(value in lowered for value in required_text):
-        return False
-    equalities = list(statement.find_all(exp.EQ))
-    return _has_column_equality(equalities, "trace_id", "trace_id") and _has_column_equality(
-        equalities,
-        "parent_span_id",
-        "span_id",
-    )
-
-
-def _merge_mechanism_evidence(
-    parts: list[dict[str, dict[str, int]]],
-    fixture: AegisTransferScorerFixture,
-) -> dict[str, dict[str, int]] | None:
-    merged = {key: {} for key in fixture.mechanism_evidence.expected_result}
-    for part in parts:
-        for group, methods in part.items():
-            if group not in merged or set(merged[group]) & set(methods):
-                return None
-            merged[group].update(methods)
-    return {key: dict(sorted(methods.items())) for key, methods in merged.items()}
-
-
-def _has_column_equality(
-    equalities: list[exp.EQ],
-    left_name: str,
-    right_name: str,
-) -> bool:
-    for equality in equalities:
-        left = equality.this
-        right = equality.expression
-        if not isinstance(left, exp.Column) or not isinstance(right, exp.Column):
-            continue
-        names = {left.name.lower(), right.name.lower()}
-        if names == {left_name, right_name} and left.table.lower() != right.table.lower():
-            return True
-    return False
-
-
 def _transfer_audit_matches_fixture(
     audit: dict[str, object],
     fixture: AegisTransferScorerFixture,
@@ -2482,10 +2182,7 @@ def _transfer_audit_matches_fixture(
         if not isinstance(mechanism, dict):
             return False
         mechanism_details_match = True
-        if fixture.mechanism_evidence.predicate in {
-            "source_declared_http_delay_threshold",
-            "source_declared_http_client_server_start_gap",
-        }:
+        if fixture.mechanism_evidence.predicate == "source_declared_http_client_server_start_gap":
             mechanism_details_match = (
                 mechanism.get("declared_delay_ns") == fixture.mechanism_evidence.threshold_ns
                 and mechanism.get("span_name") == fixture.mechanism_evidence.span_name
@@ -2513,8 +2210,7 @@ def _transfer_audit_matches_fixture(
                 fixture.ground_truth.affected_component,
                 fixture.ground_truth.causal_dependency,
             )
-            if fixture.version == 1
-            or fixture.ground_truth.causal_scope is CausalScope.DEPENDENCY_EDGE
+            if fixture.ground_truth.causal_scope is CausalScope.DEPENDENCY_EDGE
             else None
         )
         observed_edge = case.get("declared_edge")
@@ -2668,10 +2364,6 @@ def _replace_mechanism_value(run: AgentRun, period: str, column: str, value: obj
     changed_result = result.model_copy(update={"rows": rows})
     changed_trace = trace.model_copy(update={"output": changed_result.model_dump(mode="json")})
     return run.model_copy(update={"tool_calls": [changed_trace]})
-
-
-def _normalize_fault_type(value: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", value.lower())
 
 
 def _timestamp_literal_epochs(statement: exp.Expression) -> set[int]:

@@ -186,6 +186,8 @@ def test_canonical_queries_use_half_open_window_and_complete_caller_scope() -> N
     assert "observed_at >= '2026-04-23 03:00:00'" in graph_query
     assert "observed_at < '2026-04-23 03:10:00'" in graph_query
     assert "dst_id =" not in graph_query
+    assert "SUM(unmatched_count) AS unmatched_count" in graph_query
+    assert "MAX(duration_max) AS duration_max" in graph_query
 
 
 def test_edge_result_equality_ignores_unscored_duration_roundoff() -> None:

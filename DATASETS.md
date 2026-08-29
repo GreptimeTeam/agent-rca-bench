@@ -349,13 +349,18 @@ therefore rejected rather than repaired.
   threshold proofs without requiring exact source counts or a prescribed SQL shape. SQL evidence
   must still prove the exact operation, service identities, Client/Server roles, trace/parent
   pairing, ordered timestamp subtraction, and complete half-open outer window.
-- Protocol v24/v25 fixtures remain readable for validation, shadow scoring, and historical export,
-  but new agent execution under those protocols is rejected.
-- The fresh v26 selection recomputes source-observable eligibility over the publisher cohort before
-  agent execution and excludes the exact v24 and v25 parent manifests. The only eligible
-  unconsumed case is `ts2-ts-train-service-exception-plrfk2`, exposed to the agent only as
+- Protocol v24/v25 files remain immutable historical records. The current runtime does not load,
+  validate, shadow-score, resume, or export their schemas.
+- The fresh v26 selection recomputes eligibility before agent execution over graph-eligible cases
+  whose source predicate is also supported end to end by the v26 transfer loader, stored oracle,
+  and scorer. That support surface contains the Client-to-Server start-gap and JVM-exception
+  predicates; source-observable restart and memory-pressure cases are not admitted without a
+  matching transfer pipeline. After excluding the exact v24 and v25 parent manifests, the only
+  eligible unconsumed case is `ts2-ts-train-service-exception-plrfk2`, exposed to the agent only as
   `aegis-transfer-003`. Its source ground truth is the single component `ts-train-service`; the
-  adapter does not invent a dependency edge.
+  adapter does not invent a dependency edge. This consumes the last candidate under the frozen v26
+  rule, so another fresh transfer measurement requires a new pinned cohort or a separately frozen
+  end-to-end mechanism expansion.
 - The v26 source predicate uses the publisher-declared `retrieveByName` injection point. Stored
   telemetry has zero matching Error spans and zero exception logs in the normal window, then 1,981
   of each in the abnormal window. The deterministic scorer accepts equivalent complete-window

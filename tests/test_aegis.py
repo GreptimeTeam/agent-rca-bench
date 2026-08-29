@@ -390,6 +390,7 @@ def test_fresh_selection_manifest_binds_consumed_parents_before_trajectory() -> 
     manifest = json.loads((root / "aegis-transfer-v26-selection.json").read_text())
 
     assert manifest["selection_phase"] == "before_agent_trajectory"
+    assert manifest["selection_strategy"] == ("fresh-source-observable-supported-mechanism-v2")
     assert manifest["case_role"] == "measurement"
     assert manifest["agent_case_id"] not in {"aegis-transfer-001", "aegis-transfer-002"}
     for parent in manifest["consumed_parent_manifests"]:
@@ -399,6 +400,45 @@ def test_fresh_selection_manifest_binds_consumed_parents_before_trajectory() -> 
         == manifest["ranked_unconsumed_candidates"]
     )
     assert manifest["selected_case"]["source_case"] == manifest["ranked_unconsumed_candidates"][0]
+
+
+@pytest.mark.parametrize(
+    ("mechanism", "supported"),
+    [
+        (
+            {
+                "start_gap_predicate": "source_declared_http_client_server_start_gap",
+                "start_gap_predicate_match": True,
+            },
+            True,
+        ),
+        (
+            {
+                "predicate": "source_declared_jvm_exception",
+                "predicate_match": True,
+            },
+            True,
+        ),
+        (
+            {
+                "predicate": "source_declared_workload_restart",
+                "predicate_match": True,
+            },
+            False,
+        ),
+        (
+            {
+                "predicate": "source_declared_memory_pressure",
+                "predicate_match": True,
+            },
+            False,
+        ),
+    ],
+)
+def test_v26_fresh_selection_only_admits_end_to_end_supported_mechanisms(
+    mechanism: dict[str, object], supported: bool
+) -> None:
+    assert aegis._v26_transfer_mechanism_supported(mechanism) is supported
 
 
 def test_aegis_repository_verifies_and_extracts_only_dataset(tmp_path: Path, monkeypatch) -> None:

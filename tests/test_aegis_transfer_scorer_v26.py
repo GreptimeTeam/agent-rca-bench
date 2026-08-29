@@ -1,3 +1,5 @@
+import pytest
+
 from semantic_rca_bench.aegis_transfer_scorer import (
     CALIBRATION_SCORER_FIXTURE,
     FORMAL_SCORER_FIXTURE,
@@ -274,7 +276,6 @@ def test_v26_invalid_extra_citation_is_reliability_not_diagnosis_failure() -> No
     assert evaluation.required_evidence_covered is True
     assert evaluation.citation_integrity is False
     assert evaluation.efficiency_eligible is True
-    assert evaluation.valid_completion is False
     assert evaluation.auditable_completion is False
     assert evaluation.success is False
 
@@ -346,6 +347,65 @@ def test_v26_accepts_raw_paired_timestamps_without_prescribed_aggregation() -> N
     )
 
     assert evaluation.mechanism_evidence_match is True
+
+
+@pytest.mark.parametrize(
+    ("query", "result"),
+    [
+        (
+            _start_gap_query(),
+            QueryResult(
+                query_id="q02",
+                columns=["period", "span_count", "min_start_gap_ns", "max_start_gap_ns"],
+                rows=[["normal"]],
+                elapsed_seconds=0,
+            ),
+        ),
+        (
+            _raw_timestamp_query(),
+            QueryResult(
+                query_id="q02",
+                columns=["client_timestamp", "server_timestamp"],
+                rows=[["2025-07-20T12:33:00Z"]],
+                elapsed_seconds=0,
+            ),
+        ),
+        (
+            _time_binned_query(),
+            QueryResult(
+                query_id="q02",
+                columns=["bucket", "span_count", "max_gap_ns"],
+                rows=[["2025-07-20T12:33:00Z"]],
+                elapsed_seconds=0,
+            ),
+        ),
+    ],
+)
+def test_v26_malformed_start_gap_rows_fail_closed(query: str, result: QueryResult) -> None:
+    evaluation = evaluate_aegis_transfer_run(
+        _run(query=query, mechanism_result=result),
+        load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
+    )
+
+    assert evaluation.mechanism_evidence_match is False
+
+
+def test_v26_invalid_optional_minimum_fails_closed() -> None:
+    result = _start_gap_result().model_copy(
+        update={
+            "rows": [
+                ["normal", 5, "not-a-number", 20_000_000, 0],
+                ["abnormal", 2, 3_070_500_000, 3_111_000_000, 2],
+            ]
+        }
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        _run(mechanism_result=result),
+        load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
+    )
+
+    assert evaluation.mechanism_evidence_match is False
 
 
 def test_v26_rejects_result_aliases_not_derived_from_start_gap() -> None:
@@ -478,7 +538,7 @@ def _exception_run(
     return AgentRun(
         run_id="v26-formal-synthetic",
         visibility=Visibility.RAW,
-        model="deepseek-v4-flash",
+        model="deepseek-v4-pro",
         runner=AgentRunner.API,
         diagnosis=Diagnosis(
             affected_component="ts-train-service",
@@ -519,6 +579,50 @@ def test_formal_v26_accepts_component_scoped_exception_transition() -> None:
     assert evaluation.mechanism_evidence_match is True
     assert evaluation.efficiency_eligible is True
     assert evaluation.success is True
+
+
+def test_formal_v26_accepts_case_normalized_source_predicates() -> None:
+    query = (
+        _exception_query()
+        .replace(
+            "span_name LIKE '%retrieveByName%'",
+            "LOWER(span_name) LIKE '%retrievebyname%'",
+        )
+        .replace(
+            "level IN ('ERROR', 'SEVERE', 'FATAL')",
+            "UPPER(level) IN ('ERROR', 'SEVERE', 'FATAL')",
+        )
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        _exception_run(query=query), load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    )
+
+    assert evaluation.mechanism_evidence_match is True
+    assert evaluation.success is True
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        _exception_query().replace(
+            "service_name = 'ts-train-service'",
+            "LOWER(service_name) = 'ts-train-service'",
+            1,
+        ),
+        _exception_query().replace(
+            "span_status_code = 'STATUS_CODE_ERROR'",
+            "UPPER(span_status_code) = 'STATUS_CODE_ERROR'",
+        ),
+    ],
+)
+def test_formal_v26_does_not_case_fold_source_identity_or_status(query: str) -> None:
+    evaluation = evaluate_aegis_transfer_run(
+        _exception_run(query=query), load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    )
+
+    assert evaluation.mechanism_evidence_match is False
+    assert evaluation.success is False
 
 
 def test_formal_v26_causal_operation_is_part_of_primary_correctness() -> None:
@@ -685,6 +789,22 @@ def test_formal_v26_rejects_wrong_scope_window_and_incomplete_mechanism() -> Non
     ).mechanism_evidence_match
 
 
+def test_formal_v26_malformed_combined_result_fails_closed() -> None:
+    malformed = QueryResult(
+        query_id="q01",
+        columns=["period", "error_span_count", "exception_log_count"],
+        rows=[["normal"]],
+        elapsed_seconds=0,
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        _exception_run(result=malformed),
+        load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
+    )
+
+    assert evaluation.mechanism_evidence_match is False
+
+
 def _single_table_exception_query(table: str) -> str:
     if table == "traces":
         source = """SELECT CASE
@@ -769,6 +889,29 @@ def test_formal_v26_accepts_split_trace_and_log_aggregates() -> None:
     assert evaluation.mechanism_evidence_match is True
     assert evaluation.supporting_evidence_query_ids == ["q01", "q02"]
     assert evaluation.success is True
+
+
+def test_formal_v26_malformed_split_aggregate_fails_closed() -> None:
+    run = _exception_run()
+    malformed = QueryResult(
+        query_id="q01",
+        columns=["period", "observation_count"],
+        rows=[["normal"]],
+        elapsed_seconds=0,
+    )
+    trace = run.tool_calls[0].model_copy(
+        update={
+            "input": {"query": _single_table_exception_query("traces")},
+            "output": malformed.model_dump(mode="json"),
+        }
+    )
+    run = run.model_copy(update={"tool_calls": [trace]})
+
+    evaluation = evaluate_aegis_transfer_run(
+        run, load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    )
+
+    assert evaluation.mechanism_evidence_match is False
 
 
 def test_formal_v26_accepts_equivalent_filter_and_count_expressions() -> None:

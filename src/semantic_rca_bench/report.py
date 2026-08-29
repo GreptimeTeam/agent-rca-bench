@@ -8,6 +8,11 @@ from importlib.resources import files
 from pathlib import Path
 from statistics import median
 
+from semantic_rca_bench.protocol import benchmark_protocol
+
+CASE_REPORT_SCHEMA_VERSION = 5
+COMBINED_REPORT_SCHEMA_VERSION = 6
+
 MODEL_PRICING = {
     "claude-opus-4-8": {
         "currency": "USD",
@@ -202,39 +207,6 @@ def case_context(
     }
 
 
-def _normalize_run_metadata(report: dict[str, object]) -> None:
-    budget = int(report.get("max_tool_calls", report.get("max_queries", 0)) or 0)
-    orders = {
-        int(order.get("repetition", 0)): list(order.get("levels", []))
-        for order in report.get("orders", [])
-        if isinstance(order, dict)
-    }
-    for item in report.get("runs", []):
-        if not isinstance(item, dict):
-            continue
-        run = item.get("run")
-        if not isinstance(run, dict):
-            continue
-        requested = 0
-        for response in run.get("responses", []):
-            if not isinstance(response, dict):
-                continue
-            requested += sum(
-                block.get("type") == "tool_use" and block.get("name") != "submit_diagnosis"
-                for block in response.get("content", [])
-                if isinstance(block, dict)
-            )
-        run.setdefault("tool_calls_requested", requested)
-        if "tool_budget_exhausted" not in run:
-            run["tool_budget_exhausted"] = budget > 0 and requested > budget
-        if "position" not in item:
-            repetition = int(item.get("repetition", 0))
-            visibility = run.get("visibility")
-            levels = orders.get(repetition, [])
-            if visibility in levels:
-                item["position"] = levels.index(visibility)
-
-
 def _position_balanced(report: Mapping[str, object]) -> bool:
     runs = [item for item in report.get("runs", []) if isinstance(item, dict)]
     levels = sorted(
@@ -263,23 +235,15 @@ def _position_balanced(report: Mapping[str, object]) -> bool:
 
 def _load_case_report(source: Path) -> dict[str, object]:
     report = json.loads(source.read_text())
-    if not report.get("case") and report.get("source_report"):
-        source_report = Path(str(report["source_report"]))
-        candidates = [source_report, source.parent / source_report.name]
-        original = next((path for path in candidates if path.is_file()), None)
-        if original:
-            ingestion = json.loads(original.read_text())
-            report["case"] = ingestion.get("case", {})
-            report["ingest"] = ingestion.get("ingest", {})
-            surfaces = ingestion.get("semantic_surfaces", {})
-            if isinstance(surfaces, dict):
-                report["semantic_coverage"] = surfaces.get("coverage")
+    if not isinstance(report, dict):
+        raise ValueError("RCA report must be a JSON object")
+    if report.get("report_schema_version") != CASE_REPORT_SCHEMA_VERSION:
+        raise ValueError("unsupported RCA report schema")
+    if report.get("protocol") != benchmark_protocol():
+        raise ValueError("RCA report protocol does not match the current benchmark protocol")
+    if not isinstance(report.get("case"), dict) or not isinstance(report.get("runs"), list):
+        raise ValueError("RCA report is missing its case or runs")
     report["eval_report"] = str(source)
-    report.setdefault("case_role", "development")
-    case = report.get("case") if isinstance(report.get("case"), dict) else {}
-    truth = report.get("ground_truth") if isinstance(report.get("ground_truth"), dict) else {}
-    report.setdefault("case_context", case_context(case, truth))
-    _normalize_run_metadata(report)
     return report
 
 
@@ -468,7 +432,7 @@ def render_reports(sources: list[Path], output: Path) -> None:
             if pricing is not None:
                 run["estimated_api_cost"] = _estimated_api_cost(run, pricing)
     report = {
-        "report_schema_version": 6,
+        "report_schema_version": COMBINED_REPORT_SCHEMA_VERSION,
         "pilot_id": output.stem,
         "runner": runner,
         "model": model,
