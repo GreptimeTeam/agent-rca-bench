@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 import semantic_rca_bench.agent as agent_module
 from semantic_rca_bench.agent import (
     SUBMIT_TOOL,
@@ -21,7 +23,13 @@ from semantic_rca_bench.agent import (
     _system_prompt,
     run_agent,
 )
-from semantic_rca_bench.contracts import CaseInput, DatabaseLoad, QueryResult, Visibility
+from semantic_rca_bench.contracts import (
+    ApiTransport,
+    CaseInput,
+    DatabaseLoad,
+    QueryResult,
+    Visibility,
+)
 from semantic_rca_bench.inspect import summarize_semantic_surfaces
 
 
@@ -35,7 +43,7 @@ def test_deepseek_model_uses_compatible_anthropic_endpoint(monkeypatch) -> None:
     monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
     monkeypatch.setattr(agent_module.anthropic, "Anthropic", fake_client)
 
-    client = _anthropic_client("deepseek-v4-flash")
+    client = _anthropic_client(ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES)
 
     assert client == {
         "api_key": "test-deepseek-key",
@@ -54,7 +62,7 @@ def test_non_deepseek_model_uses_anthropic_endpoint(monkeypatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
     monkeypatch.setattr(agent_module.anthropic, "Anthropic", fake_client)
 
-    client = _anthropic_client("claude-sonnet-5")
+    client = _anthropic_client(ApiTransport.ANTHROPIC_MESSAGES)
 
     assert client == {"api_key": "test-anthropic-key"}
     assert calls == [client]
@@ -358,6 +366,7 @@ def test_agent_records_requested_calls_rejected_by_the_tool_budget(monkeypatch) 
         CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
         Visibility.RAW,
         model="test-model",
+        api_transport=ApiTransport.ANTHROPIC_MESSAGES,
         max_tool_calls=0,
     )
 
@@ -428,6 +437,7 @@ def test_deepseek_uses_automatic_cache_and_counts_native_usage(monkeypatch) -> N
         CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
         Visibility.RAW,
         model="deepseek-v4-flash",
+        api_transport=ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
         max_tool_calls=2,
     )
 
@@ -460,7 +470,12 @@ def test_openai_responses_runner_replays_output_items_and_counts_cache_usage(mon
 
         def model_dump(self, *, mode: str) -> dict[str, object]:
             assert mode == "json"
-            return {"output": self._raw_output, "usage": self._usage}
+            return {
+                "status": "completed",
+                "incomplete_details": None,
+                "output": self._raw_output,
+                "usage": self._usage,
+            }
 
     first_raw_output = [
         {
@@ -496,6 +511,7 @@ def test_openai_responses_runner_replays_output_items_and_counts_cache_usage(mon
                         "cache_write_tokens": 10,
                     },
                     "output_tokens": 5,
+                    "output_tokens_details": {"reasoning_tokens": 3},
                 },
             ),
             Response(
@@ -523,6 +539,7 @@ def test_openai_responses_runner_replays_output_items_and_counts_cache_usage(mon
                         "cache_write_tokens": 0,
                     },
                     "output_tokens": 6,
+                    "output_tokens_details": {"reasoning_tokens": 1},
                 },
             ),
         ]
@@ -550,15 +567,24 @@ def test_openai_responses_runner_replays_output_items_and_counts_cache_usage(mon
         CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
         Visibility.RAW,
         model="gpt-5.6-sol",
+        api_transport=ApiTransport.OPENAI_RESPONSES,
+        reasoning_effort="medium",
+        max_output_tokens=16384,
         max_tool_calls=2,
     )
 
     assert result.diagnosis is not None
     assert result.usage.input_tokens == 40
     assert result.usage.output_tokens == 11
+    assert result.usage.reasoning_tokens == 4
+    assert result.api_transport is ApiTransport.OPENAI_RESPONSES
+    assert result.reasoning_effort == "medium"
+    assert result.max_output_tokens == 16384
     assert len(result.tool_calls) == 1
     assert requests[0]["store"] is False
     assert requests[0]["include"] == ["reasoning.encrypted_content"]
+    assert requests[0]["reasoning"] == {"effort": "medium"}
+    assert requests[0]["max_output_tokens"] == 16384
     assert requests[0]["prompt_cache_key"].startswith("semantic-rca-raw-")
     assert requests[0]["prompt_cache_options"] == {"mode": "implicit", "ttl": "30m"}
     assert all(
@@ -571,6 +597,65 @@ def test_openai_responses_runner_replays_output_items_and_counts_cache_usage(mon
     )
     assert function_output["call_id"] == "call-1"
     assert json.loads(function_output["output"])["query_id"] == "q01"
+
+
+def test_openai_incomplete_response_records_provider_reason(monkeypatch) -> None:
+    raw = {
+        "status": "incomplete",
+        "incomplete_details": {"reason": "max_output_tokens"},
+        "output": [],
+        "usage": {
+            "input_tokens": 10,
+            "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
+            "output_tokens": 16_384,
+            "output_tokens_details": {"reasoning_tokens": 16_384},
+        },
+    }
+
+    class Response:
+        output: list[object] = []
+        usage = SimpleNamespace(output_tokens=16_384)
+
+        def model_dump(self, *, mode: str) -> dict[str, object]:
+            assert mode == "json"
+            return raw
+
+    provider = SimpleNamespace(responses=SimpleNamespace(create=lambda **_: Response()))
+    monkeypatch.setattr(agent_module, "_openai_client", lambda: provider)
+
+    result = run_agent(
+        SimpleNamespace(client=SimpleNamespace()),  # type: ignore[arg-type]
+        CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
+        Visibility.RAW,
+        model="gpt-5.6-sol",
+        api_transport=ApiTransport.OPENAI_RESPONSES,
+        reasoning_effort="medium",
+        max_output_tokens=16_384,
+        max_tool_calls=2,
+    )
+
+    assert result.error == (
+        "invalid provider response: OpenAI response status is 'incomplete': max_output_tokens"
+    )
+    assert result.responses == [raw]
+    assert result.usage.output_tokens == 16_384
+    assert result.usage.reasoning_tokens == 16_384
+
+
+def test_openai_tool_error_uses_explicit_json_envelope() -> None:
+    output = agent_module._openai_tool_output(
+        agent_module.ToolInvocation(
+            content="SQL rejected",
+            is_error=True,
+            remaining=7,
+        )
+    )
+
+    assert json.loads(output) == {
+        "is_error": True,
+        "error": "SQL rejected",
+        "remaining_tool_calls": 7,
+    }
 
 
 def test_invalid_provider_usage_is_persisted_with_raw_response(monkeypatch) -> None:
@@ -590,6 +675,7 @@ def test_invalid_provider_usage_is_persisted_with_raw_response(monkeypatch) -> N
         CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
         Visibility.RAW,
         model="test-model",
+        api_transport=ApiTransport.ANTHROPIC_MESSAGES,
         max_tool_calls=2,
     )
 
@@ -650,6 +736,7 @@ def test_valid_final_output_records_same_response_investigation_calls_as_rejecte
         CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
         Visibility.RAW,
         model="test-model",
+        api_transport=ApiTransport.ANTHROPIC_MESSAGES,
         max_tool_calls=2,
     )
 
@@ -685,6 +772,7 @@ def test_agent_turn_limit_tracks_tool_budget_and_records_failure(monkeypatch) ->
         CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
         Visibility.RAW,
         model="test-model",
+        api_transport=ApiTransport.ANTHROPIC_MESSAGES,
         max_tool_calls=2,
     )
 
@@ -705,6 +793,7 @@ def test_api_provider_initialization_failure_is_recorded(monkeypatch) -> None:
         CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
         Visibility.RAW,
         model="test-model",
+        api_transport=ApiTransport.ANTHROPIC_MESSAGES,
         max_tool_calls=2,
     )
 
@@ -730,6 +819,18 @@ def test_api_session_records_unknown_tools_as_rejected_calls() -> None:
     assert len(session.rejected_tool_calls) == 1
     assert session.rejected_tool_calls[0].tool_name == "invented_tool"
     assert session.remaining == 2
+
+
+def test_api_runner_rejects_nonpositive_output_budget_before_provider_access() -> None:
+    with pytest.raises(ValueError, match="max_output_tokens must be positive"):
+        run_agent(
+            SimpleNamespace(client=SimpleNamespace()),  # type: ignore[arg-type]
+            CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
+            Visibility.RAW,
+            model="test-model",
+            api_transport=ApiTransport.ANTHROPIC_MESSAGES,
+            max_output_tokens=0,
+        )
 
 
 def test_investigation_trace_records_database_load_delta() -> None:

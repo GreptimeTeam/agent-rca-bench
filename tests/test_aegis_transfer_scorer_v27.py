@@ -10,6 +10,7 @@ from semantic_rca_bench.contracts import (
     AgentRun,
     AgentRunner,
     AgentUsage,
+    ApiTransport,
     CausalScope,
     DatabaseLoad,
     Diagnosis,
@@ -207,6 +208,8 @@ def _run(
         visibility=Visibility.SEMANTIC_GRAPH,
         model="deepseek-v4-flash",
         runner=AgentRunner.API,
+        api_transport=ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
+        max_output_tokens=4096,
         diagnosis=Diagnosis(
             affected_component="ts-route-plan-service",
             causal_dependency="ts-travel2-service",
@@ -640,6 +643,8 @@ def _exception_run(
         visibility=Visibility.RAW,
         model="deepseek-v4-pro",
         runner=AgentRunner.API,
+        api_transport=ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
+        max_output_tokens=4096,
         diagnosis=Diagnosis(
             affected_component="ts-train-service",
             causal_dependency=dependency,

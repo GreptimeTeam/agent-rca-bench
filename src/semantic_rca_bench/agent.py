@@ -21,6 +21,7 @@ from semantic_rca_bench.contracts import (
     AgentRun,
     AgentRunner,
     AgentUsage,
+    ApiTransport,
     CaseInput,
     CausalScope,
     DatabaseLoad,
@@ -394,9 +395,11 @@ def run_agent(
     visibility: Visibility,
     *,
     model: str,
+    api_transport: ApiTransport,
+    reasoning_effort: str | None = None,
     max_tool_calls: int = 24,
     max_turns: int | None = None,
-    max_tokens: int = 4096,
+    max_output_tokens: int = 4096,
     semantic_coverage: dict[str, object] | None = None,
 ) -> AgentRun:
     tools = _investigation_tools(
@@ -409,6 +412,8 @@ def run_agent(
         case_input,
         visibility,
         model=model,
+        api_transport=api_transport,
+        reasoning_effort=reasoning_effort,
         system_prompt=_system_prompt(),
         user_prompt=_incident_prompt(case_input, max_tool_calls),
         investigation_tools=tools,
@@ -416,7 +421,7 @@ def run_agent(
         validate_output=_validate_diagnosis_output,
         max_tool_calls=max_tool_calls,
         max_turns=max_turns,
-        max_tokens=max_tokens,
+        max_output_tokens=max_output_tokens,
         semantic_coverage=semantic_coverage,
         prompt_cache=True,
     )
@@ -429,6 +434,9 @@ def run_agent(
         visibility=visibility,
         model=model,
         runner=AgentRunner.API,
+        api_transport=api_transport,
+        reasoning_effort=reasoning_effort,
+        max_output_tokens=max_output_tokens,
         diagnosis=diagnosis,
         error=error,
         tool_calls=result.tool_calls,
@@ -447,6 +455,8 @@ def run_structured_api_agent(
     visibility: Visibility,
     *,
     model: str,
+    api_transport: ApiTransport,
+    reasoning_effort: str | None = None,
     system_prompt: str,
     user_prompt: str,
     investigation_tools: list[dict[str, object]],
@@ -454,7 +464,7 @@ def run_structured_api_agent(
     validate_output: Callable[[object], dict[str, object]],
     max_tool_calls: int,
     max_turns: int | None,
-    max_tokens: int = 4096,
+    max_output_tokens: int = 4096,
     semantic_coverage: dict[str, object] | None = None,
     prompt_cache: bool = False,
 ) -> StructuredAgentResult:
@@ -462,12 +472,17 @@ def run_structured_api_agent(
         max_turns = max_tool_calls + 10
     if max_turns < max_tool_calls + 1:
         raise ValueError("max_turns must allow every tool call and a final output turn")
-    if _uses_openai_responses(model):
+    if max_output_tokens < 1:
+        raise ValueError("max_output_tokens must be positive")
+    if api_transport is ApiTransport.OPENAI_RESPONSES:
+        if reasoning_effort is None:
+            raise ValueError("OpenAI Responses runs require an explicit reasoning effort")
         return _run_openai_structured_api_agent(
             gateway,
             case_input,
             visibility,
             model=model,
+            reasoning_effort=reasoning_effort,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             investigation_tools=investigation_tools,
@@ -475,10 +490,12 @@ def run_structured_api_agent(
             validate_output=validate_output,
             max_tool_calls=max_tool_calls,
             max_turns=max_turns,
-            max_tokens=max_tokens,
+            max_output_tokens=max_output_tokens,
             semantic_coverage=semantic_coverage,
             prompt_cache=prompt_cache,
         )
+    if reasoning_effort is not None:
+        raise ValueError("reasoning effort is only supported by the OpenAI Responses runner")
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_prompt}]
     session = InvestigationSession(
         gateway,
@@ -493,7 +510,7 @@ def run_structured_api_agent(
     started = time.monotonic()
     output_tool_name = str(output_tool["name"])
     try:
-        client = _anthropic_client(model)
+        client = _anthropic_client(api_transport)
     except Exception as error:
         return _structured_result(
             session,
@@ -506,12 +523,12 @@ def run_structured_api_agent(
     for _ in range(max_turns):
         request: dict[str, object] = {
             "model": model,
-            "max_tokens": max_tokens,
+            "max_tokens": max_output_tokens,
             "system": system_prompt,
             "tools": [*investigation_tools, output_tool],
             "messages": messages,
         }
-        if prompt_cache and not model.startswith("deepseek-"):
+        if prompt_cache and api_transport is ApiTransport.ANTHROPIC_MESSAGES:
             request["cache_control"] = {"type": "ephemeral"}
         try:
             response = client.messages.create(
@@ -628,6 +645,7 @@ def _run_openai_structured_api_agent(
     visibility: Visibility,
     *,
     model: str,
+    reasoning_effort: str,
     system_prompt: str,
     user_prompt: str,
     investigation_tools: list[dict[str, object]],
@@ -635,7 +653,7 @@ def _run_openai_structured_api_agent(
     validate_output: Callable[[object], dict[str, object]],
     max_tool_calls: int,
     max_turns: int,
-    max_tokens: int,
+    max_output_tokens: int,
     semantic_coverage: dict[str, object] | None,
     prompt_cache: bool,
 ) -> StructuredAgentResult:
@@ -670,7 +688,8 @@ def _run_openai_structured_api_agent(
             "instructions": system_prompt,
             "input": deepcopy(input_items),
             "tools": tools,
-            "max_output_tokens": max_tokens,
+            "max_output_tokens": max_output_tokens,
+            "reasoning": {"effort": reasoning_effort},
             "parallel_tool_calls": True,
             "include": ["reasoning.encrypted_content"],
             "store": False,
@@ -697,6 +716,8 @@ def _run_openai_structured_api_agent(
             responses.append(raw_response)
             usage.input_tokens += _uncached_input_tokens(raw_response)
             usage.output_tokens += int(response.usage.output_tokens)
+            usage.reasoning_tokens += _reasoning_tokens(raw_response)
+            _validate_openai_response_status(raw_response)
             output_items = list(response.output)
             raw_output_items = raw_response.get("output")
             if not isinstance(raw_output_items, list):
@@ -776,7 +797,7 @@ def _run_openai_structured_api_agent(
                 {
                     "type": "function_call_output",
                     "call_id": call_id,
-                    "output": invocation.content,
+                    "output": _openai_tool_output(invocation),
                 }
             )
         input_items.append(
@@ -820,13 +841,15 @@ def _structured_result(
     )
 
 
-def _anthropic_client(model: str) -> anthropic.Anthropic:
-    if model.startswith("deepseek-"):
+def _anthropic_client(api_transport: ApiTransport) -> anthropic.Anthropic:
+    if api_transport is ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES:
         api_key = _api_credential("DEEPSEEK_API_KEY", DEEPSEEK_KEYCHAIN_SERVICE)
         return anthropic.Anthropic(
             api_key=api_key,
             base_url=DEEPSEEK_ANTHROPIC_BASE_URL,
         )
+    if api_transport is not ApiTransport.ANTHROPIC_MESSAGES:
+        raise AgentError(f"unsupported Anthropic transport: {api_transport.value}")
     api_key = _api_credential("ANTHROPIC_API_KEY", ANTHROPIC_KEYCHAIN_SERVICE)
     return anthropic.Anthropic(api_key=api_key)
 
@@ -834,10 +857,6 @@ def _anthropic_client(model: str) -> anthropic.Anthropic:
 def _openai_client() -> openai.OpenAI:
     api_key = _api_credential("OPENAI_API_KEY", OPENAI_KEYCHAIN_SERVICE)
     return openai.OpenAI(api_key=api_key)
-
-
-def _uses_openai_responses(model: str) -> bool:
-    return model.startswith(("gpt-", "o1", "o3", "o4"))
 
 
 def _openai_function_tool(tool: dict[str, object]) -> dict[str, object]:
@@ -881,6 +900,45 @@ def _openai_function_call(item: object) -> tuple[str, str, dict[str, object]]:
     if not isinstance(decoded, dict):
         raise AgentError("OpenAI function call arguments must decode to an object")
     return call_id, name, decoded
+
+
+def _openai_tool_output(invocation: ToolInvocation) -> str:
+    if not invocation.is_error:
+        return invocation.content
+    return json.dumps(
+        {
+            "is_error": True,
+            "error": invocation.content,
+            "remaining_tool_calls": invocation.remaining,
+        },
+        separators=(",", ":"),
+    )
+
+
+def _validate_openai_response_status(response: dict[str, object]) -> None:
+    status = response.get("status")
+    if status == "completed":
+        return
+    details = response.get("incomplete_details")
+    reason = details.get("reason") if isinstance(details, dict) else None
+    error = response.get("error")
+    message = error.get("message") if isinstance(error, dict) else None
+    detail = reason or message or "no provider detail"
+    raise AgentError(f"OpenAI response status is {status!r}: {detail}")
+
+
+def _reasoning_tokens(response: dict[str, object]) -> int:
+    raw_usage = response.get("usage")
+    if not isinstance(raw_usage, dict):
+        raise AgentError("provider response has no usage object")
+    output_tokens = int(raw_usage.get("output_tokens", 0) or 0)
+    details = raw_usage.get("output_tokens_details")
+    reasoning_tokens = (
+        int(details.get("reasoning_tokens", 0) or 0) if isinstance(details, dict) else 0
+    )
+    if reasoning_tokens < 0 or reasoning_tokens > output_tokens:
+        raise AgentError("provider reasoning token breakdown exceeds output_tokens")
+    return reasoning_tokens
 
 
 def _uncached_input_tokens(response: dict[str, object]) -> int:

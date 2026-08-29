@@ -14,6 +14,7 @@ from semantic_rca_bench.agent import _investigation_tools, run_structured_api_ag
 from semantic_rca_bench.contracts import (
     AgentRunner,
     AgentUsage,
+    ApiTransport,
     CaseInput,
     QueryResult,
     RejectedToolCall,
@@ -64,6 +65,9 @@ class DiscoveryAgentRun(BaseModel):
     visibility: Visibility
     model: str
     runner: AgentRunner
+    api_transport: ApiTransport | None = None
+    reasoning_effort: str | None = None
+    max_output_tokens: int | None = None
     answer: DiscoveryAnswer | None
     error: str | None = None
     tool_calls: list[ToolTrace]
@@ -150,6 +154,9 @@ def run_discovery_agent(
     *,
     runner: AgentRunner,
     model: str,
+    api_transport: ApiTransport | None = None,
+    reasoning_effort: str | None = None,
+    max_output_tokens: int = 4096,
     max_tool_calls: int = DISCOVERY_MAX_TOOL_CALLS,
 ) -> DiscoveryAgentRun:
     if visibility not in {Visibility.RAW, Visibility.SEMANTIC_GRAPH}:
@@ -166,6 +173,8 @@ def run_discovery_agent(
     user_prompt = discovery_task_prompt(case_input.database, fixture, max_tool_calls)
     schema = discovery_output_schema()
     if runner is AgentRunner.API:
+        if api_transport is None:
+            raise ValueError("API discovery runs require an explicit transport")
         output_tool = {
             "name": "submit_discovery_result",
             "description": "Submit the discovered table and cited temporal evidence query.",
@@ -176,6 +185,8 @@ def run_discovery_agent(
             case_input,
             visibility,
             model=model,
+            api_transport=api_transport,
+            reasoning_effort=reasoning_effort,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             investigation_tools=tools,
@@ -185,6 +196,7 @@ def run_discovery_agent(
             ),
             max_tool_calls=max_tool_calls,
             max_turns=max_tool_calls + 10,
+            max_output_tokens=max_output_tokens,
         )
         turn_limit = max_tool_calls + 10
         turn_limit_enforced = True
@@ -220,6 +232,9 @@ def run_discovery_agent(
         visibility=visibility,
         model=model,
         runner=runner,
+        api_transport=api_transport,
+        reasoning_effort=reasoning_effort,
+        max_output_tokens=max_output_tokens if runner is AgentRunner.API else None,
         answer=answer,
         error=result.error,
         tool_calls=result.tool_calls,

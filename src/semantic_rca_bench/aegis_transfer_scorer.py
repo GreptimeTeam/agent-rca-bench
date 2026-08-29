@@ -17,6 +17,7 @@ from semantic_rca_bench.contracts import (
     AgentRun,
     AgentRunner,
     AgentUsage,
+    ApiTransport,
     CausalScope,
     DatabaseLoad,
     Diagnosis,
@@ -46,8 +47,18 @@ _SCORER_IDENTITIES = {
         "aegis-transfer-002",
         "development",
         "deepseek-v4-flash",
+        ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
+        4096,
+        None,
     ),
-    FORMAL_SCORER_REVISION: ("aegis-transfer-003", "measurement", "deepseek-v4-pro"),
+    FORMAL_SCORER_REVISION: (
+        "aegis-transfer-003",
+        "measurement",
+        "deepseek-v4-pro",
+        ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
+        4096,
+        None,
+    ),
 }
 
 
@@ -80,11 +91,13 @@ class CanonicalApiRunner(BaseModel):
 
     runner: AgentRunner
     model: str
+    api_transport: ApiTransport
+    reasoning_effort: str | None
     benchmark_protocol_version: int
     visibility_levels: tuple[Visibility, ...]
     max_tool_calls: int
     max_turns: int
-    max_tokens: int
+    max_output_tokens: int
     repetitions: int
     treatment_order_seed: int
     parallel_runs: int
@@ -174,16 +187,24 @@ class StartGapQueryScope:
     projections: dict[str, tuple[exp.Expression, ...]]
 
 
-def canonical_api_runner_contract(*, model: str) -> dict[str, object]:
+def canonical_api_runner_contract(
+    *,
+    model: str,
+    api_transport: ApiTransport,
+    max_output_tokens: int,
+    reasoning_effort: str | None,
+) -> dict[str, object]:
     selected_protocol = benchmark_protocol()
     return {
         "runner": AgentRunner.API.value,
         "model": model,
+        "api_transport": api_transport.value,
+        "reasoning_effort": reasoning_effort,
         "benchmark_protocol_version": selected_protocol["version"],
         "visibility_levels": [level.value for level in Visibility],
         "max_tool_calls": 48,
         "max_turns": 58,
-        "max_tokens": 4096,
+        "max_output_tokens": max_output_tokens,
         "repetitions": 2,
         "treatment_order_seed": 0,
         "parallel_runs": 1,
@@ -205,6 +226,9 @@ def load_transfer_scorer_fixture(
         raise ValueError("Aegis transfer scorer fixture uses the wrong case role")
     if fixture.canonical_api_runner.model_dump(mode="json") != canonical_api_runner_contract(
         model=expected_identity[2],
+        api_transport=expected_identity[3],
+        max_output_tokens=expected_identity[4],
+        reasoning_effort=expected_identity[5],
     ):
         raise ValueError("Aegis transfer canonical API runner contract drifted")
     truth = fixture.ground_truth
@@ -269,8 +293,18 @@ def evaluate_aegis_transfer_run(
     fixture: AegisTransferScorerFixture,
     *,
     expected_model: str | None = None,
+    expected_api_transport: ApiTransport | None = None,
+    expected_reasoning_effort: str | None = None,
+    expected_max_output_tokens: int | None = None,
 ) -> AegisTransferEvaluation:
-    return _evaluate_structured_transfer_run(run, fixture, expected_model=expected_model)
+    return _evaluate_structured_transfer_run(
+        run,
+        fixture,
+        expected_model=expected_model,
+        expected_api_transport=expected_api_transport,
+        expected_reasoning_effort=expected_reasoning_effort,
+        expected_max_output_tokens=expected_max_output_tokens,
+    )
 
 
 def _evaluate_structured_transfer_run(
@@ -278,12 +312,29 @@ def _evaluate_structured_transfer_run(
     fixture: AegisTransferScorerFixture,
     *,
     expected_model: str | None,
+    expected_api_transport: ApiTransport | None,
+    expected_reasoning_effort: str | None,
+    expected_max_output_tokens: int | None,
 ) -> AegisTransferEvaluation:
     diagnosis = run.diagnosis
     truth = fixture.ground_truth
     runner_contract_match = (
         run.runner is fixture.canonical_api_runner.runner
         and run.model == (expected_model or fixture.canonical_api_runner.model)
+        and run.api_transport
+        is (expected_api_transport or fixture.canonical_api_runner.api_transport)
+        and run.reasoning_effort
+        == (
+            expected_reasoning_effort
+            if expected_api_transport is not None
+            else fixture.canonical_api_runner.reasoning_effort
+        )
+        and run.max_output_tokens
+        == (
+            expected_max_output_tokens
+            if expected_max_output_tokens is not None
+            else fixture.canonical_api_runner.max_output_tokens
+        )
         and run.visibility in fixture.canonical_api_runner.visibility_levels
     )
     tool_budget_contract_match = len(run.tool_calls) <= fixture.canonical_api_runner.max_tool_calls
@@ -813,7 +864,12 @@ def audit_transfer_scorer(
         "canonical_runner_contract_match": (
             scorer_identity is not None
             and fixture.canonical_api_runner.model_dump(mode="json")
-            == canonical_api_runner_contract(model=scorer_identity[2])
+            == canonical_api_runner_contract(
+                model=scorer_identity[2],
+                api_transport=scorer_identity[3],
+                max_output_tokens=scorer_identity[4],
+                reasoning_effort=scorer_identity[5],
+            )
         ),
         "opaque_agent_input": opaque_case_gate,
         "scorer_regressions": scorer_regressions_pass,
@@ -2463,6 +2519,9 @@ def _canonical_synthetic_run(
         visibility=Visibility.RAW,
         model=fixture.canonical_api_runner.model,
         runner=fixture.canonical_api_runner.runner,
+        api_transport=fixture.canonical_api_runner.api_transport,
+        reasoning_effort=fixture.canonical_api_runner.reasoning_effort,
+        max_output_tokens=fixture.canonical_api_runner.max_output_tokens,
         diagnosis=Diagnosis(
             affected_component=truth.affected_component,
             causal_dependency=truth.causal_dependency,

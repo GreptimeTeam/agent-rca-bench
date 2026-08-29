@@ -236,7 +236,7 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
     )
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
-    paid = _parser().parse_args([*execution, "--confirm-paid-api"])
+    paid = _parser().parse_args([*execution, "--max-new-runs", "1", "--confirm-paid-api"])
     export = _parser().parse_args(
         [
             "aegis-transfer-measurement-export",
@@ -254,6 +254,7 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
     )
 
     assert paid.confirm_paid_api is True
+    assert paid.max_new_runs == 1
     assert paid.database == "case_03"
     assert str(paid.selection) == "fixtures/reference/aegis-transfer-v27-selection.json"
     assert str(paid.scorer) == "fixtures/reference/aegis-transfer-v28-scorer.json"

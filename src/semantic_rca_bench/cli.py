@@ -42,6 +42,7 @@ from semantic_rca_bench.agent import run_agent
 from semantic_rca_bench.contracts import (
     AgentRun,
     AgentRunner,
+    ApiTransport,
     CaseInput,
     GroundTruth,
     QueryResult,
@@ -162,6 +163,7 @@ def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
         default=AgentRunner.API.value,
     )
     parser.add_argument("--model", default="claude-sonnet-5")
+    _add_api_transport_arguments(parser)
     parser.add_argument(
         "--levels",
         nargs="+",
@@ -176,6 +178,19 @@ def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
         choices=["development", "measurement"],
         default="development",
     )
+
+
+def _add_api_transport_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--api-transport",
+        choices=[transport.value for transport in ApiTransport],
+        default=ApiTransport.ANTHROPIC_MESSAGES.value,
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=["none", "low", "medium", "high", "xhigh", "max"],
+    )
+    parser.add_argument("--max-output-tokens", type=int, default=4096)
 
 
 def _add_aegis_formal_environment_arguments(
@@ -289,6 +304,11 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         help="acknowledge that this invocation may execute pending paid API cells",
     )
+    aegis_formal_run.add_argument(
+        "--max-new-runs",
+        type=int,
+        help="execute at most this many pending cells in this invocation",
+    )
 
     aegis_transfer_run = subparsers.add_parser("aegis-transfer-run")
     _add_aegis_formal_environment_arguments(
@@ -393,6 +413,7 @@ def _parser() -> argparse.ArgumentParser:
         default=AgentRunner.API.value,
     )
     discovery_run.add_argument("--model", default="claude-sonnet-5")
+    _add_api_transport_arguments(discovery_run)
     discovery_run.add_argument("--repetitions", type=int, default=2)
     discovery_run.add_argument("--seed", type=int, default=0)
     discovery_run.add_argument("--output", type=Path)
@@ -417,6 +438,7 @@ def _parser() -> argparse.ArgumentParser:
         default=AgentRunner.API.value,
     )
     graph_run.add_argument("--model", default="claude-sonnet-5")
+    _add_api_transport_arguments(graph_run)
     graph_run.add_argument("--repetitions", type=int, default=2)
     graph_run.add_argument("--seed", type=int, default=0)
     graph_run.add_argument("--output", type=Path)
@@ -581,6 +603,7 @@ def aegis_transfer_formal_run(args: argparse.Namespace) -> int:
                 args.protocol,
                 report,
                 paid_api_confirmed=args.confirm_paid_api,
+                max_new_runs=args.max_new_runs,
                 on_update=lambda value: write_formal_report(args.report, value),
             )
     finally:
@@ -593,15 +616,7 @@ def aegis_transfer_formal_run(args: argparse.Namespace) -> int:
         write_formal_report(args.report, report)
     execution = report["execution"]
     print(args.report)
-    return (
-        0
-        if (
-            execution["complete"]
-            and execution["runner_errors"] == 0
-            and execution["budget_exhaustions"] == 0
-        )
-        else 1
-    )
+    return 0 if execution["runner_errors"] == 0 and execution["budget_exhaustions"] == 0 else 1
 
 
 def aegis_transfer_run(args: argparse.Namespace) -> int:
@@ -949,6 +964,7 @@ def discovery_run(args: argparse.Namespace) -> int:
         raise ValueError("discovery repetitions must be a positive multiple of 2")
     source, fixture, endpoint, database = _discovery_source(args.report, args.fixture)
     runner = AgentRunner(args.runner)
+    api_transport = ApiTransport(args.api_transport) if runner is AgentRunner.API else None
     levels = [Visibility.RAW, Visibility.SEMANTIC_GRAPH]
     orders = _run_orders(levels, args.repetitions, args.seed)
     output = args.output or _discovery_output(fixture.fixture_id, runner, args.model)
@@ -957,6 +973,9 @@ def discovery_run(args: argparse.Namespace) -> int:
         "source_report": str(args.report),
         "runner": runner.value,
         "model": args.model,
+        "api_transport": api_transport.value if api_transport else None,
+        "reasoning_effort": args.reasoning_effort if api_transport else None,
+        "max_output_tokens": args.max_output_tokens if api_transport else None,
         "seed": args.seed,
         "max_tool_calls": DISCOVERY_MAX_TOOL_CALLS,
         "repetitions": args.repetitions,
@@ -1038,6 +1057,9 @@ def discovery_run(args: argparse.Namespace) -> int:
                             level,
                             runner=runner,
                             model=args.model,
+                            api_transport=api_transport,
+                            reasoning_effort=args.reasoning_effort,
+                            max_output_tokens=args.max_output_tokens,
                         )
                     except Exception as error:
                         agent_run = failed_discovery_run(
@@ -1107,6 +1129,7 @@ def graph_run(args: argparse.Namespace) -> int:
         args.report, args.fixture
     )
     runner = AgentRunner(args.runner)
+    api_transport = ApiTransport(args.api_transport) if runner is AgentRunner.API else None
     levels = [Visibility.RAW, Visibility.SEMANTIC_GRAPH]
     orders = _run_orders(levels, args.repetitions, args.seed)
     output = args.output or _graph_output(fixture.fixture_id, runner, args.model)
@@ -1115,6 +1138,9 @@ def graph_run(args: argparse.Namespace) -> int:
         "source_report": str(args.report),
         "runner": runner.value,
         "model": args.model,
+        "api_transport": api_transport.value if api_transport else None,
+        "reasoning_effort": args.reasoning_effort if api_transport else None,
+        "max_output_tokens": args.max_output_tokens if api_transport else None,
         "seed": args.seed,
         "max_tool_calls": GRAPH_MAX_TOOL_CALLS,
         "repetitions": args.repetitions,
@@ -1200,6 +1226,9 @@ def graph_run(args: argparse.Namespace) -> int:
                             semantic_coverage,
                             runner=runner,
                             model=args.model,
+                            api_transport=api_transport,
+                            reasoning_effort=args.reasoning_effort,
+                            max_output_tokens=args.max_output_tokens,
                         )
                     except Exception as error:
                         agent_run = failed_graph_run(
@@ -1506,6 +1535,8 @@ def run(args: argparse.Namespace) -> int:
     truth = _ground_truth_from_report(source)
     _assert_neutral_database_name(database, truth)
     levels = [Visibility(value) for value in args.levels]
+    runner = AgentRunner(args.runner)
+    api_transport = ApiTransport(args.api_transport) if runner is AgentRunner.API else None
     orders = _run_orders(levels, args.repetitions, args.seed)
     surfaces = source.get("semantic_surfaces", {})
     if not isinstance(surfaces, dict):
@@ -1525,6 +1556,9 @@ def run(args: argparse.Namespace) -> int:
             "source_report": str(args.report),
             "runner": args.runner,
             "model": args.model,
+            "api_transport": api_transport.value if api_transport else None,
+            "reasoning_effort": args.reasoning_effort if api_transport else None,
+            "max_output_tokens": args.max_output_tokens if api_transport else None,
             "seed": args.seed,
             "max_tool_calls": args.max_tool_calls,
             "repetitions": args.repetitions,
@@ -1551,6 +1585,9 @@ def run(args: argparse.Namespace) -> int:
             "token_accounting": TOKEN_ACCOUNTING[args.runner],
             "runner": args.runner,
             "model": args.model,
+            "api_transport": api_transport.value if api_transport else None,
+            "reasoning_effort": args.reasoning_effort if api_transport else None,
+            "max_output_tokens": args.max_output_tokens if api_transport else None,
             "seed": args.seed,
             "max_tool_calls": args.max_tool_calls,
             "repetitions": args.repetitions,
@@ -1586,13 +1623,15 @@ def run(args: argparse.Namespace) -> int:
                     continue
                 gateway = QueryGateway(client, level)
                 with client.measure_query_load() as database_load:
-                    runner = AgentRunner(args.runner)
                     if runner is AgentRunner.API:
                         agent_run = run_agent(
                             gateway,
                             case_input,
                             level,
                             model=args.model,
+                            api_transport=api_transport,
+                            reasoning_effort=args.reasoning_effort,
+                            max_output_tokens=args.max_output_tokens,
                             max_tool_calls=args.max_tool_calls,
                             max_turns=args.max_tool_calls + 10,
                             semantic_coverage=semantic_coverage,
@@ -1706,6 +1745,10 @@ def batch(args: argparse.Namespace) -> int:
             args.runner,
             "--model",
             args.model,
+            "--api-transport",
+            args.api_transport,
+            "--max-output-tokens",
+            str(args.max_output_tokens),
             "--levels",
             *args.levels,
             "--max-tool-calls",
@@ -1719,6 +1762,8 @@ def batch(args: argparse.Namespace) -> int:
             "--output",
             str(output),
         ]
+        if args.reasoning_effort is not None:
+            command.extend(["--reasoning-effort", args.reasoning_effort])
         environment = os.environ.copy()
         environment["SEMANTIC_RCA_RUNNER_JOBS"] = str(jobs)
         subprocess.run(command, check=True, env=environment)

@@ -13,11 +13,11 @@ from semantic_rca_bench.aegis_transfer_scorer import (
     sha256_file,
     source_transfer_audit_sha256,
 )
-from semantic_rca_bench.contracts import AgentRun, AgentRunner, Visibility
+from semantic_rca_bench.contracts import AgentRun, AgentRunner, ApiTransport, Visibility
 from semantic_rca_bench.protocol import benchmark_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "aegis-transfer-four-model-v6"
+PROTOCOL_REVISION = "aegis-transfer-four-model-v7"
 DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v28-four-model-protocol.json")
 
 
@@ -26,8 +26,10 @@ class TransferModelContract(BaseModel):
 
     model: str
     provider: str
-    api_transport: str
+    api_transport: ApiTransport
     prompt_cache: str
+    max_output_tokens: int
+    reasoning_effort: str | None
 
 
 class PaidExecutionContract(BaseModel):
@@ -66,7 +68,6 @@ class AegisTransferProtocolFixture(BaseModel):
     visibility_levels: tuple[Visibility, ...]
     max_tool_calls: int
     max_turns: int
-    max_tokens: int
     repetitions_per_model: int
     treatment_order_seed: int
     parallel_runs: int
@@ -88,35 +89,50 @@ def load_transfer_protocol_fixture(
         "scorer_fixture": "fixtures/reference/aegis-transfer-v28-scorer.json",
         "models": (
             (
+                "gpt-5.6-sol",
+                "openai",
+                "openai-responses",
+                "implicit-prefix-30m",
+                16384,
+                "medium",
+            ),
+            (
                 "deepseek-v4-pro",
                 "deepseek",
                 "anthropic-compatible-messages",
                 "provider-automatic-prefix",
+                4096,
+                None,
             ),
             (
                 "claude-sonnet-5",
                 "anthropic",
                 "anthropic-messages",
                 "ephemeral-request-cache-control",
+                4096,
+                None,
             ),
             (
                 "claude-opus-4-8",
                 "anthropic",
                 "anthropic-messages",
                 "ephemeral-request-cache-control",
-            ),
-            (
-                "gpt-5.6-sol",
-                "openai",
-                "openai-responses",
-                "implicit-prefix-30m",
+                4096,
+                None,
             ),
         ),
     }
     if fixture.protocol_revision != PROTOCOL_REVISION:
         raise ValueError("unsupported Aegis transfer formal protocol revision")
     observed_models = tuple(
-        (model.model, model.provider, model.api_transport, model.prompt_cache)
+        (
+            model.model,
+            model.provider,
+            model.api_transport.value,
+            model.prompt_cache,
+            model.max_output_tokens,
+            model.reasoning_effort,
+        )
         for model in fixture.models
     )
     if fixture.version != specification["version"]:
@@ -142,7 +158,6 @@ def load_transfer_protocol_fixture(
     if (
         fixture.max_tool_calls != 48
         or fixture.max_turns != 58
-        or fixture.max_tokens != 4096
         or fixture.repetitions_per_model != 2
         or fixture.treatment_order_seed != 0
         or fixture.parallel_runs != 1
@@ -196,6 +211,14 @@ def audit_transfer_protocol(
     )
     current_benchmark_version = int(benchmark_protocol()["version"])
     roster_models = {model.model for model in fixture.models}
+    scorer_model_contract = next(
+        (
+            model
+            for model in fixture.models
+            if model.model == scorer_fixture.canonical_api_runner.model
+        ),
+        None,
+    )
     gates = {
         "benchmark_protocol_match": (
             fixture.benchmark_protocol_version == current_benchmark_version
@@ -230,11 +253,17 @@ def audit_transfer_protocol(
             scorer_fixture.canonical_api_runner.model in roster_models
         ),
         "scorer_runner_common_contract": (
-            scorer_fixture.canonical_api_runner.runner is fixture.runner
+            scorer_model_contract is not None
+            and scorer_fixture.canonical_api_runner.runner is fixture.runner
             and scorer_fixture.canonical_api_runner.visibility_levels == fixture.visibility_levels
             and scorer_fixture.canonical_api_runner.max_tool_calls == fixture.max_tool_calls
             and scorer_fixture.canonical_api_runner.max_turns == fixture.max_turns
-            and scorer_fixture.canonical_api_runner.max_tokens == fixture.max_tokens
+            and scorer_fixture.canonical_api_runner.api_transport
+            is scorer_model_contract.api_transport
+            and scorer_fixture.canonical_api_runner.max_output_tokens
+            == scorer_model_contract.max_output_tokens
+            and scorer_fixture.canonical_api_runner.reasoning_effort
+            == scorer_model_contract.reasoning_effort
             and scorer_fixture.canonical_api_runner.repetitions == fixture.repetitions_per_model
             and scorer_fixture.canonical_api_runner.treatment_order_seed
             == fixture.treatment_order_seed
@@ -287,15 +316,19 @@ def evaluate_transfer_protocol_run(
     *,
     expected_model: str,
 ) -> AegisTransferEvaluation:
-    models = {contract.model for contract in protocol_fixture.models}
+    models = {contract.model: contract for contract in protocol_fixture.models}
     if run.model not in models:
         raise ValueError("run model is outside the frozen formal protocol roster")
     if expected_model not in models:
         raise ValueError("scheduled model is outside the frozen formal protocol roster")
+    contract = models[expected_model]
     return evaluate_aegis_transfer_run(
         run,
         scorer_fixture,
         expected_model=expected_model,
+        expected_api_transport=contract.api_transport,
+        expected_reasoning_effort=contract.reasoning_effort,
+        expected_max_output_tokens=contract.max_output_tokens,
     )
 
 

@@ -130,6 +130,9 @@ unset BENCH_KEY
 uv run semantic-rca run \
   --report .reports/smoke-<run-id>.json \
   --model gpt-5.6-sol \
+  --api-transport openai-responses \
+  --reasoning-effort medium \
+  --max-output-tokens 16384 \
   --repetitions 2
 ```
 
@@ -360,12 +363,14 @@ the global, case-independent `mechanism_code`.
 The formal fixture freezes `deepseek-v4-pro`, `claude-sonnet-5`, `claude-opus-4-8`, and
 `gpt-5.6-sol`. Each model runs two position-balanced repetitions over Raw and GreptimeDB Semantic
 Graph, for 16 cells. DeepSeek uses provider-managed prefix caching. Claude uses ephemeral request
-cache control. OpenAI uses implicit 30-minute prefix caching through the Responses API.
+cache control. OpenAI uses implicit 30-minute prefix caching through the Responses API, freezes
+reasoning effort at `medium`, and uses a 16,384-token combined reasoning-and-visible-output budget.
 Preflight records zero completed cells and does not read credentials, start GreptimeDB, or call a
 provider.
 
-**Warning:** The next command calls paid APIs. Run it only after reviewing the frozen roster and
-cost estimate and receiving explicit approval for that invocation.
+**Warning:** The next command calls a paid API. The manifest schedules OpenAI first, and
+`--max-new-runs 1` limits this invocation to one cell so output-budget and transport behavior can
+be inspected before separately approving the remaining cells.
 
 ```bash
 uv run semantic-rca aegis-transfer-formal-run \
@@ -381,10 +386,15 @@ uv run semantic-rca aegis-transfer-formal-run \
   --protocol-audit-output .reports/aegis-transfer-v28-paid-01-protocol.json \
   --scorer fixtures/reference/aegis-transfer-v28-scorer.json \
   --protocol fixtures/reference/aegis-transfer-v28-four-model-protocol.json \
+  --max-new-runs 1 \
   --confirm-paid-api
 ```
 
 The runner atomically persists every completed cell and resumes only an exact schedule prefix.
+An intentionally bounded invocation returns success when its requested cells complete without a
+runner error or budget exhaustion, even though the full schedule remains incomplete. Resume the
+same report only after separate approval, omit `--max-new-runs`, and use a new empty run directory
+and new audit-output paths.
 Runner errors and budget exhaustion remain scored cell outcomes and do not stop the rest of the
 batch. A roster, scheduled-model, or tool-budget contract violation is a harness failure and stops
 the invocation after recording the cell. Resume with the same report, a new empty run directory,
@@ -431,7 +441,9 @@ input and billing. Anthropic API requests enable automatic
 5-minute prompt caching. DeepSeek context caching is enabled by the provider and
 requires no request flag; its Anthropic-compatible endpoint ignores
 `cache_control`. OpenAI Responses requests use implicit 30-minute caching and
-persist `cached_tokens` and `cache_write_tokens` in raw usage. Codex reads exactly one cumulative
+persist `cached_tokens` and `cache_write_tokens` in raw usage. OpenAI reasoning tokens are recorded
+as a subset of provider-reported output tokens; cost and total-token calculations do not add them
+again. Codex reads exactly one cumulative
 `turn.completed` event and persists input including cache without a cache
 breakdown. Claude adds input, cache creation, and cache reads into
 `input_tokens`. Provider context includes system prompts, tool schemas, prior

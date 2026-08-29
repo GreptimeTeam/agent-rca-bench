@@ -105,11 +105,14 @@ def test_protocol_scorer_accepts_runner_contract_for_each_frozen_model() -> None
     protocol = load_transfer_protocol_fixture()
     scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
 
-    for model in (contract.model for contract in protocol.models):
+    for contract in protocol.models:
         run = AgentRun(
             run_id="run",
             visibility=Visibility.RAW,
-            model=model,
+            model=contract.model,
+            api_transport=contract.api_transport,
+            reasoning_effort=contract.reasoning_effort,
+            max_output_tokens=contract.max_output_tokens,
             diagnosis=None,
             tool_calls=[],
             usage=AgentUsage(),
@@ -118,7 +121,7 @@ def test_protocol_scorer_accepts_runner_contract_for_each_frozen_model() -> None
         )
 
         assert evaluate_transfer_protocol_run(
-            run, scorer, protocol, expected_model=model
+            run, scorer, protocol, expected_model=contract.model
         ).runner_contract_match
 
     outside = run.model_copy(update={"model": "not-frozen"})

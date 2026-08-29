@@ -22,6 +22,7 @@ def test_efficiency_pairs_do_not_require_unrelated_citation_integrity() -> None:
                     "cache_read_input_tokens": 0,
                     "cache_creation_input_tokens": 0,
                     "output_tokens": 10 - position,
+                    "reasoning_output_tokens": position,
                     "estimated_peak_usd": 0.1,
                 },
             }
@@ -31,4 +32,5 @@ def test_efficiency_pairs_do_not_require_unrelated_citation_integrity() -> None:
 
     assert summary["successful_runs"] == 1
     assert summary["efficiency_eligible_runs"] == 2
+    assert summary["usage"]["reasoning_output_tokens"] == 1
     assert summary["paired_treatment_deltas"]["semantic_graph_minus_raw"]["eligible_pairs"] == 1

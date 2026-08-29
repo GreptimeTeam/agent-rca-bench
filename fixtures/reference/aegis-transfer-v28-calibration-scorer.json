@@ -44,6 +44,8 @@
   "canonical_api_runner": {
     "runner": "api",
     "model": "deepseek-v4-flash",
+    "api_transport": "anthropic-compatible-messages",
+    "reasoning_effort": null,
     "benchmark_protocol_version": 28,
     "visibility_levels": [
       "raw",
@@ -51,7 +53,7 @@
     ],
     "max_tool_calls": 48,
     "max_turns": 58,
-    "max_tokens": 4096,
+    "max_output_tokens": 4096,
     "repetitions": 2,
     "treatment_order_seed": 0,
     "parallel_runs": 1,

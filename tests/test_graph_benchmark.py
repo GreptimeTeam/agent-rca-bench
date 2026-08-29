@@ -7,6 +7,7 @@ from semantic_rca_bench.agent import StructuredAgentResult
 from semantic_rca_bench.contracts import (
     AgentRunner,
     AgentUsage,
+    ApiTransport,
     DatabaseLoad,
     QueryResult,
     ToolTrace,
@@ -387,10 +388,12 @@ def test_graph_api_runner_uses_graph_tool_and_fixed_turn_limit(monkeypatch) -> N
         coverage,
         runner=AgentRunner.API,
         model="test-model",
+        api_transport=ApiTransport.ANTHROPIC_MESSAGES,
     )
 
     assert captured["max_tool_calls"] == 12
     assert captured["max_turns"] == 22
+    assert captured["max_output_tokens"] == 4096
     assert "query_semantic_graph" in {tool["name"] for tool in captured["investigation_tools"]}
     assert RCA100.expected_callee not in captured["user_prompt"]
     assert run.turn_limit == 22

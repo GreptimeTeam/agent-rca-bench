@@ -296,7 +296,9 @@ Raw with the complete GreptimeDB Semantic Graph surface; internal table semantic
 inside the Graph treatment. It adds `gpt-5.6-sol` through the OpenAI Responses API alongside
 `deepseek-v4-pro`, `claude-sonnet-5`, and `claude-opus-4-8`. Each model runs two position-balanced
 repetitions over the two treatments, for 16 cells. OpenAI runs use stateless output-item replay and
-implicit 30-minute prompt caching. The remaining transfer gate is a fresh provider-free audit,
+implicit 30-minute prompt caching, explicit `medium` reasoning effort, and a 16,384-token combined
+reasoning-and-visible-output budget. The first scheduled OpenAI cell is a separately authorized,
+bounded transport and truncation probe before the remaining paid cells. The remaining transfer gate is a fresh provider-free audit,
 followed by explicit approval for paid execution; no v28 provider call has run.
 This selection exhausts the pinned reviewer cohort under the supported-mechanism rule: after
 the v24 method-replacement and v25 delay cases are consumed, the v27 JVM-exception case is the only

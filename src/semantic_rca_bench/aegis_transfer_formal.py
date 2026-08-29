@@ -125,6 +125,8 @@ def formal_schedule(fixture: AegisTransferProtocolFixture) -> list[dict[str, obj
                         "provider": model.provider,
                         "api_transport": model.api_transport,
                         "prompt_cache": model.prompt_cache,
+                        "max_output_tokens": model.max_output_tokens,
+                        "reasoning_effort": model.reasoning_effort,
                         "repetition": repetition,
                         "position": position,
                         "visibility": visibility.value,
@@ -206,6 +208,7 @@ def execute_formal_runs(
     report: dict[str, object],
     *,
     paid_api_confirmed: bool,
+    max_new_runs: int | None = None,
     run_agent_fn: FormalAgent = run_agent,
     on_update: ReportUpdate | None = None,
 ) -> dict[str, object]:
@@ -220,6 +223,8 @@ def execute_formal_runs(
         require_current_protocol(protocol_fixture.benchmark_protocol_version)
     if paid_api_confirmed is not True:
         raise ValueError("formal paid API execution has not been explicitly confirmed")
+    if max_new_runs is not None and max_new_runs < 1:
+        raise ValueError("max_new_runs must be positive")
     if report.get("execution_bindings") is None:
         raise ValueError("formal report is not bound to live no-model audits")
     execution_bindings = _mapping(report, "execution_bindings")
@@ -230,8 +235,13 @@ def execute_formal_runs(
     graph_window = _graph_window(report)
     schedule = _list_of_mappings(report, "schedule")
     runs = _list_of_mappings(report, "runs")
-    for cell in schedule[len(runs) :]:
+    pending = schedule[len(runs) :]
+    if max_new_runs is not None:
+        pending = pending[:max_new_runs]
+    model_contracts = {model.model: model for model in protocol_fixture.models}
+    for cell in pending:
         visibility = Visibility(str(cell["visibility"]))
+        model_contract = model_contracts[str(cell["model"])]
         gateway = QueryGateway(
             client,
             visibility,
@@ -245,9 +255,11 @@ def execute_formal_runs(
                 case.input,
                 visibility,
                 model=str(cell["model"]),
+                api_transport=model_contract.api_transport,
+                reasoning_effort=model_contract.reasoning_effort,
                 max_tool_calls=protocol_fixture.max_tool_calls,
                 max_turns=protocol_fixture.max_turns,
-                max_tokens=protocol_fixture.max_tokens,
+                max_output_tokens=model_contract.max_output_tokens,
                 semantic_coverage=coverage,
             )
         evaluation = evaluate_transfer_protocol_run(

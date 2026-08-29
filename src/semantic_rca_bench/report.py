@@ -82,7 +82,14 @@ TOKEN_ACCOUNTING = {
         "cached_input": "separate raw response fields; omitted from run.usage",
         "cached_input_included_in_input_tokens": False,
         "context": "system prompt, tool schemas, and prior tool results are sent to the provider",
-        "output_tokens": "provider-reported output including structured tool output",
+        "output_tokens": (
+            "provider-reported output including structured tool output and, for OpenAI "
+            "Responses reasoning models, reasoning tokens"
+        ),
+        "reasoning_tokens": (
+            "OpenAI Responses reasoning_tokens is recorded as a subset of output_tokens; "
+            "other API transports do not expose a common reasoning breakdown"
+        ),
         "comparability": "paired comparisons only within the same provider and runner contract",
     },
     "codex-subscription": {
@@ -471,9 +478,9 @@ def render_reports(sources: list[Path], output: Path) -> None:
         "correctness_aggregation_comparable": len(datasets) == 1 and len(taxonomies) == 1,
         "paired_primary_comparisons": _paired_primary_comparisons(case_reports),
         "primary_multiplicity": (
-            "Holm adjustment over the fixed family of four planned primary comparisons: "
-            "two metrics by two adjacent treatment contrasts, including hypotheses without "
-            "an observed p-value"
+            "Holm adjustment over the fixed family of two planned primary comparisons: "
+            "two metrics by the Semantic Graph minus Raw contrast, including hypotheses "
+            "without an observed p-value"
         ),
         "cases": case_reports,
     }

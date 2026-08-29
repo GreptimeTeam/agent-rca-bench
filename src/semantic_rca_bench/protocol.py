@@ -41,8 +41,9 @@ def benchmark_protocol() -> dict[str, object]:
         "case_context": "baseline-availability-v1",
         "database_load": "client-query-boundary-v1",
         "alert": "dataset-native-when-available-v1",
-        "agent_runner": "anthropic-messages-and-openai-responses-v8",
-        "model_usage": "typed-cache-inclusion-and-provider-native-breakdown-v4",
+        "agent_runner": "explicit-api-transport-and-openai-incomplete-status-v9",
+        "model_usage": "typed-cache-and-reasoning-output-breakdown-v5",
+        "tool_error_feedback": "anthropic-native-flag-openai-json-envelope-v1",
         "diagnosis": "typed-causal-scope-operation-and-global-mechanism-v2",
         "investigation_prompt": "case-invariant-symmetric-hypothesis-discrimination-v2",
     }

@@ -588,6 +588,7 @@ def _run_payload(
             "cache_read_input_tokens": cache_read,
             "cache_creation_input_tokens": cache_creation,
             "output_tokens": run.usage.output_tokens,
+            "reasoning_output_tokens": run.usage.reasoning_tokens,
             "cache_breakdown_complete": breakdown_complete,
             "estimated_peak_usd": peak_cost,
         },
@@ -613,6 +614,7 @@ def _usage_summary(
         "cache_read_input_tokens",
         "cache_creation_input_tokens",
         "output_tokens",
+        "reasoning_output_tokens",
     )
     totals = {
         field: sum(int(_mapping(run, "usage").get(field, 0)) for run in runs) for field in fields

@@ -34,6 +34,7 @@ from semantic_rca_bench.contracts import (
     AgentRun,
     AgentRunner,
     AgentUsage,
+    ApiTransport,
     CaseInput,
     CausalScope,
     DatabaseLoad,
@@ -243,11 +244,23 @@ def _preflight():
 
 def _agent_run(visibility: Visibility, model: str, *, error: str | None = None) -> AgentRun:
     result = _result()
+    openai = model == "gpt-5.6-sol"
     return AgentRun(
         run_id=f"private-{model}-{visibility.value}",
         visibility=visibility,
         model=model,
         runner=AgentRunner.API,
+        api_transport=(
+            ApiTransport.OPENAI_RESPONSES
+            if openai
+            else (
+                ApiTransport.ANTHROPIC_MESSAGES
+                if model.startswith("claude-")
+                else ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES
+            )
+        ),
+        reasoning_effort="medium" if openai else None,
+        max_output_tokens=16_384 if openai else 4096,
         diagnosis=(
             Diagnosis(
                 affected_component="ts-train-service",
@@ -334,10 +347,10 @@ def test_preflight_expands_frozen_schedule_without_provider_access(monkeypatch) 
         "preflight_calls_provider": False,
     }
     assert [cell["model"] for cell in report["schedule"][::4]] == [
+        "gpt-5.6-sol",
         "deepseek-v4-pro",
         "claude-sonnet-5",
         "claude-opus-4-8",
-        "gpt-5.6-sol",
     ]
     assert (
         report["bindings"]["scorer_fixture_sha256"]
@@ -386,18 +399,21 @@ def test_v28_formal_protocol_binds_fresh_case_and_strong_model_roster() -> None:
     assert protocol.agent_case_id == scorer.agent_case_id == "aegis-transfer-003"
     assert protocol.benchmark_protocol_version == 28
     assert [model.model for model in protocol.models] == [
+        "gpt-5.6-sol",
         "deepseek-v4-pro",
         "claude-sonnet-5",
         "claude-opus-4-8",
-        "gpt-5.6-sol",
     ]
     assert len(schedule) == 16
     assert [cell["model"] for cell in schedule[::4]] == [
+        "gpt-5.6-sol",
         "deepseek-v4-pro",
         "claude-sonnet-5",
         "claude-opus-4-8",
-        "gpt-5.6-sol",
     ]
+    assert protocol.models[0].api_transport is ApiTransport.OPENAI_RESPONSES
+    assert protocol.models[0].reasoning_effort == "medium"
+    assert protocol.models[0].max_output_tokens == 16_384
 
 
 def test_preflight_command_writes_report_without_provider_access(monkeypatch, tmp_path) -> None:
@@ -486,10 +502,49 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window(monkeypatch
     )
     assert all(call[2]["max_tool_calls"] == 48 for call in calls)
     assert all(call[2]["max_turns"] == 58 for call in calls)
+    assert calls[0][2]["api_transport"] is ApiTransport.OPENAI_RESPONSES
+    assert calls[0][2]["reasoning_effort"] == "medium"
+    assert calls[0][2]["max_output_tokens"] == 16_384
     assert all(
         item["execution_bindings"]["source_semantic_sha256"]
         == report["bindings"]["source_semantic_sha256"]
         for item in report["runs"]
+    )
+
+
+def test_formal_runner_can_limit_one_invocation_to_one_pending_cell(monkeypatch) -> None:
+    monkeypatch.setattr(formal_module, "require_current_protocol", lambda version: None)
+    report, source, scorer, protocol, scorer_fixture, protocol_fixture = _preflight()
+    _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture)
+    calls = []
+
+    def fake_agent(gateway, case_input, visibility, **kwargs):
+        calls.append(kwargs)
+        return _agent_run(visibility, kwargs["model"])
+
+    execute_formal_runs(
+        _Client(),  # type: ignore[arg-type]
+        _case(),
+        scorer_fixture,
+        FORMAL_SCORER_FIXTURE,
+        protocol_fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
+        report,
+        paid_api_confirmed=True,
+        max_new_runs=1,
+        run_agent_fn=fake_agent,
+    )
+
+    assert len(calls) == 1
+    assert len(report["runs"]) == 1
+    assert report["runs"][0]["model"] == "gpt-5.6-sol"
+    assert report["execution"]["complete"] is False
+    validate_formal_report(
+        report,
+        scorer_fixture,
+        FORMAL_SCORER_FIXTURE,
+        protocol_fixture,
+        DEFAULT_PROTOCOL_FIXTURE,
     )
 
 

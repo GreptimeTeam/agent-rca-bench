@@ -19,6 +19,7 @@ from semantic_rca_bench.contracts import (
     AgentRun,
     AgentRunner,
     AgentUsage,
+    ApiTransport,
     CaseInput,
     CausalScope,
     DatabaseLoad,
@@ -187,6 +188,8 @@ def _agent_run(visibility: Visibility) -> AgentRun:
         visibility=visibility,
         model="deepseek-v4-flash",
         runner=AgentRunner.API,
+        api_transport=ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
+        max_output_tokens=4096,
         diagnosis=Diagnosis(
             affected_component="ts-route-plan-service",
             causal_dependency="ts-travel2-service",
@@ -279,7 +282,10 @@ def test_canonical_transfer_wiring_balances_positions_and_uses_graph_envelope(mo
     assert all(call[2].fault_taxonomy == [] for call in calls)
     assert all(call[3]["max_tool_calls"] == 48 for call in calls)
     assert all(call[3]["max_turns"] == 58 for call in calls)
-    assert all(call[3]["max_tokens"] == 4096 for call in calls)
+    assert all(call[3]["max_output_tokens"] == 4096 for call in calls)
+    assert all(
+        call[3]["api_transport"] is ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES for call in calls
+    )
 
 
 def test_scorer_audit_checks_model_against_revision_contract(tmp_path: Path) -> None:

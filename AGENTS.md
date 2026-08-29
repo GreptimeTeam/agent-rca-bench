@@ -73,7 +73,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 - Discovery 与 Graph micro-benchmark 的预注册主要效率字段是
   `rows_returned_through_evidence` 和 `tool_calls_through_evidence`。它们只统计到
   cited canonical evidence，不得与端到端 RCA 字段混用。
-- Model token 结果在 runner accounting contract 完成审计和预注册前属于 exploratory metric。必须说明 cached input、system prompt、tool schema、tool results 和 structured output 的计量范围。
+- Model token 结果在 runner accounting contract 完成审计和预注册前属于 exploratory metric。必须说明 cached input、system prompt、tool schema、tool results、structured output 和 reasoning output 的计量范围；reasoning 是 output 的子集时不得重复计数。
 - Latency 只有在 treatment execution position 平衡、服务器负载可比时才能跨 treatment 解释。
 - Dataset taxonomy 不同的 correctness 结果分 corpus 报告，除非存在经过论证的共同 scoring contract。
 - 优先使用 deterministic scorer。不得为了得到目标结论引入 LLM judge。
@@ -95,7 +95,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 
 ## Runner 与隔离要求
 
-- API、Codex subscription 和 Claude subscription 必须表达同一 system contract，并记录 runner capability 差异。
+- API、Codex subscription 和 Claude subscription 必须表达同一 system contract，并记录 runner capability 差异。API transport、reasoning effort 和 reasoning/visible output 共享的预算必须由执行协议显式绑定，不能根据模型名或 provider 默认值推断。
 - Subscription runner 不能静默回退到 API billing。Provider credentials 和 endpoint overrides 不得传入 subscription child process。
 - Tool-call cap 必须对 agent 可见；未知工具和 cap rejection 分开记录。Turn exhaustion 或 runner failure 应持久化为可评分失败，不能中断整个 batch。
 - 一个正式 case 使用独占 GreptimeDB instance。Semantic Graph 会枚举实例中的 user schemas，单纯使用不同 database 不能保证隔离。

@@ -18,6 +18,12 @@ class AgentRunner(StrEnum):
     CLAUDE_SUBSCRIPTION = "claude-subscription"
 
 
+class ApiTransport(StrEnum):
+    ANTHROPIC_MESSAGES = "anthropic-messages"
+    ANTHROPIC_COMPATIBLE_MESSAGES = "anthropic-compatible-messages"
+    OPENAI_RESPONSES = "openai-responses"
+
+
 class FaultCategory(StrEnum):
     CPU = "cpu"
     DELAY = "delay"
@@ -218,6 +224,7 @@ class RejectedToolCall(BaseModel):
 class AgentUsage(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
+    reasoning_tokens: int = 0
 
 
 class DatabaseLoad(BaseModel):
@@ -233,6 +240,9 @@ class AgentRun(BaseModel):
     visibility: Visibility
     model: str
     runner: AgentRunner = AgentRunner.API
+    api_transport: ApiTransport | None = None
+    reasoning_effort: str | None = None
+    max_output_tokens: int | None = None
     diagnosis: Diagnosis | None
     error: str | None = None
     tool_calls: list[ToolTrace]

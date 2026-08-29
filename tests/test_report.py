@@ -160,6 +160,8 @@ def test_openai_cache_breakdown_drives_usage_and_cost() -> None:
     assert _estimated_api_cost(run, MODEL_PRICING["gpt-5.6-sol"]) == pytest.approx(
         (30 * 4 + 80 * 0.4 + 10 * 5 + 5 * 20) / 1_000_000
     )
+    assert "reasoning tokens" in TOKEN_ACCOUNTING["api"]["output_tokens"]
+    assert "subset of output_tokens" in TOKEN_ACCOUNTING["api"]["reasoning_tokens"]
 
 
 def test_render_report_embeds_data_and_escapes_script_end(tmp_path) -> None:
@@ -226,6 +228,7 @@ def test_subscription_combined_report_hides_inapplicable_summary_columns(tmp_pat
     assert ".aggregate-correctness { display: none; }" in document
     assert ".api-cost { display: none; }" in document
     assert "hasOwnProperty.call(run, 'estimated_api_cost')" in document
+    assert "fixed family of two planned primary comparisons" in document
     assert "__REPORT_COLUMN_CSS__" not in document
 
 

@@ -4,6 +4,10 @@ On 2026-08-28, Codex `gpt-5.6-luna` completed the frozen Discovery v2 and
 Graph v3 measurement cells through the subscription runner. These were
 constrained retrieval tasks, not full RCA runs. No paid full RCA batch was run.
 
+Graph v3 is an internal capability ablation against Table Semantics, not a
+Semantic Graph versus Raw estimate. Its historical results must not be used as
+evidence for the current product-level Graph-minus-Raw comparison.
+
 The supported conclusion is that semantic surfaces can improve RCA investigation
 efficiency when their metadata contract fits the telemetry. Task success is a
 validity guardrail, not the target effect: completion-efficiency comparisons use

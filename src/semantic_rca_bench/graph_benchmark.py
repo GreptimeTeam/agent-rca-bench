@@ -17,6 +17,7 @@ from semantic_rca_bench.agent import (
 from semantic_rca_bench.contracts import (
     AgentRunner,
     AgentUsage,
+    ApiTransport,
     CaseInput,
     QueryResult,
     RejectedToolCall,
@@ -60,6 +61,9 @@ class GraphAgentRun(BaseModel):
     visibility: Visibility
     model: str
     runner: AgentRunner
+    api_transport: ApiTransport | None = None
+    reasoning_effort: str | None = None
+    max_output_tokens: int | None = None
     answer: GraphAnswer | None
     error: str | None = None
     tool_calls: list[ToolTrace]
@@ -168,6 +172,9 @@ def run_graph_agent(
     *,
     runner: AgentRunner,
     model: str,
+    api_transport: ApiTransport | None = None,
+    reasoning_effort: str | None = None,
+    max_output_tokens: int = 4096,
     max_tool_calls: int = GRAPH_MAX_TOOL_CALLS,
 ) -> GraphAgentRun:
     if visibility not in {Visibility.RAW, Visibility.SEMANTIC_GRAPH}:
@@ -182,6 +189,8 @@ def run_graph_agent(
         return GraphAnswer.model_validate(value).model_dump(mode="json")
 
     if runner is AgentRunner.API:
+        if api_transport is None:
+            raise ValueError("API graph runs require an explicit transport")
         output_tool = {
             "name": "submit_graph_result",
             "description": "Submit the highest-error direct callee and cited RED evidence.",
@@ -192,6 +201,8 @@ def run_graph_agent(
             case_input,
             visibility,
             model=model,
+            api_transport=api_transport,
+            reasoning_effort=reasoning_effort,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             investigation_tools=tools,
@@ -199,6 +210,7 @@ def run_graph_agent(
             validate_output=validate_output,
             max_tool_calls=max_tool_calls,
             max_turns=max_tool_calls + 10,
+            max_output_tokens=max_output_tokens,
         )
         turn_limit = max_tool_calls + 10
         turn_limit_enforced = True
@@ -232,6 +244,9 @@ def run_graph_agent(
         visibility=visibility,
         model=model,
         runner=runner,
+        api_transport=api_transport,
+        reasoning_effort=reasoning_effort,
+        max_output_tokens=max_output_tokens if runner is AgentRunner.API else None,
         answer=answer,
         error=result.error,
         tool_calls=result.tool_calls,

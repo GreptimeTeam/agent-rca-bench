@@ -374,9 +374,11 @@ def execute_transfer_runs(
                     case.input,
                     level,
                     model=contract.model,
+                    api_transport=contract.api_transport,
+                    reasoning_effort=contract.reasoning_effort,
                     max_tool_calls=contract.max_tool_calls,
                     max_turns=contract.max_turns,
-                    max_tokens=contract.max_tokens,
+                    max_output_tokens=contract.max_output_tokens,
                     semantic_coverage=coverage,
                 )
             evaluation = evaluate_aegis_transfer_run(agent_run, fixture)

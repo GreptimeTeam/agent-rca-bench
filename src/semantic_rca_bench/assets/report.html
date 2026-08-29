@@ -553,7 +553,7 @@
             const summary = Array.isArray(item.summary)
               ? item.summary.map(part => part.text || '').filter(Boolean).join('\n')
               : '';
-            return [{type: 'thinking', thinking: summary}];
+            return summary ? [{type: 'thinking', thinking: summary}] : [];
           }
           return [];
         });
@@ -588,9 +588,10 @@
             return `<pre>${esc(JSON.stringify(block, null, 2))}</pre>`;
           }).join('');
           const usage = response.usage || {};
+          const reasoning = usage.output_tokens_details?.reasoning_tokens;
           const turnUsage = usage.input_tokens == null && usage.output_tokens == null
             ? 'usage unavailable'
-            : `${num(usage.input_tokens)} in · ${num(usage.output_tokens)} out`;
+            : `${num(usage.input_tokens)} in · ${num(usage.output_tokens)} out${reasoning == null ? '' : ` (${num(reasoning)} reasoning)`}`;
           return `<details class="turn series-${esc(run.visibility)}" ${index === 0 ? 'open' : ''}>
             <summary><span class="turn-title">Turn ${String(index + 1).padStart(2, '0')} · ${esc(names.join(' + ') || response.stop_reason || response.status || 'analysis')}</span><span class="turn-meta">${turnUsage}</span></summary>
             <div class="turn-body">${body || '<span class="muted">No content blocks.</span>'}</div>
