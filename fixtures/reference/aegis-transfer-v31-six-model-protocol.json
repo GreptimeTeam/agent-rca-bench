@@ -1,13 +1,13 @@
 {
   "version": 2,
-  "protocol_revision": "aegis-transfer-four-model-v11",
-  "agent_case_id": "aegis-transfer-003",
-  "case_role": "development",
-  "selection_fixture": "fixtures/reference/aegis-transfer-v27-selection.json",
-  "selection_fixture_sha256": "e4fefe3c39e8264467ebfa9373bce39cdee2ad68b9aeea84b46b0fd4d1f90819",
-  "scorer_fixture": "fixtures/reference/aegis-transfer-v30-scorer.json",
-  "scorer_fixture_sha256": "3d662a028fed86c32c135b03a881802bf3777916c88664b93683817817464d6e",
-  "benchmark_protocol_version": 30,
+  "protocol_revision": "aegis-transfer-six-model-v14",
+  "agent_case_id": "aegis-transfer-004",
+  "case_role": "measurement",
+  "selection_fixture": "fixtures/reference/aegis-transfer-v31-selection.json",
+  "selection_fixture_sha256": "3585b1558c989185ce03cafb2a524f13c3be8f586e412e15fbd84e4907ce7eae",
+  "scorer_fixture": "fixtures/reference/aegis-transfer-v31-scorer.json",
+  "scorer_fixture_sha256": "b5f1d07363e3e07dd8d2361cc9c367dfea57e86f0f8428f58927a12f7ae25f63",
+  "benchmark_protocol_version": 31,
   "runner": "api",
   "models": [
     {
@@ -23,24 +23,40 @@
       "provider": "deepseek",
       "api_transport": "anthropic-compatible-messages",
       "prompt_cache": "provider-automatic-prefix",
-      "max_output_tokens": 4096,
-      "reasoning_effort": null
+      "max_output_tokens": 16384,
+      "reasoning_effort": "high"
     },
     {
-      "model": "claude-sonnet-5",
+      "model": "claude-opus-5",
       "provider": "anthropic",
       "api_transport": "anthropic-messages",
       "prompt_cache": "ephemeral-request-cache-control",
-      "max_output_tokens": 4096,
-      "reasoning_effort": null
+      "max_output_tokens": 16384,
+      "reasoning_effort": "high"
     },
     {
-      "model": "claude-opus-4-8",
+      "model": "claude-fable-5",
       "provider": "anthropic",
       "api_transport": "anthropic-messages",
       "prompt_cache": "ephemeral-request-cache-control",
-      "max_output_tokens": 4096,
-      "reasoning_effort": null
+      "max_output_tokens": 16384,
+      "reasoning_effort": "high"
+    },
+    {
+      "model": "glm-5.3",
+      "provider": "zhipu-bigmodel",
+      "api_transport": "bigmodel-chat-completions",
+      "prompt_cache": "provider-automatic-prefix",
+      "max_output_tokens": 16384,
+      "reasoning_effort": "max"
+    },
+    {
+      "model": "qwen3.8-2.4t-a95b",
+      "provider": "alibaba-cloud-model-studio",
+      "api_transport": "dashscope-cn-beijing-responses",
+      "prompt_cache": "session-cache-header",
+      "max_output_tokens": 16384,
+      "reasoning_effort": "xhigh"
     }
   ],
   "visibility_levels": [
@@ -65,6 +81,6 @@
     "correctness_pooled_across_models": false,
     "case_is_independent_unit": true,
     "repetitions_are_descriptive": true,
-    "single_case_claim": "development calibration after claim-grounding revision; not fresh measurement evidence"
+    "single_case_claim": "fresh measurement case; contributes one independent case unit"
   }
 }

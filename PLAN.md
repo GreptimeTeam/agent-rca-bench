@@ -205,7 +205,7 @@ therefore be compared only within the same model, runner, protocol, and case.
 
 ## Benchmark 1.0 release gate and research-claim gate
 
-Protocol labels such as v24 through v30 identify internal development cycles. They record changes
+Protocol labels such as v24 through v31 identify internal development cycles. They record changes
 to the harness and make development experiments interpretable; they are not release versions. The
 current tree does not preserve runtime compatibility with earlier development protocols.
 
@@ -410,21 +410,25 @@ formal-report hashes, run-pair descriptions, case-level inference, and metric
 registration status. No paid full RCA batch was run. Do not promote these
 retrieval results into an RCA claim.
 
-The next stage is release-focused, not a broad case-expansion program. The
-pinned Aegis downloader, source-only selection audit, production-protocol
-adapter, exact raw-span versus Graph edge-set audit, and both stored mechanism gates are complete.
-The protocol v24 paid pilot is retained as a negative development result; do not rerun it as if it
-were fresh measurement. The sequentially frozen `aegis-transfer-002` delay case was consumed by
-the v25 three-model run. Its source replay and raw/Graph equality remain valid, but its
-duration-based scorer did not measure the declared start-gap mechanism. The sanitized v24
-development artifact is tracked at `artifacts/development/aegis-transfer-v24-deepseek.json`; it is
-a release-format regression, not the fresh 1.0 measurement result. The v25 27-cell artifact is
-retained for audit and development analysis, not promoted to a valid measurement. Private
-no-model reports remain local audit inputs. The v27 no-model grader, fresh selection, source
-replay, exact equality audit, mechanism gate, formal protocol, resume binding, and sanitized
-exporter are complete. The next action is to review the frozen model roster and cost estimate, then
-explicitly approve or reject the 27-cell paid API execution. Catalog broad-recall, powered
-cross-system enrollment, and additional report UI remain deferred.
+The release-focused Aegis path has a fresh measurement case. Protocol v31 freezes
+`aegis-transfer-004`, a component-scoped `PodFailure` whose source restart counter changes from 24
+zero samples to 24 one-valued samples. The loader preserves the stale publisher pod label as an
+audited mismatch and binds the mechanism to the exact source container identity. Production OTLP,
+Loki, and OTLP replay passes row-count, protocol-rejection, and ID-remapping gates. The complete raw
+and Graph union contains 43 equal distinct edges with the same normalized hash. Source, scorer, protocol,
+and preflight audits pass. The execution roster contains `gpt-5.6-sol`, `deepseek-v4-pro`,
+`claude-opus-5`, `claude-fable-5`, `glm-5.3`, and the open-weight
+`qwen3.8-2.4t-a95b`. Two Raw/Graph repetitions produce 24 cells. GLM and Qwen use explicit
+provider-bound China transports rather than model-name routing: BigModel Chat Completions for GLM
+and a caller-supplied Beijing workspace Responses endpoint for Qwen. Tenant endpoint identifiers
+must not enter repository fixtures or public artifacts. Qwen's Session cache header and disabled
+parallel tool calls are explicit runner parameters rather than provider defaults. All models use a
+16,384-token combined reasoning-and-visible-output limit. Provider-specific reasoning levels are
+set explicitly to their documented defaults and are not treated as a common cross-provider compute
+scale. No v31 provider cell has run.
+The next action requires new explicit paid-API approval and bounded interface probes before the
+formal schedule. Catalog broad-recall, powered cross-system enrollment, and additional report UI
+remain deferred.
 
 ## Historical development status
 

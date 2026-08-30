@@ -93,13 +93,11 @@ result contains enough observations to establish the transition. The scorer does
 hidden intervention timestamp to appear in agent SQL.
 
 Absence claims need complete temporal coverage under the same source predicate used for the
-anomalous period. This does not assert absence across every possible attribute value: an additional
-source filter defines a narrower observation. The current JVM rubric permits that because its
-frozen baseline oracle is zero and it requires repeated anomalous observations; a case with a
-nonzero baseline needs a different rubric. Counted transitions must explicitly bind both outer
-window bounds so rows outside the incident cannot inflate the anomalous count. A limited or
-truncated result cannot prove absence. `BETWEEN` and explicit lower/upper comparisons are accepted
-when they express the same inclusive bounds.
+anomalous period. Counted transitions must explicitly bind both outer window bounds so rows outside
+the incident cannot inflate the anomalous count. A limited or truncated result cannot prove
+absence. The v31 source audit proves that the selected metric has no rows on the window end
+boundaries, so `BETWEEN` and half-open explicit comparisons cover the same source rows for this
+case.
 
 ## Separate the reported dimensions
 
@@ -122,28 +120,18 @@ does not, the result contributes to completion-rate differences rather than a co
 efficiency delta. Rows, calls, tokens, cost, and latency from noneligible runs may be reported only
 as descriptive trajectory data.
 
-## Current Aegis evidence rubrics
+## Current Aegis evidence rubric
 
-The request-delay rubric requires source Client and paired Server spans on the declared edge. The
-baseline start gap must stay below the frozen injected-delay threshold, and at least the frozen
-minimum number of anomalous pairs must reach the threshold. Server duration alone cannot prove a
-delay before server start.
+The workload-restart rubric requires `k8s.container.restarts` under the exact source container
+identity for the causal service. The normal-window maximum must be zero. At least two anomalous
+samples must establish a restart value of one or greater. Evidence may use one complete period
+aggregate, separate complete normal and abnormal aggregates, or complete raw metric rows.
 
-The JVM-exception rubric requires both of these observations at the causal service and operation:
-
-- source `STATUS_CODE_ERROR` spans change from a clean baseline to repeated anomalous errors;
-- error-level logs contain an exception signature after onset, with no matching baseline
-  exception.
-
-The same observations may be represented as period rows, status-grouped counts, conditional
-period aggregates, or complete grouped log lines. When a query covers both windows without
-`LIMIT` or `HAVING`, an absent period row is a zero count. If a query includes multiple services or
-operations, the result must project source identity columns so the scorer can isolate the declared
-locus. Counts must retain aggregate lineage to source status or log rows; literal and multiplied
-counts remain invalid.
-
-HTTP 5xx values do not substitute for source OTel Error status. A Graph edge or propagated caller
-failure can ground path or impact claims, but it cannot by itself establish a JVM exception.
+The query must retain the metric table, container identity, time bounds, and value lineage. A
+pod-only filter is not a substitute for the source container identity. Value filtering, a wrong
+metric or workload, incomplete windows, `LIMIT`, truncation, and literal aggregates fail closed.
+Graph entity existence and ordinary calls edges may guide the investigation, but neither proves a
+workload restart.
 
 ## Regression standard
 

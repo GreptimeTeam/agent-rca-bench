@@ -25,6 +25,7 @@ ARTIFACT_URL = (
 )
 SOURCE_DATASET_RECORD = "https://zenodo.org/records/17105974"
 SELECTION_SEED = "semantic-rca-v1-aegis-transfer"
+FRESH_SELECTION_STRATEGY = "fresh-source-observable-service-mechanism-v3"
 _ARCHIVE_DATASET_PREFIX = (
     "FSE_26_RCA_dataset_study_artifact_clean/reproduction/data/rcabench-platform-v2/"
 )
@@ -182,102 +183,9 @@ def _validate_frozen_selection(audit: dict[str, object], selection_path: Path) -
     manifest = json.loads(selection_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
         raise AegisAuditError("frozen selection manifest must be an object")
-    if manifest.get("selection_strategy") == "consumed-v25-case-development-recalibration-v1":
-        return _validate_recalibration_selection(audit, selection_path, manifest)
-    if manifest.get("selection_strategy") == "fresh-source-observable-supported-mechanism-v2":
+    if manifest.get("selection_strategy") == FRESH_SELECTION_STRATEGY:
         return _validate_fresh_observable_selection(audit, selection_path, manifest)
     raise AegisAuditError("unsupported frozen selection strategy")
-
-
-def _validate_recalibration_selection(
-    audit: dict[str, object],
-    selection_path: Path,
-    manifest: dict[str, object],
-) -> dict[str, object]:
-    parent_name = manifest.get("parent_manifest")
-    parent_sha256 = manifest.get("parent_manifest_sha256")
-    if not isinstance(parent_name, str) or Path(parent_name).name != parent_name:
-        raise AegisAuditError("recalibration selection has an invalid parent manifest")
-    parent_path = selection_path.parent / parent_name
-    if not parent_path.is_file() or not isinstance(parent_sha256, str):
-        raise AegisAuditError("recalibration parent manifest is missing")
-    observed_parent_sha256 = hashlib.sha256(parent_path.read_bytes()).hexdigest()
-    if observed_parent_sha256 != parent_sha256:
-        raise AegisAuditError("recalibration parent manifest checksum drifted")
-    parent = _read_json(parent_path)
-    selected = manifest.get("selected_case")
-    parent_selected = parent.get("selected_case")
-    cases = audit.get("cases")
-    source = audit.get("source")
-    if (
-        manifest.get("case_role") != "development"
-        or not isinstance(selected, dict)
-        or not isinstance(parent_selected, dict)
-        or selected.get("source_case") != parent_selected.get("source_case")
-        or manifest.get("agent_case_id") != parent.get("agent_case_id")
-        or not isinstance(cases, list)
-        or not isinstance(source, dict)
-    ):
-        raise AegisAuditError("recalibration selection is not bound to the consumed v25 case")
-    matching = [case for case in cases if case.get("source_case") == selected.get("source_case")]
-    if len(matching) != 1:
-        raise AegisAuditError("recalibration source case is not unique")
-    case = matching[0]
-    mechanism = case.get("mechanism_evidence")
-    trace_windows = case.get("trace_windows")
-    selected_mechanism = selected.get("mechanism_evidence")
-    if (
-        case.get("directed_graph_candidate") is not True
-        or not isinstance(mechanism, dict)
-        or mechanism.get("start_gap_predicate_match") is not True
-        or not isinstance(trace_windows, dict)
-        or not isinstance(selected_mechanism, dict)
-    ):
-        raise AegisAuditError("recalibration case lacks source-faithful start-gap evidence")
-    observed_selected = {
-        "source_case": case.get("source_case"),
-        "fault_type": case.get("fault_type"),
-        "ground_truth_services": case.get("ground_truth_services"),
-        "normal_window": case.get("source_windows", {}).get("normal"),
-        "abnormal_window": case.get("source_windows", {}).get("abnormal"),
-        "declared_edge": case.get("declared_edge"),
-        "mechanism_evidence": _selected_mechanism_projection(
-            mechanism, str(selected_mechanism.get("predicate"))
-        ),
-        "normal_raw_edge_set": _edge_set_summary(trace_windows.get("normal")),
-        "abnormal_raw_edge_set": _edge_set_summary(trace_windows.get("abnormal")),
-    }
-    observed_source = {
-        "artifact_record": source.get("artifact_record"),
-        "artifact_filename": source.get("artifact_filename"),
-        "artifact_md5": source.get("expected_artifact_md5"),
-        "source_dataset_record": source.get("source_dataset_record"),
-        "data_redistributed": source.get("data_redistributed"),
-    }
-    if observed_source != manifest.get("source") or observed_selected != selected:
-        raise AegisAuditError("frozen recalibration selection drifted")
-    return {
-        "manifest_name": selection_path.name,
-        "observed": {
-            "source": observed_source,
-            "selection_strategy": manifest.get("selection_strategy"),
-            "parent_manifest": parent_name,
-            "parent_manifest_sha256": observed_parent_sha256,
-            "case_role": manifest.get("case_role"),
-            "agent_case_id": manifest.get("agent_case_id"),
-            "selected_case": observed_selected,
-        },
-        "expected": {
-            "source": manifest.get("source"),
-            "selection_strategy": manifest.get("selection_strategy"),
-            "parent_manifest": parent_name,
-            "parent_manifest_sha256": parent_sha256,
-            "case_role": "development",
-            "agent_case_id": manifest.get("agent_case_id"),
-            "selected_case": selected,
-        },
-        "pass": True,
-    }
 
 
 def _validate_fresh_observable_selection(
@@ -285,6 +193,7 @@ def _validate_fresh_observable_selection(
     selection_path: Path,
     manifest: dict[str, object],
 ) -> dict[str, object]:
+    mechanism_eligible = _release_mechanism_observable
     parents = manifest.get("consumed_parent_manifests")
     if not isinstance(parents, list) or not parents:
         raise AegisAuditError("fresh selection has no consumed parent manifests")
@@ -338,7 +247,7 @@ def _validate_fresh_observable_selection(
         for case in cases
         if case.get("graph_source_eligible") is True
         and str(case.get("source_case")) not in consumed_set
-        and _transfer_mechanism_supported(case.get("mechanism_evidence"))
+        and mechanism_eligible(case.get("mechanism_evidence"))
     )
     ranked = deterministic_rank(eligible, str(observable.get("seed"))) if eligible else []
     if not ranked or selected.get("source_case") != ranked[0]:
@@ -353,7 +262,7 @@ def _validate_fresh_observable_selection(
     if (
         case.get("graph_source_eligible") is not True
         or not isinstance(mechanism, dict)
-        or not _transfer_mechanism_supported(mechanism)
+        or not mechanism_eligible(mechanism)
         or not isinstance(trace_windows, dict)
         or not isinstance(selected_mechanism, dict)
     ):
@@ -393,7 +302,7 @@ def _validate_fresh_observable_selection(
     }
     expected = {
         "source": manifest.get("source"),
-        "selection_strategy": "fresh-source-observable-supported-mechanism-v2",
+        "selection_strategy": FRESH_SELECTION_STRATEGY,
         "selection_seed": manifest.get("selection_seed"),
         "consumed_parent_manifests": parents,
         "consumed_source_cases": manifest.get("consumed_source_cases"),
@@ -447,14 +356,37 @@ def _selected_mechanism_projection(
     elif predicate == "source_declared_workload_restart":
         fields = (
             "predicate",
-            "pod_name",
             "metric",
+            "identity_field",
+            "identity_value",
+            "declared_pod_names",
+            "observed_pod_names",
+            "declared_pod_identity_match",
+            "injection_pod_name",
+            "injection_pod_identity_match",
             "normal_count",
             "normal_min_restarts",
             "normal_max_restarts",
             "abnormal_count",
             "abnormal_min_restarts",
             "abnormal_max_restarts",
+        )
+    elif predicate == "source_declared_memory_pressure":
+        fields = (
+            "predicate",
+            "metric",
+            "identity_field",
+            "identity_value",
+            "declared_pod_names",
+            "observed_pod_names",
+            "declared_pod_identity_match",
+            "threshold",
+            "normal_count",
+            "normal_max",
+            "normal_at_or_above_threshold",
+            "abnormal_count",
+            "abnormal_max",
+            "abnormal_at_or_above_threshold",
         )
     elif predicate == "source_declared_jvm_exception":
         fields = (
@@ -482,6 +414,33 @@ def _transfer_mechanism_supported(mechanism: object) -> bool:
     if mechanism.get("start_gap_predicate") == "source_declared_http_client_server_start_gap":
         return mechanism.get("start_gap_predicate_match") is True
     return False
+
+
+def _release_mechanism_observable(mechanism: object) -> bool:
+    if not isinstance(mechanism, dict) or mechanism.get("predicate_match") is not True:
+        return False
+    predicate = mechanism.get("predicate")
+    if predicate == "source_declared_workload_restart":
+        observed_pods = mechanism.get("observed_pod_names")
+        return bool(
+            mechanism.get("identity_field") == "attr.k8s.container.name"
+            and mechanism.get("identity_value")
+            and isinstance(observed_pods, list)
+            and len(observed_pods) == 1
+            and (
+                mechanism.get("injection_pod_name") is None
+                or mechanism.get("injection_pod_identity_match") is True
+            )
+        )
+    if predicate == "source_declared_memory_pressure":
+        observed_pods = mechanism.get("observed_pod_names")
+        return bool(
+            mechanism.get("identity_field") == "service_name"
+            and mechanism.get("identity_value")
+            and isinstance(observed_pods, list)
+            and len(observed_pods) == 1
+        )
+    return _transfer_mechanism_supported(mechanism)
 
 
 def _edge_set_summary(value: object) -> dict[str, object] | None:
@@ -925,28 +884,48 @@ def _component_mechanism_evidence(
 ) -> dict[str, object] | None:
     pods = ground_truth.get("pod")
     services = ground_truth.get("service")
-    if not isinstance(pods, list) or len(pods) != 1 or not isinstance(services, list):
+    containers = ground_truth.get("container")
+    if not isinstance(pods, list) or not isinstance(services, list):
         return None
-    pod_name = str(pods[0])
+    declared_pod_names = sorted(str(pod) for pod in pods)
     service_name = str(services[0]) if len(services) == 1 else ""
     if fault_type in {"ContainerKill", "PodFailure"}:
-        values = {
-            period: _metric_values(
+        if not isinstance(containers, list) or len(containers) != 1:
+            return None
+        container_name = str(containers[0])
+        observations = {
+            period: _metric_observations(
                 root / f"{period}_metrics.parquet",
                 metric="k8s.container.restarts",
-                pod_name=pod_name,
+                identity_field="attr.k8s.container.name",
+                identity_value=container_name,
             )
             for period in _PERIODS
         }
-        normal = values["normal"]
-        abnormal = values["abnormal"]
+        normal = [value for value, _ in observations["normal"]]
+        abnormal = [value for value, _ in observations["abnormal"]]
+        observed_pod_names = sorted(
+            {pod_name for period in _PERIODS for _, pod_name in observations[period] if pod_name}
+        )
+        injection_point = display_config.get("injection_point")
+        injection_pod_name = (
+            str(injection_point.get("pod_name") or "") if isinstance(injection_point, dict) else ""
+        )
         matched = bool(normal and abnormal and max(normal) == 0 and min(abnormal) >= 1)
         return {
             "predicate": "source_declared_workload_restart",
             "scoreable": matched,
             "predicate_match": matched,
-            "pod_name": pod_name,
             "metric": "k8s.container.restarts",
+            "identity_field": "attr.k8s.container.name",
+            "identity_value": container_name,
+            "declared_pod_names": declared_pod_names,
+            "observed_pod_names": observed_pod_names,
+            "declared_pod_identity_match": declared_pod_names == observed_pod_names,
+            "injection_pod_name": injection_pod_name or None,
+            "injection_pod_identity_match": (
+                injection_pod_name in observed_pod_names if injection_pod_name else None
+            ),
             "normal_count": len(normal),
             "normal_min_restarts": min(normal) if normal else None,
             "normal_max_restarts": max(normal) if normal else None,
@@ -955,25 +934,35 @@ def _component_mechanism_evidence(
             "abnormal_max_restarts": max(abnormal) if abnormal else None,
         }
     if fault_type == "JVMMemoryStress":
+        if not service_name:
+            return None
         threshold = 0.85
-        values = {
-            period: _metric_values(
+        observations = {
+            period: _metric_observations(
                 root / f"{period}_metrics.parquet",
                 metric="k8s.pod.memory_limit_utilization",
-                pod_name=pod_name,
+                identity_field="service_name",
+                identity_value=service_name,
             )
             for period in _PERIODS
         }
-        normal = values["normal"]
-        abnormal = values["abnormal"]
+        normal = [value for value, _ in observations["normal"]]
+        abnormal = [value for value, _ in observations["abnormal"]]
+        observed_pod_names = sorted(
+            {pod_name for period in _PERIODS for _, pod_name in observations[period] if pod_name}
+        )
         abnormal_hits = sum(value >= threshold for value in abnormal)
         matched = bool(normal and abnormal and max(normal) < threshold and abnormal_hits >= 2)
         return {
             "predicate": "source_declared_memory_pressure",
             "scoreable": matched,
             "predicate_match": matched,
-            "pod_name": pod_name,
             "metric": "k8s.pod.memory_limit_utilization",
+            "identity_field": "service_name",
+            "identity_value": service_name,
+            "declared_pod_names": declared_pod_names,
+            "observed_pod_names": observed_pod_names,
+            "declared_pod_identity_match": declared_pod_names == observed_pod_names,
             "threshold": threshold,
             "normal_count": len(normal),
             "normal_max": max(normal) if normal else None,
@@ -1019,13 +1008,22 @@ def _component_mechanism_evidence(
     return None
 
 
-def _metric_values(path: Path, *, metric: str, pod_name: str) -> list[float]:
-    table = pq.read_table(path, columns=["metric", "value", "attr.k8s.pod.name"])
+def _metric_observations(
+    path: Path,
+    *,
+    metric: str,
+    identity_field: str,
+    identity_value: str,
+) -> list[tuple[float, str]]:
+    table = pq.read_table(
+        path,
+        columns=["metric", "value", identity_field, "attr.k8s.pod.name"],
+    )
     return [
-        float(row["value"])
+        (float(row["value"]), str(row.get("attr.k8s.pod.name") or ""))
         for row in table.to_pylist()
         if row.get("metric") == metric
-        and row.get("attr.k8s.pod.name") == pod_name
+        and row.get(identity_field) == identity_value
         and isinstance(row.get("value"), (int, float))
     ]
 

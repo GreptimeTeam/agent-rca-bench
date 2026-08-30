@@ -14,7 +14,7 @@ but it must record every lossy or synthetic protocol field.
 | OpenRCA 1.0 Bank | OpenRCA Bank | Wide enterprise metric schema and legacy multimodal telemetry | Included | Not applicable: no standard entity identity or span roles |
 | OpenRCA 1.0 Market | OpenRCA Market | Multi-level node, pod, and service failures over wide legacy telemetry | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
 | OpenRCA 1.0 Telecom | OpenRCA Telecom | Independent telecom/database system with metrics and traces but no logs | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
-| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v24-v30 development evidence; the supported cohort is exhausted for fresh measurement | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
+| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v31 fresh measurement case selected; paid cells not run | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
 | OpenRCA 2.0 ops-lite | Hotel Reservation | Native OTel and verified causal paths | Provisional; internal protocol-formal measurement only | Positive when standard client/server spans witness service calls |
 | Amazon PetShop | Amazon PetShop | Component-level causal RCA over service metrics | Rejected | Metric-only; no incident-local mechanism label or continuous baseline |
 | AnoMod TrainTicket | TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
@@ -403,8 +403,9 @@ therefore rejected rather than repaired.
   correct component and operation but no exception logs. Protocol v30 accepts the Raw claim and
   continues to reject the ungrounded Graph mechanism. These shadow-score results validate scorer
   semantics only; they do not rewrite the v29 development report.
-- `fixtures/reference/aegis-transfer-v30-four-model-protocol.json` binds the claim-grounding
-  contract in `SCORING.md`. The source oracle remains 0/0 normal to 1,981/1,981 abnormal. Agent
+- The v30 internal protocol fixture bound the claim-grounding contract in `SCORING.md`; current
+  runtime code and fixtures do not retain that development cycle. The source oracle remains 0/0
+  normal to 1,981/1,981 abnormal. Agent
   evidence may use a telemetry-derived onset and noncanonical counts. Baseline absence still
   requires complete coverage, OTel Error status cannot be replaced by HTTP 5xx, and an exception
   signature must derive from returned log data. Entity existence and ordinary calls edges remain
@@ -418,6 +419,34 @@ therefore rejected rather than repaired.
   forms while retaining the source-status, complete-window, lineage, and non-truncation checks.
   Deterministic rescoring makes both cells auditable completions. Because these trajectories shaped
   the scorer, they remain development calibration rather than measurement evidence.
+- Protocol v31 expands the source-observable eligibility gate with exact service/container identity
+  for restart and memory-pressure metrics. The fresh ranked candidates are the `ts-auth-service`
+  `PodFailure` case and the `ts-order-service` memory-stress case. The frozen seed selects the former
+  as `aegis-transfer-004`; no trajectory from that source case influenced the prompt or scorer.
+- The selected source contains 24 `k8s.container.restarts` samples at zero in the normal window and
+  24 samples at one in the abnormal window under
+  `attr.k8s.container.name=ts-auth-service`. The publisher pod label and observed telemetry pod name
+  differ. The selection and stored oracle preserve that mismatch and bind the mechanism to the exact
+  source container identity instead of repairing the pod label.
+- Production-protocol replay accepts 281,432 metric points, 35,237 log records, and 55,065 trace
+  spans with zero protocol rejection and zero trace/span ID remapping. Metric primary-key semantics
+  represent 241,131 stored rows and record 41,263 duplicate source rows and 17,955 conflicting
+  source identities. Stored restart evidence exactly matches the source oracle.
+- The non-minute boundary shares one Graph minute across both source periods, with 6,630 normal and
+  178 abnormal Client spans in that bin. Period-specific Graph comparison is therefore not
+  representable. The audit independently matches each stored raw period to its source edge set,
+  then compares the contiguous raw and Graph union. Both normalized sets contain 43 distinct edges and have
+  SHA-256 `2b6ddb0349b41cb1864f817a151c6123a3dd33506b5775080db26fce3c85477c`.
+- The v31 scorer accepts complete aggregates, split normal/abnormal aggregates, and complete raw
+  metric rows. It requires source metric and identity lineage, complete time coverage, a zero
+  baseline, and at least two abnormal restart observations. It rejects pod or value
+  cherry-picking, wrong metric or workload, incomplete windows, limits, truncation, and hard-coded
+  results. The six-model Raw/Graph protocol has 24 cells. GLM uses BigModel China Chat Completions;
+  Qwen uses a runtime-supplied China (Beijing) workspace Responses endpoint without publishing the
+  tenant hostname. The Claude roster is `claude-opus-5` and `claude-fable-5`. All models use the
+  same 16,384-token combined output limit and explicitly bind the provider's documented default
+  reasoning level. Provider-free source, scorer, protocol, and preflight gates pass; no v31
+  provider cell has run.
 
 ## OpenRCA 2.0 ops-lite
 

@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "selection_strategy": "fresh-source-observable-service-mechanism-v3",
+  "selection_seed": "semantic-rca-v1-aegis-transfer",
+  "selection_phase": "before_agent_trajectory",
+  "case_role": "measurement",
+  "consumed_parent_manifests": [
+    {
+      "name": "aegis-selection.json",
+      "sha256": "6131b704f0fbfdf8fb35ac9850838994f971371924d6392821fa01c37fb94607"
+    },
+    {
+      "name": "aegis-transfer-v25-selection.json",
+      "sha256": "abf26bb81b6ddb5920682f6fae6ffddb13770a0d2deeb2fa4b9db93dafe859df"
+    },
+    {
+      "name": "aegis-transfer-v27-selection.json",
+      "sha256": "e4fefe3c39e8264467ebfa9373bce39cdee2ad68b9aeea84b46b0fd4d1f90819"
+    }
+  ],
+  "consumed_source_cases": [
+    "ts0-ts-security-service-request-replace-method-j6gpxx",
+    "ts8-ts-route-plan-service-request-delay-5dmjfm",
+    "ts2-ts-train-service-exception-plrfk2"
+  ],
+  "eligible_unconsumed_candidates": [
+    "ts2-ts-order-service-stress-8vtw2p",
+    "ts4-ts-auth-service-pod-failure-97s6xl"
+  ],
+  "ranked_unconsumed_candidates": [
+    "ts4-ts-auth-service-pod-failure-97s6xl",
+    "ts2-ts-order-service-stress-8vtw2p"
+  ],
+  "agent_case_id": "aegis-transfer-004",
+  "source": {
+    "artifact_record": "https://zenodo.org/records/19522409",
+    "artifact_filename": "FSE_26_RCA_dataset_study_reviewer.tar.gz",
+    "artifact_md5": "16f0743b6feb20838f856d6e441e0c7b",
+    "source_dataset_record": "https://zenodo.org/records/17105974",
+    "data_redistributed": false
+  },
+  "selected_case": {
+    "source_case": "ts4-ts-auth-service-pod-failure-97s6xl",
+    "fault_type": "PodFailure",
+    "ground_truth_services": [
+      "ts-auth-service"
+    ],
+    "normal_window": [
+      1752933592,
+      1752933832
+    ],
+    "abnormal_window": [
+      1752933832,
+      1752934072
+    ],
+    "declared_edge": null,
+    "mechanism_evidence": {
+      "predicate": "source_declared_workload_restart",
+      "metric": "k8s.container.restarts",
+      "identity_field": "attr.k8s.container.name",
+      "identity_value": "ts-auth-service",
+      "declared_pod_names": [
+        "ts-auth-service-6966cbcd89-qvlgp"
+      ],
+      "observed_pod_names": [
+        "ts-auth-service-79b77c-4rh9t"
+      ],
+      "declared_pod_identity_match": false,
+      "injection_pod_name": null,
+      "injection_pod_identity_match": null,
+      "normal_count": 24,
+      "normal_min_restarts": 0.0,
+      "normal_max_restarts": 0.0,
+      "abnormal_count": 24,
+      "abnormal_min_restarts": 1.0,
+      "abnormal_max_restarts": 1.0
+    },
+    "normal_raw_edge_set": {
+      "edge_count": 43,
+      "witness_count": 7215,
+      "sha256": "e89e6ea0d8f95d884ffbc3299fdf9f4f35266763941f2897fd4f2652d5dc362b"
+    },
+    "abnormal_raw_edge_set": {
+      "edge_count": 18,
+      "witness_count": 2309,
+      "sha256": "9ffa252d6d1236d73510fe48cff223b1050a7bf2bd71cfef9f1f28c4000f75b4"
+    }
+  }
+}

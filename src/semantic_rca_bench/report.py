@@ -27,13 +27,22 @@ MODEL_PRICING = {
         ),
         "source": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
     },
-    "claude-opus-4-8": {
+    "claude-opus-5": {
         "currency": "USD",
         "input_per_million": 5.0,
         "input_cache_write_per_million": 6.25,
         "input_cache_hit_per_million": 0.5,
         "output_per_million": 25.0,
-        "checked_at": "2026-08-29",
+        "checked_at": "2026-08-30",
+        "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+    },
+    "claude-fable-5": {
+        "currency": "USD",
+        "input_per_million": 10.0,
+        "input_cache_write_per_million": 12.5,
+        "input_cache_hit_per_million": 1.0,
+        "output_per_million": 50.0,
+        "checked_at": "2026-08-30",
         "source": "https://platform.claude.com/docs/en/about-claude/pricing",
     },
     "claude-sonnet-5": {
@@ -73,6 +82,31 @@ MODEL_PRICING = {
         ),
         "source": "https://api-docs.deepseek.com/quick_start/pricing/",
     },
+    "glm-5.3": {
+        "currency": "CNY",
+        "cost_available": False,
+        "checked_at": "2026-08-30",
+        "note": (
+            "The BigModel China pricing page did not yet list GLM-5.3 rates when the "
+            "protocol was prepared. Token usage remains auditable, but estimated cost is "
+            "unavailable until an official model-specific rate is frozen."
+        ),
+        "source": "https://bigmodel.cn/pricing",
+    },
+    "qwen3.8-2.4t-a95b": {
+        "currency": "CNY",
+        "input_per_million": 12.0,
+        "input_cache_hit_per_million": 1.5,
+        "output_per_million": 36.0,
+        "cache_breakdown_required": True,
+        "checked_at": "2026-08-30",
+        "note": (
+            "Alibaba Cloud Model Studio China (Beijing) workspace deployment. Automatic "
+            "cache hits cost CNY 1.5 per million tokens. Explicit cache creation is not used "
+            "by this runner; cost fails closed if a cache-write field is nevertheless returned."
+        ),
+        "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-2-4t-a95b",
+    },
 }
 
 TOKEN_ACCOUNTING = {
@@ -83,12 +117,13 @@ TOKEN_ACCOUNTING = {
         "cached_input_included_in_input_tokens": False,
         "context": "system prompt, tool schemas, and prior tool results are sent to the provider",
         "output_tokens": (
-            "provider-reported output including structured tool output and, for OpenAI "
-            "Responses reasoning models, reasoning tokens"
+            "normalized provider-reported output_tokens or completion_tokens, including "
+            "reasoning where the provider includes it"
         ),
         "reasoning_tokens": (
-            "OpenAI Responses reasoning_tokens is recorded as a subset of output_tokens; "
-            "other API transports do not expose a common reasoning breakdown"
+            "Responses API reasoning_tokens is recorded as a subset of output_tokens when the "
+            "provider returns it; BigModel Chat Completions does not expose a separate token "
+            "breakdown"
         ),
         "comparability": "paired comparisons only within the same provider and runner contract",
     },
@@ -137,11 +172,16 @@ def _raw_input_breakdown(run: Mapping[str, object]) -> tuple[int, int, int, bool
             uncached += int(usage.get("input_tokens", 0) or 0)
             breakdown_responses += 1
         else:
-            details = usage.get("input_tokens_details")
+            input_tokens = int(usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0)
+            details = usage.get("input_tokens_details", usage.get("prompt_tokens_details"))
             if isinstance(details, Mapping):
-                input_tokens = int(usage.get("input_tokens", 0) or 0)
                 cached = int(details.get("cached_tokens", 0) or 0)
-                cache_write = int(details.get("cache_write_tokens", 0) or 0)
+                cache_write = int(
+                    details.get("cache_write_tokens", 0)
+                    or details.get("cache_creation_input_tokens", 0)
+                    or usage.get("cache_creation_input_tokens", 0)
+                    or 0
+                )
                 if (
                     input_tokens >= 0
                     and cached >= 0
@@ -182,13 +222,17 @@ def _runner_reported_token_total(
 
 
 def _estimated_api_cost(run: Mapping[str, object], pricing: Mapping[str, object]) -> float | None:
+    if pricing.get("cost_available") is False:
+        return None
     usage = run.get("usage")
     usage = usage if isinstance(usage, Mapping) else {}
     uncached_input, cache_read, cache_creation, cache_breakdown_available = _raw_input_breakdown(
         run
     )
     cache_read_rate = pricing.get("input_cache_hit_per_million")
-    if cache_read_rate is not None and not cache_breakdown_available:
+    if (
+        cache_read_rate is not None or pricing.get("cache_breakdown_required") is True
+    ) and not cache_breakdown_available:
         return None
     if cache_read and cache_read_rate is None:
         return None

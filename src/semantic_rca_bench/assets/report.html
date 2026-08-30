@@ -217,7 +217,7 @@
       const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       const num = value => new Intl.NumberFormat('en-US', {maximumFractionDigits: 1}).format(Number(value || 0));
       const money = value => value == null ? '—' : new Intl.NumberFormat('en-US', {style: 'currency', currency: report.pricing?.currency || 'USD', minimumFractionDigits: 3, maximumFractionDigits: 3}).format(value);
-      const rateMoney = value => new Intl.NumberFormat('en-US', {style: 'currency', currency: report.pricing?.currency || 'USD', maximumFractionDigits: 2}).format(value);
+      const rateMoney = value => value == null ? '—' : new Intl.NumberFormat('en-US', {style: 'currency', currency: report.pricing?.currency || 'USD', maximumFractionDigits: 2}).format(value);
       const duration = value => {
         const seconds = Number(value || 0);
         return seconds < 60 ? `${num(seconds)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
@@ -269,12 +269,14 @@
           total.cacheCreate += Number(usage.cache_creation_input_tokens || 0);
           total.uncached += Number(usage.input_tokens || 0);
           total.breakdown = true;
-        } else if (usage.input_tokens_details && typeof usage.input_tokens_details === 'object') {
-          const cached = Number(usage.input_tokens_details.cached_tokens || 0);
-          const cacheWrite = Number(usage.input_tokens_details.cache_write_tokens || 0);
+        } else if ((usage.input_tokens_details && typeof usage.input_tokens_details === 'object') || (usage.prompt_tokens_details && typeof usage.prompt_tokens_details === 'object')) {
+          const details = usage.input_tokens_details || usage.prompt_tokens_details;
+          const cached = Number(details.cached_tokens || 0);
+          const cacheWrite = Number(details.cache_write_tokens || details.cache_creation_input_tokens || usage.cache_creation_input_tokens || 0);
+          const inputTokens = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0);
           total.cacheRead += cached;
           total.cacheCreate += cacheWrite;
-          total.uncached += Number(usage.input_tokens || 0) - cached - cacheWrite;
+          total.uncached += inputTokens - cached - cacheWrite;
           total.breakdown = true;
         }
         return total;
@@ -288,6 +290,7 @@
       };
       const costOf = run => {
         if (!report.pricing) return null;
+        if (report.pricing.cost_available === false) return null;
         if (Object.prototype.hasOwnProperty.call(run, 'estimated_api_cost')) {
           return run.estimated_api_cost == null ? null : Number(run.estimated_api_cost);
         }
@@ -457,7 +460,10 @@
           const prediction = [...predictions.entries()].map(([key, count]) => `${esc(key)}${count > 1 ? ` ×${count}` : ''}`).join('<br>');
           const onset = median(items.map(item => evaluationOf(item).onset_error_seconds));
           const elapsed = items.map(item => Number(runOf(item).elapsed_seconds || 0));
-          const estimatedCost = report.pricing ? items.reduce((sum, item) => sum + costOf(runOf(item)), 0) : null;
+          const itemCosts = report.pricing ? items.map(item => costOf(runOf(item))) : [];
+          const estimatedCost = itemCosts.length && itemCosts.every(value => value != null)
+            ? itemCosts.reduce((sum, value) => sum + value, 0)
+            : null;
           const measuredLoads = items.map(databaseLoadOf).filter(Boolean);
           const databaseLoad = measuredLoads.length ? `${num(measuredLoads.reduce((sum, load) => sum + Number(load.query_count || 0), 0))} q · ${num(measuredLoads.reduce((sum, load) => sum + Number(load.rows_returned || 0), 0))} rows · c${num(Math.max(...measuredLoads.map(load => Number(load.max_concurrency || 0))))}` : '—';
           return `<tr class="series-${esc(level)}">

@@ -160,8 +160,62 @@ def test_openai_cache_breakdown_drives_usage_and_cost() -> None:
     assert _estimated_api_cost(run, MODEL_PRICING["gpt-5.6-sol"]) == pytest.approx(
         (30 * 4 + 80 * 0.4 + 10 * 5 + 5 * 20) / 1_000_000
     )
-    assert "reasoning tokens" in TOKEN_ACCOUNTING["api"]["output_tokens"]
+    assert "including reasoning" in TOKEN_ACCOUNTING["api"]["output_tokens"]
     assert "subset of output_tokens" in TOKEN_ACCOUNTING["api"]["reasoning_tokens"]
+
+
+def test_qwen_china_pricing_uses_provider_cache_breakdown() -> None:
+    pricing = MODEL_PRICING["qwen3.8-2.4t-a95b"]
+    uncached_run = {
+        "usage": {"input_tokens": 100, "output_tokens": 20},
+        "responses": [
+            {
+                "usage": {
+                    "input_tokens": 100,
+                    "input_tokens_details": {"cached_tokens": 0},
+                    "output_tokens": 20,
+                }
+            }
+        ],
+    }
+    cached_run = {
+        "usage": {"input_tokens": 20, "output_tokens": 20},
+        "responses": [
+            {
+                "usage": {
+                    "input_tokens": 100,
+                    "input_tokens_details": {"cached_tokens": 80},
+                    "output_tokens": 20,
+                }
+            }
+        ],
+    }
+
+    assert pricing["currency"] == "CNY"
+    assert _estimated_api_cost(uncached_run, pricing) == pytest.approx(
+        (100 * 12 + 20 * 36) / 1_000_000
+    )
+    assert _estimated_api_cost(cached_run, pricing) == pytest.approx(
+        (20 * 12 + 80 * 1.5 + 20 * 36) / 1_000_000
+    )
+
+
+def test_bigmodel_cost_fails_closed_until_glm_5_3_china_price_is_published() -> None:
+    run = {
+        "usage": {"input_tokens": 20, "output_tokens": 10},
+        "responses": [
+            {
+                "usage": {
+                    "prompt_tokens": 100,
+                    "prompt_tokens_details": {"cached_tokens": 80},
+                    "completion_tokens": 10,
+                }
+            }
+        ],
+    }
+
+    assert _raw_input_breakdown(run) == (20, 80, 0, True)
+    assert _estimated_api_cost(run, MODEL_PRICING["glm-5.3"]) is None
 
 
 def test_render_report_embeds_data_and_escapes_script_end(tmp_path) -> None:

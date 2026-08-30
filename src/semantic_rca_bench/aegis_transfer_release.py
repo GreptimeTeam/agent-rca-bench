@@ -29,7 +29,7 @@ from semantic_rca_bench.contracts import AgentRun
 from semantic_rca_bench.evidence import is_valid_evidence_trace
 from semantic_rca_bench.report import MODEL_PRICING, _estimated_api_cost, _raw_input_breakdown
 
-ARTIFACT_SCHEMA_VERSION = 2
+ARTIFACT_SCHEMA_VERSION = 3
 
 
 def build_measurement_artifact(
@@ -522,7 +522,7 @@ def _run_payload(
         run.model_dump(mode="json")
     )
     pricing = pricing or MODEL_PRICING.get(run.model)
-    peak_cost = (
+    estimated_cost = (
         _estimated_api_cost(run.model_dump(mode="json"), pricing) if pricing is not None else None
     )
     database_load = _mapping(item, "database_load")
@@ -611,7 +611,8 @@ def _run_payload(
             "output_tokens": run.usage.output_tokens,
             "reasoning_output_tokens": run.usage.reasoning_tokens,
             "cache_breakdown_complete": breakdown_complete,
-            "estimated_peak_usd": peak_cost,
+            "estimated_cost": estimated_cost,
+            "cost_currency": pricing.get("currency") if pricing is not None else None,
         },
     }
 
@@ -645,10 +646,10 @@ def _usage_summary(
         + totals["cache_read_input_tokens"]
         + totals["cache_creation_input_tokens"]
     )
-    peak_costs = [_mapping(run, "usage").get("estimated_peak_usd") for run in runs]
-    peak_total = (
-        sum(float(value) for value in peak_costs)
-        if all(isinstance(value, (int, float)) for value in peak_costs)
+    estimated_costs = [_mapping(run, "usage").get("estimated_cost") for run in runs]
+    estimated_total = (
+        sum(float(value) for value in estimated_costs)
+        if all(isinstance(value, (int, float)) for value in estimated_costs)
         else None
     )
     pricing = pricing or MODEL_PRICING.get(model)
@@ -660,10 +661,11 @@ def _usage_summary(
         "cache_hit_rate": (
             totals["cache_read_input_tokens"] / input_total if input_total else None
         ),
-        "estimated_peak_usd": peak_total,
-        "estimated_off_peak_usd": (
-            peak_total * float(off_peak_multiplier)
-            if peak_total is not None and isinstance(off_peak_multiplier, (int, float))
+        "estimated_cost": estimated_total,
+        "cost_currency": pricing.get("currency") if isinstance(pricing, Mapping) else None,
+        "estimated_off_peak_cost": (
+            estimated_total * float(off_peak_multiplier)
+            if estimated_total is not None and isinstance(off_peak_multiplier, (int, float))
             else None
         ),
         "pricing": pricing,

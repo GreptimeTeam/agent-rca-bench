@@ -14,8 +14,6 @@ from statistics import median
 
 from semantic_rca_bench.aegis_transfer_benchmark import (
     TransferEnvironmentConfig,
-    build_transfer_run_report,
-    execute_transfer_runs,
     prepare_transfer_environment,
 )
 from semantic_rca_bench.aegis_transfer_formal import (
@@ -33,7 +31,6 @@ from semantic_rca_bench.aegis_transfer_release import (
     build_measurement_artifact_from_files,
 )
 from semantic_rca_bench.aegis_transfer_scorer import (
-    CALIBRATION_SCORER_FIXTURE,
     FORMAL_SCORER_FIXTURE,
     audit_transfer_scorer,
     load_transfer_scorer_fixture,
@@ -196,8 +193,8 @@ def _add_api_transport_arguments(parser: argparse.ArgumentParser) -> None:
 def _add_aegis_formal_environment_arguments(
     parser: argparse.ArgumentParser,
     *,
-    selection: Path = Path("fixtures/reference/aegis-transfer-v27-selection.json"),
-    database: str = "case_03",
+    selection: Path = Path("fixtures/reference/aegis-transfer-v31-selection.json"),
+    database: str = "case_04",
 ) -> None:
     parser.add_argument("--cases-dir", type=Path, required=True)
     parser.add_argument("--meta-dir", type=Path, required=True)
@@ -225,7 +222,6 @@ def _parser() -> argparse.ArgumentParser:
     aegis_audit.add_argument(
         "--selection",
         type=Path,
-        default=Path("fixtures/reference/aegis-selection.json"),
     )
     aegis_audit.add_argument("--output", type=Path, required=True)
 
@@ -234,7 +230,6 @@ def _parser() -> argparse.ArgumentParser:
     aegis_fetch.add_argument(
         "--selection",
         type=Path,
-        default=Path("fixtures/reference/aegis-selection.json"),
     )
     aegis_fetch.add_argument("--output", type=Path, required=True)
 
@@ -308,27 +303,6 @@ def _parser() -> argparse.ArgumentParser:
         "--max-new-runs",
         type=int,
         help="execute at most this many pending cells in this invocation",
-    )
-
-    aegis_transfer_run = subparsers.add_parser("aegis-transfer-run")
-    _add_aegis_formal_environment_arguments(
-        aegis_transfer_run,
-        selection=Path("fixtures/reference/aegis-transfer-v27-calibration-selection.json"),
-        database="case_02",
-    )
-    aegis_transfer_run.add_argument(
-        "--scorer",
-        type=Path,
-        default=CALIBRATION_SCORER_FIXTURE,
-    )
-    aegis_transfer_run.add_argument("--source-audit-output", type=Path, required=True)
-    aegis_transfer_run.add_argument("--scorer-audit-output", type=Path, required=True)
-    aegis_transfer_run.add_argument("--output", type=Path, required=True)
-    aegis_transfer_run.add_argument(
-        "--confirm-paid-api",
-        action="store_true",
-        required=True,
-        help="acknowledge that the command executes the frozen paid API run",
     )
 
     aegis_measurement_export = subparsers.add_parser("aegis-transfer-measurement-export")
@@ -617,62 +591,6 @@ def aegis_transfer_formal_run(args: argparse.Namespace) -> int:
     execution = report["execution"]
     print(args.report)
     return 0 if execution["runner_errors"] == 0 and execution["budget_exhaustions"] == 0 else 1
-
-
-def aegis_transfer_run(args: argparse.Namespace) -> int:
-    if args.confirm_paid_api is not True:
-        raise ValueError("Aegis transfer run requires explicit paid API confirmation")
-    output_paths = (args.source_audit_output, args.scorer_audit_output, args.output)
-    if len({path.resolve() for path in output_paths}) != len(output_paths):
-        raise ValueError("Aegis transfer output paths must be distinct")
-    for path in output_paths:
-        if path.exists():
-            raise ValueError(f"refusing to overwrite Aegis transfer artifact: {path}")
-    fixture = load_transfer_scorer_fixture(args.scorer)
-    require_current_protocol(fixture.canonical_api_runner.benchmark_protocol_version)
-    source_report = None
-    scorer_report = None
-    run_report = None
-    try:
-        with prepare_transfer_environment(_transfer_environment_config(args)) as prepared:
-            source_report = prepared.source_audit
-            scorer_report = audit_transfer_scorer(source_report, fixture, args.scorer)
-            run_report = build_transfer_run_report(
-                prepared.case,
-                fixture,
-                args.scorer,
-                source_report,
-                scorer_report,
-                prepared.semantic_coverage,
-            )
-            write_json(args.source_audit_output, source_report)
-            write_json(args.scorer_audit_output, scorer_report)
-            write_json(args.output, run_report)
-            execute_transfer_runs(
-                prepared.client,
-                prepared.case,
-                fixture,
-                run_report,
-                on_update=lambda report: write_json(args.output, report),
-            )
-    finally:
-        if source_report is not None:
-            write_json(args.source_audit_output, source_report)
-        if scorer_report is not None:
-            write_json(args.scorer_audit_output, scorer_report)
-        if run_report is not None:
-            write_json(args.output, run_report)
-    execution = run_report["execution"]
-    print(args.output)
-    return (
-        0
-        if (
-            execution["complete"]
-            and execution["runner_errors"] == 0
-            and execution["budget_exhaustions"] == 0
-        )
-        else 1
-    )
 
 
 def aegis_transfer_measurement_export(args: argparse.Namespace) -> int:
@@ -1817,8 +1735,6 @@ def main() -> None:
             code = aegis_transfer_formal_preflight(args)
         elif args.command == "aegis-transfer-formal-run":
             code = aegis_transfer_formal_run(args)
-        elif args.command == "aegis-transfer-run":
-            code = aegis_transfer_run(args)
         elif args.command == "aegis-transfer-measurement-export":
             code = aegis_transfer_measurement_export(args)
         elif args.command == "smoke":

@@ -10,11 +10,14 @@ from semantic_rca_bench.agent import (
     _agent_tools,
     _anthropic_client,
     _catalog_search_output,
+    _chat_completions_client,
+    _chat_completions_request,
     _citation_output,
     _describe_table_tool,
     _execute_sql_tool,
     _incident_prompt,
-    _openai_client,
+    _responses_client,
+    _responses_request,
     _search_table_semantics_tool,
     _semantic_graph_output,
     _semantic_graph_query,
@@ -68,20 +71,127 @@ def test_non_deepseek_model_uses_anthropic_endpoint(monkeypatch) -> None:
     assert calls == [client]
 
 
-def test_openai_client_uses_dedicated_api_credential(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("transport", "environment_variable", "expected"),
+    [
+        (ApiTransport.OPENAI_RESPONSES, "OPENAI_API_KEY", {"api_key": "test-key"}),
+        (
+            ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES,
+            "DASHSCOPE_API_KEY",
+            {
+                "api_key": "test-key",
+                "base_url": ("https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"),
+            },
+        ),
+    ],
+)
+def test_responses_clients_use_transport_bound_credentials_and_endpoints(
+    monkeypatch, transport, environment_variable, expected
+) -> None:
     calls = []
 
     def fake_client(**kwargs):
         calls.append(kwargs)
         return kwargs
 
-    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+    monkeypatch.setenv(environment_variable, "test-key")
+    monkeypatch.setenv(
+        "DASHSCOPE_BASE_URL",
+        "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    )
     monkeypatch.setattr(agent_module.openai, "OpenAI", fake_client)
 
-    client = _openai_client()
+    client = _responses_client(transport)
 
-    assert client == {"api_key": "test-openai-key"}
+    assert client == expected
     assert calls == [client]
+
+
+def test_bigmodel_client_uses_china_endpoint_and_dedicated_credential(monkeypatch) -> None:
+    calls = []
+
+    def fake_client(**kwargs):
+        calls.append(kwargs)
+        return kwargs
+
+    monkeypatch.setenv("BIGMODEL_API_KEY", "test-key")
+    monkeypatch.setattr(agent_module.openai, "OpenAI", fake_client)
+
+    client = _chat_completions_client(ApiTransport.BIGMODEL_CHAT_COMPLETIONS)
+
+    assert client == {
+        "api_key": "test-key",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    }
+    assert calls == [client]
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        "https://workspace.cn-beijing.maas.aliyuncs.com/api/v1",
+        "http://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    ],
+)
+def test_dashscope_responses_rejects_wrong_region_or_protocol(monkeypatch, base_url) -> None:
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
+    monkeypatch.setenv("DASHSCOPE_BASE_URL", base_url)
+
+    with pytest.raises(AgentError, match="China \\(Beijing\\) workspace Responses"):
+        _responses_client(ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES)
+
+
+def test_responses_request_keeps_provider_specific_options_separate() -> None:
+    common = {
+        "model": "model",
+        "system_prompt": "system",
+        "input_items": [{"role": "user", "content": "incident"}],
+        "tools": [],
+        "max_output_tokens": 16_384,
+        "prompt_cache": True,
+    }
+
+    openai_request = _responses_request(
+        ApiTransport.OPENAI_RESPONSES,
+        Visibility.RAW,
+        reasoning_effort="medium",
+        **common,
+    )
+    dashscope_request = _responses_request(
+        ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES,
+        Visibility.RAW,
+        reasoning_effort="xhigh",
+        **common,
+    )
+
+    assert openai_request["include"] == ["reasoning.encrypted_content"]
+    assert openai_request["prompt_cache_options"] == {"mode": "implicit", "ttl": "30m"}
+    assert openai_request["reasoning"] == {"effort": "medium"}
+    assert dashscope_request["reasoning"] == {"effort": "xhigh"}
+    assert dashscope_request["store"] is False
+    assert dashscope_request["parallel_tool_calls"] is False
+    assert dashscope_request["extra_headers"] == {"x-dashscope-session-cache": "enable"}
+    assert "include" not in dashscope_request
+    assert "prompt_cache_key" not in dashscope_request
+    assert "prompt_cache_options" not in dashscope_request
+
+
+def test_bigmodel_request_freezes_reasoning_and_output_budget() -> None:
+    request = _chat_completions_request(
+        ApiTransport.BIGMODEL_CHAT_COMPLETIONS,
+        model="glm-5.3",
+        messages=[{"role": "user", "content": "incident"}],
+        tools=[],
+        max_output_tokens=16_384,
+        reasoning_effort="max",
+    )
+
+    assert request["max_tokens"] == 16_384
+    assert request["extra_body"] == {
+        "thinking": {"type": "enabled"},
+        "reasoning_effort": "max",
+    }
 
 
 def test_tools_expose_only_allowed_semantic_capabilities() -> None:
@@ -395,6 +505,8 @@ def test_agent_records_requested_calls_rejected_by_the_tool_budget(monkeypatch) 
         Visibility.RAW,
         model="test-model",
         api_transport=ApiTransport.ANTHROPIC_MESSAGES,
+        reasoning_effort="high",
+        max_output_tokens=16_384,
         max_tool_calls=0,
     )
 
@@ -411,6 +523,8 @@ def test_agent_records_requested_calls_rejected_by_the_tool_budget(monkeypatch) 
     ]
     assert any(text.startswith("Investigation budget: 0 tool calls remain") for text in budget_text)
     assert all(request["cache_control"] == {"type": "ephemeral"} for request in requests)
+    assert all(request["output_config"] == {"effort": "high"} for request in requests)
+    assert all(request["max_tokens"] == 16_384 for request in requests)
 
 
 def test_deepseek_uses_automatic_cache_and_counts_native_usage(monkeypatch) -> None:
@@ -468,12 +582,16 @@ def test_deepseek_uses_automatic_cache_and_counts_native_usage(monkeypatch) -> N
         Visibility.RAW,
         model="deepseek-v4-flash",
         api_transport=ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
+        reasoning_effort="high",
+        max_output_tokens=16_384,
         max_tool_calls=2,
     )
 
     assert result.usage.input_tokens == 20
     assert result.usage.output_tokens == 5
     assert "cache_control" not in requests[0]
+    assert requests[0]["output_config"] == {"effort": "high"}
+    assert requests[0]["max_tokens"] == 16_384
 
 
 def test_openai_responses_runner_projects_continuation_items_and_counts_cache_usage(
@@ -591,7 +709,7 @@ def test_openai_responses_runner_projects_continuation_items_and_counts_cache_us
         return next(responses)
 
     provider = SimpleNamespace(responses=SimpleNamespace(create=create))
-    monkeypatch.setattr(agent_module, "_openai_client", lambda: provider)
+    monkeypatch.setattr(agent_module, "_responses_client", lambda _: provider)
     gateway = SimpleNamespace(
         client=SimpleNamespace(),
         execute=lambda _: QueryResult(
@@ -655,6 +773,163 @@ def test_openai_responses_runner_projects_continuation_items_and_counts_cache_us
     assert result.responses[0]["output"] == first_raw_output
 
 
+def test_bigmodel_chat_completions_runner_replays_tools_and_counts_cached_input(
+    monkeypatch,
+) -> None:
+    diagnosis = {
+        "causal_scope": "component",
+        "causal_component": "checkout",
+        "edge_source": None,
+        "edge_destination": None,
+        "impacted_component": None,
+        "causal_operation": None,
+        "fault_category": "cpu",
+        "mechanism_code": "cpu_saturation",
+        "fault_type": "cpu saturation",
+        "confidence": 0.7,
+        "evidence": [],
+        "alternative_candidates": [],
+        "explanation": "CPU saturation is the most likely cause.",
+    }
+
+    class Message:
+        def __init__(self, tool_calls, raw):
+            self.tool_calls = tool_calls
+            self.raw = raw
+
+        def model_dump(self, *, mode: str, exclude_none: bool) -> dict[str, object]:
+            assert mode == "json"
+            assert exclude_none is True
+            return self.raw
+
+    class Response:
+        def __init__(self, message, finish_reason, usage):
+            self.choices = [SimpleNamespace(message=message, finish_reason=finish_reason)]
+            self.usage = SimpleNamespace(completion_tokens=usage["completion_tokens"])
+            self.raw = {
+                "choices": [{"message": message.raw, "finish_reason": finish_reason, "index": 0}],
+                "usage": usage,
+            }
+
+        def model_dump(self, *, mode: str) -> dict[str, object]:
+            assert mode == "json"
+            return self.raw
+
+    execute_call = SimpleNamespace(
+        id="call-1",
+        function=SimpleNamespace(name="execute_sql", arguments='{"query":"SELECT 1"}'),
+    )
+    submit_call = SimpleNamespace(
+        id="call-2",
+        function=SimpleNamespace(name="submit_diagnosis", arguments=json.dumps(diagnosis)),
+    )
+    responses = iter(
+        [
+            Response(
+                Message(
+                    [execute_call],
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "reasoning_content": "inspect the data",
+                        "tool_calls": [
+                            {
+                                "id": "call-1",
+                                "type": "function",
+                                "function": {
+                                    "name": "execute_sql",
+                                    "arguments": '{"query":"SELECT 1"}',
+                                },
+                            }
+                        ],
+                    },
+                ),
+                "tool_calls",
+                {
+                    "prompt_tokens": 120,
+                    "prompt_tokens_details": {"cached_tokens": 100},
+                    "completion_tokens": 5,
+                    "total_tokens": 125,
+                },
+            ),
+            Response(
+                Message(
+                    [submit_call],
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "reasoning_content": "submit",
+                        "tool_calls": [
+                            {
+                                "id": "call-2",
+                                "type": "function",
+                                "function": {
+                                    "name": "submit_diagnosis",
+                                    "arguments": json.dumps(diagnosis),
+                                },
+                            }
+                        ],
+                    },
+                ),
+                "tool_calls",
+                {
+                    "prompt_tokens": 50,
+                    "prompt_tokens_details": {"cached_tokens": 30},
+                    "completion_tokens": 6,
+                    "total_tokens": 56,
+                },
+            ),
+        ]
+    )
+    requests = []
+
+    def create(**kwargs):
+        requests.append(kwargs)
+        return next(responses)
+
+    provider = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    monkeypatch.setattr(agent_module, "_chat_completions_client", lambda _: provider)
+    gateway = SimpleNamespace(
+        client=SimpleNamespace(),
+        execute=lambda _: QueryResult(
+            query_id="q1",
+            columns=["value"],
+            rows=[[1]],
+            elapsed_seconds=0.01,
+        ),
+    )
+
+    result = run_agent(
+        gateway,  # type: ignore[arg-type]
+        CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
+        Visibility.RAW,
+        model="glm-5.3",
+        api_transport=ApiTransport.BIGMODEL_CHAT_COMPLETIONS,
+        reasoning_effort="max",
+        max_output_tokens=16_384,
+        max_tool_calls=2,
+    )
+
+    assert result.diagnosis is not None
+    assert result.usage.input_tokens == 40
+    assert result.usage.output_tokens == 11
+    assert result.usage.reasoning_tokens == 0
+    assert result.api_transport is ApiTransport.BIGMODEL_CHAT_COMPLETIONS
+    assert result.reasoning_effort == "max"
+    assert len(result.tool_calls) == 1
+    assert requests[0]["extra_body"] == {
+        "thinking": {"type": "enabled"},
+        "reasoning_effort": "max",
+    }
+    assert requests[0]["max_tokens"] == 16_384
+    second_messages = requests[1]["messages"]
+    assistant = next(message for message in second_messages if message["role"] == "assistant")
+    assert assistant["reasoning_content"] == "inspect the data"
+    tool_result = next(message for message in second_messages if message["role"] == "tool")
+    assert tool_result["tool_call_id"] == "call-1"
+    assert json.loads(tool_result["content"])["query_id"] == "q01"
+
+
 def test_openai_incomplete_response_records_provider_reason(monkeypatch) -> None:
     raw = {
         "status": "incomplete",
@@ -677,7 +952,7 @@ def test_openai_incomplete_response_records_provider_reason(monkeypatch) -> None
             return raw
 
     provider = SimpleNamespace(responses=SimpleNamespace(create=lambda **_: Response()))
-    monkeypatch.setattr(agent_module, "_openai_client", lambda: provider)
+    monkeypatch.setattr(agent_module, "_responses_client", lambda _: provider)
 
     result = run_agent(
         SimpleNamespace(client=SimpleNamespace()),  # type: ignore[arg-type]
@@ -691,7 +966,7 @@ def test_openai_incomplete_response_records_provider_reason(monkeypatch) -> None
     )
 
     assert result.error == (
-        "invalid provider response: OpenAI response status is 'incomplete': max_output_tokens"
+        "invalid provider response: Responses API status is 'incomplete': max_output_tokens"
     )
     assert result.responses == [raw]
     assert result.usage.output_tokens == 16_384
@@ -699,7 +974,7 @@ def test_openai_incomplete_response_records_provider_reason(monkeypatch) -> None
 
 
 def test_openai_tool_error_uses_explicit_json_envelope() -> None:
-    output = agent_module._openai_tool_output(
+    output = agent_module._responses_tool_output(
         agent_module.ToolInvocation(
             content="SQL rejected",
             is_error=True,

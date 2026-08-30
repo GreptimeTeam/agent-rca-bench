@@ -87,10 +87,8 @@ Claude models use `ANTHROPIC_API_KEY` or the
 shell history:
 
 ```bash
-read -s "BENCH_KEY?Anthropic API key: "; echo
 security add-generic-password -U -a "$USER" \
-  -s semantic-rca-bench-anthropic -w "$BENCH_KEY"
-unset BENCH_KEY
+  -s semantic-rca-bench-anthropic -w
 uv run semantic-rca run \
   --report .reports/smoke-<run-id>.json \
   --repetitions 3
@@ -102,10 +100,8 @@ official Anthropic-compatible endpoint, so tool trajectories and usage records
 keep the same report format:
 
 ```bash
-read -s "BENCH_KEY?DeepSeek API key: "; echo
 security add-generic-password -U -a "$USER" \
-  -s semantic-rca-bench-deepseek -w "$BENCH_KEY"
-unset BENCH_KEY
+  -s semantic-rca-bench-deepseek -w
 uv run semantic-rca run \
   --report .reports/smoke-<run-id>.json \
   --model deepseek-v4-flash \
@@ -126,10 +122,8 @@ reports account for uncached input, cache writes, cache reads, and output
 separately:
 
 ```bash
-read -s "BENCH_KEY?OpenAI API key: "; echo
 security add-generic-password -U -a "$USER" \
-  -s semantic-rca-bench-openai -w "$BENCH_KEY"
-unset BENCH_KEY
+  -s semantic-rca-bench-openai -w
 uv run semantic-rca run \
   --report .reports/smoke-<run-id>.json \
   --model gpt-5.6-sol \
@@ -138,6 +132,46 @@ uv run semantic-rca run \
   --max-output-tokens 16384 \
   --repetitions 2
 ```
+
+GLM-5.3 uses `BIGMODEL_API_KEY` or the `semantic-rca-bench-bigmodel` Keychain service and
+BigModel's China Chat Completions endpoint. Its contract fixes `thinking.type=enabled`, `max`
+reasoning, and a 16,384-token output budget. BigModel automatically caches repeated context:
+
+```bash
+security add-generic-password -U -a "$USER" \
+  -s semantic-rca-bench-bigmodel -w
+uv run semantic-rca run \
+  --report .reports/smoke-<run-id>.json \
+  --model glm-5.3 \
+  --api-transport bigmodel-chat-completions \
+  --reasoning-effort max \
+  --max-output-tokens 16384 \
+  --repetitions 2
+```
+
+The Qwen arm uses the open-weight `qwen3.8-2.4t-a95b` model, not `qwen3.8-max`. It reads
+`DASHSCOPE_API_KEY` or the `semantic-rca-bench-dashscope` Keychain service. `DASHSCOPE_BASE_URL`
+must name the caller's China (Beijing) workspace Responses endpoint; the tenant-specific hostname
+is runtime configuration and is not written to reports. The contract fixes `xhigh` reasoning and
+enables the provider's Session cache header:
+
+```bash
+security add-generic-password -U -a "$USER" \
+  -s semantic-rca-bench-dashscope -w
+export DASHSCOPE_BASE_URL='https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
+uv run semantic-rca run \
+  --report .reports/smoke-<run-id>.json \
+  --model qwen3.8-2.4t-a95b \
+  --api-transport dashscope-cn-beijing-responses \
+  --reasoning-effort xhigh \
+  --max-output-tokens 16384 \
+  --repetitions 2
+```
+
+Both China providers bill in CNY, which reports preserve without inventing an exchange rate.
+Alibaba Cloud publishes the selected Beijing model's uncached, automatic-cache-hit, and output
+rates. BigModel's public price page did not list GLM-5.3 when this protocol was prepared, so GLM
+token usage remains auditable but its cost estimate fails closed until an official rate is frozen.
 
 The runner uses a seeded treatment order and rotates it once per repetition.
 Two repetitions place both treatments in both execution positions once. Reports mark
@@ -164,7 +198,8 @@ and adds the OpenAI Responses API runner. Protocol v29 replaces the ambiguous af
 and dependency pair with a causal locus that is either one component or one complete directed
 edge. It keeps the default SQL result cap at 200 rows, lets the agent request up to 1,000 rows per
 query, and returns truncated final citations for repair. Protocol v30 scores source-derived causal
-claims rather than canonical query recipes and reports per-claim grounding. The
+claims rather than canonical query recipes and reports per-claim grounding. Protocol v31 adds the
+case-independent `workload_restart` mechanism and binds the first fresh Aegis measurement case. The
 agent establishes the failing operation, uses discriminating queries instead of unconditional
 resource sweeps, and compares the same operation across the change point. The
 API runner sets its turn limit above the visible tool-call cap and records turn
@@ -293,9 +328,9 @@ three-model cells without runner errors or budget exhaustion, and one later Opus
 also completed. Their scorer used server duration for a fault injected between client and server
 start, required a hidden exact fault label, and constrained evidence to the canonical aggregate.
 The resulting zero eligible pairs are not a model-quality or semantic-layer result. Historical
-local reports remain development records and are not release artifacts. The current runtime only accepts
-v30 for new agent execution and does not rescore, resume, or export earlier development report,
-scorer, or protocol schemas. A non-v30 execution request fails before contacting a provider.
+local reports remain development records and are not release artifacts. The runtime only accepts
+v31 for new agent execution and does not rescore, resume, or export earlier development report,
+scorer, or protocol schemas. A non-v31 execution request fails before contacting a provider.
 
 Protocol v29 used the source-observable JVM exception case for development calibration. Its Raw
 trajectory proved the correct operation-level Error transition and returned the exception signature,
@@ -323,59 +358,55 @@ uv run semantic-rca aegis-transfer-audit \
   --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
   --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
   --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
-  --selection fixtures/reference/aegis-transfer-v27-selection.json \
-  --run-dir .instances/aegis-transfer-v30-source-01 \
-  --database case_03 \
-  --output .reports/aegis-transfer-v30-source.json
+  --selection fixtures/reference/aegis-transfer-v31-selection.json \
+  --run-dir .instances/aegis-transfer-v31-source-01 \
+  --database case_04 \
+  --output .reports/aegis-transfer-v31-source.json
 
 uv run semantic-rca aegis-transfer-scorer-audit \
-  --transfer-audit .reports/aegis-transfer-v30-source.json \
-  --scorer fixtures/reference/aegis-transfer-v30-scorer.json \
-  --output .reports/aegis-transfer-v30-scorer.json
+  --transfer-audit .reports/aegis-transfer-v31-source.json \
+  --scorer fixtures/reference/aegis-transfer-v31-scorer.json \
+  --output .reports/aegis-transfer-v31-scorer.json
 
 uv run semantic-rca aegis-transfer-protocol-audit \
-  --source-audit .reports/aegis-transfer-v30-source.json \
-  --scorer-audit .reports/aegis-transfer-v30-scorer.json \
-  --scorer fixtures/reference/aegis-transfer-v30-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v30-four-model-protocol.json \
-  --output .reports/aegis-transfer-v30-protocol.json
+  --source-audit .reports/aegis-transfer-v31-source.json \
+  --scorer-audit .reports/aegis-transfer-v31-scorer.json \
+  --scorer fixtures/reference/aegis-transfer-v31-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v31-six-model-protocol.json \
+  --output .reports/aegis-transfer-v31-protocol.json
 
 uv run semantic-rca aegis-transfer-formal-preflight \
-  --source-audit .reports/aegis-transfer-v30-source.json \
-  --scorer-audit .reports/aegis-transfer-v30-scorer.json \
-  --protocol-audit .reports/aegis-transfer-v30-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v30-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v30-four-model-protocol.json \
-  --output .reports/aegis-transfer-v30-formal.json
+  --source-audit .reports/aegis-transfer-v31-source.json \
+  --scorer-audit .reports/aegis-transfer-v31-scorer.json \
+  --protocol-audit .reports/aegis-transfer-v31-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v31-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v31-six-model-protocol.json \
+  --output .reports/aegis-transfer-v31-formal.json
 ```
 
-The source oracle requires zero `retrieveByName` Error spans and zero exception logs during the
-normal window, followed by repeated observations of both signals during the abnormal window. The
-stored aggregate is 0/0 to 1,981/1,981. The case has one source-labeled component and no declared
-dependency edge; the loader and scorer do not invent one.
+The source oracle binds `k8s.container.restarts` to the exact source field
+`attr.k8s.container.name=ts-auth-service`. It contains 24 samples at zero during the normal window
+and 24 samples at one during the abnormal window. The publisher pod label is stale, so the audit
+records both the declared and observed pod names and reports the mismatch. It does not repair the
+pod identity or use it as the causal component. The case has one source-labeled service and no
+declared dependency edge; the loader and scorer do not invent one.
 
 The Graph equality audit derives its comparison strategy from source boundary counts. A boundary
 that can be represented by `observed_at` minute bins must pass normal and abnormal raw/Graph exact
 equality separately and also pass the combined-window comparison. If both periods contain clients
 in the same minute, separate Graph periods are not representable; the audit records that fact and
 requires exact equality over the contiguous union. The selected source follows the latter path.
-Its normalized union contains 40 edges and has the same hash on both sides. Two independent
-ingestions produce the same source-semantic hash.
+Its normalized union contains 43 distinct edges. Raw spans and Semantic Graph have the same SHA-256,
+`2b6ddb0349b41cb1864f817a151c6123a3dd33506b5775080db26fce3c85477c`.
 
-The scorer accepts a combined aggregate, separate trace and log aggregates, complete raw rows, or a
-complete grouped result whose returned value contains the exception signature. A data-derived onset
-may split the baseline and anomaly after the hidden intervention boundary. Absence claims must cover
-the complete source baseline under the same source predicate; this is temporal completeness, not a
-claim over every possible attribute value. Counted transitions must bind both outer time bounds,
-using `BETWEEN` or explicit comparisons. Presence claims need the frozen minimum number of observations. The
-scorer requires source service and operation lineage, source OTel Error status, and error-level log
-provenance. HTTP 5xx does not substitute for OTel Error status. It rejects identity cherry-picking,
-truncated results, a limited result used to prove absence, hard-coded aggregate values, neutralized
-predicates, and row-multiplying joins. Ingestion preserves the exact source values. The no-model audit
-also proves that ASCII case normalization is collision-free for service identity and the stored OTel
-role/status domains.
+The scorer accepts a complete normal/abnormal aggregate, separate complete-window aggregates, or
+complete raw metric rows. It requires the restart metric, the source container identity, both time
+windows, and result lineage. It does not require the canonical SQL or exact source counts. It
+rejects a wrong workload or metric, pod-level cherry-picking, value filtering, incomplete windows,
+truncated or limited results, and hard-coded aggregates. The diagnosis passes only when the normal
+maximum is zero and at least two abnormal samples establish a restart value of one or greater.
 
-Protocol v30 reports `diagnosis_correct`, per-claim `claim_grounding`,
+Protocol v31 reports `diagnosis_correct`, per-claim `claim_grounding`,
 `required_evidence_covered`, `citation_integrity`,
 `execution_reliability`, `auditable_completion`, and `efficiency_eligible` separately. The primary
 efficiency comparison requires correct structured diagnosis, required claim coverage, and reliable
@@ -388,13 +419,16 @@ Graph entity existence and an ordinary witnessed calls edge can guide investigat
 alone ground required `causal_locus`. Both treatments must cite incident-local evidence tied to the
 declared operation or mechanism; a mechanism-bound result may ground locus and mechanism together.
 
-The formal fixture freezes `deepseek-v4-pro`, `claude-sonnet-5`, `claude-opus-4-8`, and
-`gpt-5.6-sol`. Each model runs two position-balanced repetitions over Raw and GreptimeDB Semantic
-Graph, for 16 cells. DeepSeek uses provider-managed prefix caching. Claude uses ephemeral request
-cache control. OpenAI uses implicit 30-minute prefix caching through the Responses API, freezes
-reasoning effort at `medium`, and uses a 16,384-token combined reasoning-and-visible-output budget.
-Preflight records zero completed cells and does not read credentials, start GreptimeDB, or call a
-provider.
+The formal fixture freezes `gpt-5.6-sol`, `deepseek-v4-pro`, `claude-opus-5`,
+`claude-fable-5`, `glm-5.3`, and the open-weight `qwen3.8-2.4t-a95b`. Each model runs two
+position-balanced repetitions over Raw and GreptimeDB Semantic Graph, for 24 cells. DeepSeek and
+GLM use provider-managed prefix caching. Qwen explicitly enables its Session cache. Claude uses
+ephemeral request cache control. OpenAI uses implicit 30-minute prefix caching. OpenAI and Qwen use
+provider-specific Responses contracts; GLM uses BigModel Chat Completions. Every model uses the
+same 16,384-token reasoning-and-visible-output limit. The fixture explicitly binds each provider's
+documented default reasoning level: OpenAI `medium`, DeepSeek and Claude `high`, GLM `max`, and Qwen
+`xhigh`. Preflight records zero
+completed cells and does not read credentials, start GreptimeDB, or call a provider.
 
 **Warning:** The next command calls a paid API. The manifest schedules OpenAI first, and
 `--max-new-runs 1` limits this invocation to one cell so output-budget and transport behavior can
@@ -405,15 +439,15 @@ uv run semantic-rca aegis-transfer-formal-run \
   --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
   --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
   --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
-  --selection fixtures/reference/aegis-transfer-v27-selection.json \
-  --run-dir .instances/aegis-transfer-v30-paid-01 \
-  --database case_03 \
-  --report .reports/aegis-transfer-v30-formal.json \
-  --source-audit-output .reports/aegis-transfer-v30-paid-01-source.json \
-  --scorer-audit-output .reports/aegis-transfer-v30-paid-01-scorer.json \
-  --protocol-audit-output .reports/aegis-transfer-v30-paid-01-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v30-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v30-four-model-protocol.json \
+  --selection fixtures/reference/aegis-transfer-v31-selection.json \
+  --run-dir .instances/aegis-transfer-v31-paid-01 \
+  --database case_04 \
+  --report .reports/aegis-transfer-v31-formal.json \
+  --source-audit-output .reports/aegis-transfer-v31-paid-01-source.json \
+  --scorer-audit-output .reports/aegis-transfer-v31-paid-01-scorer.json \
+  --protocol-audit-output .reports/aegis-transfer-v31-paid-01-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v31-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v31-six-model-protocol.json \
   --max-new-runs 1 \
   --confirm-paid-api
 ```
@@ -430,9 +464,9 @@ new audit output paths, and a new explicit approval. The preflight binds the pri
 content so a later pricing-table update cannot invalidate an in-progress report or alter its
 exported cost estimate.
 
-Protocol v30 runs are development calibration only. Do not export them as a measurement artifact
-or use them in a public semantic-layer effect estimate. A later measurement protocol must select a
-case whose trajectory did not influence the prompt, tools, diagnosis contract, or scorer.
+Protocol v31 marks case 004 as fresh measurement input because no agent trajectory from this case
+influenced the prompt, tools, diagnosis contract, or scorer. Do not publish a measurement artifact
+until all scheduled cells complete and the deterministic export and report checks pass.
 
 Since protocol v24, end-to-end RCA counts a citation as execution-valid only when
 it uniquely identifies a successful, non-truncated SQL or Graph query result,
@@ -440,7 +474,7 @@ the result carries the same query ID, and the evidence claim is non-empty.
 Catalog and schema discovery are not incident evidence. This check prevents
 failed or fabricated references from unlocking efficiency metrics, but it does
 not prove that the cited rows support the diagnosis. The Aegis transfer scorer
-adds a source-specific deterministic evidence-support predicate. Protocol v30
+adds a source-specific deterministic evidence-support predicate. Protocol v31
 also requires each citation to declare the structured claim types it supports,
 then evaluates causal-locus coverage, mechanism coverage, referential integrity,
 and execution reliability separately. The generic RCA scorer still does not

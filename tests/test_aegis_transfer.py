@@ -8,10 +8,8 @@ import pytest
 from semantic_rca_bench.contracts import QueryResult
 from semantic_rca_bench.datasets.aegis import AegisAuditError
 from semantic_rca_bench.datasets.aegis_transfer import (
-    DELAY_AGENT_CASE_ID,
-    DELAY_SOURCE_CASE,
-    FORMAL_AGENT_CASE_ID,
-    FORMAL_SOURCE_CASE,
+    RELEASE_AGENT_CASE_ID,
+    RELEASE_SOURCE_CASE,
     _iter_traces,
     archive_checksum_status,
     canonical_mechanism_evidence_query,
@@ -22,7 +20,7 @@ from semantic_rca_bench.datasets.aegis_transfer import (
     load_selected_case,
     no_model_gates,
     normalize_edge_result,
-    normalize_jvm_exception_evidence,
+    normalize_workload_restart_evidence,
 )
 
 
@@ -33,44 +31,46 @@ def _write_table(path: Path, values: dict[str, list[object]], schema: pa.Schema)
 
 def _selected_case_fixture(
     tmp_path: Path,
-    selection_path: Path = Path("fixtures/reference/aegis-transfer-v27-calibration-selection.json"),
+    selection_path: Path = Path("fixtures/reference/aegis-transfer-v31-selection.json"),
     *,
-    injection_start: str = "2025-07-20T12:36:50Z",
+    injection_start: str = "2025-07-19T14:03:52Z",
 ):
     cases_dir = tmp_path / "cases"
     meta_dir = tmp_path / "meta"
-    root = cases_dir / DELAY_SOURCE_CASE
+    root = cases_dir / RELEASE_SOURCE_CASE
     root.mkdir(parents=True)
     meta_dir.mkdir()
     (root / ".finished").touch()
     (root / "env.json").write_text(
         json.dumps(
             {
-                "NORMAL_START": "1753014770",
-                "NORMAL_END": "1753015010",
-                "ABNORMAL_START": "1753015010",
-                "ABNORMAL_END": "1753015249",
+                "NORMAL_START": "1752933592",
+                "NORMAL_END": "1752933832",
+                "ABNORMAL_START": "1752933832",
+                "ABNORMAL_END": "1752934072",
             }
         )
     )
     (root / "injection.json").write_text(
         json.dumps(
             {
-                "injection_name": DELAY_SOURCE_CASE,
+                "injection_name": RELEASE_SOURCE_CASE,
                 "status": 2,
                 "start_time": injection_start,
                 "display_config": json.dumps(
                     {
                         "injection_point": {
-                            "app_name": "ts-route-plan-service",
-                            "server_address": "ts-travel2-service",
-                            "method": "POST",
-                            "route": "/api/v1/travel2service/trips/left",
+                            "app_name": "ts-auth-service",
                         },
-                        "delay_duration": 3070,
+                        "duration": 4,
+                        "namespace": "ts",
                     }
                 ),
-                "ground_truth": {"service": ["ts-route-plan-service", "ts-travel2-service"]},
+                "ground_truth": {
+                    "container": ["ts-auth-service"],
+                    "pod": ["ts-auth-service-6966cbcd89-qvlgp"],
+                    "service": ["ts-auth-service"],
+                },
             }
         )
     )
@@ -87,15 +87,15 @@ def _selected_case_fixture(
 
     _write_table(
         meta_dir / "index.parquet",
-        {"dataset": ["rcabench"], "datapack": [DELAY_SOURCE_CASE]},
+        {"dataset": ["rcabench"], "datapack": [RELEASE_SOURCE_CASE]},
         pa.schema([("dataset", pa.large_string()), ("datapack", pa.large_string())]),
     )
     _write_table(
         meta_dir / "attributes.parquet",
         {
-            "datapack": [DELAY_SOURCE_CASE],
-            "injection.fault_type": ["HTTPRequestDelay"],
-            "ground_truth.service_count": [2],
+            "datapack": [RELEASE_SOURCE_CASE],
+            "injection.fault_type": ["PodFailure"],
+            "ground_truth.service_count": [1],
         },
         pa.schema(
             [
@@ -108,9 +108,9 @@ def _selected_case_fixture(
     _write_table(
         meta_dir / "labels.parquet",
         {
-            "datapack": [DELAY_SOURCE_CASE, DELAY_SOURCE_CASE],
-            "gt.level": ["service", "service"],
-            "gt.name": ["ts-route-plan-service", "ts-travel2-service"],
+            "datapack": [RELEASE_SOURCE_CASE],
+            "gt.level": ["service"],
+            "gt.name": ["ts-auth-service"],
         },
         pa.schema(
             [
@@ -124,7 +124,7 @@ def _selected_case_fixture(
         cases_dir,
         meta_dir,
         selection_path,
-        database="case_02",
+        database="case_04",
     )
 
 
@@ -146,168 +146,57 @@ def _edge_result(*rows: list[object]) -> QueryResult:
     )
 
 
-def _formal_selected_case_fixture(tmp_path: Path):
-    cases_dir = tmp_path / "cases"
-    meta_dir = tmp_path / "meta"
-    root = cases_dir / FORMAL_SOURCE_CASE
-    root.mkdir(parents=True)
-    meta_dir.mkdir()
-    (root / ".finished").touch()
-    (root / "env.json").write_text(
-        json.dumps(
-            {
-                "NORMAL_START": "1752841317",
-                "NORMAL_END": "1752841557",
-                "ABNORMAL_START": "1752841557",
-                "ABNORMAL_END": "1752841796",
-            }
-        )
-    )
-    (root / "injection.json").write_text(
-        json.dumps(
-            {
-                "injection_name": FORMAL_SOURCE_CASE,
-                "status": 2,
-                "start_time": "2025-07-18T12:25:57Z",
-                "display_config": json.dumps(
-                    {
-                        "injection_point": {
-                            "app_name": "ts-train-service",
-                            "method_name": "retrieveByName",
-                        }
-                    }
-                ),
-                "ground_truth": {"service": ["ts-train-service"]},
-            }
-        )
-    )
-    (root / "causal_graph.json").write_text("not valid JSON and must not be read")
-    for period in ("normal", "abnormal"):
-        for suffix in (
-            "metrics.parquet",
-            "metrics_sum.parquet",
-            "metrics_histogram.parquet",
-            "logs.parquet",
-            "traces.parquet",
-        ):
-            (root / f"{period}_{suffix}").touch()
-    _write_table(
-        meta_dir / "index.parquet",
-        {"dataset": ["rcabench"], "datapack": [FORMAL_SOURCE_CASE]},
-        pa.schema([("dataset", pa.large_string()), ("datapack", pa.large_string())]),
-    )
-    _write_table(
-        meta_dir / "attributes.parquet",
-        {
-            "datapack": [FORMAL_SOURCE_CASE],
-            "injection.fault_type": ["JVMException"],
-            "ground_truth.service_count": [1],
-        },
-        pa.schema(
-            [
-                ("datapack", pa.large_string()),
-                ("injection.fault_type", pa.large_string()),
-                ("ground_truth.service_count", pa.int64()),
-            ]
-        ),
-    )
-    _write_table(
-        meta_dir / "labels.parquet",
-        {
-            "datapack": [FORMAL_SOURCE_CASE],
-            "gt.level": ["service"],
-            "gt.name": ["ts-train-service"],
-        },
-        pa.schema(
-            [
-                ("datapack", pa.large_string()),
-                ("gt.level", pa.large_string()),
-                ("gt.name", pa.large_string()),
-            ]
-        ),
-    )
-    return load_selected_case(
-        cases_dir,
-        meta_dir,
-        Path("fixtures/reference/aegis-transfer-v27-selection.json"),
-        database="case_03",
-    )
-
-
-def test_calibration_loader_keeps_dual_truth_opaque_and_never_reads_causal_graph(
+def test_release_loader_keeps_component_truth_opaque_and_never_reads_causal_graph(
     tmp_path: Path,
 ) -> None:
     case = _selected_case_fixture(tmp_path)
 
-    assert case.input.case_token == DELAY_AGENT_CASE_ID
+    assert case.input.case_token == RELEASE_AGENT_CASE_ID
     assert case.source_case not in case.input.model_dump_json()
     assert case.ground_truth.fault_type not in case.input.model_dump_json()
     assert case.input.fault_taxonomy == []
-    assert set(case.ground_truth.services) == {
-        "ts-route-plan-service",
-        "ts-travel2-service",
-    }
-    assert case.ground_truth.declared_edge == (
-        "ts-route-plan-service",
-        "ts-travel2-service",
-    )
-
-
-def test_formal_loader_preserves_component_truth_without_inventing_an_edge(
-    tmp_path: Path,
-) -> None:
-    case = _formal_selected_case_fixture(tmp_path)
-
-    assert case.input.case_token == FORMAL_AGENT_CASE_ID
-    assert case.input.fault_taxonomy == []
-    assert case.source_case not in case.input.model_dump_json()
-    assert case.ground_truth.services == ("ts-train-service",)
+    assert case.ground_truth.services == ("ts-auth-service",)
     assert case.ground_truth.declared_edge is None
     query = canonical_mechanism_evidence_query(case)
-    assert "FROM traces" in query and "FROM logs" in query
-    assert "span_status_code = 'STATUS_CODE_ERROR'" in query
-    assert "LOWER(span_name) LIKE '%retrievebyname%'" in query
-    assert "UPPER(level) IN ('ERROR', 'SEVERE', 'FATAL')" in query
-    assert "LOWER(line) LIKE '%exception%'" in query
+    assert "FROM k8s_container_restarts" in query
+    assert "k8s_container_name = 'ts-auth-service'" in query
+    assert "MIN(greptime_value) AS min_restarts" in query
+    assert "MAX(greptime_value) AS max_restarts" in query
 
 
-def test_jvm_exception_gate_requires_clean_baseline_and_both_anomalous_signals() -> None:
+def test_workload_restart_evidence_requires_both_nonempty_periods() -> None:
     result = QueryResult(
         query_id="q",
-        columns=["period", "error_span_count", "exception_log_count"],
-        rows=[["normal", 0, 0], ["abnormal", 1981, 1981]],
+        columns=["period", "sample_count", "min_restarts", "max_restarts"],
+        rows=[["normal", 24, 0.0, 0.0], ["abnormal", 24, 1.0, 1.0]],
         elapsed_seconds=0,
     )
-    observed = normalize_jvm_exception_evidence(result)
 
-    assert observed == {
-        "normal": {"error_span_count": 0, "exception_log_count": 0},
-        "abnormal": {"error_span_count": 1981, "exception_log_count": 1981},
+    assert normalize_workload_restart_evidence(result) == {
+        "normal": {"count": 24, "min_restarts": 0.0, "max_restarts": 0.0},
+        "abnormal": {"count": 24, "min_restarts": 1.0, "max_restarts": 1.0},
     }
-    for rows in (
-        [["normal", 1, 0], ["abnormal", 1981, 1981]],
-        [["normal", 0, 0], ["abnormal", 0, 1981]],
-        [["normal", 0, 0], ["abnormal", 1981, 0]],
-    ):
-        changed = normalize_jvm_exception_evidence(result.model_copy(update={"rows": rows}))
-        assert changed != observed
+    assert (
+        normalize_workload_restart_evidence(
+            result.model_copy(update={"rows": [["abnormal", 24, 1.0, 1.0]]})
+        )
+        is None
+    )
 
 
 def test_selected_loader_rejects_unfrozen_opaque_case_mapping(tmp_path: Path) -> None:
-    selection = json.loads(
-        Path("fixtures/reference/aegis-transfer-v27-calibration-selection.json").read_text()
-    )
+    selection = json.loads(Path("fixtures/reference/aegis-transfer-v31-selection.json").read_text())
     selection["agent_case_id"] = "aegis-transfer-003"
     selection_path = tmp_path / "selection.json"
     selection_path.write_text(json.dumps(selection))
 
-    with pytest.raises(AegisAuditError, match="case mapping is not supported"):
+    with pytest.raises(AegisAuditError, match="invalid agent case ID"):
         _selected_case_fixture(tmp_path, selection_path)
 
 
 def test_selected_loader_rejects_naive_injection_timestamp(tmp_path: Path) -> None:
     with pytest.raises(AegisAuditError, match="explicit timezone"):
-        _selected_case_fixture(tmp_path, injection_start="2025-07-20T12:36:50")
+        _selected_case_fixture(tmp_path, injection_start="2025-07-19T14:03:52")
 
 
 def test_archive_status_preserves_zero_byte_observation(tmp_path: Path) -> None:
@@ -377,13 +266,13 @@ def test_raw_edge_query_uses_native_roles_parent_relation_and_source_status() ->
     assert "http.response.status" not in query
 
 
-def test_mechanism_query_uses_source_roles_parent_and_start_gap(tmp_path: Path) -> None:
+def test_mechanism_query_uses_exact_source_metric_identity(tmp_path: Path) -> None:
     query = canonical_mechanism_evidence_query(_selected_case_fixture(tmp_path))
 
-    assert "c.span_kind = 'SPAN_KIND_CLIENT'" in query
-    assert "s.span_kind = 'SPAN_KIND_SERVER'" in query
-    assert "s.parent_span_id = c.span_id" in query
-    assert "CAST(s.timestamp AS BIGINT) - CAST(c.timestamp AS BIGINT)" in query
+    assert "FROM k8s_container_restarts" in query
+    assert "k8s_container_name = 'ts-auth-service'" in query
+    assert "MIN(greptime_value) AS min_restarts" in query
+    assert "MAX(greptime_value) AS max_restarts" in query
 
 
 def test_wrong_role_or_parent_relation_cannot_match_graph_edge_set() -> None:
@@ -424,7 +313,7 @@ def test_non_minute_source_window_uses_minimal_complete_envelope() -> None:
 def test_non_minute_period_replay_proves_why_graph_equality_uses_union(
     tmp_path: Path,
 ) -> None:
-    case = _formal_selected_case_fixture(tmp_path)
+    case = _selected_case_fixture(tmp_path)
     normal = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 3, 0])
     abnormal = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 2, 1])
     combined = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 5, 1])
@@ -442,11 +331,11 @@ def test_non_minute_period_replay_proves_why_graph_equality_uses_union(
         "trace_windows": {
             "normal": {
                 "edge_set": normalize_edge_result(normal),
-                "client_observed_minute_counts": {"1752841500": 7},
+                "client_observed_minute_counts": {"1752933780": 7},
             },
             "abnormal": {
                 "edge_set": normalize_edge_result(abnormal),
-                "client_observed_minute_counts": {"1752841500": 2},
+                "client_observed_minute_counts": {"1752933780": 2},
             },
         },
     }
@@ -461,7 +350,7 @@ def test_non_minute_period_replay_proves_why_graph_equality_uses_union(
         "source_trace_windows_exact": True,
         "stored_period_raw_edges_match_source": True,
         "graph_period_split_supported": False,
-        "shared_boundary_minute": 1752841500,
+        "shared_boundary_minute": 1752933780,
         "shared_boundary_minute_client_counts": {"normal": 7, "abnormal": 2},
         "comparison_strategy": "contiguous_union_only",
         "graph_period_windows": None,
@@ -481,7 +370,7 @@ def test_non_minute_period_replay_proves_why_graph_equality_uses_union(
 def test_minute_aligned_period_boundary_does_not_invalidate_union_equality(
     tmp_path: Path,
 ) -> None:
-    case = _formal_selected_case_fixture(tmp_path).model_copy(
+    case = _selected_case_fixture(tmp_path).model_copy(
         update={
             "normal_window": (1752841320, 1752841560),
             "abnormal_window": (1752841560, 1752841800),
@@ -533,7 +422,7 @@ def test_minute_aligned_period_boundary_does_not_invalidate_union_equality(
 def test_non_minute_boundary_splits_at_next_minute_when_only_normal_uses_shared_bin(
     tmp_path: Path,
 ) -> None:
-    case = _formal_selected_case_fixture(tmp_path)
+    case = _selected_case_fixture(tmp_path)
     normal = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 3, 0])
     abnormal = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 2, 1])
     combined = _edge_result(["service", "caller", "service", "callee", "calls", "trace", 5, 1])
@@ -551,11 +440,11 @@ def test_non_minute_boundary_splits_at_next_minute_when_only_normal_uses_shared_
         "trace_windows": {
             "normal": {
                 "edge_set": normalize_edge_result(normal),
-                "client_observed_minute_counts": {"1752841500": 7},
+                "client_observed_minute_counts": {"1752933780": 7},
             },
             "abnormal": {
                 "edge_set": normalize_edge_result(abnormal),
-                "client_observed_minute_counts": {"1752841500": 0},
+                "client_observed_minute_counts": {"1752933780": 0},
             },
         },
     }
@@ -564,15 +453,15 @@ def test_non_minute_boundary_splits_at_next_minute_when_only_normal_uses_shared_
 
     proof = audit["graph_window_strategy_proof"]
     assert proof["graph_period_windows"] == {
-        "normal": [1752841260, 1752841560],
-        "abnormal": [1752841560, 1752841800],
+        "normal": [1752933540, 1752933840],
+        "abnormal": [1752933840, 1752934080],
     }
     assert proof["period_graph_replay_exact"] is True
     assert proof["pass"] is True
 
 
 def test_split_period_graph_count_mismatch_fails_window_strategy(tmp_path: Path) -> None:
-    case = _formal_selected_case_fixture(tmp_path).model_copy(
+    case = _selected_case_fixture(tmp_path).model_copy(
         update={
             "normal_window": (1752841320, 1752841560),
             "abnormal_window": (1752841560, 1752841800),

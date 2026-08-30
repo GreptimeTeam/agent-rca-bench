@@ -17,8 +17,8 @@ from semantic_rca_bench.contracts import AgentRun, AgentRunner, ApiTransport, Vi
 from semantic_rca_bench.protocol import benchmark_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "aegis-transfer-four-model-v11"
-DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v30-four-model-protocol.json")
+PROTOCOL_REVISION = "aegis-transfer-six-model-v14"
+DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v31-six-model-protocol.json")
 
 
 class TransferModelContract(BaseModel):
@@ -83,10 +83,10 @@ def load_transfer_protocol_fixture(
     fixture = AegisTransferProtocolFixture.model_validate_json(path.read_text())
     specification = {
         "version": 2,
-        "agent_case_id": "aegis-transfer-003",
-        "benchmark_protocol_version": 30,
-        "selection_fixture": "fixtures/reference/aegis-transfer-v27-selection.json",
-        "scorer_fixture": "fixtures/reference/aegis-transfer-v30-scorer.json",
+        "agent_case_id": "aegis-transfer-004",
+        "benchmark_protocol_version": 31,
+        "selection_fixture": "fixtures/reference/aegis-transfer-v31-selection.json",
+        "scorer_fixture": "fixtures/reference/aegis-transfer-v31-scorer.json",
         "models": (
             (
                 "gpt-5.6-sol",
@@ -101,24 +101,40 @@ def load_transfer_protocol_fixture(
                 "deepseek",
                 "anthropic-compatible-messages",
                 "provider-automatic-prefix",
-                4096,
-                None,
+                16384,
+                "high",
             ),
             (
-                "claude-sonnet-5",
+                "claude-opus-5",
                 "anthropic",
                 "anthropic-messages",
                 "ephemeral-request-cache-control",
-                4096,
-                None,
+                16384,
+                "high",
             ),
             (
-                "claude-opus-4-8",
+                "claude-fable-5",
                 "anthropic",
                 "anthropic-messages",
                 "ephemeral-request-cache-control",
-                4096,
-                None,
+                16384,
+                "high",
+            ),
+            (
+                "glm-5.3",
+                "zhipu-bigmodel",
+                "bigmodel-chat-completions",
+                "provider-automatic-prefix",
+                16384,
+                "max",
+            ),
+            (
+                "qwen3.8-2.4t-a95b",
+                "alibaba-cloud-model-studio",
+                "dashscope-cn-beijing-responses",
+                "session-cache-header",
+                16384,
+                "xhigh",
             ),
         ),
     }
@@ -139,9 +155,9 @@ def load_transfer_protocol_fixture(
         raise ValueError("unsupported Aegis transfer formal protocol revision")
     if (
         fixture.agent_case_id != specification["agent_case_id"]
-        or fixture.case_role != "development"
+        or fixture.case_role != "measurement"
     ):
-        raise ValueError("protocol is not bound to the development calibration case")
+        raise ValueError("protocol is not bound to the fresh measurement case")
     if fixture.benchmark_protocol_version != specification["benchmark_protocol_version"]:
         raise ValueError("formal protocol benchmark version drifted")
     if fixture.runner is not AgentRunner.API or observed_models != specification["models"]:
@@ -181,7 +197,7 @@ def load_transfer_protocol_fixture(
         and inference.case_is_independent_unit
         and inference.repetitions_are_descriptive
         and inference.single_case_claim
-        == "development calibration after claim-grounding revision; not fresh measurement evidence"
+        == "fresh measurement case; contributes one independent case unit"
     ):
         raise ValueError("formal protocol inference boundary drifted")
     _validate_bound_file(path, fixture.selection_fixture, fixture.selection_fixture_sha256)
@@ -248,7 +264,7 @@ def audit_transfer_protocol(
             scorer_audit.get("source_transfer_audit_sha256")
             == source_transfer_audit_sha256(source_audit)
         ),
-        "four_model_roster": len(fixture.models) == 4,
+        "six_model_roster": len(fixture.models) == 6,
         "scorer_audit_model_in_roster": (
             scorer_fixture.canonical_api_runner.model in roster_models
         ),
@@ -276,6 +292,7 @@ def audit_transfer_protocol(
                 "provider-automatic-prefix",
                 "ephemeral-request-cache-control",
                 "implicit-prefix-30m",
+                "session-cache-header",
             }
             for model in fixture.models
         ),

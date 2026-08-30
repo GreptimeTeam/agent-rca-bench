@@ -34,13 +34,10 @@ from semantic_rca_bench.protocols.otlp import (
 )
 from semantic_rca_bench.protocols.prometheus import prometheus_metric_name
 
-DELAY_AGENT_CASE_ID = "aegis-transfer-002"
-DELAY_SOURCE_CASE = "ts8-ts-route-plan-service-request-delay-5dmjfm"
-FORMAL_AGENT_CASE_ID = "aegis-transfer-003"
-FORMAL_SOURCE_CASE = "ts2-ts-train-service-exception-plrfk2"
+RELEASE_AGENT_CASE_ID = "aegis-transfer-004"
+RELEASE_SOURCE_CASE = "ts4-ts-auth-service-pod-failure-97s6xl"
 FROZEN_TRANSFER_CASES = {
-    DELAY_AGENT_CASE_ID: DELAY_SOURCE_CASE,
-    FORMAL_AGENT_CASE_ID: FORMAL_SOURCE_CASE,
+    RELEASE_AGENT_CASE_ID: RELEASE_SOURCE_CASE,
 }
 DATASET_REVISION = "aegis-fse-2026-reviewer@zenodo-19522409"
 ADAPTER_REVISION = "aegis-transfer-v2"
@@ -220,8 +217,8 @@ def load_selected_case(
     selected_services = {str(item) for item in selected.get("ground_truth_services") or []}
     if published_services != injection_services or injection_services != selected_services:
         raise AegisAuditError("publisher, injection, and frozen service labels disagree")
-    if len(selected_services) not in {1, 2}:
-        raise AegisAuditError("selected Aegis case has an unsupported service-label count")
+    if len(selected_services) != 1:
+        raise AegisAuditError("selected Aegis case must have one service label")
     if attributes.get("ground_truth.service_count") != len(selected_services):
         raise AegisAuditError("publisher service count disagrees with the selected labels")
 
@@ -229,22 +226,12 @@ def load_selected_case(
     injection_point = display_config.get("injection_point")
     if not isinstance(injection_point, dict):
         raise AegisAuditError("selected injection has no structured injection point")
-    frozen_edge_value = selected.get("declared_edge")
-    if fault_type == "JVMException":
-        if frozen_edge_value is not None or len(selected_services) != 1:
-            raise AegisAuditError("component-scoped case must not declare a dependency edge")
-        if injection_point.get("app_name") not in selected_services:
-            raise AegisAuditError("component injection point disagrees with the frozen service")
-        declared_edge = None
-    else:
-        declared_edge = (
-            str(injection_point.get("app_name") or ""),
-            str(injection_point.get("server_address") or ""),
-        )
-        frozen_edge = tuple(str(item) for item in frozen_edge_value or [])
-        if declared_edge != frozen_edge or len(frozen_edge) != 2:
-            raise AegisAuditError("source-declared endpoint disagrees with the frozen edge")
-    _validate_frozen_mechanism(fault_type, display_config, injection_point, selected)
+    if fault_type != "PodFailure" or selected.get("declared_edge") is not None:
+        raise AegisAuditError("selected Aegis case must be component-scoped PodFailure")
+    if injection_point.get("app_name") not in selected_services:
+        raise AegisAuditError("component injection point disagrees with the frozen service")
+    declared_edge = None
+    _validate_frozen_mechanism(injection_point, selected)
 
     paths = {
         kind: tuple(root / f"{period}_{suffix}" for period in PERIODS)
@@ -299,30 +286,18 @@ def load_selected_case(
 
 
 def _validate_frozen_mechanism(
-    fault_type: str,
-    display_config: dict[str, object],
-    injection_point: dict[str, object],
-    selected: dict[str, object],
+    injection_point: dict[str, object], selected: dict[str, object]
 ) -> None:
     frozen = selected.get("mechanism_evidence")
     if not isinstance(frozen, dict):
         raise AegisAuditError("frozen mechanism evidence is missing")
-    if fault_type == "HTTPRequestDelay":
-        declared_delay_ns = int(display_config.get("delay_duration") or 0) * 1_000_000
-        valid = (
-            frozen.get("predicate") == "source_declared_http_client_server_start_gap"
-            and frozen.get("span_name")
-            == f"{injection_point.get('method')} {injection_point.get('route')}"
-            and frozen.get("declared_delay_ns") == declared_delay_ns
-        )
-    elif fault_type == "JVMException":
-        valid = (
-            frozen.get("predicate") == "source_declared_jvm_exception"
-            and frozen.get("service_name") == injection_point.get("app_name")
-            and frozen.get("method_name") == injection_point.get("method_name")
-        )
-    else:
-        raise AegisAuditError(f"unsupported frozen Aegis transfer mechanism: {fault_type}")
+    valid = (
+        frozen.get("predicate") == "source_declared_workload_restart"
+        and frozen.get("metric") == "k8s.container.restarts"
+        and frozen.get("identity_field") == "attr.k8s.container.name"
+        and frozen.get("identity_value") == injection_point.get("app_name")
+        and frozen.get("injection_pod_name") is None
+    )
     if not valid:
         raise AegisAuditError("source injection disagrees with frozen mechanism evidence")
 
@@ -831,46 +806,29 @@ def mechanism_evidence_audit(
     if not isinstance(expected, dict):
         raise AegisAuditError("frozen mechanism evidence is missing")
     predicate = expected.get("predicate")
-    if predicate == "source_declared_http_client_server_start_gap":
-        normalized = normalize_start_gap_evidence(result)
-        expected_result = {
-            "normal": {
-                "count": expected.get("normal_count"),
-                "min_start_gap_ns": expected.get("normal_min_start_gap_ns"),
-                "max_start_gap_ns": expected.get("normal_max_start_gap_ns"),
-                "at_or_above_threshold": expected.get("normal_at_or_above_threshold"),
-            },
-            "abnormal": {
-                "count": expected.get("abnormal_count"),
-                "min_start_gap_ns": expected.get("abnormal_min_start_gap_ns"),
-                "max_start_gap_ns": expected.get("abnormal_max_start_gap_ns"),
-                "at_or_above_threshold": expected.get("abnormal_at_or_above_threshold"),
-            },
-        }
-        mechanism_fields = {
-            "observable": "server.timestamp - client.timestamp",
-            "span_name": expected.get("span_name"),
-            "declared_delay_ns": expected.get("declared_delay_ns"),
-        }
-    elif predicate == "source_declared_jvm_exception":
-        normalized = normalize_jvm_exception_evidence(result)
-        expected_result = {
-            "normal": {
-                "error_span_count": expected.get("normal_error_span_count"),
-                "exception_log_count": expected.get("normal_exception_log_count"),
-            },
-            "abnormal": {
-                "error_span_count": expected.get("abnormal_error_span_count"),
-                "exception_log_count": expected.get("abnormal_exception_log_count"),
-            },
-        }
-        mechanism_fields = {
-            "observable": "error spans and exception logs",
-            "service_name": expected.get("service_name"),
-            "method_name": expected.get("method_name"),
-        }
-    else:
+    if predicate != "source_declared_workload_restart":
         raise AegisAuditError(f"unsupported stored mechanism evidence predicate: {predicate}")
+    normalized = normalize_workload_restart_evidence(result)
+    expected_result = {
+        "normal": {
+            "count": expected.get("normal_count"),
+            "min_restarts": expected.get("normal_min_restarts"),
+            "max_restarts": expected.get("normal_max_restarts"),
+        },
+        "abnormal": {
+            "count": expected.get("abnormal_count"),
+            "min_restarts": expected.get("abnormal_min_restarts"),
+            "max_restarts": expected.get("abnormal_max_restarts"),
+        },
+    }
+    mechanism_fields = {
+        "observable": expected.get("metric"),
+        "identity_field": expected.get("identity_field"),
+        "identity_value": expected.get("identity_value"),
+        "declared_pod_names": expected.get("declared_pod_names"),
+        "observed_pod_names": expected.get("observed_pod_names"),
+        "declared_pod_identity_match": expected.get("declared_pod_identity_match"),
+    }
     declared_edge = (
         list(case.ground_truth.declared_edge)
         if case.ground_truth.declared_edge is not None
@@ -895,150 +853,58 @@ def mechanism_evidence_audit(
 def canonical_mechanism_evidence_query(case: AegisTransferCase) -> str:
     normal_start = _time_literal(case.normal_window[0])
     normal_end = _time_literal(case.normal_window[1])
-    abnormal_start = _time_literal(case.abnormal_window[0])
     abnormal_end = _time_literal(case.abnormal_window[1])
     evidence = case.selected_manifest.get("mechanism_evidence")
     if not isinstance(evidence, dict):
         raise AegisAuditError("frozen mechanism evidence is missing")
-    if evidence.get("predicate") == "source_declared_jvm_exception":
-        service = _literal(str(evidence.get("service_name") or ""))
-        method_name = str(evidence.get("method_name") or "")
-        method_pattern = _literal(f"%{method_name.lower()}%")
-        return f"""WITH periods AS (
-  SELECT 'normal' AS period
-  UNION ALL
-  SELECT 'abnormal' AS period
-), evidence AS (
-  SELECT CASE
-           WHEN timestamp >= {normal_start} AND timestamp < {normal_end} THEN 'normal'
-           WHEN timestamp >= {abnormal_start} AND timestamp < {abnormal_end} THEN 'abnormal'
-         END AS period,
-         1 AS error_span_count,
-         0 AS exception_log_count
-  FROM traces
-  WHERE service_name = {service}
-    AND span_status_code = 'STATUS_CODE_ERROR'
-    AND LOWER(span_name) LIKE {method_pattern}
-    AND timestamp >= {normal_start} AND timestamp < {abnormal_end}
-  UNION ALL
-  SELECT CASE
-           WHEN greptime_timestamp >= {normal_start} AND greptime_timestamp < {normal_end}
-             THEN 'normal'
-           WHEN greptime_timestamp >= {abnormal_start} AND greptime_timestamp < {abnormal_end}
-             THEN 'abnormal'
-         END AS period,
-         0 AS error_span_count,
-         1 AS exception_log_count
-  FROM logs
-  WHERE service_name = {service}
-    AND UPPER(level) IN ('ERROR', 'SEVERE', 'FATAL')
-    AND LOWER(line) LIKE '%exception%'
-    AND greptime_timestamp >= {normal_start} AND greptime_timestamp < {abnormal_end}
-)
-SELECT p.period,
-       COALESCE(SUM(e.error_span_count), 0) AS error_span_count,
-       COALESCE(SUM(e.exception_log_count), 0) AS exception_log_count
-FROM periods p
-LEFT JOIN evidence e ON e.period = p.period
-GROUP BY p.period
-ORDER BY p.period"""
-    if case.ground_truth.declared_edge is None:
-        raise AegisAuditError("dependency mechanism evidence requires a declared edge")
-    source = _literal(case.ground_truth.declared_edge[0])
-    destination = _literal(case.ground_truth.declared_edge[1])
-    if evidence.get("predicate") == "source_declared_http_client_server_start_gap":
-        span_name = _literal(str(evidence.get("span_name") or ""))
-        threshold = int(evidence.get("declared_delay_ns") or 0)
-        return f"""WITH paired AS (
-  SELECT CASE
-           WHEN c.timestamp >= {normal_start} AND c.timestamp < {normal_end} THEN 'normal'
-           WHEN c.timestamp >= {abnormal_start} AND c.timestamp < {abnormal_end} THEN 'abnormal'
-         END AS period,
-         CAST(s.timestamp AS BIGINT) - CAST(c.timestamp AS BIGINT) AS server_start_gap_ns
-  FROM traces c
-  JOIN traces s
-    ON c.trace_id = s.trace_id
-   AND s.parent_span_id = c.span_id
-  WHERE c.span_kind = 'SPAN_KIND_CLIENT'
-    AND s.span_kind = 'SPAN_KIND_SERVER'
-    AND c.service_name = {source}
-    AND s.service_name = {destination}
-    AND s.span_name = {span_name}
-    AND c.timestamp >= {normal_start} AND c.timestamp < {abnormal_end}
-)
-SELECT period, COUNT(*) AS span_count,
-       MIN(server_start_gap_ns) AS min_start_gap_ns,
-       MAX(server_start_gap_ns) AS max_start_gap_ns,
-       SUM(CASE WHEN server_start_gap_ns >= {threshold} THEN 1 ELSE 0 END)
-         AS at_or_above_threshold
-FROM paired
+    if evidence.get("predicate") != "source_declared_workload_restart":
+        raise AegisAuditError("unsupported canonical mechanism evidence predicate")
+    container_name = _literal(str(evidence.get("identity_value") or ""))
+    return f"""SELECT CASE
+         WHEN greptime_timestamp < {normal_end} THEN 'normal'
+         ELSE 'abnormal'
+       END AS period,
+       COUNT(*) AS sample_count,
+       MIN(greptime_value) AS min_restarts,
+       MAX(greptime_value) AS max_restarts
+FROM k8s_container_restarts
+WHERE k8s_container_name = {container_name}
+  AND greptime_timestamp >= {normal_start}
+  AND greptime_timestamp < {abnormal_end}
 GROUP BY period
 ORDER BY period"""
-    raise AegisAuditError("unsupported canonical mechanism evidence predicate")
 
 
-def normalize_start_gap_evidence(result: QueryResult) -> dict[str, dict[str, int]] | None:
-    required = (
-        "period",
-        "span_count",
-        "min_start_gap_ns",
-        "max_start_gap_ns",
-        "at_or_above_threshold",
-    )
+def normalize_workload_restart_evidence(
+    result: QueryResult,
+) -> dict[str, dict[str, int | float]] | None:
+    required = ("period", "sample_count", "min_restarts", "max_restarts")
     columns = [column.lower() for column in result.columns]
     if result.truncated or any(columns.count(column) != 1 for column in required):
         return None
     indexes = [columns.index(column) for column in required]
-    normalized = {}
+    normalized: dict[str, dict[str, int | float]] = {}
     for row in result.rows:
-        period, count, minimum, maximum, threshold_count = (row[index] for index in indexes)
-        values = (count, minimum, maximum, threshold_count)
+        if len(row) <= max(indexes):
+            return None
+        period, count, minimum, maximum = (row[index] for index in indexes)
         if (
             period not in PERIODS
             or period in normalized
-            or any(not isinstance(value, int) or isinstance(value, bool) for value in values)
+            or not isinstance(count, int)
+            or isinstance(count, bool)
+            or not isinstance(minimum, (int, float))
+            or isinstance(minimum, bool)
+            or not isinstance(maximum, (int, float))
+            or isinstance(maximum, bool)
             or count <= 0
             or minimum > maximum
-            or threshold_count < 0
-            or threshold_count > count
         ):
             return None
         normalized[str(period)] = {
             "count": count,
-            "min_start_gap_ns": minimum,
-            "max_start_gap_ns": maximum,
-            "at_or_above_threshold": threshold_count,
-        }
-    return {period: normalized[period] for period in PERIODS if period in normalized}
-
-
-def normalize_jvm_exception_evidence(
-    result: QueryResult,
-) -> dict[str, dict[str, int]] | None:
-    required = ("period", "error_span_count", "exception_log_count")
-    columns = [column.lower() for column in result.columns]
-    if result.truncated or any(columns.count(column) != 1 for column in required):
-        return None
-    indexes = [columns.index(column) for column in required]
-    normalized = {}
-    for row in result.rows:
-        if len(row) <= max(indexes):
-            return None
-        period, span_count, log_count = (row[index] for index in indexes)
-        if (
-            period not in PERIODS
-            or period in normalized
-            or not isinstance(span_count, int)
-            or isinstance(span_count, bool)
-            or not isinstance(log_count, int)
-            or isinstance(log_count, bool)
-            or span_count < 0
-            or log_count < 0
-        ):
-            return None
-        normalized[str(period)] = {
-            "error_span_count": span_count,
-            "exception_log_count": log_count,
+            "min_restarts": float(minimum),
+            "max_restarts": float(maximum),
         }
     if set(normalized) != set(PERIODS):
         return None
@@ -1046,7 +912,7 @@ def normalize_jvm_exception_evidence(
 
 
 def mechanism_evidence_matches(
-    observed: dict[str, dict[str, int]] | None,
+    observed: dict[str, dict[str, int | float]] | None,
     expected: dict[str, object],
 ) -> bool:
     return observed is not None and observed == expected

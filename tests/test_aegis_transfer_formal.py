@@ -57,20 +57,20 @@ from semantic_rca_bench.datasets.aegis_transfer import (
 def _result() -> QueryResult:
     return QueryResult(
         query_id="private-query-id",
-        columns=["period", "error_span_count", "exception_log_count"],
-        rows=[["normal", 0, 0], ["abnormal", 1981, 1981]],
+        columns=["period", "sample_count", "min_restarts", "max_restarts"],
+        rows=[["normal", 24, 0.0, 0.0], ["abnormal", 24, 1.0, 1.0]],
         elapsed_seconds=12.5,
     )
 
 
 def _source_audit() -> dict[str, object]:
     expected = {
-        "normal": {"error_span_count": 0, "exception_log_count": 0},
-        "abnormal": {"error_span_count": 1981, "exception_log_count": 1981},
+        "normal": {"count": 24, "min_restarts": 0.0, "max_restarts": 0.0},
+        "abnormal": {"count": 24, "min_restarts": 1.0, "max_restarts": 1.0},
     }
     edge = {
         "src_type": "service",
-        "src_id": "ts-train-service",
+        "src_id": "ts-auth-service",
         "dst_type": "service",
         "dst_id": "ts-route-plan-service",
         "rel_type": "calls",
@@ -93,27 +93,27 @@ def _source_audit() -> dict[str, object]:
         "selection_audit": {
             "selection": {"seed": "seed"},
             "frozen_selection_gate": {
-                "manifest_name": "aegis-transfer-v27-selection.json",
+                "manifest_name": "aegis-transfer-v31-selection.json",
                 "pass": True,
             },
         },
         "case": {
             "agent_facing": {
-                "case_id": "aegis-transfer-003",
-                "time_start": 1752841317,
-                "time_end": 1752841796,
-                "alert_time": 1752841557,
+                "case_id": "aegis-transfer-004",
+                "time_start": 1752933592,
+                "time_end": 1752934072,
+                "alert_time": 1752933832,
                 "fault_taxonomy": [],
             },
             "source_mapping": {
-                "agent_case_id": "aegis-transfer-003",
-                "source_case": "ts2-ts-train-service-exception-plrfk2",
+                "agent_case_id": "aegis-transfer-004",
+                "source_case": "ts4-ts-auth-service-pod-failure-97s6xl",
             },
-            "normal_window": [1752841317, 1752841557],
-            "abnormal_window": [1752841557, 1752841796],
-            "ground_truth_services": ["ts-train-service"],
+            "normal_window": [1752933592, 1752933832],
+            "abnormal_window": [1752933832, 1752934072],
+            "ground_truth_services": ["ts-auth-service"],
             "declared_edge": None,
-            "fault_type": "JVMException",
+            "fault_type": "PodFailure",
         },
         "greptimedb": {"head": "head", "branch": "branch"},
         "source_audit": {"source_row_counts": {"trace_rows": 62}},
@@ -144,17 +144,18 @@ def _source_audit() -> dict[str, object]:
             "graph_edge_set_sha256": "edge-hash",
             "exact_edge_set_equality": True,
             "window_contract": {
-                "source_window": [1752841317, 1752841796],
-                "graph_observed_window": [1752841260, 1752841800],
+                "source_window": [1752933592, 1752934072],
+                "graph_observed_window": [1752933540, 1752934080],
             },
         },
         "mechanism_evidence": {
-            "predicate": "source_declared_jvm_exception",
+            "predicate": "source_declared_workload_restart",
             "declared_edge": None,
             "declared_edge_match": True,
-            "service_name": "ts-train-service",
-            "method_name": "retrieveByName",
-            "observable": "error spans and exception logs",
+            "identity_field": "attr.k8s.container.name",
+            "identity_value": "ts-auth-service",
+            "declared_pod_identity_match": False,
+            "observable": "k8s.container.restarts",
             "query": canonical_mechanism_evidence_query(_case()),
             "result": _result().model_dump(mode="json"),
             "normalized_result": expected,
@@ -177,26 +178,26 @@ def _source_audit() -> dict[str, object]:
 def _case() -> AegisTransferCase:
     paths = (Path("normal.parquet"), Path("abnormal.parquet"))
     return AegisTransferCase(
-        agent_case_id="aegis-transfer-003",
-        source_case="ts2-ts-train-service-exception-plrfk2",
+        agent_case_id="aegis-transfer-004",
+        source_case="ts4-ts-auth-service-pod-failure-97s6xl",
         dataset="dataset",
         system="Train Ticket",
         root=Path("case"),
         input=CaseInput(
-            case_token="aegis-transfer-003",
-            time_start=1752841317,
-            time_end=1752841796,
-            alert_time=1752841557,
-            database="case_03",
+            case_token="aegis-transfer-004",
+            time_start=1752933592,
+            time_end=1752934072,
+            alert_time=1752933832,
+            database="case_04",
             fault_taxonomy=[],
         ),
         ground_truth=AegisTransferGroundTruth(
-            services=("ts-train-service",),
+            services=("ts-auth-service",),
             declared_edge=None,
-            fault_type="JVMException",
+            fault_type="PodFailure",
         ),
-        normal_window=(1752841317, 1752841557),
-        abnormal_window=(1752841557, 1752841796),
+        normal_window=(1752933592, 1752933832),
+        abnormal_window=(1752933832, 1752934072),
         gauge_paths=paths,
         sum_paths=paths,
         histogram_paths=paths,
@@ -204,9 +205,10 @@ def _case() -> AegisTransferCase:
         trace_paths=paths,
         selected_manifest={
             "mechanism_evidence": {
-                "predicate": "source_declared_jvm_exception",
-                "service_name": "ts-train-service",
-                "method_name": "retrieveByName",
+                "predicate": "source_declared_workload_restart",
+                "metric": "k8s.container.restarts",
+                "identity_field": "attr.k8s.container.name",
+                "identity_value": "ts-auth-service",
             }
         },
     )
@@ -244,31 +246,38 @@ def _preflight():
 
 def _agent_run(visibility: Visibility, model: str, *, error: str | None = None) -> AgentRun:
     result = _result()
-    openai = model == "gpt-5.6-sol"
+    runner_contract = {
+        "gpt-5.6-sol": (ApiTransport.OPENAI_RESPONSES, "medium", 16_384),
+        "deepseek-v4-pro": (
+            ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
+            "high",
+            16_384,
+        ),
+        "claude-opus-5": (ApiTransport.ANTHROPIC_MESSAGES, "high", 16_384),
+        "claude-fable-5": (ApiTransport.ANTHROPIC_MESSAGES, "high", 16_384),
+        "glm-5.3": (ApiTransport.BIGMODEL_CHAT_COMPLETIONS, "max", 16_384),
+        "qwen3.8-2.4t-a95b": (
+            ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES,
+            "xhigh",
+            16_384,
+        ),
+    }[model]
     return AgentRun(
         run_id=f"private-{model}-{visibility.value}",
         visibility=visibility,
         model=model,
         runner=AgentRunner.API,
-        api_transport=(
-            ApiTransport.OPENAI_RESPONSES
-            if openai
-            else (
-                ApiTransport.ANTHROPIC_MESSAGES
-                if model.startswith("claude-")
-                else ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES
-            )
-        ),
-        reasoning_effort="medium" if openai else None,
-        max_output_tokens=16_384 if openai else 4096,
+        api_transport=runner_contract[0],
+        reasoning_effort=runner_contract[1],
+        max_output_tokens=runner_contract[2],
         diagnosis=(
             Diagnosis(
                 causal_scope=CausalScope.COMPONENT,
-                causal_component="ts-train-service",
-                causal_operation="TrainController.retrieveByName",
+                causal_component="ts-auth-service",
+                causal_operation=None,
                 fault_category=FaultCategory.OTHER,
-                mechanism_code=MechanismCode.APPLICATION_ERROR,
-                fault_type="JVM exception in retrieveByName",
+                mechanism_code=MechanismCode.WORKLOAD_RESTART,
+                fault_type="workload restart",
                 confidence=1,
                 evidence=[
                     Evidence(
@@ -307,7 +316,7 @@ def _agent_run(visibility: Visibility, model: str, *, error: str | None = None) 
 
 
 class _Client:
-    database = "case_03"
+    database = "case_04"
 
     @contextmanager
     def measure_query_load(self):
@@ -337,7 +346,7 @@ def test_preflight_expands_frozen_schedule_without_provider_access(monkeypatch) 
 
     report, *_ = _preflight()
 
-    assert len(report["schedule"]) == 16
+    assert len(report["schedule"]) == 24
     assert report["execution"]["completed_runs"] == 0
     assert report["authorization"] == {
         "paid_api_required": True,
@@ -348,8 +357,10 @@ def test_preflight_expands_frozen_schedule_without_provider_access(monkeypatch) 
     assert [cell["model"] for cell in report["schedule"][::4]] == [
         "gpt-5.6-sol",
         "deepseek-v4-pro",
-        "claude-sonnet-5",
-        "claude-opus-4-8",
+        "claude-opus-5",
+        "claude-fable-5",
+        "glm-5.3",
+        "qwen3.8-2.4t-a95b",
     ]
     assert (
         report["bindings"]["scorer_fixture_sha256"]
@@ -390,30 +401,44 @@ def test_preflight_binds_pricing_snapshot_across_resume(monkeypatch) -> None:
         )
 
 
-def test_v30_protocol_binds_development_case_and_strong_model_roster() -> None:
+def test_v31_protocol_binds_measurement_case_and_strong_model_roster() -> None:
     protocol = load_transfer_protocol_fixture(DEFAULT_PROTOCOL_FIXTURE)
     scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     schedule = formal_schedule(protocol)
 
-    assert protocol.agent_case_id == scorer.agent_case_id == "aegis-transfer-003"
-    assert protocol.benchmark_protocol_version == 30
-    assert protocol.case_role == scorer.case_role == "development"
+    assert protocol.agent_case_id == scorer.agent_case_id == "aegis-transfer-004"
+    assert protocol.benchmark_protocol_version == 31
+    assert protocol.case_role == scorer.case_role == "measurement"
     assert [model.model for model in protocol.models] == [
         "gpt-5.6-sol",
         "deepseek-v4-pro",
-        "claude-sonnet-5",
-        "claude-opus-4-8",
+        "claude-opus-5",
+        "claude-fable-5",
+        "glm-5.3",
+        "qwen3.8-2.4t-a95b",
     ]
-    assert len(schedule) == 16
+    assert len(schedule) == 24
     assert [cell["model"] for cell in schedule[::4]] == [
         "gpt-5.6-sol",
         "deepseek-v4-pro",
-        "claude-sonnet-5",
-        "claude-opus-4-8",
+        "claude-opus-5",
+        "claude-fable-5",
+        "glm-5.3",
+        "qwen3.8-2.4t-a95b",
     ]
     assert protocol.models[0].api_transport is ApiTransport.OPENAI_RESPONSES
     assert protocol.models[0].reasoning_effort == "medium"
     assert protocol.models[0].max_output_tokens == 16_384
+    assert protocol.models[1].reasoning_effort == "high"
+    assert protocol.models[1].max_output_tokens == 16_384
+    assert protocol.models[2].reasoning_effort == "high"
+    assert protocol.models[2].max_output_tokens == 16_384
+    assert protocol.models[3].reasoning_effort == "high"
+    assert protocol.models[3].max_output_tokens == 16_384
+    assert protocol.models[4].api_transport is ApiTransport.BIGMODEL_CHAT_COMPLETIONS
+    assert protocol.models[4].reasoning_effort == "max"
+    assert protocol.models[5].api_transport is ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES
+    assert protocol.models[5].reasoning_effort == "xhigh"
 
 
 def test_preflight_command_writes_report_without_provider_access(monkeypatch, tmp_path) -> None:
@@ -486,8 +511,8 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window(monkeypatch
     )
 
     assert report["execution"] == {
-        "expected_runs": 16,
-        "completed_runs": 16,
+        "expected_runs": 24,
+        "completed_runs": 24,
         "runner_errors": 0,
         "budget_exhaustions": 0,
         "complete": True,
@@ -496,7 +521,7 @@ def test_formal_runner_executes_exact_schedule_and_uses_graph_window(monkeypatch
         item["model"] for item in report["schedule"]
     ]
     assert all(
-        window == (1752841260, 1752841800)
+        window == (1752933540, 1752934080)
         for window, visibility, _ in calls
         if visibility is Visibility.SEMANTIC_GRAPH
     )
@@ -576,27 +601,11 @@ def test_formal_runner_persists_failed_cell_and_continues_batch(monkeypatch) -> 
         run_agent_fn=failed_agent,
     )
 
-    assert calls == 16
+    assert calls == 24
     assert report["runs"][0]["model"] == first_model
     assert report["runs"][0]["run"]["error"] == "provider unavailable"
     assert report["execution"]["runner_errors"] == 1
     assert report["execution"]["complete"] is True
-
-
-def test_development_run_cannot_be_exported_as_measurement() -> None:
-    report, source, scorer, protocol, scorer_fixture, protocol_fixture = _preflight()
-
-    with pytest.raises(ValueError, match="development runs cannot be exported"):
-        build_measurement_artifact(
-            report,
-            source,
-            scorer,
-            protocol,
-            scorer_fixture,
-            FORMAL_SCORER_FIXTURE,
-            protocol_fixture,
-            DEFAULT_PROTOCOL_FIXTURE,
-        )
 
 
 def test_formal_runner_persists_and_rejects_wrong_scheduled_model(monkeypatch) -> None:
@@ -605,7 +614,7 @@ def test_formal_runner_persists_and_rejects_wrong_scheduled_model(monkeypatch) -
     _bind(report, source, scorer, protocol, scorer_fixture, protocol_fixture)
 
     def wrong_model_agent(gateway, case_input, visibility, **kwargs):
-        return _agent_run(visibility, "claude-sonnet-5")
+        return _agent_run(visibility, "claude-opus-5")
 
     with pytest.raises(FormalRunError, match="runner violated"):
         execute_formal_runs(
@@ -620,7 +629,7 @@ def test_formal_runner_persists_and_rejects_wrong_scheduled_model(monkeypatch) -
             run_agent_fn=wrong_model_agent,
         )
 
-    assert report["runs"][0]["run"]["model"] == "claude-sonnet-5"
+    assert report["runs"][0]["run"]["model"] == "claude-opus-5"
     assert report["runs"][0]["evaluation"]["runner_contract_match"] is False
     with pytest.raises(ValueError, match="violates the frozen runner contract"):
         validate_formal_report(
@@ -671,7 +680,7 @@ def test_formal_runner_checks_protocol_with_wrapped_agent(monkeypatch) -> None:
         raise RuntimeError(f"protocol guard called for v{version}")
 
     monkeypatch.setattr(formal_module, "require_current_protocol", reject_protocol)
-    with pytest.raises(RuntimeError, match="protocol guard called for v30"):
+    with pytest.raises(RuntimeError, match="protocol guard called for v31"):
         execute_formal_runs(
             _Client(),  # type: ignore[arg-type]
             _case(),
@@ -811,11 +820,13 @@ def test_measurement_export_rescores_all_models_and_removes_private_payloads(mon
     )
     assert set(artifact["experiment"]["model_reports"]) == {
         "deepseek-v4-pro",
-        "claude-sonnet-5",
-        "claude-opus-4-8",
+        "claude-opus-5",
+        "claude-fable-5",
         "gpt-5.6-sol",
+        "glm-5.3",
+        "qwen3.8-2.4t-a95b",
     }
-    assert len(artifact["experiment"]["runs"]) == 16
+    assert len(artifact["experiment"]["runs"]) == 24
     assert all(
         report["successful_runs"] == 4
         for report in artifact["experiment"]["model_reports"].values()

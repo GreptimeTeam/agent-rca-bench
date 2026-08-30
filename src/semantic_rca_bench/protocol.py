@@ -25,7 +25,7 @@ def run_orders(
 
 def benchmark_protocol() -> dict[str, object]:
     return {
-        "version": 30,
+        "version": 31,
         "treatments": ["raw", "semantic_graph"],
         "treatment_estimand": "complete-agent-facing-interface-v1",
         "treatment_components": {
@@ -48,7 +48,7 @@ def benchmark_protocol() -> dict[str, object]:
         "semantic_context": "benchmark-preflight-v1",
         "sql_contract": "greptimedb-read-only-default-200-explicit-1000-v2",
         "citation": "typed-claim-successful-nonmetadata-nontruncated-query-result-v5",
-        "evaluator": "mechanism-bound-causal-locus-claim-grounding-v15",
+        "evaluator": "workload-restart-transition-claim-grounding-v16",
         "primary_metrics": "correctness-preserving-case-median-rows-and-calls-v3",
         "repetition_schedule": "seeded-rotating-order-with-position-v2",
         "tool_budget": "shared-visible-cap-api-turn-limit-subscription-timeout-v5",
@@ -56,11 +56,12 @@ def benchmark_protocol() -> dict[str, object]:
         "case_context": "baseline-availability-v1",
         "database_load": "client-query-boundary-v1",
         "alert": "dataset-native-when-available-v1",
-        "agent_runner": "repairable-final-citation-validation-v11",
+        "agent_runner": "repairable-final-citation-validation-v12",
         "model_usage": "typed-cache-and-reasoning-output-breakdown-v5",
         "tool_error_feedback": "anthropic-native-flag-openai-json-envelope-v1",
-        "diagnosis": "scope-isomorphic-component-or-directed-edge-locus-v4",
-        "investigation_prompt": "case-invariant-symmetric-hypothesis-discrimination-v2",
+        "diagnosis": "scope-isomorphic-component-or-directed-edge-locus-v5",
+        "mechanism_ontology": "case-independent-workload-restart-v2",
+        "investigation_prompt": "case-invariant-symmetric-hypothesis-discrimination-v3",
     }
 
 

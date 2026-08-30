@@ -22,6 +22,8 @@ class ApiTransport(StrEnum):
     ANTHROPIC_MESSAGES = "anthropic-messages"
     ANTHROPIC_COMPATIBLE_MESSAGES = "anthropic-compatible-messages"
     OPENAI_RESPONSES = "openai-responses"
+    BIGMODEL_CHAT_COMPLETIONS = "bigmodel-chat-completions"
+    DASHSCOPE_CN_BEIJING_RESPONSES = "dashscope-cn-beijing-responses"
 
 
 class FaultCategory(StrEnum):
@@ -55,6 +57,7 @@ class MechanismCode(StrEnum):
     APPLICATION_ERROR = "application_error"
     CONFIGURATION_ERROR = "configuration_error"
     DATA_SEMANTICS_ERROR = "data_semantics_error"
+    WORKLOAD_RESTART = "workload_restart"
     UNKNOWN = "unknown"
 
 

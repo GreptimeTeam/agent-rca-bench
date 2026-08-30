@@ -244,6 +244,75 @@ def test_aegis_audit_excludes_publisher_invalid_case(tmp_path: Path) -> None:
     assert report["graph_source_rejection_reasons"] == ["publisher_invalid_marker"]
 
 
+@pytest.mark.parametrize(
+    ("fault_type", "metric", "identity_field", "normal", "abnormal"),
+    [
+        (
+            "PodFailure",
+            "k8s.container.restarts",
+            "attr.k8s.container.name",
+            [0.0, 0.0],
+            [1.0, 1.0],
+        ),
+        (
+            "JVMMemoryStress",
+            "k8s.pod.memory_limit_utilization",
+            "service_name",
+            [0.2, 0.3],
+            [0.86, 0.9],
+        ),
+    ],
+)
+def test_component_mechanism_uses_source_identity_when_pod_label_is_stale(
+    tmp_path: Path,
+    fault_type: str,
+    metric: str,
+    identity_field: str,
+    normal: list[float],
+    abnormal: list[float],
+) -> None:
+    schema = pa.schema(
+        [
+            ("metric", pa.large_string()),
+            ("value", pa.float64()),
+            ("service_name", pa.large_string()),
+            ("attr.k8s.container.name", pa.large_string()),
+            ("attr.k8s.pod.name", pa.large_string()),
+        ]
+    )
+    for period, values in (("normal", normal), ("abnormal", abnormal)):
+        _write_parquet(
+            tmp_path / f"{period}_metrics.parquet",
+            {
+                "metric": [metric] * len(values),
+                "value": values,
+                "service_name": ["ts-auth-service"] * len(values),
+                "attr.k8s.container.name": ["ts-auth-service"] * len(values),
+                "attr.k8s.pod.name": ["ts-auth-service-observed"] * len(values),
+            },
+            schema,
+        )
+
+    evidence = aegis._component_mechanism_evidence(
+        tmp_path,
+        fault_type,
+        {},
+        {
+            "service": ["ts-auth-service"],
+            "container": ["ts-auth-service"],
+            "pod": ["ts-auth-service-declared"],
+        },
+    )
+
+    assert evidence is not None
+    assert evidence["predicate_match"] is True
+    assert evidence["identity_field"] == identity_field
+    assert evidence["identity_value"] == "ts-auth-service"
+    assert evidence["declared_pod_names"] == ["ts-auth-service-declared"]
+    assert evidence["observed_pod_names"] == ["ts-auth-service-observed"]
+    assert evidence["declared_pod_identity_match"] is False
+
+
 def test_aegis_body_rejection_reads_source_schema(tmp_path: Path) -> None:
     case = (
         "ts3-ts-food-service-response-replace-body-skvngv",
@@ -283,12 +352,16 @@ def test_aegis_audit_rejects_timezone_dependent_injection_time(tmp_path: Path) -
 
 def test_fresh_selection_manifest_binds_consumed_parents_before_trajectory() -> None:
     root = Path("fixtures/reference")
-    manifest = json.loads((root / "aegis-transfer-v27-selection.json").read_text())
+    manifest = json.loads((root / "aegis-transfer-v31-selection.json").read_text())
 
     assert manifest["selection_phase"] == "before_agent_trajectory"
-    assert manifest["selection_strategy"] == ("fresh-source-observable-supported-mechanism-v2")
+    assert manifest["selection_strategy"] == "fresh-source-observable-service-mechanism-v3"
     assert manifest["case_role"] == "measurement"
-    assert manifest["agent_case_id"] not in {"aegis-transfer-001", "aegis-transfer-002"}
+    assert manifest["agent_case_id"] not in {
+        "aegis-transfer-001",
+        "aegis-transfer-002",
+        "aegis-transfer-003",
+    }
     for parent in manifest["consumed_parent_manifests"]:
         assert hashlib.sha256((root / parent["name"]).read_bytes()).hexdigest() == parent["sha256"]
     assert (

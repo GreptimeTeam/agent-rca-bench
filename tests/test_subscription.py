@@ -41,7 +41,9 @@ DIAGNOSIS = {
 def test_subscription_environment_removes_usage_billed_credentials(monkeypatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-secret")
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://example.invalid")
+    monkeypatch.setenv("BIGMODEL_API_KEY", "bigmodel-secret")
     monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-secret")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "dashscope-secret")
     monkeypatch.setenv("OPENAI_API_KEY", "openai-secret")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://example.invalid")
     monkeypatch.setenv("CODEX_API_KEY", "codex-secret")
@@ -56,7 +58,9 @@ def test_subscription_environment_removes_usage_billed_credentials(monkeypatch) 
     assert environment["https_proxy"] == "http://127.0.0.1:7890"
     assert "ANTHROPIC_API_KEY" not in environment
     assert "ANTHROPIC_BASE_URL" not in environment
+    assert "BIGMODEL_API_KEY" not in environment
     assert "DEEPSEEK_API_KEY" not in environment
+    assert "DASHSCOPE_API_KEY" not in environment
     assert "OPENAI_API_KEY" not in environment
     assert "OPENAI_BASE_URL" not in environment
     assert "CODEX_API_KEY" not in environment

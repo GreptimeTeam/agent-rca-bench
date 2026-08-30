@@ -61,7 +61,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
   `database_load.rows_returned`（combined report 中为 `rows_returned`）和
   `evaluation.correct_completion_tool_calls`。两者使用冻结 protocol 定义的同一个
   eligibility guardrail。通用 RCA v23 guardrail 要求正确 diagnosis、至少一条 citation、
-  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v30 使用分层契约：
+  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v31 使用分层契约：
   diagnosis 正确、全部 required evidence claim 由 execution-valid citation 覆盖、且无
   runner error/budget hit 时可比较效率；无关的额外无效 citation 只使
   `auditable_completion=false`，不能抹掉已经成立的 required evidence 或效率轨迹。
@@ -76,6 +76,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
   `rows_returned_through_evidence` 和 `tool_calls_through_evidence`。它们只统计到
   cited canonical evidence，不得与端到端 RCA 字段混用。
 - Model token 结果在 runner accounting contract 完成审计和预注册前属于 exploratory metric。必须说明 cached input、system prompt、tool schema、tool results、structured output 和 reasoning output 的计量范围；reasoning 是 output 的子集时不得重复计数。
+- 跨 provider 的 reasoning effort 名称不是共同算力标尺。模型 report card 使用相同外部资源上限，并显式冻结各 provider 对所选模型公布的默认 reasoning 档位；报告比较的是完整冻结配置，不能把结果表述成脱离配置的模型能力排名。
 - Latency 只有在 treatment execution position 平衡、服务器负载可比时才能跨 treatment 解释。
 - Dataset taxonomy 不同的 correctness 结果分 corpus 报告，除非存在经过论证的共同 scoring contract。
 - 优先使用 deterministic scorer。不得为了得到目标结论引入 LLM judge。
@@ -102,7 +103,8 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 
 ## Runner 与隔离要求
 
-- API、Codex subscription 和 Claude subscription 必须表达同一 system contract，并记录 runner capability 差异。API transport、reasoning effort 和 reasoning/visible output 共享的预算必须由执行协议显式绑定，不能根据模型名或 provider 默认值推断。SQL 默认返回 200 行，agent 可逐次显式提高到 1000 行；截断结果不能成为最终 citation，runner 必须给 agent 一次可修复的错误反馈。
+- API、Codex subscription 和 Claude subscription 必须表达同一 system contract，并记录 runner capability 差异。API transport、provider endpoint、credential source、reasoning effort 和 reasoning/visible output 共享的预算必须由执行协议显式绑定，不能根据模型名或 provider 默认值推断。不同币种的 provider 成本必须保留原币种，未冻结汇率时不得聚合。SQL 默认返回 200 行，agent 可逐次显式提高到 1000 行；截断结果不能成为最终 citation，runner 必须给 agent 一次可修复的错误反馈。
+- Tenant-specific provider endpoints stay in runtime configuration. The protocol must validate the provider, region, and API surface without publishing workspace identifiers.
 - Subscription runner 不能静默回退到 API billing。Provider credentials 和 endpoint overrides 不得传入 subscription child process。
 - Tool-call cap 必须对 agent 可见；未知工具和 cap rejection 分开记录。Turn exhaustion 或 runner failure 应持久化为可评分失败，不能中断整个 batch。
 - 一个正式 case 使用独占 GreptimeDB instance。Semantic Graph 会枚举实例中的 user schemas，单纯使用不同 database 不能保证隔离。
@@ -111,7 +113,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 
 ## Benchmark 1.0 与研究结论边界
 
-`v24`、`v25`、`v26`、`v27`、`v28`、`v29`、`v30` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
+`v24`、`v25`、`v26`、`v27`、`v28`、`v29`、`v30`、`v31` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
 scorer 和实验装置的迭代，不是公开发布版本。冻结前的运行均为研发实验；当前代码不为
 旧研发周期保留 loader、scorer、resume、renderer 或其他兼容层。
 

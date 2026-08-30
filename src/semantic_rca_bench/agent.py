@@ -12,6 +12,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 import anthropic
 import openai
@@ -70,7 +71,19 @@ class StructuredAgentResult:
 ANTHROPIC_KEYCHAIN_SERVICE = "semantic-rca-bench-anthropic"
 DEEPSEEK_KEYCHAIN_SERVICE = "semantic-rca-bench-deepseek"
 OPENAI_KEYCHAIN_SERVICE = "semantic-rca-bench-openai"
+BIGMODEL_KEYCHAIN_SERVICE = "semantic-rca-bench-bigmodel"
+DASHSCOPE_KEYCHAIN_SERVICE = "semantic-rca-bench-dashscope"
 DEEPSEEK_ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
+BIGMODEL_CHAT_COMPLETIONS_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+DASHSCOPE_BASE_URL_ENV = "DASHSCOPE_BASE_URL"
+
+RESPONSES_TRANSPORTS = frozenset(
+    {
+        ApiTransport.OPENAI_RESPONSES,
+        ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES,
+    }
+)
+CHAT_COMPLETIONS_TRANSPORTS = frozenset({ApiTransport.BIGMODEL_CHAT_COMPLETIONS})
 
 TABLE_SEMANTICS_GUIDE = """
 Semantic profile usage: signal_type says whether the table contains metrics, logs, traces, or
@@ -170,7 +183,8 @@ SUBMIT_TOOL = {
                     "between a caller and callee; connection_failure for established connection "
                     "failure rather than its downstream 5xx symptom; dependency_contract_failure "
                     "for request/response contract changes; application_error, "
-                    "configuration_error, or data_semantics_error for those local mechanisms; "
+                    "configuration_error, data_semantics_error, or workload_restart for those "
+                    "local mechanisms; "
                     "unknown only when evidence does not discriminate a listed mechanism."
                 ),
             },
@@ -527,14 +541,15 @@ def run_structured_api_agent(
         raise ValueError("max_turns must allow every tool call and a final output turn")
     if max_output_tokens < 1:
         raise ValueError("max_output_tokens must be positive")
-    if api_transport is ApiTransport.OPENAI_RESPONSES:
+    if api_transport in RESPONSES_TRANSPORTS:
         if reasoning_effort is None:
-            raise ValueError("OpenAI Responses runs require an explicit reasoning effort")
-        return _run_openai_structured_api_agent(
+            raise ValueError("Responses API runs require an explicit reasoning effort")
+        return _run_responses_structured_api_agent(
             gateway,
             case_input,
             visibility,
             model=model,
+            api_transport=api_transport,
             reasoning_effort=reasoning_effort,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
@@ -547,8 +562,31 @@ def run_structured_api_agent(
             semantic_coverage=semantic_coverage,
             prompt_cache=prompt_cache,
         )
-    if reasoning_effort is not None:
-        raise ValueError("reasoning effort is only supported by the OpenAI Responses runner")
+    if api_transport in CHAT_COMPLETIONS_TRANSPORTS:
+        if reasoning_effort is None:
+            raise ValueError("reasoning Chat Completions runs require an explicit effort")
+        return _run_chat_completions_structured_api_agent(
+            gateway,
+            case_input,
+            visibility,
+            model=model,
+            api_transport=api_transport,
+            reasoning_effort=reasoning_effort,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            investigation_tools=investigation_tools,
+            output_tool=output_tool,
+            validate_output=validate_output,
+            max_tool_calls=max_tool_calls,
+            max_turns=max_turns,
+            max_output_tokens=max_output_tokens,
+            semantic_coverage=semantic_coverage,
+        )
+    if reasoning_effort is not None and api_transport not in {
+        ApiTransport.ANTHROPIC_MESSAGES,
+        ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
+    }:
+        raise ValueError("reasoning effort is not supported by this API transport")
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_prompt}]
     session = InvestigationSession(
         gateway,
@@ -583,6 +621,8 @@ def run_structured_api_agent(
         }
         if prompt_cache and api_transport is ApiTransport.ANTHROPIC_MESSAGES:
             request["cache_control"] = {"type": "ephemeral"}
+        if reasoning_effort is not None:
+            request["output_config"] = {"effort": reasoning_effort}
         try:
             response = client.messages.create(
                 **request,
@@ -694,12 +734,178 @@ def run_structured_api_agent(
     )
 
 
-def _run_openai_structured_api_agent(
+def _run_chat_completions_structured_api_agent(
     gateway: QueryGateway,
     case_input: CaseInput,
     visibility: Visibility,
     *,
     model: str,
+    api_transport: ApiTransport,
+    reasoning_effort: str,
+    system_prompt: str,
+    user_prompt: str,
+    investigation_tools: list[dict[str, object]],
+    output_tool: dict[str, object],
+    validate_output: Callable[[object], dict[str, object]],
+    max_tool_calls: int,
+    max_turns: int,
+    max_output_tokens: int,
+    semantic_coverage: dict[str, object] | None,
+) -> StructuredAgentResult:
+    session = InvestigationSession(
+        gateway,
+        case_input,
+        visibility,
+        max_tool_calls=max_tool_calls,
+        semantic_coverage=semantic_coverage,
+        investigation_tools=investigation_tools,
+    )
+    responses: list[dict[str, object]] = []
+    usage = AgentUsage()
+    started = time.monotonic()
+    output_tool_name = str(output_tool["name"])
+    messages: list[dict[str, object]] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    tools = [_chat_completions_function_tool(tool) for tool in [*investigation_tools, output_tool]]
+    try:
+        client = _chat_completions_client(api_transport)
+    except Exception as error:
+        return _structured_result(
+            session,
+            usage,
+            responses,
+            started,
+            error=f"agent provider failed: {error}",
+        )
+
+    for _ in range(max_turns):
+        request = _chat_completions_request(
+            api_transport,
+            model=model,
+            messages=messages,
+            tools=tools,
+            max_output_tokens=max_output_tokens,
+            reasoning_effort=reasoning_effort,
+        )
+        try:
+            response = client.chat.completions.create(**request)
+        except Exception as error:
+            return _structured_result(
+                session,
+                usage,
+                responses,
+                started,
+                error=f"agent provider failed: {error}",
+            )
+        try:
+            raw_response = response.model_dump(mode="json")
+            responses.append(raw_response)
+            usage.input_tokens += _uncached_input_tokens(raw_response)
+            usage.output_tokens += _provider_output_tokens(raw_response)
+            if len(response.choices) != 1:
+                raise AgentError("Chat Completions response must contain exactly one choice")
+            choice = response.choices[0]
+            if choice.finish_reason not in {"stop", "tool_calls"}:
+                raise AgentError(f"Chat Completions finish_reason is {choice.finish_reason!r}")
+            message = choice.message
+            raw_message = message.model_dump(mode="json", exclude_none=True)
+            messages.append(raw_message)
+            tool_calls = list(message.tool_calls or [])
+            parsed_calls = [_chat_completions_function_call(call) for call in tool_calls]
+        except Exception as error:
+            return _structured_result(
+                session,
+                usage,
+                responses,
+                started,
+                error=f"invalid provider response: {error}",
+            )
+
+        output_call = next(
+            (item for item in parsed_calls if item[1] == output_tool_name),
+            None,
+        )
+        output_error: str | None = None
+        if output_call is not None:
+            _, _, output_arguments = output_call
+            try:
+                output = validate_output(output_arguments)
+                if output_tool_name == "submit_diagnosis":
+                    session.validate_diagnosis_citations(output)
+            except (ValidationError, ValueError, TypeError) as error:
+                output_error = str(error)
+            else:
+                for _, tool_name, arguments in parsed_calls:
+                    if tool_name != output_tool_name:
+                        session.reject_unexecuted(
+                            tool_name,
+                            arguments,
+                            "not executed because the same response submitted valid final output",
+                        )
+                return _structured_result(
+                    session,
+                    usage,
+                    responses,
+                    started,
+                    output=output,
+                )
+
+        if not parsed_calls:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Continue the investigation or call {output_tool_name}. "
+                        f"You have {session.remaining} investigation tool calls remaining."
+                    ),
+                }
+            )
+            continue
+
+        for call_id, tool_name, arguments in parsed_calls:
+            if tool_name == output_tool_name:
+                invocation = ToolInvocation(
+                    content=f"invalid final output: {output_error}",
+                    is_error=True,
+                    remaining=session.remaining,
+                )
+            else:
+                invocation = session.invoke(tool_name, arguments)
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": _responses_tool_output(invocation),
+                }
+            )
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    f"Investigation budget: {session.remaining} tool calls remain. "
+                    f"Call {output_tool_name} before the budget reaches zero."
+                ),
+            }
+        )
+
+    return _structured_result(
+        session,
+        usage,
+        responses,
+        started,
+        error=f"agent did not submit final output within {max_turns} turns",
+    )
+
+
+def _run_responses_structured_api_agent(
+    gateway: QueryGateway,
+    case_input: CaseInput,
+    visibility: Visibility,
+    *,
+    model: str,
+    api_transport: ApiTransport,
     reasoning_effort: str,
     system_prompt: str,
     user_prompt: str,
@@ -725,9 +931,9 @@ def _run_openai_structured_api_agent(
     started = time.monotonic()
     output_tool_name = str(output_tool["name"])
     input_items: list[dict[str, object]] = [{"role": "user", "content": user_prompt}]
-    tools = [_openai_function_tool(tool) for tool in [*investigation_tools, output_tool]]
+    tools = [_responses_function_tool(tool) for tool in [*investigation_tools, output_tool]]
     try:
-        client = _openai_client()
+        client = _responses_client(api_transport)
     except Exception as error:
         return _structured_result(
             session,
@@ -738,24 +944,17 @@ def _run_openai_structured_api_agent(
         )
 
     for _ in range(max_turns):
-        request: dict[str, object] = {
-            "model": model,
-            "instructions": system_prompt,
-            "input": deepcopy(input_items),
-            "tools": tools,
-            "max_output_tokens": max_output_tokens,
-            "reasoning": {"effort": reasoning_effort},
-            "parallel_tool_calls": True,
-            "include": ["reasoning.encrypted_content"],
-            "store": False,
-        }
-        if prompt_cache:
-            request["prompt_cache_key"] = _openai_prompt_cache_key(
-                visibility,
-                system_prompt,
-                tools,
-            )
-            request["prompt_cache_options"] = {"mode": "implicit", "ttl": "30m"}
+        request = _responses_request(
+            api_transport,
+            visibility,
+            model=model,
+            system_prompt=system_prompt,
+            input_items=input_items,
+            tools=tools,
+            max_output_tokens=max_output_tokens,
+            reasoning_effort=reasoning_effort,
+            prompt_cache=prompt_cache,
+        )
         try:
             response = client.responses.create(**request)
         except Exception as error:
@@ -772,12 +971,12 @@ def _run_openai_structured_api_agent(
             usage.input_tokens += _uncached_input_tokens(raw_response)
             usage.output_tokens += int(response.usage.output_tokens)
             usage.reasoning_tokens += _reasoning_tokens(raw_response)
-            _validate_openai_response_status(raw_response)
+            _validate_responses_status(raw_response)
             output_items = list(response.output)
             raw_output_items = raw_response.get("output")
             if not isinstance(raw_output_items, list):
-                raise AgentError("OpenAI response has no output item list")
-            input_items.extend(_openai_continuation_items(raw_output_items))
+                raise AgentError("Responses API response has no output item list")
+            input_items.extend(_responses_continuation_items(raw_output_items))
         except Exception as error:
             return _structured_result(
                 session,
@@ -791,7 +990,7 @@ def _run_openai_structured_api_agent(
             item for item in output_items if getattr(item, "type", None) == "function_call"
         ]
         try:
-            parsed_calls = [_openai_function_call(item) for item in tool_calls]
+            parsed_calls = [_responses_function_call(item) for item in tool_calls]
         except AgentError as error:
             return _structured_result(
                 session,
@@ -854,7 +1053,7 @@ def _run_openai_structured_api_agent(
                 {
                     "type": "function_call_output",
                     "call_id": call_id,
-                    "output": _openai_tool_output(invocation),
+                    "output": _responses_tool_output(invocation),
                 }
             )
         input_items.append(
@@ -911,12 +1110,103 @@ def _anthropic_client(api_transport: ApiTransport) -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=api_key)
 
 
-def _openai_client() -> openai.OpenAI:
-    api_key = _api_credential("OPENAI_API_KEY", OPENAI_KEYCHAIN_SERVICE)
-    return openai.OpenAI(api_key=api_key)
+def _chat_completions_client(api_transport: ApiTransport) -> openai.OpenAI:
+    if api_transport is not ApiTransport.BIGMODEL_CHAT_COMPLETIONS:
+        raise AgentError(f"unsupported Chat Completions transport: {api_transport.value}")
+    api_key = _api_credential("BIGMODEL_API_KEY", BIGMODEL_KEYCHAIN_SERVICE)
+    return openai.OpenAI(api_key=api_key, base_url=BIGMODEL_CHAT_COMPLETIONS_BASE_URL)
 
 
-def _openai_function_tool(tool: dict[str, object]) -> dict[str, object]:
+def _chat_completions_function_tool(tool: dict[str, object]) -> dict[str, object]:
+    return {
+        "type": "function",
+        "function": {
+            "name": tool["name"],
+            "description": tool["description"],
+            "parameters": tool["input_schema"],
+        },
+    }
+
+
+def _chat_completions_request(
+    api_transport: ApiTransport,
+    *,
+    model: str,
+    messages: list[dict[str, object]],
+    tools: list[dict[str, object]],
+    max_output_tokens: int,
+    reasoning_effort: str,
+) -> dict[str, object]:
+    if api_transport is not ApiTransport.BIGMODEL_CHAT_COMPLETIONS:
+        raise AgentError(f"unsupported Chat Completions transport: {api_transport.value}")
+    return {
+        "model": model,
+        "messages": deepcopy(messages),
+        "tools": tools,
+        "max_tokens": max_output_tokens,
+        "extra_body": {
+            "thinking": {"type": "enabled"},
+            "reasoning_effort": reasoning_effort,
+        },
+    }
+
+
+def _chat_completions_function_call(
+    item: object,
+) -> tuple[str, str, dict[str, object]]:
+    call_id = getattr(item, "id", None)
+    function = getattr(item, "function", None)
+    name = getattr(function, "name", None)
+    arguments = getattr(function, "arguments", None)
+    if not isinstance(call_id, str) or not call_id:
+        raise AgentError("Chat Completions function call has no id")
+    if not isinstance(name, str) or not name:
+        raise AgentError("Chat Completions function call has no name")
+    if not isinstance(arguments, str):
+        raise AgentError("Chat Completions function call arguments are not JSON text")
+    try:
+        decoded = json.loads(arguments)
+    except json.JSONDecodeError as error:
+        raise AgentError(
+            f"Chat Completions function call arguments are invalid JSON: {error}"
+        ) from error
+    if not isinstance(decoded, dict):
+        raise AgentError("Chat Completions function call arguments must decode to an object")
+    return call_id, name, decoded
+
+
+def _responses_client(api_transport: ApiTransport) -> openai.OpenAI:
+    if api_transport is ApiTransport.OPENAI_RESPONSES:
+        api_key = _api_credential("OPENAI_API_KEY", OPENAI_KEYCHAIN_SERVICE)
+        return openai.OpenAI(api_key=api_key)
+    if api_transport is ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES:
+        api_key = _api_credential("DASHSCOPE_API_KEY", DASHSCOPE_KEYCHAIN_SERVICE)
+        return openai.OpenAI(api_key=api_key, base_url=_dashscope_base_url())
+    raise AgentError(f"unsupported Responses transport: {api_transport.value}")
+
+
+def _dashscope_base_url() -> str:
+    base_url = os.environ.get(DASHSCOPE_BASE_URL_ENV, "").rstrip("/")
+    parsed = urlsplit(base_url)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname is None
+        or not parsed.hostname.endswith(".cn-beijing.maas.aliyuncs.com")
+        or parsed.port is not None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != "/compatible-mode/v1"
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise AgentError(
+            f"{DASHSCOPE_BASE_URL_ENV} must be a China (Beijing) workspace Responses "
+            "base URL ending in .cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+        )
+    return base_url
+
+
+def _responses_function_tool(tool: dict[str, object]) -> dict[str, object]:
     return {
         "type": "function",
         "name": tool["name"],
@@ -926,13 +1216,57 @@ def _openai_function_tool(tool: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _openai_continuation_items(
+def _responses_request(
+    api_transport: ApiTransport,
+    visibility: Visibility,
+    *,
+    model: str,
+    system_prompt: str,
+    input_items: list[dict[str, object]],
+    tools: list[dict[str, object]],
+    max_output_tokens: int,
+    reasoning_effort: str,
+    prompt_cache: bool,
+) -> dict[str, object]:
+    request: dict[str, object] = {
+        "model": model,
+        "instructions": system_prompt,
+        "input": deepcopy(input_items),
+        "tools": tools,
+        "max_output_tokens": max_output_tokens,
+        "reasoning": {"effort": reasoning_effort},
+    }
+    if api_transport is ApiTransport.OPENAI_RESPONSES:
+        request.update(
+            {
+                "parallel_tool_calls": True,
+                "include": ["reasoning.encrypted_content"],
+                "store": False,
+            }
+        )
+        if prompt_cache:
+            request["prompt_cache_key"] = _openai_prompt_cache_key(
+                visibility,
+                system_prompt,
+                tools,
+            )
+            request["prompt_cache_options"] = {"mode": "implicit", "ttl": "30m"}
+    elif api_transport is ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES:
+        request.update({"parallel_tool_calls": False, "store": False})
+        if prompt_cache:
+            request["extra_headers"] = {"x-dashscope-session-cache": "enable"}
+    else:
+        raise AgentError(f"unsupported Responses transport: {api_transport.value}")
+    return request
+
+
+def _responses_continuation_items(
     output_items: list[object],
 ) -> list[dict[str, object]]:
     continuation_items: list[dict[str, object]] = []
     for output_item in output_items:
         if not isinstance(output_item, dict):
-            raise AgentError("OpenAI response output item is not an object")
+            raise AgentError("Responses API output item is not an object")
         item = deepcopy(output_item)
         if item.get("type") in {"reasoning", "function_call"}:
             item.pop("status", None)
@@ -955,26 +1289,28 @@ def _openai_prompt_cache_key(
     return f"semantic-rca-{visibility.value}-{digest}"
 
 
-def _openai_function_call(item: object) -> tuple[str, str, dict[str, object]]:
+def _responses_function_call(item: object) -> tuple[str, str, dict[str, object]]:
     call_id = getattr(item, "call_id", None)
     name = getattr(item, "name", None)
     arguments = getattr(item, "arguments", None)
     if not isinstance(call_id, str) or not call_id:
-        raise AgentError("OpenAI function call has no call_id")
+        raise AgentError("Responses API function call has no call_id")
     if not isinstance(name, str) or not name:
-        raise AgentError("OpenAI function call has no name")
+        raise AgentError("Responses API function call has no name")
     if not isinstance(arguments, str):
-        raise AgentError("OpenAI function call arguments are not JSON text")
+        raise AgentError("Responses API function call arguments are not JSON text")
     try:
         decoded = json.loads(arguments)
     except json.JSONDecodeError as error:
-        raise AgentError(f"OpenAI function call arguments are invalid JSON: {error}") from error
+        raise AgentError(
+            f"Responses API function call arguments are invalid JSON: {error}"
+        ) from error
     if not isinstance(decoded, dict):
-        raise AgentError("OpenAI function call arguments must decode to an object")
+        raise AgentError("Responses API function call arguments must decode to an object")
     return call_id, name, decoded
 
 
-def _openai_tool_output(invocation: ToolInvocation) -> str:
+def _responses_tool_output(invocation: ToolInvocation) -> str:
     if not invocation.is_error:
         return invocation.content
     return json.dumps(
@@ -987,7 +1323,7 @@ def _openai_tool_output(invocation: ToolInvocation) -> str:
     )
 
 
-def _validate_openai_response_status(response: dict[str, object]) -> None:
+def _validate_responses_status(response: dict[str, object]) -> None:
     status = response.get("status")
     if status == "completed":
         return
@@ -996,7 +1332,7 @@ def _validate_openai_response_status(response: dict[str, object]) -> None:
     error = response.get("error")
     message = error.get("message") if isinstance(error, dict) else None
     detail = reason or message or "no provider detail"
-    raise AgentError(f"OpenAI response status is {status!r}: {detail}")
+    raise AgentError(f"Responses API status is {status!r}: {detail}")
 
 
 def _reasoning_tokens(response: dict[str, object]) -> int:
@@ -1019,15 +1355,27 @@ def _uncached_input_tokens(response: dict[str, object]) -> int:
         raise AgentError("provider response has no usage object")
     if "prompt_cache_hit_tokens" in raw_usage and "prompt_cache_miss_tokens" in raw_usage:
         return int(raw_usage["prompt_cache_miss_tokens"] or 0)
-    input_tokens = int(raw_usage.get("input_tokens", 0) or 0)
-    details = raw_usage.get("input_tokens_details")
+    input_tokens = int(raw_usage.get("input_tokens", raw_usage.get("prompt_tokens", 0)) or 0)
+    details = raw_usage.get("input_tokens_details", raw_usage.get("prompt_tokens_details"))
     if isinstance(details, dict):
         cached = int(details.get("cached_tokens", 0) or 0)
-        cache_write = int(details.get("cache_write_tokens", 0) or 0)
+        cache_write = int(
+            details.get("cache_write_tokens", 0)
+            or details.get("cache_creation_input_tokens", 0)
+            or raw_usage.get("cache_creation_input_tokens", 0)
+            or 0
+        )
         if cached < 0 or cache_write < 0 or cached + cache_write > input_tokens:
             raise AgentError("provider cache token breakdown exceeds input_tokens")
         return input_tokens - cached - cache_write
     return input_tokens
+
+
+def _provider_output_tokens(response: dict[str, object]) -> int:
+    raw_usage = response.get("usage")
+    if not isinstance(raw_usage, dict):
+        raise AgentError("provider response has no usage object")
+    return int(raw_usage.get("output_tokens", raw_usage.get("completion_tokens", 0)) or 0)
 
 
 def _api_credential(environment_variable: str, keychain_service: str) -> str:

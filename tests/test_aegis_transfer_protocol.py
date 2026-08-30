@@ -22,13 +22,13 @@ def _audits() -> tuple[dict[str, object], dict[str, object]]:
     source = {
         "selection_audit": {
             "frozen_selection_gate": {
-                "manifest_name": "aegis-transfer-v27-selection.json",
+                "manifest_name": "aegis-transfer-v31-selection.json",
                 "pass": True,
             }
         },
         "case": {
             "agent_facing": {
-                "case_id": "aegis-transfer-003",
+                "case_id": "aegis-transfer-004",
                 "fault_taxonomy": [],
             }
         },
@@ -42,7 +42,7 @@ def _audits() -> tuple[dict[str, object], dict[str, object]]:
     return source, scorer_audit
 
 
-def test_four_model_protocol_freezes_cache_schedule_and_inference_boundary() -> None:
+def test_six_model_protocol_freezes_cache_schedule_and_inference_boundary() -> None:
     fixture = load_transfer_protocol_fixture()
     scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     source, scorer_audit = _audits()
@@ -56,7 +56,7 @@ def test_four_model_protocol_freezes_cache_schedule_and_inference_boundary() -> 
         scorer_audit,
     )
 
-    assert audit["expected_paid_runs"] == 16
+    assert audit["expected_paid_runs"] == 24
     assert audit["paid_execution_authorized"] is False
     assert audit["orders_per_model"] == [
         ["raw", "semantic_graph"],
@@ -71,7 +71,7 @@ def test_four_model_protocol_freezes_cache_schedule_and_inference_boundary() -> 
     assert audit["inference"]["correctness_pooled_across_models"] is False
 
 
-def test_four_model_protocol_drift_fails_closed(tmp_path: Path) -> None:
+def test_six_model_protocol_drift_fails_closed(tmp_path: Path) -> None:
     raw = json.loads(DEFAULT_PROTOCOL_FIXTURE.read_text())
     raw["models"][2]["prompt_cache"] = "disabled"
     path = tmp_path / "protocol.json"
@@ -81,7 +81,7 @@ def test_four_model_protocol_drift_fails_closed(tmp_path: Path) -> None:
         load_transfer_protocol_fixture(path)
 
 
-def test_four_model_protocol_requires_source_and_scorer_gates() -> None:
+def test_six_model_protocol_requires_source_and_scorer_gates() -> None:
     fixture = load_transfer_protocol_fixture()
     scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     source, scorer_audit = _audits()

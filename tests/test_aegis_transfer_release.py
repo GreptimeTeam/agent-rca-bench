@@ -23,7 +23,8 @@ def test_efficiency_pairs_do_not_require_unrelated_citation_integrity() -> None:
                     "cache_creation_input_tokens": 0,
                     "output_tokens": 10 - position,
                     "reasoning_output_tokens": position,
-                    "estimated_peak_usd": 0.1,
+                    "estimated_cost": 0.1,
+                    "cost_currency": "USD",
                 },
             }
         )

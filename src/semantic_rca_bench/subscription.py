@@ -39,9 +39,11 @@ SUBSCRIPTION_RUN_TIMEOUT_SECONDS = 30 * 60
 _MCP_SERVER_NAME = "semantic_rca"
 _PROVIDER_ENV_PREFIXES = (
     "ANTHROPIC_",
+    "BIGMODEL_",
     "CLAUDE_",
     "CODEX_",
     "DEEPSEEK_",
+    "DASHSCOPE_",
     "OPENAI_",
 )
 

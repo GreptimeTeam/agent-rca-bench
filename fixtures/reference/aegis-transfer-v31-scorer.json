@@ -1,0 +1,64 @@
+{
+  "version": 3,
+  "scorer_revision": "aegis-transfer-workload-restart-v1",
+  "agent_case_id": "aegis-transfer-004",
+  "case_role": "measurement",
+  "ground_truth": {
+    "causal_scope": "component",
+    "causal_component": "ts-auth-service",
+    "fault_category": "other",
+    "mechanism_code": "workload_restart",
+    "source_fault_type": "PodFailure"
+  },
+  "normal_window": [
+    1752933592,
+    1752933832
+  ],
+  "abnormal_window": [
+    1752933832,
+    1752934072
+  ],
+  "required_evidence_claims": [
+    "causal_locus",
+    "fault_mechanism"
+  ],
+  "mechanism_evidence": {
+    "predicate": "source_declared_workload_restart",
+    "observable": "k8s.container.restarts",
+    "metric_table": "k8s_container_restarts",
+    "identity_column": "k8s_container_name",
+    "identity_value": "ts-auth-service",
+    "minimum_anomalous_observations": 2,
+    "expected_result": {
+      "normal": {
+        "count": 24,
+        "min_restarts": 0.0,
+        "max_restarts": 0.0
+      },
+      "abnormal": {
+        "count": 24,
+        "min_restarts": 1.0,
+        "max_restarts": 1.0
+      }
+    }
+  },
+  "canonical_api_runner": {
+    "runner": "api",
+    "model": "deepseek-v4-pro",
+    "api_transport": "anthropic-compatible-messages",
+    "reasoning_effort": "high",
+    "benchmark_protocol_version": 31,
+    "visibility_levels": [
+      "raw",
+      "semantic_graph"
+    ],
+    "max_tool_calls": 48,
+    "max_turns": 58,
+    "max_output_tokens": 16384,
+    "repetitions": 2,
+    "treatment_order_seed": 0,
+    "parallel_runs": 1,
+    "sampling": "provider-default; no seed sent",
+    "prompt_cache": "deepseek-automatic-prefix-v1"
+  }
+}
