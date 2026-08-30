@@ -17,8 +17,8 @@ from semantic_rca_bench.contracts import AgentRun, AgentRunner, ApiTransport, Vi
 from semantic_rca_bench.protocol import benchmark_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "aegis-transfer-four-model-v8"
-DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v29-four-model-protocol.json")
+PROTOCOL_REVISION = "aegis-transfer-four-model-v11"
+DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/aegis-transfer-v30-four-model-protocol.json")
 
 
 class TransferModelContract(BaseModel):
@@ -84,9 +84,9 @@ def load_transfer_protocol_fixture(
     specification = {
         "version": 2,
         "agent_case_id": "aegis-transfer-003",
-        "benchmark_protocol_version": 29,
+        "benchmark_protocol_version": 30,
         "selection_fixture": "fixtures/reference/aegis-transfer-v27-selection.json",
-        "scorer_fixture": "fixtures/reference/aegis-transfer-v29-scorer.json",
+        "scorer_fixture": "fixtures/reference/aegis-transfer-v30-scorer.json",
         "models": (
             (
                 "gpt-5.6-sol",
@@ -181,7 +181,7 @@ def load_transfer_protocol_fixture(
         and inference.case_is_independent_unit
         and inference.repetitions_are_descriptive
         and inference.single_case_claim
-        == "development calibration after causal-contract revision; not fresh measurement evidence"
+        == "development calibration after claim-grounding revision; not fresh measurement evidence"
     ):
         raise ValueError("formal protocol inference boundary drifted")
     _validate_bound_file(path, fixture.selection_fixture, fixture.selection_fixture_sha256)

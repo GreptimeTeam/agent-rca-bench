@@ -61,10 +61,12 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
   `database_load.rows_returned`（combined report 中为 `rows_returned`）和
   `evaluation.correct_completion_tool_calls`。两者使用冻结 protocol 定义的同一个
   eligibility guardrail。通用 RCA v23 guardrail 要求正确 diagnosis、至少一条 citation、
-  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v29 使用分层契约：
+  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v30 使用分层契约：
   diagnosis 正确、全部 required evidence claim 由 execution-valid citation 覆盖、且无
   runner error/budget hit 时可比较效率；无关的额外无效 citation 只使
   `auditable_completion=false`，不能抹掉已经成立的 required evidence 或效率轨迹。
+  Graph entity 存在和普通 calls edge 只能用于导航或传播分析，不能单独证明 required
+  `causal_locus`；locus 必须由 incident-local、绑定所声明 operation 或 mechanism 的证据支持。
 - 端到端 execution-valid citation 必须唯一对应一次成功、非截断的
   `execute_sql` 或 `query_semantic_graph` `QueryResult`，且 output query ID 与 citation
   一致。Schema/catalog discovery 和空 claim 不构成 evidence。这个检查只证明引用了
@@ -77,10 +79,15 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 - Latency 只有在 treatment execution position 平衡、服务器负载可比时才能跨 treatment 解释。
 - Dataset taxonomy 不同的 correctness 结果分 corpus 报告，除非存在经过论证的共同 scoring contract。
 - 优先使用 deterministic scorer。不得为了得到目标结论引入 LLM judge。
-- Scorer 判断证据语义，不要求 agent 复刻 canonical SQL 的表面写法。只有 no-model audit
-  能证明查询等价且不会扩大源数据集合时，才接受大小写归一化等语法变体；被中和、缩窄
-  或扩大证据范围的谓词必须 fail closed。
+- Scorer 判断 causal claim 是否由 cited result 支持，不要求 agent 复刻 canonical SQL、隐藏
+  injection timestamp 或精确 source count。查询必须保留 claim 所依赖的 source identity、
+  operation、role、status、parent、time 和 result lineage；硬编码、谓词中和、row multiplication、
+  truncated result，以及不能证明完整区间的 absence claim 必须 fail closed。规范见
+  `SCORING.md`。
 - Protocol、prompt、scorer、selection、runner representation 或主要指标发生实质变化时，升级 protocol，并禁止与旧 protocol 混合统计。
+- `benchmark_protocol()` 必须以机器可读字段声明 treatment estimand 和每个 treatment 的
+  agent-facing components。主实验测量完整 Semantic Graph interface，包括 metadata、Graph、
+  usage guidance、runtime recovery 和 coverage snapshot，不得表述成纯数据表示效果。
 
 ## Dataset 与 source fidelity
 
@@ -104,7 +111,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 
 ## Benchmark 1.0 与研究结论边界
 
-`v24`、`v25`、`v26`、`v27`、`v28`、`v29` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
+`v24`、`v25`、`v26`、`v27`、`v28`、`v29`、`v30` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
 scorer 和实验装置的迭代，不是公开发布版本。冻结前的运行均为研发实验；当前代码不为
 旧研发周期保留 loader、scorer、resume、renderer 或其他兼容层。
 
@@ -134,6 +141,7 @@ confirmatory study。
 ## Source of truth 与仓库地图
 
 - `PLAN.md`：canonical objective、experiment design、milestones 和当前阶段。
+- `SCORING.md`：端到端 RCA correctness、claim grounding、citation、reliability 和 efficiency eligibility 的规范。
 - `src/semantic_rca_bench/protocol.py`：当前机器可读 protocol identifiers。
 - `DISCOVERY.md`：Table Semantics discovery micro-benchmark contract。
 - `GRAPH.md`：Semantic Graph micro-benchmark contract。

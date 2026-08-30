@@ -217,6 +217,13 @@ SUBMIT_TOOL = {
                         "claim": {"type": "string"},
                         "claim_types": {
                             "type": "array",
+                            "description": (
+                                "Structured claims directly supported by this cited result: "
+                                "causal_locus identifies where the mechanism occurs; "
+                                "fault_mechanism discriminates the mechanism; onset establishes "
+                                "the observed change time; propagated_impact describes a "
+                                "downstream symptom; exclusion rules out an alternative."
+                            ),
                             "items": {
                                 "type": "string",
                                 "enum": [claim.value for claim in EvidenceClaimType],
@@ -1456,8 +1463,10 @@ Final diagnosis contract:
   and above 0.9 requires direct, cross-signal evidence with plausible alternatives ruled out.
   Missing telemetry and ambiguous identity or relationships must reduce confidence.
 - each evidence claim must state only what the cited query result directly supports and declare
-  which structured claims it supports. Collectively, the cited evidence must support the primary
-  causal scope and mechanism. When baseline telemetry is available, the evidence set must compare
+  which structured claims it supports. Use causal_locus for evidence that identifies the component
+  or directed edge where the mechanism occurs; use propagated_impact only for downstream symptoms.
+  Collectively, the cited evidence must support the primary causal locus and mechanism. When
+  baseline telemetry is available, the evidence set must compare
   the relevant operation or signal across baseline and anomalous periods. Evidence that establishes
   only an observation does not by itself establish its cause.
 - truncated query results are incomplete and cannot be cited. Use aggregation, narrower filters, or

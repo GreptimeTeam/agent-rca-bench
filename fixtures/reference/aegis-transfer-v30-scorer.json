@@ -1,12 +1,13 @@
 {
-  "version": 2,
-  "scorer_revision": "aegis-transfer-jvm-exception-v1",
+  "version": 3,
+  "scorer_revision": "aegis-transfer-jvm-exception-v5",
   "agent_case_id": "aegis-transfer-003",
-  "case_role": "measurement",
+  "case_role": "development",
   "ground_truth": {
-    "affected_component": "ts-train-service",
-    "causal_dependency": null,
     "causal_scope": "component",
+    "causal_component": "ts-train-service",
+    "edge_source": null,
+    "edge_destination": null,
     "causal_operation": "TrainController.retrieveByName",
     "accepted_causal_operations": [
       "retrieveByName",
@@ -24,6 +25,10 @@
   "abnormal_window": [
     1752841557,
     1752841796
+  ],
+  "required_evidence_claims": [
+    "causal_locus",
+    "fault_mechanism"
   ],
   "mechanism_evidence": {
     "predicate": "source_declared_jvm_exception",
@@ -46,7 +51,7 @@
     "model": "deepseek-v4-pro",
     "api_transport": "anthropic-compatible-messages",
     "reasoning_effort": null,
-    "benchmark_protocol_version": 28,
+    "benchmark_protocol_version": 30,
     "visibility_levels": [
       "raw",
       "semantic_graph"

@@ -118,7 +118,9 @@ the same deterministic rule to a replacement.
   identical across treatments. Semantic treatments expose their documented
   metadata, tool schemas, usage guides, and coverage snapshot. The measured
   treatment is the complete agent-facing semantic interface, not stored
-  metadata in isolation.
+  metadata in isolation. `benchmark_protocol()` records this estimand and the
+  components visible in each treatment so reports cannot describe the result as
+  a data-representation-only effect.
 - Semantic metadata calls consume the same tool-call safety cap as SQL calls.
   Formal efficiency runs use a cap high enough that exhaustion is exceptional;
   any treatment with cap-hit runs is excluded from completion-efficiency claims.
@@ -148,18 +150,22 @@ the same deterministic rule to a replacement.
 - Freeze the dataset set, case-selection rules, and protocol before paid runs.
 
 The pre-registered primary efficiency metrics are GreptimeDB rows returned and
-tool calls through a jointly correct diagnosis with at least one valid evidence
-citation. Apply the same eligibility guardrail to both metrics. For each case,
+tool calls through a correct diagnosis whose required causal claims are grounded
+by execution-valid evidence. Apply the same eligibility guardrail to both metrics. For each case,
 take the median eligible run-pair delta; use the case medians for the exact
 two-sided sign test and adjust the two primary tests with Holm's method. Run-pair
 directions are descriptive only. Discovery ordering and other trajectory metrics
 are exploratory and cannot support headline claims.
 
-Protocol v26 introduced, and protocol v29 retains, a transfer guardrail that does not collapse
+Protocol v26 introduced, and protocol v30 retains, a transfer guardrail that does not collapse
 the result into one success bit. `diagnosis_correct` covers the causal locus, causal operation,
 category, and mechanism code.
 `required_evidence_covered`
-requires claim-typed evidence for the causal scope and mechanism.
+requires claim-typed evidence for the causal locus and mechanism. `claim_grounding` records the
+required status and supporting citations for each claim.
+Entity existence and an ordinary witnessed calls edge are navigation evidence, not causal-locus
+evidence. Required locus grounding must be incident-local and tied to the declared operation or
+mechanism under both treatments; a mechanism-bound result may ground both required claims.
 `citation_integrity` and `execution_reliability` are reported separately.
 Transfer efficiency is eligible only when the diagnosis is correct, the
 required claims are supported, and execution is reliable. An unrelated invalid
@@ -199,7 +205,7 @@ therefore be compared only within the same model, runner, protocol, and case.
 
 ## Benchmark 1.0 release gate and research-claim gate
 
-Protocol labels such as v24 through v29 identify internal development cycles. They record changes
+Protocol labels such as v24 through v30 identify internal development cycles. They record changes
 to the harness and make development experiments interpretable; they are not release versions. The
 current tree does not preserve runtime compatibility with earlier development protocols.
 
@@ -319,6 +325,25 @@ limit up to 1,000. A truncated result cannot be cited; both API transports retur
 submission to the agent so it can issue an aggregate, narrow the query, or request a larger bounded
 result. Because the v28 case-003 trajectory caused these changes, v29 binds case 003 only as a
 development calibration case. A fresh transfer measurement requires a new source case or cohort.
+
+The two v29 OpenAI development cells exposed a scorer false negative rather than a runner or model
+failure. The Raw run cited a complete operation-level Error transition and a complete grouped log
+result containing 1,981 `NullPointerException` records, but the scorer required the hidden
+intervention boundary and an `exception` predicate in SQL. The Graph run correctly identified the
+component and operation but did not inspect exception logs. Protocol v30 replaces query-recipe
+matching with the claim-grounding contract in `SCORING.md`. The scorer accepts a telemetry-derived
+observed onset and an exception signature present in a complete grouped result, while still
+requiring source OTel Error status, source identity, operation lineage, complete baseline coverage,
+and exception evidence. Shadow scoring therefore grounds the v29 Raw trajectory and leaves the
+Graph mechanism ungrounded. The v29 results remain immutable development records.
+
+A two-cell v30 `gpt-5.6-sol` Raw/Graph calibration then produced correct, fully cited diagnoses on
+both treatments. The first v30 scorer revision rejected both because it recognized neither
+status-grouped and conditional trace aggregates nor complete grouped log results with an omitted
+zero-period row. Revision `aegis-transfer-jvm-exception-v5` defines these as equivalent result
+shapes, provided source identity, operation and OTel status lineage, complete windows, and
+non-truncation remain provable. Deterministic rescoring accepts both cells. This pair is development
+calibration because it changed the scorer; it is not evidence for the final semantic-layer effect.
 
 A later confirmatory study must pre-register practical effect thresholds,
 multiplicity, exclusion assumptions, power, and independent-case enrollment.

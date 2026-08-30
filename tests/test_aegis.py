@@ -244,71 +244,6 @@ def test_aegis_audit_excludes_publisher_invalid_case(tmp_path: Path) -> None:
     assert report["graph_source_rejection_reasons"] == ["publisher_invalid_marker"]
 
 
-def test_sequential_selection_gate_binds_first_parent_unconsumed_case() -> None:
-    selection_path = Path("fixtures/reference/aegis-transfer-v25-selection.json")
-    audit = {
-        "source": {
-            "artifact_record": aegis.ARTIFACT_RECORD,
-            "artifact_filename": aegis.ARTIFACT_FILENAME,
-            "expected_artifact_md5": aegis.ARTIFACT_MD5,
-            "source_dataset_record": aegis.SOURCE_DATASET_RECORD,
-            "data_redistributed": False,
-        },
-        "selection": {
-            "seed": aegis.SELECTION_SEED,
-            "ranked_candidates": [
-                "ts3-ts-food-service-response-replace-body-skvngv",
-                "ts0-ts-security-service-request-replace-method-j6gpxx",
-                "ts8-ts-route-plan-service-request-delay-5dmjfm",
-            ],
-        },
-        "cases": [
-            {
-                "source_case": "ts8-ts-route-plan-service-request-delay-5dmjfm",
-                "fault_type": "HTTPRequestDelay",
-                "ground_truth_services": ["ts-route-plan-service", "ts-travel2-service"],
-                "source_windows": {
-                    "normal": [1753014770, 1753015010],
-                    "abnormal": [1753015010, 1753015249],
-                },
-                "declared_edge": ["ts-route-plan-service", "ts-travel2-service"],
-                "directed_graph_candidate": True,
-                "mechanism_evidence": {
-                    "predicate": "source_declared_http_delay_threshold",
-                    "predicate_match": True,
-                    "span_name": "POST /api/v1/travel2service/trips/left",
-                    "declared_delay_ns": 3_070_000_000,
-                    "normal_count": 37,
-                    "normal_max_duration_ns": 846_092_899,
-                    "abnormal_count": 25,
-                    "abnormal_max_duration_ns": 3_252_068_825,
-                },
-                "trace_windows": {
-                    "normal": {
-                        "edge_set": [None] * 40,
-                        "client_server_witness_count": 7922,
-                        "edge_set_sha256": (
-                            "62e8fc4240592258702a55e713413f77b058795edf9d98f7e5d7c3a28bb59acb"
-                        ),
-                    },
-                    "abnormal": {
-                        "edge_set": [None] * 38,
-                        "client_server_witness_count": 4090,
-                        "edge_set_sha256": (
-                            "d6c291279c28f4b1a4b36d6d5b9ac23ec19ad2c8638938bac6de3b0094c992bc"
-                        ),
-                    },
-                },
-            }
-        ],
-    }
-
-    assert aegis._validate_frozen_selection(audit, selection_path)["pass"]
-    audit["selection"]["ranked_candidates"].reverse()
-    with pytest.raises(AegisAuditError, match="frozen sequential selection drift"):
-        aegis._validate_frozen_selection(audit, selection_path)
-
-
 def test_aegis_body_rejection_reads_source_schema(tmp_path: Path) -> None:
     case = (
         "ts3-ts-food-service-response-replace-body-skvngv",
@@ -344,45 +279,6 @@ def test_aegis_audit_rejects_timezone_dependent_injection_time(tmp_path: Path) -
 
     with pytest.raises(AegisAuditError, match="explicit timezone"):
         audit_cohort(cases_dir, meta_dir)
-
-
-def test_aegis_audit_rejects_frozen_selection_drift(tmp_path: Path) -> None:
-    case = (
-        "ts0-ts-security-service-request-replace-method-j6gpxx",
-        "HTTPRequestReplaceMethod",
-        "security",
-        "order-other",
-    )
-    cases_dir = tmp_path / "cases"
-    _write_case(cases_dir, *case, {"replace_method": "OPTIONS"})
-    meta_dir = tmp_path / "meta"
-    _write_meta(meta_dir, [case])
-    manifest = tmp_path / "selection.json"
-    manifest.write_text(
-        json.dumps(
-            {
-                "selection_seed": "wrong-seed",
-                "agent_case_id": "aegis-transfer-001",
-                "source": {
-                    "artifact_record": aegis.ARTIFACT_RECORD,
-                    "artifact_filename": aegis.ARTIFACT_FILENAME,
-                    "artifact_md5": aegis.ARTIFACT_MD5,
-                    "source_dataset_record": aegis.SOURCE_DATASET_RECORD,
-                    "data_redistributed": False,
-                },
-                "eligibility": {
-                    "eligible_directed_graph_cases": [case[0]],
-                    "ranked_candidates": [case[0]],
-                    "consumed_candidates": [{"source_case": case[0], "decision": "selected"}],
-                    "unconsumed_candidates": [],
-                },
-                "selected_case": {"source_case": case[0]},
-            }
-        )
-    )
-
-    with pytest.raises(AegisAuditError, match="selection_seed"):
-        audit_cohort(cases_dir, meta_dir, selection_path=manifest)
 
 
 def test_fresh_selection_manifest_binds_consumed_parents_before_trajectory() -> None:

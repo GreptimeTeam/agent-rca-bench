@@ -59,9 +59,10 @@ class MechanismCode(StrEnum):
 
 
 class EvidenceClaimType(StrEnum):
-    CAUSAL_SCOPE = "causal_scope"
+    CAUSAL_LOCUS = "causal_locus"
     FAULT_MECHANISM = "fault_mechanism"
     ONSET = "onset"
+    PROPAGATED_IMPACT = "propagated_impact"
     EXCLUSION = "exclusion"
 
 

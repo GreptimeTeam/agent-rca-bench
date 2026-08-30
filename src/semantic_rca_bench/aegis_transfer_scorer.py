@@ -31,7 +31,6 @@ from semantic_rca_bench.contracts import (
     Visibility,
 )
 from semantic_rca_bench.datasets.aegis_transfer import (
-    normalize_edge_result,
     normalize_jvm_exception_evidence,
     normalize_start_gap_evidence,
 )
@@ -39,10 +38,10 @@ from semantic_rca_bench.evaluation import component_matches
 from semantic_rca_bench.evidence import is_valid_evidence_trace
 from semantic_rca_bench.protocol import benchmark_protocol
 
-CALIBRATION_SCORER_REVISION = "aegis-transfer-request-delay-v4"
-FORMAL_SCORER_REVISION = "aegis-transfer-jvm-exception-v2"
-CALIBRATION_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v29-calibration-scorer.json")
-FORMAL_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v29-scorer.json")
+CALIBRATION_SCORER_REVISION = "aegis-transfer-request-delay-v6"
+FORMAL_SCORER_REVISION = "aegis-transfer-jvm-exception-v5"
+CALIBRATION_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v30-calibration-scorer.json")
+FORMAL_SCORER_FIXTURE = Path("fixtures/reference/aegis-transfer-v30-scorer.json")
 _SCORER_IDENTITIES = {
     CALIBRATION_SCORER_REVISION: (
         "aegis-transfer-002",
@@ -117,8 +116,15 @@ class AegisTransferScorerFixture(BaseModel):
     ground_truth: TransferScorerGroundTruth
     normal_window: tuple[int, int]
     abnormal_window: tuple[int, int]
+    required_evidence_claims: tuple[EvidenceClaimType, ...]
     mechanism_evidence: TransferMechanismEvidence
     canonical_api_runner: CanonicalApiRunner
+
+
+class EvidenceClaimGrounding(BaseModel):
+    required: bool
+    grounded: bool
+    supporting_query_ids: list[str]
 
 
 class AegisTransferEvaluation(BaseModel):
@@ -136,16 +142,17 @@ class AegisTransferEvaluation(BaseModel):
     cited_evidence_count: int
     valid_evidence_count: int
     supporting_evidence_query_ids: list[str]
-    causal_scope_evidence_query_ids: list[str]
+    causal_locus_evidence_query_ids: list[str]
     mechanism_evidence_query_ids: list[str]
+    claim_grounding: dict[str, EvidenceClaimGrounding]
     correct_completion_tool_calls: int | None = None
-    tool_calls_through_mechanism_evidence: int | None = None
-    rows_returned_through_mechanism_evidence: int | None = None
+    tool_calls_through_required_evidence: int | None = None
+    rows_returned_through_required_evidence: int | None = None
     causal_scope_match: bool
     causal_operation_match: bool
     mechanism_code_match: bool
     diagnosis_correct: bool
-    causal_scope_evidence_match: bool
+    causal_locus_evidence_match: bool
     required_evidence_covered: bool
     citation_integrity: bool
     execution_reliability: bool
@@ -221,7 +228,7 @@ def load_transfer_scorer_fixture(
 ) -> AegisTransferScorerFixture:
     fixture = AegisTransferScorerFixture.model_validate_json(path.read_text())
     expected_identity = _SCORER_IDENTITIES.get(fixture.scorer_revision)
-    if expected_identity is None or fixture.version != 2:
+    if expected_identity is None or fixture.version != 3:
         raise ValueError("unsupported Aegis transfer scorer fixture revision")
     if fixture.agent_case_id != expected_identity[0]:
         raise ValueError("Aegis transfer scorer fixture uses the wrong opaque case ID")
@@ -252,6 +259,12 @@ def load_transfer_scorer_fixture(
         raise ValueError("canonical causal operation is not accepted by the scorer")
     if fixture.normal_window[1] != fixture.abnormal_window[0]:
         raise ValueError("Aegis transfer scorer windows must be contiguous")
+    if len(set(fixture.required_evidence_claims)) != len(fixture.required_evidence_claims) or set(
+        fixture.required_evidence_claims
+    ) != {EvidenceClaimType.CAUSAL_LOCUS, EvidenceClaimType.FAULT_MECHANISM}:
+        raise ValueError(
+            "Aegis transfer scorer must require causal-locus and fault-mechanism evidence"
+        )
     predicate = fixture.mechanism_evidence.predicate
     if predicate == "source_declared_http_client_server_start_gap":
         expected = fixture.mechanism_evidence.expected_result
@@ -421,8 +434,12 @@ def _evaluate_structured_transfer_run(
             continue
         trace = matches[0]
         mechanism_part = _structured_mechanism_evidence_from_trace(trace, fixture)
-        if EvidenceClaimType.CAUSAL_SCOPE in item.claim_types and (
-            _trace_proves_causal_scope(trace, fixture) or mechanism_part is not None
+        if EvidenceClaimType.CAUSAL_LOCUS in item.claim_types and (
+            _trace_proves_causal_locus(trace, fixture)
+            or (
+                mechanism_part is not None
+                and _mechanism_part_proves_causal_locus(mechanism_part, fixture)
+            )
         ):
             causal_support_ids.append(item.query_id)
         if EvidenceClaimType.FAULT_MECHANISM in item.claim_types and mechanism_part is not None:
@@ -432,10 +449,30 @@ def _evaluate_structured_transfer_run(
         [part for _, _, part in mechanism_parts], fixture
     )
     mechanism_support_ids = [query_id for query_id, _, _ in mechanism_parts]
-    supporting_ids = list(dict.fromkeys([*causal_support_ids, *mechanism_support_ids]))
-    causal_scope_evidence_match = bool(causal_support_ids)
-    required_evidence_covered = (
-        typed_evidence and causal_scope_evidence_match and mechanism_evidence_match
+    causal_support_ids = list(dict.fromkeys(causal_support_ids))
+    mechanism_support_ids = list(dict.fromkeys(mechanism_support_ids))
+    causal_locus_evidence_match = bool(causal_support_ids)
+    claim_grounding = {
+        EvidenceClaimType.CAUSAL_LOCUS.value: EvidenceClaimGrounding(
+            required=EvidenceClaimType.CAUSAL_LOCUS in fixture.required_evidence_claims,
+            grounded=causal_locus_evidence_match,
+            supporting_query_ids=causal_support_ids,
+        ),
+        EvidenceClaimType.FAULT_MECHANISM.value: EvidenceClaimGrounding(
+            required=EvidenceClaimType.FAULT_MECHANISM in fixture.required_evidence_claims,
+            grounded=mechanism_evidence_match,
+            supporting_query_ids=(mechanism_support_ids if mechanism_evidence_match else []),
+        ),
+    }
+    required_evidence_covered = typed_evidence and all(
+        claim_grounding[claim.value].grounded for claim in fixture.required_evidence_claims
+    )
+    supporting_ids = list(
+        dict.fromkeys(
+            query_id
+            for claim in fixture.required_evidence_claims
+            for query_id in claim_grounding[claim.value].supporting_query_ids
+        )
     )
     execution_reliability = (
         runner_contract_match
@@ -446,9 +483,13 @@ def _evaluate_structured_transfer_run(
     )
     efficiency_eligible = diagnosis_correct and required_evidence_covered and execution_reliability
     auditable_completion = efficiency_eligible and citations_execution_valid
-    support_index = (
-        max(index for _, index, _ in mechanism_parts) if mechanism_evidence_match else None
-    )
+    support_indexes = [
+        trace_indexes[id(trace)]
+        for query_id in supporting_ids
+        for trace in traces_by_query_id.get(query_id, [])
+        if id(trace) in trace_indexes
+    ]
+    support_index = max(support_indexes) if required_evidence_covered and support_indexes else None
     calls_through_evidence = (
         run.tool_calls[: support_index + 1] if support_index is not None else None
     )
@@ -467,7 +508,7 @@ def _evaluate_structured_transfer_run(
         "causal operation does not match a source-observed operation": causal_operation_match,
         "fault category does not match the frozen source mechanism": category_match,
         "structured mechanism does not match the frozen source mechanism": mechanism_code_match,
-        "typed evidence does not support the declared causal scope": causal_scope_evidence_match,
+        "typed evidence does not support the declared causal locus": causal_locus_evidence_match,
         "typed evidence does not prove the frozen observable transition": mechanism_evidence_match,
         "evidence items do not declare their supported claims": typed_evidence,
         "evidence citations are missing, duplicated, failed, truncated, or invalid": (
@@ -494,22 +535,19 @@ def _evaluate_structured_transfer_run(
         cited_evidence_count=len(evidence),
         valid_evidence_count=valid_evidence_count,
         supporting_evidence_query_ids=(supporting_ids if required_evidence_covered else []),
-        causal_scope_evidence_query_ids=(
-            list(dict.fromkeys(causal_support_ids)) if causal_scope_evidence_match else []
-        ),
-        mechanism_evidence_query_ids=(
-            list(dict.fromkeys(mechanism_support_ids)) if mechanism_evidence_match else []
-        ),
+        causal_locus_evidence_query_ids=(causal_support_ids if causal_locus_evidence_match else []),
+        mechanism_evidence_query_ids=(mechanism_support_ids if mechanism_evidence_match else []),
+        claim_grounding=claim_grounding,
         correct_completion_tool_calls=len(run.tool_calls) if efficiency_eligible else None,
-        tool_calls_through_mechanism_evidence=(
+        tool_calls_through_required_evidence=(
             support_index + 1 if support_index is not None else None
         ),
-        rows_returned_through_mechanism_evidence=rows_through_evidence,
+        rows_returned_through_required_evidence=rows_through_evidence,
         causal_scope_match=causal_scope_match,
         causal_operation_match=causal_operation_match,
         mechanism_code_match=mechanism_code_match,
         diagnosis_correct=diagnosis_correct,
-        causal_scope_evidence_match=causal_scope_evidence_match,
+        causal_locus_evidence_match=causal_locus_evidence_match,
         required_evidence_covered=required_evidence_covered,
         citation_integrity=citations_execution_valid,
         execution_reliability=execution_reliability,
@@ -528,6 +566,10 @@ def audit_transfer_scorer(
     canonical_run = _canonical_synthetic_run(transfer_audit, fixture)
     cases: dict[str, tuple[AgentRun, bool]] = {
         "canonical_positive": (canonical_run, True),
+        "graph_navigation_only": (
+            _graph_navigation_only_run(canonical_run, fixture),
+            False,
+        ),
         "wrong_fault_category": (
             _replace_diagnosis(
                 canonical_run,
@@ -724,8 +766,24 @@ def audit_transfer_scorer(
             }
         )
     elif fixture.mechanism_evidence.predicate == "source_declared_jvm_exception":
+        observed_transition = _observed_exception_synthetic_run(canonical_run, fixture)
+        grouped_transition = _grouped_exception_synthetic_run(canonical_run, fixture)
         cases.update(
             {
+                "observed_onset_result_signature": (observed_transition, True),
+                "status_grouped_missing_zero_period": (grouped_transition, True),
+                "observed_onset_without_exception": (
+                    observed_transition.model_copy(
+                        update={
+                            "diagnosis": observed_transition.diagnosis.model_copy(
+                                update={"evidence": observed_transition.diagnosis.evidence[:1]}
+                            ),
+                            "tool_calls": observed_transition.tool_calls[:1],
+                            "tool_calls_requested": 1,
+                        }
+                    ),
+                    False,
+                ),
                 "equivalent_case_normalized_predicates": (
                     _replace_trace_query(
                         canonical_run,
@@ -906,7 +964,7 @@ def audit_transfer_scorer(
     }
     gates["all_passed"] = all(gates.values())
     return {
-        "audit_schema_version": 1,
+        "audit_schema_version": 2,
         "mode": "aegis-transfer-scorer-no-model-audit",
         "scorer_revision": fixture.scorer_revision,
         "fixture_sha256": sha256_file(fixture_path),
@@ -919,68 +977,103 @@ def audit_transfer_scorer(
     }
 
 
-def _trace_proves_causal_edge(
+def _trace_proves_causal_locus(
     trace: ToolTrace,
     fixture: AegisTransferScorerFixture,
 ) -> bool:
-    if trace.error is not None or not isinstance(trace.output, dict):
+    if (
+        fixture.ground_truth.causal_scope is not CausalScope.COMPONENT
+        or trace.tool_name != "execute_sql"
+        or trace.error is not None
+        or not isinstance(trace.output, dict)
+    ):
         return False
-    if trace.tool_name not in {"execute_sql", "query_semantic_graph"}:
-        return False
-    if trace.tool_name == "execute_sql":
-        query = str(trace.input.get("query") or trace.input.get("sql") or "").lower()
-        if "semantic_relationships" not in query:
-            return False
-    try:
-        result = QueryResult.model_validate(trace.output)
-    except ValueError:
-        return False
-    edges = normalize_edge_result(result)
-    if edges is None:
-        return False
-    truth = fixture.ground_truth
-    return any(
-        edge["src_type"] == "service"
-        and edge["src_id"] == truth.edge_source
-        and edge["dst_type"] == "service"
-        and edge["dst_id"] == truth.edge_destination
-        and edge["rel_type"] == "calls"
-        and edge["provenance"] == "trace"
-        and int(edge["request_count"]) > 0
-        for edge in edges
-    )
+    query = str(trace.input.get("query") or trace.input.get("sql") or "")
+    return _trace_result_proves_component_locus(query, trace.output, fixture)
 
 
-def _trace_proves_causal_scope(
-    trace: ToolTrace,
+def _trace_result_proves_component_locus(
+    query: str,
+    output: dict[str, object],
     fixture: AegisTransferScorerFixture,
 ) -> bool:
-    if fixture.ground_truth.causal_scope is CausalScope.DEPENDENCY_EDGE:
-        return _trace_proves_causal_edge(trace, fixture)
-    if trace.error is not None or not isinstance(trace.output, dict):
+    statement = _parse_single_statement(query)
+    if statement is None or not _uses_only_source_tables(statement, {"traces"}):
         return False
-    if trace.tool_name not in {"execute_sql", "query_semantic_graph"}:
+    tables = [table for table in statement.find_all(exp.Table) if table.name.lower() == "traces"]
+    if not tables:
         return False
-    if trace.tool_name == "execute_sql":
-        query = str(trace.input.get("query") or trace.input.get("sql") or "").lower()
-        if "semantic_entities" not in query:
-            return False
+    scopes = _table_select_scopes(statement, "traces")
+    if len(scopes) != 1:
+        return False
+    scope = scopes[0]
+    service = fixture.ground_truth.causal_component
+    if service is None or not _has_column_in_literals(
+        scope,
+        "service_name",
+        {service},
+        allow_case_normalization=True,
+    ):
+        return False
+    if not _time_scope_stays_within(
+        scope,
+        "timestamp",
+        fixture.normal_window[0],
+        fixture.abnormal_window[1],
+    ):
+        return False
     try:
-        result = QueryResult.model_validate(trace.output)
+        result = QueryResult.model_validate(output)
     except ValueError:
+        return False
+    if result.truncated:
         return False
     columns = [column.lower() for column in result.columns]
-    if result.truncated or columns.count("entity_type") != 1 or columns.count("entity_id") != 1:
+    operation_indexes = [
+        index
+        for index, column in enumerate(columns)
+        if _result_projection_reads_any(scope, column, {"span_name"})
+    ]
+    status_indexes = [
+        index
+        for index, column in enumerate(columns)
+        if _result_projection_reads_any(scope, column, {"span_status_code"})
+    ]
+    if not operation_indexes or not status_indexes:
         return False
-    type_index = columns.index("entity_type")
-    id_index = columns.index("entity_id")
+    accepted = fixture.ground_truth.accepted_causal_operations or (
+        fixture.ground_truth.causal_operation or "",
+    )
     return any(
-        len(row) > max(type_index, id_index)
-        and str(row[type_index]).lower() == "service"
-        and fixture.ground_truth.causal_component is not None
-        and component_matches(str(row[id_index]), fixture.ground_truth.causal_component)
+        _row_covers(row, *operation_indexes, *status_indexes)
+        and any(
+            _normalize_causal_operation(str(row[index]))
+            in {_normalize_causal_operation(value) for value in accepted}
+            for index in operation_indexes
+        )
+        and any(str(row[index]).upper() == "STATUS_CODE_ERROR" for index in status_indexes)
         for row in result.rows
     )
+
+
+def _result_projection_reads_any(
+    scope: exp.Select,
+    output_column: str,
+    source_columns: set[str],
+) -> bool:
+    matches = [
+        projection
+        for projection in scope.expressions
+        if projection.alias_or_name.lower() == output_column.lower()
+    ]
+    if len(matches) != 1:
+        return False
+    expression = matches[0].this if isinstance(matches[0], exp.Alias) else matches[0]
+    if isinstance(expression, exp.Column):
+        return expression.name.lower() in source_columns
+    if isinstance(expression, (exp.Lower, exp.Upper)) and isinstance(expression.this, exp.Column):
+        return expression.this.name.lower() in source_columns
+    return False
 
 
 def _structured_mechanism_evidence_from_trace(
@@ -1013,6 +1106,27 @@ def _structured_parts_prove_transition(
     return False
 
 
+def _mechanism_part_proves_causal_locus(
+    part: DelayEvidencePart | ExceptionEvidencePart,
+    fixture: AegisTransferScorerFixture,
+) -> bool:
+    minimum = int(fixture.mechanism_evidence.minimum_anomalous_observations or 0)
+    if isinstance(part, ExceptionEvidencePart):
+        return (
+            max(
+                part.abnormal_error_spans if part.abnormal_error_spans is not None else -1,
+                part.abnormal_exception_logs if part.abnormal_exception_logs is not None else -1,
+            )
+            >= minimum
+        )
+    threshold = int(fixture.mechanism_evidence.threshold_ns or 0)
+    return part.abnormal_confirmations >= minimum or (
+        part.abnormal_samples >= minimum
+        and part.abnormal_min_gap_ns is not None
+        and part.abnormal_min_gap_ns >= threshold
+    )
+
+
 def _jvm_exception_evidence_from_trace(
     trace: ToolTrace,
     fixture: AegisTransferScorerFixture,
@@ -1030,6 +1144,12 @@ def _jvm_exception_evidence_from_trace(
     if result.query_id != trace.query_id or result.truncated:
         return None
     query = str(trace.input.get("query") or trace.input.get("sql") or "")
+    statement = _parse_single_statement(query)
+    if statement is None:
+        return None
+    claim_part = _jvm_exception_claim_part(result, statement, fixture)
+    if claim_part is not None:
+        return claim_part
     scope = _jvm_exception_query_scope(query, fixture)
     if scope is None:
         return None
@@ -1062,6 +1182,599 @@ def _jvm_exception_evidence_from_trace(
     return _exception_part_from_counts(table, raw_counts) if raw_counts is not None else None
 
 
+def _jvm_exception_claim_part(
+    result: QueryResult,
+    statement: exp.Expression,
+    fixture: AegisTransferScorerFixture,
+) -> ExceptionEvidencePart | None:
+    tables = {
+        table.name.lower()
+        for table in statement.find_all(exp.Table)
+        if table.name.lower() in {"traces", "logs"}
+    }
+    if (
+        len(tables) != 1
+        or not _uses_only_source_tables(statement, tables)
+        or _has_identity_literal_filter(statement)
+    ):
+        return None
+    table = next(iter(tables))
+    scopes = _table_select_scopes(statement, table)
+    if len(scopes) != 1:
+        return None
+    scope = scopes[0]
+    if any(join.find_ancestor(exp.Select) is scope for join in scope.find_all(exp.Join)):
+        return None
+    service = fixture.ground_truth.causal_component
+    if service is None:
+        return None
+    if table == "traces":
+        counts = _trace_error_counts(result, scope, fixture)
+        return _exception_part_from_counts(table, counts) if counts is not None else None
+    counts = _grouped_exception_log_counts(result, scope, fixture)
+    return _exception_part_from_counts(table, counts) if counts is not None else None
+
+
+def _trace_error_counts(
+    result: QueryResult,
+    scope: exp.Select,
+    fixture: AegisTransferScorerFixture,
+) -> dict[str, int] | None:
+    if (
+        any(scope.find_all(exp.Limit, exp.Having))
+        or any(join.find_ancestor(exp.Select) is scope for join in scope.find_all(exp.Join))
+        or not _time_scope_covers(
+            scope,
+            "timestamp",
+            fixture.normal_window[0],
+            fixture.abnormal_window[1],
+        )
+        or not _time_scope_has_upper_bound_at_or_before(
+            scope,
+            "timestamp",
+            fixture.abnormal_window[1],
+        )
+    ):
+        return None
+    grouped = _grouped_trace_error_counts(result, scope, fixture)
+    if grouped is not None:
+        return grouped
+    return _conditional_trace_error_counts(result, scope, fixture)
+
+
+def _grouped_trace_error_counts(
+    result: QueryResult,
+    scope: exp.Select,
+    fixture: AegisTransferScorerFixture,
+) -> dict[str, int] | None:
+    columns = [column.lower() for column in result.columns]
+    period_index = _unique_column(columns, lambda value: value == "period")
+    if period_index is None:
+        return None
+    period_mapping = _observed_period_mapping(scope, "timestamp", fixture)
+    if period_mapping is None:
+        return None
+
+    service = fixture.ground_truth.causal_component
+    if service is None:
+        return None
+    operations = fixture.ground_truth.accepted_causal_operations or (
+        fixture.ground_truth.causal_operation or "",
+    )
+    accepted_operations = {_normalize_causal_operation(value) for value in operations if value}
+    service_bound = _has_column_in_literals(
+        scope,
+        "service_name",
+        {service},
+        allow_case_normalization=True,
+    )
+    operation_bound = any(
+        _has_column_text_fragment(
+            scope,
+            "span_name",
+            operation,
+            allow_case_normalization=True,
+        )
+        for operation in operations
+        if operation
+    )
+    service_index = _unique_column(columns, lambda value: value == "service_name")
+    operation_index = _unique_column(columns, lambda value: value == "span_name")
+    if not service_bound and (
+        service_index is None
+        or not _result_projection_reads_any(scope, "service_name", {"service_name"})
+    ):
+        return None
+    if not operation_bound and (
+        operation_index is None
+        or not _result_projection_reads_any(scope, "span_name", {"span_name"})
+    ):
+        return None
+
+    error_aliases = {
+        projection.alias_or_name.lower()
+        for projection in scope.expressions
+        if projection.alias_or_name and _projection_counts_span_errors(projection)
+    }
+    error_columns = [column for column in columns if column in error_aliases]
+    status_index = _unique_column(columns, lambda value: value == "span_status_code")
+    count_aliases = {
+        projection.alias_or_name.lower()
+        for projection in scope.expressions
+        if projection.alias_or_name and _is_unconditional_row_count_projection(projection)
+    }
+    count_indexes = [index for index, column in enumerate(columns) if column in count_aliases]
+    conditional_error_index = columns.index(error_columns[0]) if len(error_columns) == 1 else None
+    grouped_status_count_index = count_indexes[0] if len(count_indexes) == 1 else None
+    if conditional_error_index is None and (
+        status_index is None
+        or grouped_status_count_index is None
+        or not _result_projection_reads_any(
+            scope,
+            columns[status_index],
+            {"span_status_code"},
+        )
+    ):
+        return None
+
+    counts = {"normal": 0, "abnormal": 0}
+    for row in result.rows:
+        required_indexes = [period_index]
+        required_indexes.extend(
+            index
+            for index in (
+                service_index,
+                operation_index,
+                conditional_error_index,
+                status_index,
+                grouped_status_count_index,
+            )
+            if index is not None
+        )
+        if not _row_covers(row, *required_indexes):
+            return None
+        if not service_bound and not component_matches(str(row[service_index]), service):
+            continue
+        if not operation_bound and (
+            _normalize_causal_operation(str(row[operation_index])) not in accepted_operations
+        ):
+            continue
+        period = period_mapping.get(str(row[period_index]).strip().lower())
+        if conditional_error_index is not None:
+            count = _strict_int(row[conditional_error_index])
+        elif str(row[status_index]).upper() == "STATUS_CODE_ERROR":
+            count = _strict_int(row[grouped_status_count_index])
+        else:
+            count = 0
+        if period is None or count is None or count < 0:
+            return None
+        counts[period] += count
+    return counts
+
+
+def _conditional_trace_error_counts(
+    result: QueryResult,
+    scope: exp.Select,
+    fixture: AegisTransferScorerFixture,
+) -> dict[str, int] | None:
+    service = fixture.ground_truth.causal_component
+    operations = fixture.ground_truth.accepted_causal_operations or (
+        fixture.ground_truth.causal_operation or "",
+    )
+    if (
+        service is None
+        or not _has_column_in_literals(
+            scope,
+            "service_name",
+            {service},
+            allow_case_normalization=True,
+        )
+        or not any(
+            _has_column_text_fragment(
+                scope,
+                "span_name",
+                operation,
+                allow_case_normalization=True,
+            )
+            for operation in operations
+            if operation
+        )
+        or len(result.rows) != 1
+    ):
+        return None
+    row = result.rows[0]
+    columns = [column.lower() for column in result.columns]
+    counts: dict[str, int] = {}
+    for projection in scope.expressions:
+        alias = projection.alias_or_name.lower()
+        if alias not in columns or not _projection_counts_span_errors(projection):
+            continue
+        period = _conditional_projection_period(projection, fixture)
+        index = columns.index(alias)
+        if period is None or period in counts or not _row_covers(row, index):
+            return None
+        count = _strict_int(row[index])
+        if count is None or count < 0:
+            return None
+        counts[period] = count
+    return counts if set(counts) == {"normal", "abnormal"} else None
+
+
+def _conditional_projection_period(
+    projection: exp.Expression,
+    fixture: AegisTransferScorerFixture,
+) -> str | None:
+    bounds = _time_bounds(projection, "timestamp", filters_only=False)
+    boundary = fixture.abnormal_window[0]
+    if bounds == {("lt", boundary)}:
+        return "normal"
+    if bounds == {("gte", boundary)}:
+        return "abnormal"
+    if bounds == {
+        ("gte", fixture.normal_window[0]),
+        ("lt", fixture.normal_window[1]),
+    }:
+        return "normal"
+    if bounds == {
+        ("gte", fixture.abnormal_window[0]),
+        ("lt", fixture.abnormal_window[1]),
+    }:
+        return "abnormal"
+    return None
+
+
+def _projection_counts_span_errors(projection: exp.Expression) -> bool:
+    if not _is_plain_row_count_projection(projection):
+        return False
+    for comparison in projection.find_all(exp.EQ, exp.In):
+        current = comparison.parent
+        neutralized = False
+        while current is not None and current is not projection:
+            if isinstance(current, (exp.Or, exp.Not, exp.Select, exp.Subquery, exp.Exists)):
+                neutralized = True
+                break
+            current = current.parent
+        if neutralized:
+            return False
+        if isinstance(comparison, exp.EQ):
+            pairs = (
+                (comparison.this, comparison.expression),
+                (comparison.expression, comparison.this),
+            )
+        else:
+            pairs = tuple((comparison.this, value) for value in comparison.expressions)
+        if any(
+            _column_literal_matches(
+                column,
+                value,
+                "span_status_code",
+                "STATUS_CODE_ERROR",
+                allow_case_normalization=True,
+            )
+            for column, value in pairs
+        ):
+            return True
+    return False
+
+
+def _observed_period_mapping(
+    scope: exp.Select,
+    time_column: str,
+    fixture: AegisTransferScorerFixture,
+) -> dict[str, str] | None:
+    projections = [
+        projection
+        for projection in scope.expressions
+        if projection.alias_or_name.lower() == "period"
+    ]
+    if len(projections) != 1:
+        return None
+    expression = projections[0].this if isinstance(projections[0], exp.Alias) else projections[0]
+    case = expression if isinstance(expression, exp.Case) else expression.find(exp.Case)
+    if case is None:
+        return None
+    normal_labels = {"normal", "baseline", "before", "pre"}
+    abnormal_labels = {"abnormal", "anomalous", "incident", "after", "post"}
+    default = case.args.get("default")
+    if not isinstance(default, exp.Literal) or not default.is_string:
+        return None
+    default_label = str(default.this).strip().lower()
+    branches = case.args.get("ifs") or []
+    if len(branches) != 1:
+        return None
+    branch = branches[0]
+    branch_value = branch.args.get("true")
+    if not isinstance(branch_value, exp.Literal) or not branch_value.is_string:
+        return None
+    branch_label = str(branch_value.this).strip().lower()
+    bounds = _time_bounds(branch.this, time_column, filters_only=False)
+    if len(bounds) != 1:
+        return None
+    operator, boundary = next(iter(bounds))
+    if not fixture.normal_window[1] <= boundary < fixture.abnormal_window[1]:
+        return None
+    if not _time_scope_covers(scope, time_column, fixture.normal_window[0], boundary):
+        return None
+    if not _time_scope_has_upper_bound_at_or_before(
+        scope,
+        time_column,
+        fixture.abnormal_window[1],
+    ):
+        return None
+    if operator == "lt" and branch_label in normal_labels and default_label in abnormal_labels:
+        return {branch_label: "normal", default_label: "abnormal"}
+    if operator == "gte" and branch_label in abnormal_labels and default_label in normal_labels:
+        return {branch_label: "abnormal", default_label: "normal"}
+    return None
+
+
+def _grouped_exception_log_counts(
+    result: QueryResult,
+    scope: exp.Select,
+    fixture: AegisTransferScorerFixture,
+) -> dict[str, int] | None:
+    unsafe_line_filter = any(
+        any(column.name.lower() == "line" for column in predicate.find_all(exp.Column))
+        for predicate in scope.find_all(exp.NEQ, exp.Not)
+    )
+    if (
+        any(scope.find_all(exp.Limit, exp.Having))
+        or unsafe_line_filter
+        or not _time_scope_covers(
+            scope,
+            "greptime_timestamp",
+            fixture.normal_window[0],
+            fixture.abnormal_window[1],
+        )
+        or not _time_scope_has_upper_bound_at_or_before(
+            scope,
+            "greptime_timestamp",
+            fixture.abnormal_window[1],
+        )
+        or any(join.find_ancestor(exp.Select) is scope for join in scope.find_all(exp.Join))
+    ):
+        return None
+    columns = [column.lower() for column in result.columns]
+    service = fixture.ground_truth.causal_component
+    if service is None:
+        return None
+    service_bound = _has_column_in_literals(
+        scope,
+        "service_name",
+        {service},
+        allow_case_normalization=True,
+    )
+    service_index = _unique_column(columns, lambda value: value == "service_name")
+    if not service_bound and (
+        service_index is None
+        or not _result_projection_reads_any(scope, "service_name", {"service_name"})
+    ):
+        return None
+
+    line_index = _unique_column(columns, lambda value: value in {"line", "message", "body"})
+    count_aliases = {
+        projection.alias_or_name.lower()
+        for projection in scope.expressions
+        if projection.alias_or_name and _is_plain_row_count_projection(projection)
+    }
+    count_indexes = [index for index, column in enumerate(columns) if column in count_aliases]
+    first_seen_aliases = {
+        projection.alias_or_name.lower()
+        for projection in scope.expressions
+        if projection.alias_or_name and _projection_is_time_minimum(projection)
+    }
+    first_seen_indexes = [
+        index for index, column in enumerate(columns) if column in first_seen_aliases
+    ]
+    signature_filtered = _scope_filters_exception_signature(scope)
+    if (
+        len(count_indexes) != 1
+        or (line_index is None and not signature_filtered)
+        or (line_index is not None and not _log_scope_preserves_exception_rows(scope))
+    ):
+        return None
+    if line_index is not None and not _projection_reads_column(
+        scope,
+        columns[line_index],
+        "line",
+    ):
+        return None
+    count_index = count_indexes[0]
+    period_index = _unique_column(columns, lambda value: value == "period")
+    if period_index is not None:
+        period_mapping = _observed_period_mapping(scope, "greptime_timestamp", fixture)
+        if period_mapping is None:
+            return None
+        counts = {"normal": 0, "abnormal": 0}
+        for row in result.rows:
+            indexes = [period_index, count_index]
+            indexes.extend(index for index in (service_index, line_index) if index is not None)
+            if not _row_covers(row, *indexes):
+                return None
+            if not service_bound and not component_matches(str(row[service_index]), service):
+                continue
+            if line_index is not None and "exception" not in str(row[line_index]).lower():
+                continue
+            period = period_mapping.get(str(row[period_index]).strip().lower())
+            count = _strict_int(row[count_index])
+            if period is None or count is None or count < 0:
+                return None
+            counts[period] += count
+        return counts
+
+    if line_index is None or len(first_seen_indexes) != 1:
+        return None
+    first_seen_index = first_seen_indexes[0]
+    counts = {"normal": 0, "abnormal": 0}
+    for row in result.rows:
+        indexes = [line_index, count_index, first_seen_index]
+        if service_index is not None:
+            indexes.append(service_index)
+        if not _row_covers(row, *indexes):
+            return None
+        if not service_bound and not component_matches(str(row[service_index]), service):
+            continue
+        if "exception" not in str(row[line_index]).lower():
+            continue
+        count = _strict_int(row[count_index])
+        first_seen = _timestamp_ns(row[first_seen_index])
+        if count is None or count < 0 or first_seen is None:
+            return None
+        first_seen_epoch = first_seen // 1_000_000_000
+        if fixture.normal_window[0] <= first_seen_epoch < fixture.normal_window[1]:
+            counts["normal"] += count
+        elif fixture.abnormal_window[0] <= first_seen_epoch < fixture.abnormal_window[1]:
+            counts["abnormal"] += count
+        else:
+            return None
+    return counts
+
+
+def _scope_filters_exception_signature(scope: exp.Select) -> bool:
+    for comparison in scope.find_all(exp.Like, exp.ILike, exp.EQ):
+        if not _belongs_to_select_scope(comparison, scope) or not _is_positive_filter_predicate(
+            comparison
+        ):
+            continue
+        pairs = (
+            ((comparison.this, comparison.expression),)
+            if not isinstance(comparison, exp.EQ)
+            else (
+                (comparison.this, comparison.expression),
+                (comparison.expression, comparison.this),
+            )
+        )
+        for column, value in pairs:
+            normalization = _column_normalization(column, "line")
+            is_line = isinstance(column, exp.Column) and column.name.lower() == "line"
+            if not is_line and normalization is None:
+                continue
+            literal = _evaluated_string_literal(value)
+            if literal is not None and "exception" in literal.lower():
+                return True
+    return False
+
+
+def _log_scope_preserves_exception_rows(scope: exp.Select) -> bool:
+    line_predicates = [
+        predicate
+        for predicate in scope.find_all(exp.Like, exp.ILike, exp.EQ, exp.In)
+        if _belongs_to_select_scope(predicate, scope)
+        and any(column.name.lower() == "line" for column in predicate.find_all(exp.Column))
+    ]
+    if not line_predicates or _scope_filters_exception_signature(scope):
+        return True
+    for comparison in scope.find_all(exp.EQ, exp.In):
+        if not _belongs_to_select_scope(comparison, scope):
+            continue
+        if isinstance(comparison, exp.EQ):
+            pairs = (
+                (comparison.this, comparison.expression),
+                (comparison.expression, comparison.this),
+            )
+        else:
+            pairs = tuple((comparison.this, value) for value in comparison.expressions)
+        if not any(
+            _column_literal_matches(
+                column,
+                value,
+                "level",
+                level,
+                allow_case_normalization=True,
+            )
+            for column, value in pairs
+            for level in ("ERROR", "SEVERE", "FATAL")
+        ):
+            continue
+        enclosing_or = comparison.find_ancestor(exp.Or)
+        if enclosing_or is not None and all(
+            predicate.find_ancestor(exp.Or) is enclosing_or for predicate in line_predicates
+        ):
+            return True
+    return False
+
+
+def _projection_is_time_minimum(projection: exp.Expression) -> bool:
+    expression = projection.this if isinstance(projection, exp.Alias) else projection
+    return (
+        isinstance(expression, exp.Min)
+        and isinstance(expression.this, exp.Column)
+        and expression.this.name.lower() == "greptime_timestamp"
+    )
+
+
+def _is_plain_row_count_projection(projection: exp.Expression) -> bool:
+    expression = projection.this if isinstance(projection, exp.Alias) else projection
+    return isinstance(expression, (exp.Count, exp.Sum)) and _is_row_count_aggregate(expression)
+
+
+def _is_unconditional_row_count_projection(projection: exp.Expression) -> bool:
+    expression = projection.this if isinstance(projection, exp.Alias) else projection
+    if not isinstance(expression, exp.Count):
+        return False
+    value = expression.this
+    return isinstance(value, exp.Star) or (
+        isinstance(value, exp.Literal) and _strict_int_literal(value) == 1
+    )
+
+
+def _projection_reads_column(
+    scope: exp.Select,
+    output_column: str,
+    source_column: str,
+) -> bool:
+    matches = [
+        projection
+        for projection in scope.expressions
+        if projection.alias_or_name.lower() == output_column.lower()
+    ]
+    if len(matches) != 1:
+        return False
+    expression = matches[0].this if isinstance(matches[0], exp.Alias) else matches[0]
+    return isinstance(expression, exp.Column) and expression.name.lower() == source_column.lower()
+
+
+def _time_scope_covers(
+    scope: exp.Select,
+    time_column: str,
+    start: int,
+    end: int,
+) -> bool:
+    bounds = _time_bounds(scope, time_column, filters_only=True)
+    lower_bound = any(
+        (operator == "gte" and value <= start) or (operator == "gt" and value < start)
+        for operator, value in bounds
+    )
+    upper_bound = any(
+        (operator == "lt" and value >= end) or (operator == "lte" and value >= end)
+        for operator, value in bounds
+    )
+    return lower_bound and upper_bound
+
+
+def _time_scope_stays_within(
+    scope: exp.Select,
+    time_column: str,
+    start: int,
+    end: int,
+) -> bool:
+    bounds = _time_bounds(scope, time_column, filters_only=True)
+    lower_bound = any(operator in {"gte", "gt"} and value >= start for operator, value in bounds)
+    upper_bound = any(operator in {"lt", "lte"} and value <= end for operator, value in bounds)
+    return lower_bound and upper_bound
+
+
+def _time_scope_has_upper_bound_at_or_before(
+    scope: exp.Select,
+    time_column: str,
+    end: int,
+) -> bool:
+    return any(
+        operator in {"lt", "lte"} and value <= end
+        for operator, value in _time_bounds(scope, time_column, filters_only=True)
+    )
+
+
 def _jvm_exception_query_scope(
     query: str,
     fixture: AegisTransferScorerFixture,
@@ -1076,7 +1789,7 @@ def _jvm_exception_query_scope(
     }
     if not tables:
         return None
-    if any(_identity_literal_comparison(item) for item in statement.find_all(exp.EQ, exp.In)):
+    if _has_identity_literal_filter(statement):
         return None
     service = fixture.ground_truth.causal_component
     if service is None:
@@ -1482,6 +2195,22 @@ def _time_bounds(
                 epoch = _timestamp_expression_epoch(value)
                 if epoch is not None:
                     bounds.add((operator, epoch))
+    for between in expression.find_all(exp.Between):
+        if not _belongs_to_select_scope(between, expression):
+            continue
+        if filters_only and not _is_positive_filter_predicate(between):
+            continue
+        column = between.this
+        if not (
+            isinstance(column, exp.Column)
+            and column.name.lower() == time_column.lower()
+            and (table_alias is None or column.table.lower() == table_alias.lower())
+        ):
+            continue
+        lower = _timestamp_expression_epoch(between.args["low"])
+        upper = _timestamp_expression_epoch(between.args["high"])
+        if lower is not None and upper is not None:
+            bounds.update({("gte", lower), ("lte", upper)})
     return bounds
 
 
@@ -1756,10 +2485,7 @@ def _start_gap_query_scope(
     statement = _parse_single_statement(query)
     if statement is None or any(statement.find_all(exp.Limit)):
         return None
-    if any(
-        _identity_literal_comparison(comparison)
-        for comparison in statement.find_all(exp.EQ, exp.In)
-    ):
+    if _has_identity_literal_filter(statement):
         return None
     candidates: list[tuple[exp.Select, str, str]] = []
     for select in statement.find_all(exp.Select):
@@ -1986,6 +2712,25 @@ def _result_lineage_selects(
     return selects if any(select is source_select for select in selects) else None
 
 
+def _uses_only_source_tables(statement: exp.Expression, allowed: set[str]) -> bool:
+    root = build_scope(statement)
+    if root is None:
+        return False
+    pending = [root]
+    observed: set[int] = set()
+    while pending:
+        scope = pending.pop()
+        if id(scope) in observed:
+            continue
+        observed.add(id(scope))
+        for source in scope.sources.values():
+            if isinstance(source, Scope):
+                pending.append(source)
+            elif isinstance(source, exp.Table) and source.name.lower() not in allowed:
+                return False
+    return True
+
+
 def _select_projections(
     selects: tuple[exp.Select, ...],
 ) -> dict[str, list[exp.Expression]]:
@@ -2101,6 +2846,23 @@ def _threshold_output_is_bound(
             ):
                 return True
     return False
+
+
+def _has_identity_literal_filter(statement: exp.Expression) -> bool:
+    return any(
+        _identity_literal_comparison(comparison)
+        for comparison in statement.find_all(
+            exp.EQ,
+            exp.In,
+            exp.Like,
+            exp.ILike,
+            exp.GT,
+            exp.GTE,
+            exp.LT,
+            exp.LTE,
+            exp.Between,
+        )
+    )
 
 
 def _identity_literal_comparison(comparison: exp.Expression) -> bool:
@@ -2571,7 +3333,7 @@ def _canonical_synthetic_run(
                     query_id="q01",
                     claim="paired spans prove the source mechanism",
                     claim_types=[
-                        EvidenceClaimType.CAUSAL_SCOPE,
+                        EvidenceClaimType.CAUSAL_LOCUS,
                         EvidenceClaimType.FAULT_MECHANISM,
                     ],
                 )
@@ -2591,6 +3353,242 @@ def _canonical_synthetic_run(
         usage=AgentUsage(),
         elapsed_seconds=0,
         responses=[],
+    )
+
+
+def _observed_exception_synthetic_run(
+    run: AgentRun,
+    fixture: AegisTransferScorerFixture,
+) -> AgentRun:
+    if run.diagnosis is None or fixture.ground_truth.causal_component is None:
+        raise ValueError("observed exception regression requires a component diagnosis")
+    operations = fixture.ground_truth.accepted_causal_operations or (
+        fixture.ground_truth.causal_operation or "",
+    )
+    operation = operations[-1]
+    if not operation:
+        raise ValueError("observed exception regression requires a causal operation")
+    start = datetime.fromtimestamp(fixture.normal_window[0], UTC).isoformat()
+    onset = datetime.fromtimestamp(fixture.abnormal_window[0] + 1, UTC).isoformat()
+    end = datetime.fromtimestamp(fixture.abnormal_window[1], UTC).isoformat()
+    minimum = int(fixture.mechanism_evidence.minimum_anomalous_observations or 0)
+    trace_query = f"""SELECT CASE
+  WHEN timestamp < '{onset}' THEN 'baseline' ELSE 'anomalous' END AS period,
+  COUNT(*) AS requests,
+  SUM(CASE WHEN span_status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END) AS errors
+FROM traces
+WHERE service_name = '{fixture.ground_truth.causal_component}'
+  AND span_name = '{operation}'
+  AND timestamp >= '{start}' AND timestamp <= '{end}'
+GROUP BY period"""
+    log_query = f"""SELECT line, COUNT(*) AS occurrences,
+  MIN(greptime_timestamp) AS first_seen
+FROM logs
+WHERE service_name = '{fixture.ground_truth.causal_component}'
+  AND level = 'ERROR'
+  AND greptime_timestamp >= '{start}' AND greptime_timestamp <= '{end}'
+GROUP BY line"""
+    trace_result = QueryResult(
+        query_id="observed-errors",
+        columns=["period", "requests", "errors"],
+        rows=[["baseline", 1, 0], ["anomalous", minimum, minimum]],
+        elapsed_seconds=0,
+    )
+    log_result = QueryResult(
+        query_id="observed-exception",
+        columns=["line", "occurrences", "first_seen"],
+        rows=[
+            [
+                "java.lang.RuntimeException",
+                minimum,
+                (fixture.abnormal_window[0] + 1) * 1_000_000_000,
+            ]
+        ],
+        elapsed_seconds=0,
+    )
+    evidence = [
+        Evidence(
+            query_id="observed-errors",
+            claim="The operation changes from a clean baseline to repeated Error spans.",
+            claim_types=[EvidenceClaimType.FAULT_MECHANISM],
+        ),
+        Evidence(
+            query_id="observed-exception",
+            claim="The causal service emits repeated exception logs after onset.",
+            claim_types=[EvidenceClaimType.CAUSAL_LOCUS, EvidenceClaimType.FAULT_MECHANISM],
+        ),
+    ]
+    return run.model_copy(
+        update={
+            "diagnosis": run.diagnosis.model_copy(update={"evidence": evidence}),
+            "tool_calls": [
+                ToolTrace(
+                    tool_name="execute_sql",
+                    input={"query": trace_query},
+                    query_id=trace_result.query_id,
+                    output=trace_result.model_dump(mode="json"),
+                    database_load=DatabaseLoad(query_count=1, rows_returned=2),
+                ),
+                ToolTrace(
+                    tool_name="execute_sql",
+                    input={"query": log_query},
+                    query_id=log_result.query_id,
+                    output=log_result.model_dump(mode="json"),
+                    database_load=DatabaseLoad(query_count=1, rows_returned=1),
+                ),
+            ],
+            "tool_calls_requested": 2,
+        }
+    )
+
+
+def _grouped_exception_synthetic_run(
+    run: AgentRun,
+    fixture: AegisTransferScorerFixture,
+) -> AgentRun:
+    if run.diagnosis is None or fixture.ground_truth.causal_component is None:
+        raise ValueError("grouped exception regression requires a component diagnosis")
+    operations = fixture.ground_truth.accepted_causal_operations or (
+        fixture.ground_truth.causal_operation or "",
+    )
+    operation = operations[-1]
+    if not operation:
+        raise ValueError("grouped exception regression requires a causal operation")
+    start = datetime.fromtimestamp(fixture.normal_window[0], UTC).isoformat()
+    onset = datetime.fromtimestamp(fixture.abnormal_window[0] + 1, UTC).isoformat()
+    end = datetime.fromtimestamp(fixture.abnormal_window[1], UTC).isoformat()
+    minimum = int(fixture.mechanism_evidence.minimum_anomalous_observations or 0)
+    trace_query = f"""SELECT CASE
+  WHEN timestamp < '{onset}' THEN 'baseline' ELSE 'anomalous' END AS period,
+  span_status_code, COUNT(*) AS requests
+FROM traces
+WHERE service_name = '{fixture.ground_truth.causal_component}'
+  AND span_name = '{operation}'
+  AND timestamp >= '{start}' AND timestamp <= '{end}'
+GROUP BY period, span_status_code"""
+    log_query = f"""SELECT CASE
+  WHEN greptime_timestamp < '{onset}' THEN 'baseline' ELSE 'anomalous' END AS period,
+  COUNT(*) AS exception_count
+FROM logs
+WHERE service_name = '{fixture.ground_truth.causal_component}'
+  AND level = 'ERROR'
+  AND line LIKE '%RuntimeException%'
+  AND greptime_timestamp >= '{start}' AND greptime_timestamp <= '{end}'
+GROUP BY period"""
+    trace_result = QueryResult(
+        query_id="grouped-errors",
+        columns=["period", "span_status_code", "requests"],
+        rows=[
+            ["baseline", "STATUS_CODE_UNSET", 1],
+            ["anomalous", "STATUS_CODE_ERROR", minimum],
+        ],
+        elapsed_seconds=0,
+    )
+    log_result = QueryResult(
+        query_id="grouped-exception",
+        columns=["period", "exception_count"],
+        rows=[["anomalous", minimum]],
+        elapsed_seconds=0,
+    )
+    evidence = [
+        Evidence(
+            query_id="grouped-errors",
+            claim="Source status grouping proves the operation Error transition.",
+            claim_types=[EvidenceClaimType.CAUSAL_LOCUS, EvidenceClaimType.FAULT_MECHANISM],
+        ),
+        Evidence(
+            query_id="grouped-exception",
+            claim="Complete grouped logs contain the exception only after onset.",
+            claim_types=[EvidenceClaimType.FAULT_MECHANISM],
+        ),
+    ]
+    return run.model_copy(
+        update={
+            "diagnosis": run.diagnosis.model_copy(update={"evidence": evidence}),
+            "tool_calls": [
+                ToolTrace(
+                    tool_name="execute_sql",
+                    input={"query": trace_query},
+                    query_id=trace_result.query_id,
+                    output=trace_result.model_dump(mode="json"),
+                    database_load=DatabaseLoad(query_count=1, rows_returned=2),
+                ),
+                ToolTrace(
+                    tool_name="execute_sql",
+                    input={"query": log_query},
+                    query_id=log_result.query_id,
+                    output=log_result.model_dump(mode="json"),
+                    database_load=DatabaseLoad(query_count=1, rows_returned=1),
+                ),
+            ],
+            "tool_calls_requested": 2,
+        }
+    )
+
+
+def _graph_navigation_only_run(
+    run: AgentRun,
+    fixture: AegisTransferScorerFixture,
+) -> AgentRun:
+    if run.diagnosis is None:
+        raise ValueError("graph navigation regression requires a diagnosis")
+    truth = fixture.ground_truth
+    if truth.causal_scope is CausalScope.COMPONENT:
+        result = QueryResult(
+            query_id="graph-navigation",
+            columns=["entity_type", "entity_id"],
+            rows=[["service", truth.causal_component]],
+            elapsed_seconds=0,
+        )
+        view = "entities"
+    else:
+        result = QueryResult(
+            query_id="graph-navigation",
+            columns=[
+                "src_type",
+                "src_id",
+                "dst_type",
+                "dst_id",
+                "rel_type",
+                "provenance",
+                "request_count",
+                "error_count",
+            ],
+            rows=[
+                [
+                    "service",
+                    truth.edge_source,
+                    "service",
+                    truth.edge_destination,
+                    "calls",
+                    "trace",
+                    1,
+                    0,
+                ]
+            ],
+            elapsed_seconds=0,
+        )
+        view = "relationships"
+    evidence = Evidence(
+        query_id=result.query_id,
+        claim="The Graph identifies the declared service or call path.",
+        claim_types=[EvidenceClaimType.CAUSAL_LOCUS],
+    )
+    return run.model_copy(
+        update={
+            "visibility": Visibility.SEMANTIC_GRAPH,
+            "diagnosis": run.diagnosis.model_copy(update={"evidence": [evidence]}),
+            "tool_calls": [
+                ToolTrace(
+                    tool_name="query_semantic_graph",
+                    input={"view": view},
+                    query_id=result.query_id,
+                    output=result.model_dump(mode="json"),
+                    database_load=DatabaseLoad(query_count=1, rows_returned=1),
+                )
+            ],
+            "tool_calls_requested": 1,
+        }
     )
 
 

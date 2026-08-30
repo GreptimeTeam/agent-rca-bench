@@ -3,6 +3,9 @@
 This project measures whether GreptimeDB Semantic Graph changes the efficiency
 of an LLM agent performing root-cause analysis.
 
+[`SCORING.md`](SCORING.md) defines diagnosis correctness, causal-claim grounding, citation
+integrity, execution reliability, and efficiency eligibility for end-to-end RCA tasks.
+
 The benchmark uses two visibility modes over the same ingested data:
 
 - `raw`: telemetry tables and ordinary schema metadata only.
@@ -160,7 +163,8 @@ v28 cycle reduces the main comparison to Raw versus the complete GreptimeDB Sema
 and adds the OpenAI Responses API runner. Protocol v29 replaces the ambiguous affected-component
 and dependency pair with a causal locus that is either one component or one complete directed
 edge. It keeps the default SQL result cap at 200 rows, lets the agent request up to 1,000 rows per
-query, and returns truncated final citations for repair. The
+query, and returns truncated final citations for repair. Protocol v30 scores source-derived causal
+claims rather than canonical query recipes and reports per-claim grounding. The
 agent establishes the failing operation, uses discriminating queries instead of unconditional
 resource sweeps, and compares the same operation across the change point. The
 API runner sets its turn limit above the visible tool-call cap and records turn
@@ -206,7 +210,8 @@ tool and explicitly tells the agent not to infer topology.
 The semantic treatment includes the metadata, tool schemas, basic usage guides,
 and coverage snapshot that an MCP server would provide. The benchmark therefore
 measures the complete agent-facing semantic interface, not a data-only
-ablation. Semantic discovery and graph calls consume the same fixed cap as SQL
+ablation. The machine-readable protocol records this estimand and the exact
+components assigned to Raw and Semantic Graph. Semantic discovery and graph calls consume the same fixed cap as SQL
 calls. Each run records requested calls and whether the cap rejected any call.
 
 The 48-call default is a safety cap, not the measured budget. The initial prompt
@@ -288,14 +293,26 @@ three-model cells without runner errors or budget exhaustion, and one later Opus
 also completed. Their scorer used server duration for a fault injected between client and server
 start, required a hidden exact fault label, and constrained evidence to the canonical aggregate.
 The resulting zero eligible pairs are not a model-quality or semantic-layer result. Historical
-reports and the sanitized v25 artifact remain immutable records. The current runtime only accepts
-v29 for new agent execution and does not rescore, resume, or export earlier development report,
-scorer, or protocol schemas. A non-v29 execution request fails before contacting a provider.
+local reports remain development records and are not release artifacts. The current runtime only accepts
+v30 for new agent execution and does not rescore, resume, or export earlier development report,
+scorer, or protocol schemas. A non-v30 execution request fails before contacting a provider.
 
-Protocol v29 reuses the source-observable JVM exception case selected before its first trajectory,
-but only as a development calibration case. The v28 trajectory exposed an ambiguity between the
-local mechanism locus and the caller that received propagated errors. That observation shaped the
-v29 output contract, so the case is no longer fresh measurement evidence. The agent sees only
+Protocol v29 used the source-observable JVM exception case for development calibration. Its Raw
+trajectory proved the correct operation-level Error transition and returned the exception signature,
+but the scorer rejected it because the query used an observed onset and did not filter log text by
+`exception`. Its Graph trajectory found the correct component and operation but did not establish
+the exception mechanism. Protocol v30 replaces query-recipe matching with the claim-grounding
+contract in [`SCORING.md`](SCORING.md). It accepts the Raw evidence without treating the Graph path
+as exception evidence. The case remains development-only because its trajectories shaped both
+contracts.
+
+A later two-cell v30 `gpt-5.6-sol` Raw/Graph calibration produced correct diagnoses and valid
+citations in both treatments. It exposed four additional SQL-equivalent evidence shapes. Scorer
+revision `aegis-transfer-jvm-exception-v5` accepts status-grouped and conditional-period trace
+counts, target rows projected from multi-service aggregates, and omitted zero-period rows from
+complete grouped results. It still requires source identity, source OTel Error status, complete
+window coverage, aggregate lineage, and non-truncated results. Deterministic rescoring accepts both
+cells, but they remain development calibration because they changed the scorer. The agent sees only
 `aegis-transfer-003`, an empty fault taxonomy, and the incident windows. Source labels, the source
 case name, and `causal_graph.json` remain outside the agent input and ingestion path.
 
@@ -307,29 +324,29 @@ uv run semantic-rca aegis-transfer-audit \
   --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
   --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
   --selection fixtures/reference/aegis-transfer-v27-selection.json \
-  --run-dir .instances/aegis-transfer-v29-source-01 \
+  --run-dir .instances/aegis-transfer-v30-source-01 \
   --database case_03 \
-  --output .reports/aegis-transfer-v29-source.json
+  --output .reports/aegis-transfer-v30-source.json
 
 uv run semantic-rca aegis-transfer-scorer-audit \
-  --transfer-audit .reports/aegis-transfer-v29-source.json \
-  --scorer fixtures/reference/aegis-transfer-v29-scorer.json \
-  --output .reports/aegis-transfer-v29-scorer.json
+  --transfer-audit .reports/aegis-transfer-v30-source.json \
+  --scorer fixtures/reference/aegis-transfer-v30-scorer.json \
+  --output .reports/aegis-transfer-v30-scorer.json
 
 uv run semantic-rca aegis-transfer-protocol-audit \
-  --source-audit .reports/aegis-transfer-v29-source.json \
-  --scorer-audit .reports/aegis-transfer-v29-scorer.json \
-  --scorer fixtures/reference/aegis-transfer-v29-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v29-four-model-protocol.json \
-  --output .reports/aegis-transfer-v29-protocol.json
+  --source-audit .reports/aegis-transfer-v30-source.json \
+  --scorer-audit .reports/aegis-transfer-v30-scorer.json \
+  --scorer fixtures/reference/aegis-transfer-v30-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v30-four-model-protocol.json \
+  --output .reports/aegis-transfer-v30-protocol.json
 
 uv run semantic-rca aegis-transfer-formal-preflight \
-  --source-audit .reports/aegis-transfer-v29-source.json \
-  --scorer-audit .reports/aegis-transfer-v29-scorer.json \
-  --protocol-audit .reports/aegis-transfer-v29-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v29-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v29-four-model-protocol.json \
-  --output .reports/aegis-transfer-v29-formal.json
+  --source-audit .reports/aegis-transfer-v30-source.json \
+  --scorer-audit .reports/aegis-transfer-v30-scorer.json \
+  --protocol-audit .reports/aegis-transfer-v30-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v30-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v30-four-model-protocol.json \
+  --output .reports/aegis-transfer-v30-formal.json
 ```
 
 The source oracle requires zero `retrieveByName` Error spans and zero exception logs during the
@@ -345,23 +362,31 @@ requires exact equality over the contiguous union. The selected source follows t
 Its normalized union contains 40 edges and has the same hash on both sides. Two independent
 ingestions produce the same source-semantic hash.
 
-The scorer accepts a combined aggregate, separate trace and log aggregates, or complete raw rows.
-It requires the source service, operation, Error status, exception log predicate, and complete
-half-open windows. It rejects identity cherry-picking, truncated results, `LIMIT`, hard-coded
-aggregate aliases, predicates neutralized by `OR` or `NOT`, and required predicates placed only in
-an unrelated nested query. Aggregate period labels must be derived from the source timestamp; time
-literals in projections do not substitute for exact positive window filters. Ingestion preserves
-the exact source values. The no-model audit also proves that ASCII case normalization is collision
-free for service identity and the stored OTel role/status domains, so the scorer accepts equivalent
-`LOWER` or `UPPER` predicates without accepting a broader identity or enum set.
+The scorer accepts a combined aggregate, separate trace and log aggregates, complete raw rows, or a
+complete grouped result whose returned value contains the exception signature. A data-derived onset
+may split the baseline and anomaly after the hidden intervention boundary. Absence claims must cover
+the complete source baseline under the same source predicate; this is temporal completeness, not a
+claim over every possible attribute value. Counted transitions must bind both outer time bounds,
+using `BETWEEN` or explicit comparisons. Presence claims need the frozen minimum number of observations. The
+scorer requires source service and operation lineage, source OTel Error status, and error-level log
+provenance. HTTP 5xx does not substitute for OTel Error status. It rejects identity cherry-picking,
+truncated results, a limited result used to prove absence, hard-coded aggregate values, neutralized
+predicates, and row-multiplying joins. Ingestion preserves the exact source values. The no-model audit
+also proves that ASCII case normalization is collision-free for service identity and the stored OTel
+role/status domains.
 
-Protocol v29 reports `diagnosis_correct`, `required_evidence_covered`, `citation_integrity`,
+Protocol v30 reports `diagnosis_correct`, per-claim `claim_grounding`,
+`required_evidence_covered`, `citation_integrity`,
 `execution_reliability`, `auditable_completion`, and `efficiency_eligible` separately. The primary
 efficiency comparison requires correct structured diagnosis, required claim coverage, and reliable
 execution. An unrelated invalid extra citation blocks auditable completion without changing
 diagnosis correctness or erasing valid required evidence. Every citation used to cover a required
 claim must still be execution-valid. Free-text `fault_type` is explanatory; the scored mechanism is
 the global, case-independent `mechanism_code`.
+
+Graph entity existence and an ordinary witnessed calls edge can guide investigation, but do not
+alone ground required `causal_locus`. Both treatments must cite incident-local evidence tied to the
+declared operation or mechanism; a mechanism-bound result may ground locus and mechanism together.
 
 The formal fixture freezes `deepseek-v4-pro`, `claude-sonnet-5`, `claude-opus-4-8`, and
 `gpt-5.6-sol`. Each model runs two position-balanced repetitions over Raw and GreptimeDB Semantic
@@ -381,14 +406,14 @@ uv run semantic-rca aegis-transfer-formal-run \
   --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
   --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
   --selection fixtures/reference/aegis-transfer-v27-selection.json \
-  --run-dir .instances/aegis-transfer-v29-paid-01 \
+  --run-dir .instances/aegis-transfer-v30-paid-01 \
   --database case_03 \
-  --report .reports/aegis-transfer-v29-formal.json \
-  --source-audit-output .reports/aegis-transfer-v29-paid-01-source.json \
-  --scorer-audit-output .reports/aegis-transfer-v29-paid-01-scorer.json \
-  --protocol-audit-output .reports/aegis-transfer-v29-paid-01-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v29-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v29-four-model-protocol.json \
+  --report .reports/aegis-transfer-v30-formal.json \
+  --source-audit-output .reports/aegis-transfer-v30-paid-01-source.json \
+  --scorer-audit-output .reports/aegis-transfer-v30-paid-01-scorer.json \
+  --protocol-audit-output .reports/aegis-transfer-v30-paid-01-protocol.json \
+  --scorer fixtures/reference/aegis-transfer-v30-scorer.json \
+  --protocol fixtures/reference/aegis-transfer-v30-four-model-protocol.json \
   --max-new-runs 1 \
   --confirm-paid-api
 ```
@@ -405,7 +430,7 @@ new audit output paths, and a new explicit approval. The preflight binds the pri
 content so a later pricing-table update cannot invalidate an in-progress report or alter its
 exported cost estimate.
 
-Protocol v29 runs are development calibration only. Do not export them as a measurement artifact
+Protocol v30 runs are development calibration only. Do not export them as a measurement artifact
 or use them in a public semantic-layer effect estimate. A later measurement protocol must select a
 case whose trajectory did not influence the prompt, tools, diagnosis contract, or scorer.
 
@@ -415,9 +440,9 @@ the result carries the same query ID, and the evidence claim is non-empty.
 Catalog and schema discovery are not incident evidence. This check prevents
 failed or fabricated references from unlocking efficiency metrics, but it does
 not prove that the cited rows support the diagnosis. The Aegis transfer scorer
-adds a source-specific deterministic evidence-support predicate. Protocol v29
+adds a source-specific deterministic evidence-support predicate. Protocol v30
 also requires each citation to declare the structured claim types it supports,
-then evaluates causal-scope coverage, mechanism coverage, referential integrity,
+then evaluates causal-locus coverage, mechanism coverage, referential integrity,
 and execution reliability separately. The generic RCA scorer still does not
 infer evidence entailment.
 

@@ -25,15 +25,30 @@ def run_orders(
 
 def benchmark_protocol() -> dict[str, object]:
     return {
-        "version": 29,
+        "version": 30,
         "treatments": ["raw", "semantic_graph"],
+        "treatment_estimand": "complete-agent-facing-interface-v1",
+        "treatment_components": {
+            "raw": ["telemetry", "ordinary-schema-metadata", "read-only-sql"],
+            "semantic_graph": [
+                "telemetry",
+                "ordinary-schema-metadata",
+                "read-only-sql",
+                "table-semantics",
+                "semantic-entities",
+                "semantic-relationships",
+                "usage-guidance",
+                "runtime-recovery-guidance",
+                "coverage-snapshot",
+            ],
+        },
         "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-entity-roles-v3",
         "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
         "semantic_graph": "half-open-window-key-deduplicated-diagnostics-query-tool-v7",
         "semantic_context": "benchmark-preflight-v1",
         "sql_contract": "greptimedb-read-only-default-200-explicit-1000-v2",
-        "citation": "typed-claim-successful-nonmetadata-nontruncated-query-result-v4",
-        "evaluator": "layered-causal-locus-evidence-citation-execution-v12",
+        "citation": "typed-claim-successful-nonmetadata-nontruncated-query-result-v5",
+        "evaluator": "mechanism-bound-causal-locus-claim-grounding-v15",
         "primary_metrics": "correctness-preserving-case-median-rows-and-calls-v3",
         "repetition_schedule": "seeded-rotating-order-with-position-v2",
         "tool_budget": "shared-visible-cap-api-turn-limit-subscription-timeout-v5",
@@ -44,7 +59,7 @@ def benchmark_protocol() -> dict[str, object]:
         "agent_runner": "repairable-final-citation-validation-v11",
         "model_usage": "typed-cache-and-reasoning-output-breakdown-v5",
         "tool_error_feedback": "anthropic-native-flag-openai-json-envelope-v1",
-        "diagnosis": "scope-isomorphic-component-or-directed-edge-locus-v3",
+        "diagnosis": "scope-isomorphic-component-or-directed-edge-locus-v4",
         "investigation_prompt": "case-invariant-symmetric-hypothesis-discrimination-v2",
     }
 

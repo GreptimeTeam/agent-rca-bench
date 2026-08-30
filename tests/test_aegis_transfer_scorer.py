@@ -183,14 +183,12 @@ def _run(
 ) -> AgentRun:
     evidence = [
         Evidence(
-            query_id="q01",
-            claim="The Graph contains the directed caller-to-callee edge.",
-            claim_types=[EvidenceClaimType.CAUSAL_SCOPE],
-        ),
-        Evidence(
             query_id="q02",
             claim="The paired-span start gap crosses the threshold after onset.",
-            claim_types=[EvidenceClaimType.FAULT_MECHANISM],
+            claim_types=[
+                EvidenceClaimType.CAUSAL_LOCUS,
+                EvidenceClaimType.FAULT_MECHANISM,
+            ],
         ),
     ]
     if extra_invalid_citation:
@@ -204,7 +202,7 @@ def _run(
     graph = _graph_result()
     mechanism = mechanism_result or _start_gap_result()
     return AgentRun(
-        run_id="v27-synthetic",
+        run_id="v30-synthetic",
         visibility=Visibility.SEMANTIC_GRAPH,
         model="deepseek-v4-flash",
         runner=AgentRunner.API,
@@ -245,13 +243,13 @@ def _run(
     )
 
 
-def test_v27_scores_structured_diagnosis_evidence_and_execution_separately() -> None:
+def test_v30_scores_structured_diagnosis_evidence_and_execution_separately() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(), load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE)
     )
 
     assert evaluation.diagnosis_correct is True
-    assert evaluation.causal_scope_evidence_match is True
+    assert evaluation.causal_locus_evidence_match is True
     assert evaluation.mechanism_evidence_match is True
     assert evaluation.required_evidence_covered is True
     assert evaluation.citation_integrity is True
@@ -261,7 +259,33 @@ def test_v27_scores_structured_diagnosis_evidence_and_execution_separately() -> 
     assert evaluation.success is True
 
 
-def test_v27_free_text_fault_type_does_not_drive_structured_correctness() -> None:
+def test_v30_graph_edge_alone_does_not_ground_causal_locus() -> None:
+    run = _run()
+    assert run.diagnosis is not None
+    evidence = Evidence(
+        query_id="q01",
+        claim="The Graph contains the directed caller-to-callee edge.",
+        claim_types=[EvidenceClaimType.CAUSAL_LOCUS],
+    )
+    run = run.model_copy(
+        update={
+            "diagnosis": run.diagnosis.model_copy(update={"evidence": [evidence]}),
+            "tool_calls": run.tool_calls[:1],
+            "tool_calls_requested": 1,
+        }
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        run, load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE)
+    )
+
+    assert evaluation.diagnosis_correct is True
+    assert evaluation.causal_locus_evidence_match is False
+    assert evaluation.required_evidence_covered is False
+    assert evaluation.efficiency_eligible is False
+
+
+def test_v30_free_text_fault_type_does_not_drive_structured_correctness() -> None:
     run = _run()
     assert run.diagnosis is not None
     run = run.model_copy(
@@ -280,7 +304,7 @@ def test_v27_free_text_fault_type_does_not_drive_structured_correctness() -> Non
     assert evaluation.diagnosis_correct is True
 
 
-def test_v27_wrong_structured_mechanism_fails_even_with_correct_free_text() -> None:
+def test_v30_wrong_structured_mechanism_fails_even_with_correct_free_text() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(mechanism_code=MechanismCode.CONNECTION_FAILURE),
         load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
@@ -291,7 +315,7 @@ def test_v27_wrong_structured_mechanism_fails_even_with_correct_free_text() -> N
     assert evaluation.efficiency_eligible is False
 
 
-def test_v27_invalid_extra_citation_is_reliability_not_diagnosis_failure() -> None:
+def test_v30_invalid_extra_citation_is_reliability_not_diagnosis_failure() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(extra_invalid_citation=True),
         load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
@@ -305,7 +329,7 @@ def test_v27_invalid_extra_citation_is_reliability_not_diagnosis_failure() -> No
     assert evaluation.success is False
 
 
-def test_v27_accepts_threshold_proof_without_canonical_source_counts() -> None:
+def test_v30_accepts_threshold_proof_without_canonical_source_counts() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(mechanism_result=_start_gap_result()),
         load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
@@ -314,7 +338,7 @@ def test_v27_accepts_threshold_proof_without_canonical_source_counts() -> None:
     assert evaluation.mechanism_evidence_match is True
 
 
-def test_v27_rejects_singleton_wrong_parent_and_server_duration_evidence() -> None:
+def test_v30_rejects_singleton_wrong_parent_and_server_duration_evidence() -> None:
     fixture = load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE)
     singleton = evaluate_aegis_transfer_run(
         _run(mechanism_result=_start_gap_result(abnormal_confirmations=1)), fixture
@@ -330,7 +354,7 @@ def test_v27_rejects_singleton_wrong_parent_and_server_duration_evidence() -> No
     assert duration_only.mechanism_evidence_match is False
 
 
-def test_v27_does_not_double_count_repeated_singleton_evidence() -> None:
+def test_v30_does_not_double_count_repeated_singleton_evidence() -> None:
     run = _run(mechanism_result=_start_gap_result(abnormal_confirmations=1))
     assert run.diagnosis is not None
     repeated_result = _start_gap_result(abnormal_confirmations=1).model_copy(
@@ -365,7 +389,7 @@ def test_v27_does_not_double_count_repeated_singleton_evidence() -> None:
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_v27_accepts_raw_paired_timestamps_without_prescribed_aggregation() -> None:
+def test_v30_accepts_raw_paired_timestamps_without_prescribed_aggregation() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(query=_raw_timestamp_query(), mechanism_result=_raw_timestamp_result()),
         load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
@@ -406,7 +430,7 @@ def test_v27_accepts_raw_paired_timestamps_without_prescribed_aggregation() -> N
         ),
     ],
 )
-def test_v27_malformed_start_gap_rows_fail_closed(query: str, result: QueryResult) -> None:
+def test_v30_malformed_start_gap_rows_fail_closed(query: str, result: QueryResult) -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(query=query, mechanism_result=result),
         load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE),
@@ -415,7 +439,7 @@ def test_v27_malformed_start_gap_rows_fail_closed(query: str, result: QueryResul
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_v27_invalid_optional_minimum_fails_closed() -> None:
+def test_v30_invalid_optional_minimum_fails_closed() -> None:
     result = _start_gap_result().model_copy(
         update={
             "rows": [
@@ -433,7 +457,7 @@ def test_v27_invalid_optional_minimum_fails_closed() -> None:
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_v27_rejects_result_aliases_not_derived_from_start_gap() -> None:
+def test_v30_rejects_result_aliases_not_derived_from_start_gap() -> None:
     query = (
         _start_gap_query()
         .replace(
@@ -454,7 +478,7 @@ def test_v27_rejects_result_aliases_not_derived_from_start_gap() -> None:
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_v27_excludes_time_bins_that_cross_non_minute_window_boundaries() -> None:
+def test_v30_excludes_time_bins_that_cross_non_minute_window_boundaries() -> None:
     result = QueryResult(
         query_id="q02",
         columns=["bucket", "span_count", "max_gap_ns"],
@@ -473,7 +497,7 @@ def test_v27_excludes_time_bins_that_cross_non_minute_window_boundaries() -> Non
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_v27_rejects_narrowed_window_and_reversed_start_gap() -> None:
+def test_v30_rejects_narrowed_window_and_reversed_start_gap() -> None:
     fixture = load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE)
     narrowed = _start_gap_query().replace(
         "2025-07-20T12:40:49Z",
@@ -493,7 +517,7 @@ def test_v27_rejects_narrowed_window_and_reversed_start_gap() -> None:
     )
 
 
-def test_v27_accepts_equivalent_case_normalized_pair_scope() -> None:
+def test_v30_accepts_equivalent_case_normalized_pair_scope() -> None:
     query = (
         _start_gap_query()
         .replace(
@@ -563,7 +587,7 @@ def test_v27_accepts_equivalent_case_normalized_pair_scope() -> None:
         _detached_duration_query(),
     ],
 )
-def test_v27_rejects_neutralized_or_incomplete_pair_scope(query: str) -> None:
+def test_v30_rejects_neutralized_or_incomplete_pair_scope(query: str) -> None:
     evaluation = evaluate_aegis_transfer_run(
         _run(query=query), load_transfer_scorer_fixture(CALIBRATION_SCORER_FIXTURE)
     )
@@ -634,11 +658,11 @@ def _exception_run(
             "The operation has no baseline errors and repeated error spans and "
             "exception logs after onset."
         ),
-        claim_types=[EvidenceClaimType.CAUSAL_SCOPE, EvidenceClaimType.FAULT_MECHANISM],
+        claim_types=[EvidenceClaimType.CAUSAL_LOCUS, EvidenceClaimType.FAULT_MECHANISM],
     )
     output = result or _exception_result()
     return AgentRun(
-        run_id="v27-formal-synthetic",
+        run_id="v30-formal-synthetic",
         visibility=Visibility.RAW,
         model="deepseek-v4-pro",
         runner=AgentRunner.API,
@@ -673,7 +697,7 @@ def _exception_run(
     )
 
 
-def test_formal_v27_accepts_component_scoped_exception_transition() -> None:
+def test_formal_v30_accepts_component_scoped_exception_transition() -> None:
     evaluation = evaluate_aegis_transfer_run(
         _exception_run(), load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     )
@@ -682,6 +706,724 @@ def test_formal_v27_accepts_component_scoped_exception_transition() -> None:
     assert evaluation.mechanism_evidence_match is True
     assert evaluation.efficiency_eligible is True
     assert evaluation.success is True
+
+
+def _observed_onset_trace_query() -> str:
+    return """SELECT CASE
+         WHEN timestamp < '2025-07-18T12:25:58.199Z' THEN 'baseline'
+         ELSE 'anomalous'
+       END AS period,
+       COUNT(*) AS requests,
+       SUM(CASE WHEN span_status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END) AS errors
+FROM traces
+WHERE service_name = 'ts-train-service'
+  AND span_name = 'GET /api/v1/trainservice/trains/byName/{name}'
+  AND timestamp >= '2025-07-18T12:21:57Z'
+  AND timestamp <= '2025-07-18T12:29:56Z'
+GROUP BY period"""
+
+
+def _grouped_exception_log_query() -> str:
+    return """SELECT line,
+       COUNT(*) AS occurrences,
+       MIN(greptime_timestamp) AS first_seen,
+       MAX(greptime_timestamp) AS last_seen
+FROM logs
+WHERE service_name = 'ts-train-service'
+  AND level = 'SEVERE'
+  AND greptime_timestamp >= '2025-07-18T12:21:57Z'
+  AND greptime_timestamp <= '2025-07-18T12:29:56Z'
+GROUP BY line
+ORDER BY occurrences DESC"""
+
+
+def _observed_transition_run() -> AgentRun:
+    run = _exception_run()
+    assert run.diagnosis is not None
+    trace_result = QueryResult(
+        query_id="q01",
+        columns=["period", "requests", "errors"],
+        rows=[["anomalous", 12, 12], ["baseline", 7, 0]],
+        elapsed_seconds=0,
+    )
+    log_result = QueryResult(
+        query_id="q02",
+        columns=["line", "occurrences", "first_seen", "last_seen"],
+        rows=[
+            [
+                "Request processing failed; root cause java.lang.NullPointerException",
+                11,
+                1_752_841_558_218_000_000,
+                1_752_841_795_992_000_000,
+            ]
+        ],
+        elapsed_seconds=0,
+    )
+    evidence = [
+        Evidence(
+            query_id="q01",
+            claim="The operation changes from zero Error spans to repeated Error spans.",
+            claim_types=[EvidenceClaimType.FAULT_MECHANISM],
+        ),
+        Evidence(
+            query_id="q02",
+            claim="The causal service emits repeated NullPointerException logs after onset.",
+            claim_types=[EvidenceClaimType.CAUSAL_LOCUS, EvidenceClaimType.FAULT_MECHANISM],
+        ),
+    ]
+    traces = [
+        ToolTrace(
+            tool_name="execute_sql",
+            input={"query": _observed_onset_trace_query()},
+            query_id="q01",
+            output=trace_result.model_dump(mode="json"),
+            database_load=DatabaseLoad(query_count=1, rows_returned=2),
+        ),
+        ToolTrace(
+            tool_name="execute_sql",
+            input={"query": _grouped_exception_log_query()},
+            query_id="q02",
+            output=log_result.model_dump(mode="json"),
+            database_load=DatabaseLoad(query_count=1, rows_returned=1),
+        ),
+    ]
+    return run.model_copy(
+        update={
+            "diagnosis": run.diagnosis.model_copy(update={"evidence": evidence}),
+            "tool_calls": traces,
+            "tool_calls_requested": 2,
+        }
+    )
+
+
+def test_v30_accepts_observed_onset_and_result_proven_exception_signature() -> None:
+    evaluation = evaluate_aegis_transfer_run(
+        _observed_transition_run(), load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    )
+
+    assert evaluation.diagnosis_correct is True
+    assert evaluation.causal_locus_evidence_match is True
+    assert evaluation.mechanism_evidence_match is True
+    assert evaluation.required_evidence_covered is True
+    assert evaluation.supporting_evidence_query_ids == ["q02", "q01"]
+    assert evaluation.tool_calls_through_required_evidence == 2
+    assert evaluation.rows_returned_through_required_evidence == 3
+    assert evaluation.efficiency_eligible is True
+
+
+def _status_grouped_trace_query() -> str:
+    return """SELECT CASE
+         WHEN timestamp < '2025-07-18T12:25:58.199Z' THEN 'baseline'
+         ELSE 'anomalous'
+       END AS period,
+       span_status_code,
+       COUNT(*) AS requests,
+       SUM(CASE WHEN \"span_attributes.http.response.status_code\" = 500 THEN 1 ELSE 0 END)
+         AS http_500s
+FROM traces
+WHERE service_name = 'ts-train-service'
+  AND span_name = 'GET /api/v1/trainservice/trains/byName/{name}'
+  AND timestamp >= '2025-07-18T12:21:57Z'
+  AND timestamp <= '2025-07-18T12:29:56Z'
+GROUP BY period, span_status_code"""
+
+
+def _period_filtered_exception_query() -> str:
+    return """SELECT CASE
+         WHEN greptime_timestamp < '2025-07-18T12:25:58.199Z' THEN 'baseline'
+         ELSE 'anomalous'
+       END AS period,
+       COUNT(*) AS severe_npe_logs
+FROM logs
+WHERE service_name = 'ts-train-service'
+  AND level = 'SEVERE'
+  AND line LIKE '%NullPointerException%'
+  AND greptime_timestamp >= '2025-07-18T12:21:57Z'
+  AND greptime_timestamp <= '2025-07-18T12:29:56Z'
+GROUP BY period"""
+
+
+def _equivalent_grouped_transition_run() -> AgentRun:
+    run = _exception_run()
+    assert run.diagnosis is not None
+    traces = [
+        ToolTrace(
+            tool_name="execute_sql",
+            input={"query": _status_grouped_trace_query()},
+            query_id="q01",
+            output=QueryResult(
+                query_id="q01",
+                columns=["period", "span_status_code", "requests", "http_500s"],
+                rows=[
+                    ["anomalous", "STATUS_CODE_ERROR", 12, 12],
+                    ["baseline", "STATUS_CODE_UNSET", 7, 0],
+                ],
+                elapsed_seconds=0,
+            ).model_dump(mode="json"),
+            database_load=DatabaseLoad(query_count=1, rows_returned=2),
+        ),
+        ToolTrace(
+            tool_name="execute_sql",
+            input={"query": _period_filtered_exception_query()},
+            query_id="q02",
+            output=QueryResult(
+                query_id="q02",
+                columns=["period", "severe_npe_logs"],
+                rows=[["anomalous", 11]],
+                elapsed_seconds=0,
+            ).model_dump(mode="json"),
+            database_load=DatabaseLoad(query_count=1, rows_returned=1),
+        ),
+    ]
+    evidence = [
+        Evidence(
+            query_id="q01",
+            claim="The operation changes from clean baseline spans to source Error spans.",
+            claim_types=[EvidenceClaimType.CAUSAL_LOCUS, EvidenceClaimType.FAULT_MECHANISM],
+        ),
+        Evidence(
+            query_id="q02",
+            claim="The complete window has NPE logs only after onset.",
+            claim_types=[EvidenceClaimType.FAULT_MECHANISM],
+        ),
+    ]
+    return run.model_copy(
+        update={
+            "diagnosis": run.diagnosis.model_copy(update={"evidence": evidence}),
+            "tool_calls": traces,
+            "tool_calls_requested": 2,
+        }
+    )
+
+
+def test_v30_accepts_status_grouping_and_missing_zero_period_row() -> None:
+    evaluation = evaluate_aegis_transfer_run(
+        _equivalent_grouped_transition_run(),
+        load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
+    )
+
+    assert evaluation.mechanism_evidence_match is True
+    assert evaluation.causal_locus_evidence_match is True
+    assert evaluation.supporting_evidence_query_ids == ["q01", "q02"]
+    assert evaluation.success is True
+
+
+def test_v30_accepts_between_for_complete_trace_and_log_windows() -> None:
+    run = _equivalent_grouped_transition_run()
+    replacements = (
+        (
+            "timestamp >= '2025-07-18T12:21:57Z'\n  AND timestamp <= '2025-07-18T12:29:56Z'",
+            "timestamp BETWEEN '2025-07-18T12:21:57Z' AND '2025-07-18T12:29:56Z'",
+        ),
+        (
+            "greptime_timestamp >= '2025-07-18T12:21:57Z'\n"
+            "  AND greptime_timestamp <= '2025-07-18T12:29:56Z'",
+            "greptime_timestamp BETWEEN '2025-07-18T12:21:57Z' AND '2025-07-18T12:29:56Z'",
+        ),
+    )
+    traces = []
+    for trace, (old, new) in zip(run.tool_calls, replacements, strict=True):
+        traces.append(
+            trace.model_copy(
+                update={"input": {"query": str(trace.input["query"]).replace(old, new)}}
+            )
+        )
+
+    evaluation = evaluate_aegis_transfer_run(
+        run.model_copy(update={"tool_calls": traces}),
+        load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
+    )
+
+    assert evaluation.mechanism_evidence_match is True
+    assert evaluation.causal_locus_evidence_match is True
+    assert evaluation.success is True
+
+
+def test_v30_zero_error_transition_does_not_ground_causal_locus() -> None:
+    run = _equivalent_grouped_transition_run()
+    assert run.diagnosis is not None
+    trace_result = QueryResult.model_validate(run.tool_calls[0].output).model_copy(
+        update={
+            "rows": [
+                ["anomalous", "STATUS_CODE_UNSET", 12, 12],
+                ["baseline", "STATUS_CODE_UNSET", 7, 0],
+            ]
+        }
+    )
+    trace = run.tool_calls[0].model_copy(update={"output": trace_result.model_dump(mode="json")})
+    evidence = Evidence(
+        query_id="q01",
+        claim="The operation remains source-status clean in both periods.",
+        claim_types=[EvidenceClaimType.CAUSAL_LOCUS],
+    )
+    run = run.model_copy(
+        update={
+            "diagnosis": run.diagnosis.model_copy(update={"evidence": [evidence]}),
+            "tool_calls": [trace],
+            "tool_calls_requested": 1,
+        }
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        run,
+        load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
+    )
+
+    assert evaluation.causal_locus_evidence_match is False
+    assert evaluation.required_evidence_covered is False
+
+
+def test_v30_accepts_single_row_conditional_period_counts() -> None:
+    run = _observed_transition_run()
+    query = """SELECT
+  SUM(CASE WHEN timestamp < '2025-07-18T12:25:57Z'
+                 AND span_status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END)
+    AS baseline_errors,
+  SUM(CASE WHEN timestamp >= '2025-07-18T12:25:57Z'
+                 AND span_status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END)
+    AS anomalous_errors
+FROM traces
+WHERE service_name = 'ts-train-service'
+  AND span_name = 'GET /api/v1/trainservice/trains/byName/{name}'
+  AND timestamp >= '2025-07-18T12:21:57Z'
+  AND timestamp <= '2025-07-18T12:29:56Z'"""
+    result = QueryResult(
+        query_id="q01",
+        columns=["baseline_errors", "anomalous_errors"],
+        rows=[[0, 12]],
+        elapsed_seconds=0,
+    )
+    trace = run.tool_calls[0].model_copy(
+        update={"input": {"query": query}, "output": result.model_dump(mode="json")}
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        run.model_copy(update={"tool_calls": [trace, run.tool_calls[1]]}),
+        load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
+    )
+
+    assert evaluation.mechanism_evidence_match is True
+    assert evaluation.causal_locus_evidence_match is True
+    assert evaluation.success is True
+
+    dead_status = query.replace(
+        "span_status_code = 'STATUS_CODE_ERROR'",
+        "EXISTS (SELECT 1 WHERE span_status_code = 'STATUS_CODE_ERROR')",
+    )
+    dead_trace = trace.model_copy(update={"input": {"query": dead_status}})
+    rejected = evaluate_aegis_transfer_run(
+        run.model_copy(update={"tool_calls": [dead_trace, run.tool_calls[1]]}),
+        load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
+    )
+
+    assert rejected.mechanism_evidence_match is False
+
+
+def _projected_multi_service_trace_query() -> str:
+    return """SELECT CASE
+         WHEN timestamp < '2025-07-18T12:25:57Z' THEN 'baseline'
+         ELSE 'anomalous'
+       END AS period,
+       service_name,
+       span_name,
+       COUNT(*) AS spans,
+       SUM(CASE WHEN span_status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END) AS errors
+FROM traces
+WHERE timestamp >= '2025-07-18T12:21:57Z'
+  AND timestamp <= '2025-07-18T12:29:56Z'
+  AND ((service_name = 'ts-train-service'
+        AND span_name IN ('GET /api/v1/trainservice/trains/byName/{name}',
+                          'TrainController.retrieveByName'))
+       OR (service_name = 'ts-basic-service'
+           AND span_name = 'POST /api/v1/basicservice/basic/travel'))
+GROUP BY period, service_name, span_name"""
+
+
+def _projected_exception_lines_query() -> str:
+    return """SELECT CASE
+         WHEN greptime_timestamp < '2025-07-18T12:25:57Z' THEN 'baseline'
+         ELSE 'anomalous'
+       END AS period,
+       line,
+       COUNT(*) AS occurrences
+FROM logs
+WHERE greptime_timestamp >= '2025-07-18T12:21:57Z'
+  AND greptime_timestamp <= '2025-07-18T12:29:56Z'
+  AND service_name = 'ts-train-service'
+  AND (line LIKE '[retrieveByName]%' OR level = 'SEVERE')
+GROUP BY period, line"""
+
+
+def _projected_multi_service_transition_run() -> AgentRun:
+    run = _exception_run()
+    assert run.diagnosis is not None
+    traces = [
+        ToolTrace(
+            tool_name="execute_sql",
+            input={"query": _projected_multi_service_trace_query()},
+            query_id="q01",
+            output=QueryResult(
+                query_id="q01",
+                columns=["period", "service_name", "span_name", "spans", "errors"],
+                rows=[
+                    [
+                        "anomalous",
+                        "ts-train-service",
+                        "GET /api/v1/trainservice/trains/byName/{name}",
+                        12,
+                        12,
+                    ],
+                    [
+                        "baseline",
+                        "ts-train-service",
+                        "GET /api/v1/trainservice/trains/byName/{name}",
+                        7,
+                        0,
+                    ],
+                    [
+                        "anomalous",
+                        "ts-basic-service",
+                        "POST /api/v1/basicservice/basic/travel",
+                        4,
+                        4,
+                    ],
+                ],
+                elapsed_seconds=0,
+            ).model_dump(mode="json"),
+            database_load=DatabaseLoad(query_count=1, rows_returned=3),
+        ),
+        ToolTrace(
+            tool_name="execute_sql",
+            input={"query": _projected_exception_lines_query()},
+            query_id="q02",
+            output=QueryResult(
+                query_id="q02",
+                columns=["period", "line", "occurrences"],
+                rows=[
+                    ["baseline", "[retrieveByName][Retrieve train]", 7],
+                    [
+                        "anomalous",
+                        "Request failed; root cause java.lang.NullPointerException",
+                        11,
+                    ],
+                ],
+                elapsed_seconds=0,
+            ).model_dump(mode="json"),
+            database_load=DatabaseLoad(query_count=1, rows_returned=2),
+        ),
+    ]
+    evidence = [
+        Evidence(
+            query_id="q01",
+            claim="Projected target rows show the operation's Error transition.",
+            claim_types=[EvidenceClaimType.CAUSAL_LOCUS, EvidenceClaimType.FAULT_MECHANISM],
+        ),
+        Evidence(
+            query_id="q02",
+            claim="Complete grouped logs show the NPE only after onset.",
+            claim_types=[EvidenceClaimType.FAULT_MECHANISM],
+        ),
+    ]
+    return run.model_copy(
+        update={
+            "diagnosis": run.diagnosis.model_copy(update={"evidence": evidence}),
+            "tool_calls": traces,
+            "tool_calls_requested": 2,
+        }
+    )
+
+
+def test_v30_accepts_target_rows_from_complete_multi_service_results() -> None:
+    evaluation = evaluate_aegis_transfer_run(
+        _projected_multi_service_transition_run(),
+        load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
+    )
+
+    assert evaluation.mechanism_evidence_match is True
+    assert evaluation.causal_locus_evidence_match is True
+    assert evaluation.success is True
+
+
+def test_v30_rejects_projected_logs_that_can_filter_out_severe_exceptions() -> None:
+    run = _projected_multi_service_transition_run()
+    narrowed = run.tool_calls[1].model_copy(
+        update={
+            "input": {
+                "query": _projected_exception_lines_query().replace(
+                    "line LIKE '[retrieveByName]%' OR level = 'SEVERE'",
+                    "line LIKE '[retrieveByName]%' AND level = 'SEVERE'",
+                )
+            }
+        }
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        run.model_copy(update={"tool_calls": [run.tool_calls[0], narrowed]}),
+        load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
+    )
+
+    assert evaluation.mechanism_evidence_match is False
+    assert evaluation.success is False
+
+
+def test_v30_observed_transition_rejects_unbound_counts_and_missing_signature() -> None:
+    fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    run = _observed_transition_run()
+    hardcoded_trace = run.tool_calls[0].model_copy(
+        update={
+            "input": {
+                "query": _observed_onset_trace_query().replace(
+                    "SUM(CASE WHEN span_status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END)",
+                    "12",
+                )
+            }
+        }
+    )
+    no_signature_output = QueryResult.model_validate(run.tool_calls[1].output).model_copy(
+        update={
+            "rows": [["Request failed", 11, 1_752_841_558_218_000_000, 1_752_841_795_992_000_000]]
+        }
+    )
+    no_signature_log = run.tool_calls[1].model_copy(
+        update={"output": no_signature_output.model_dump(mode="json")}
+    )
+
+    hardcoded = evaluate_aegis_transfer_run(
+        run.model_copy(update={"tool_calls": [hardcoded_trace, run.tool_calls[1]]}), fixture
+    )
+    no_signature = evaluate_aegis_transfer_run(
+        run.model_copy(update={"tool_calls": [run.tool_calls[0], no_signature_log]}), fixture
+    )
+
+    assert hardcoded.mechanism_evidence_match is False
+    assert no_signature.mechanism_evidence_match is False
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        _observed_onset_trace_query().replace(
+            "12:25:58.199Z",
+            "12:25:00Z",
+        ),
+        _observed_onset_trace_query().replace(
+            "span_status_code = 'STATUS_CODE_ERROR'",
+            "span_status_code = 'STATUS_CODE_ERROR' OR 1 = 1",
+        ),
+        _observed_onset_trace_query().replace(
+            "span_status_code = 'STATUS_CODE_ERROR'",
+            '"span_attributes.http.response.status_code" = 500',
+        ),
+        _observed_onset_trace_query().replace(
+            "SUM(CASE WHEN span_status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END)",
+            "SUM(CASE WHEN span_status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END) * 100",
+        ),
+        _observed_onset_trace_query().replace(
+            "2025-07-18T12:29:56Z",
+            "2025-07-18T13:29:56Z",
+        ),
+    ],
+)
+def test_v30_observed_transition_rejects_invalid_time_or_error_semantics(query: str) -> None:
+    fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    run = _observed_transition_run()
+    trace = run.tool_calls[0].model_copy(update={"input": {"query": query}})
+
+    evaluation = evaluate_aegis_transfer_run(
+        run.model_copy(update={"tool_calls": [trace, run.tool_calls[1]]}), fixture
+    )
+
+    assert evaluation.mechanism_evidence_match is False
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        f"{_grouped_exception_log_query()} LIMIT 1",
+        _grouped_exception_log_query().replace(
+            "GROUP BY line\nORDER BY",
+            "GROUP BY line HAVING COUNT(*) > 100\nORDER BY",
+        ),
+        _grouped_exception_log_query().replace(
+            "MIN(greptime_timestamp) AS first_seen",
+            "MIN(1) + MAX(greptime_timestamp) AS first_seen",
+        ),
+        _grouped_exception_log_query().replace(
+            "2025-07-18T12:29:56Z",
+            "2025-07-18T13:29:56Z",
+        ),
+    ],
+)
+def test_v30_incomplete_grouped_logs_cannot_prove_baseline_absence(query: str) -> None:
+    fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    run = _observed_transition_run()
+    trace = run.tool_calls[1].model_copy(update={"input": {"query": query}})
+
+    evaluation = evaluate_aegis_transfer_run(
+        run.model_copy(update={"tool_calls": [run.tool_calls[0], trace]}), fixture
+    )
+
+    assert evaluation.mechanism_evidence_match is False
+
+
+def test_v30_error_transition_without_exception_does_not_ground_application_error() -> None:
+    run = _observed_transition_run()
+    assert run.diagnosis is not None
+    run = run.model_copy(
+        update={
+            "diagnosis": run.diagnosis.model_copy(update={"evidence": run.diagnosis.evidence[:1]}),
+            "tool_calls": run.tool_calls[:1],
+            "tool_calls_requested": 1,
+        }
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        run, load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    )
+
+    assert evaluation.diagnosis_correct is True
+    assert evaluation.mechanism_evidence_match is False
+    assert evaluation.required_evidence_covered is False
+    assert evaluation.efficiency_eligible is False
+
+
+def test_v30_operation_error_result_grounds_locus_but_not_exception_mechanism() -> None:
+    run = _exception_run()
+    assert run.diagnosis is not None
+    result = QueryResult(
+        query_id="q01",
+        columns=["train_operation", "span_status_code", "operation_count"],
+        rows=[
+            [
+                "GET /api/v1/trainservice/trains/byName/{name}",
+                "STATUS_CODE_ERROR",
+                12,
+            ]
+        ],
+        elapsed_seconds=0,
+    )
+    evidence = Evidence(
+        query_id="q01",
+        claim="The train by-name operation has source Error spans.",
+        claim_types=[EvidenceClaimType.CAUSAL_LOCUS],
+    )
+    trace = ToolTrace(
+        tool_name="execute_sql",
+        input={
+            "query": """SELECT span_name AS train_operation, span_status_code,
+       COUNT(*) AS operation_count
+FROM traces
+WHERE service_name = 'ts-train-service'
+  AND timestamp >= '2025-07-18T12:21:57Z'
+  AND timestamp <= '2025-07-18T12:29:56Z'
+GROUP BY span_name, span_status_code"""
+        },
+        query_id="q01",
+        output=result.model_dump(mode="json"),
+        database_load=DatabaseLoad(query_count=1, rows_returned=1),
+    )
+    run = run.model_copy(
+        update={
+            "diagnosis": run.diagnosis.model_copy(update={"evidence": [evidence]}),
+            "tool_calls": [trace],
+            "tool_calls_requested": 1,
+        }
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        run, load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
+    )
+
+    assert evaluation.diagnosis_correct is True
+    assert evaluation.causal_locus_evidence_match is True
+    assert evaluation.mechanism_evidence_match is False
+    assert evaluation.required_evidence_covered is False
+
+
+@pytest.mark.parametrize(
+    "identity_filter",
+    [
+        "trace_id = 'a'",
+        "trace_id IN ('a', 'b')",
+        "trace_id LIKE 'a%'",
+        "trace_id > 'a'",
+        "trace_id BETWEEN 'a' AND 'b'",
+    ],
+)
+def test_formal_v30_rejects_literal_identity_filters(identity_filter: str) -> None:
+    query = _exception_query().replace(
+        "AND span_name LIKE '%retrieveByName%'",
+        f"AND span_name LIKE '%retrieveByName%'\n    AND {identity_filter}",
+        1,
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        _exception_run(query=query),
+        load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
+    )
+
+    assert evaluation.mechanism_evidence_match is False
+    assert evaluation.success is False
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        """SELECT span_name, span_status_code, COUNT(*) AS calls
+FROM traces
+WHERE service_name = 'ts-train-service'
+GROUP BY span_name, span_status_code""",
+        """SELECT CASE
+  WHEN 1 = 1 THEN 'GET /api/v1/trainservice/trains/byName/{name}'
+  ELSE span_name END AS span_name,
+  span_status_code,
+  COUNT(*) AS calls
+FROM traces
+WHERE service_name = 'ts-train-service'
+  AND timestamp >= '2025-07-18T12:21:57Z'
+  AND timestamp <= '2025-07-18T12:29:56Z'
+GROUP BY span_name, span_status_code""",
+    ],
+)
+def test_v30_unbound_operation_result_does_not_ground_locus(query: str) -> None:
+    run = _observed_transition_run()
+    trace = run.tool_calls[0].model_copy(
+        update={
+            "input": {"query": query},
+            "output": QueryResult(
+                query_id="q01",
+                columns=["span_name", "span_status_code", "calls"],
+                rows=[
+                    [
+                        "GET /api/v1/trainservice/trains/byName/{name}",
+                        "STATUS_CODE_ERROR",
+                        12,
+                    ]
+                ],
+                elapsed_seconds=0,
+            ).model_dump(mode="json"),
+        }
+    )
+    assert run.diagnosis is not None
+    evidence = Evidence(
+        query_id="q01",
+        claim="The operation has Error spans.",
+        claim_types=[EvidenceClaimType.CAUSAL_LOCUS],
+    )
+
+    evaluation = evaluate_aegis_transfer_run(
+        run.model_copy(
+            update={
+                "diagnosis": run.diagnosis.model_copy(update={"evidence": [evidence]}),
+                "tool_calls": [trace],
+                "tool_calls_requested": 1,
+            }
+        ),
+        load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE),
+    )
+
+    assert evaluation.causal_locus_evidence_match is False
+    assert evaluation.required_evidence_covered is False
 
 
 def test_component_mechanism_is_not_reclassified_as_propagation_edge() -> None:
@@ -715,7 +1457,7 @@ def test_component_mechanism_is_not_reclassified_as_propagation_edge() -> None:
     assert edge_evaluation.diagnosis_correct is False
 
 
-def test_formal_v27_accepts_case_normalized_source_predicates() -> None:
+def test_formal_v30_accepts_case_normalized_source_predicates() -> None:
     query = (
         _exception_query()
         .replace(
@@ -769,7 +1511,7 @@ def test_formal_v27_accepts_case_normalized_source_predicates() -> None:
         ),
     ],
 )
-def test_formal_v27_rejects_wrong_case_normalized_identity_or_status(query: str) -> None:
+def test_formal_v30_rejects_wrong_case_normalized_identity_or_status(query: str) -> None:
     evaluation = evaluate_aegis_transfer_run(
         _exception_run(query=query), load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     )
@@ -778,7 +1520,7 @@ def test_formal_v27_rejects_wrong_case_normalized_identity_or_status(query: str)
     assert evaluation.success is False
 
 
-def test_formal_v27_rejects_case_mismatched_raw_operation_predicate() -> None:
+def test_formal_v30_rejects_case_mismatched_raw_operation_predicate() -> None:
     query = _exception_query().replace(
         "span_name LIKE '%retrieveByName%'",
         "span_name LIKE '%retrievebyname%'",
@@ -808,7 +1550,7 @@ def test_formal_v27_rejects_case_mismatched_raw_operation_predicate() -> None:
         ),
     ],
 )
-def test_formal_v27_rejects_narrowed_mechanism_predicates(query: str) -> None:
+def test_formal_v30_rejects_narrowed_mechanism_predicates(query: str) -> None:
     evaluation = evaluate_aegis_transfer_run(
         _exception_run(query=query), load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     )
@@ -816,7 +1558,7 @@ def test_formal_v27_rejects_narrowed_mechanism_predicates(query: str) -> None:
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_formal_v27_accepts_singleton_service_in_and_typed_timestamps() -> None:
+def test_formal_v30_accepts_singleton_service_in_and_typed_timestamps() -> None:
     query = _exception_query().replace(
         "service_name = 'ts-train-service'",
         "service_name IN ('ts-train-service')",
@@ -836,7 +1578,7 @@ def test_formal_v27_accepts_singleton_service_in_and_typed_timestamps() -> None:
     assert evaluation.success is True
 
 
-def test_formal_v27_causal_operation_is_part_of_primary_correctness() -> None:
+def test_formal_v30_causal_operation_is_part_of_primary_correctness() -> None:
     fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
 
     for operation in (
@@ -857,7 +1599,7 @@ def test_formal_v27_causal_operation_is_part_of_primary_correctness() -> None:
     assert missing.causal_operation_match is False
 
 
-def test_formal_v27_component_scope_rejects_edge_fields() -> None:
+def test_formal_v30_component_scope_rejects_edge_fields() -> None:
     run = _exception_run()
     assert run.diagnosis is not None
     run = run.model_copy(
@@ -879,7 +1621,7 @@ def test_formal_v27_component_scope_rejects_edge_fields() -> None:
     assert evaluation.diagnosis_correct is False
 
 
-def test_formal_v27_rejects_hardcoded_or_nonfilter_exception_evidence() -> None:
+def test_formal_v30_rejects_hardcoded_or_nonfilter_exception_evidence() -> None:
     fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     hardcoded = _exception_query().replace(
         "COALESCE(SUM(e.error_span_count), 0) AS error_span_count",
@@ -921,7 +1663,7 @@ def test_formal_v27_rejects_hardcoded_or_nonfilter_exception_evidence() -> None:
     ).success
 
 
-def test_formal_v27_binds_filters_to_each_telemetry_select() -> None:
+def test_formal_v30_binds_filters_to_each_telemetry_select() -> None:
     fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     dead_status_predicate = _exception_query().replace(
         "span_status_code = 'STATUS_CODE_ERROR'",
@@ -950,7 +1692,7 @@ def test_formal_v27_binds_filters_to_each_telemetry_select() -> None:
     ).mechanism_evidence_match
 
 
-def test_formal_v27_requires_aggregate_periods_to_follow_source_timestamps() -> None:
+def test_formal_v30_requires_aggregate_periods_to_follow_source_timestamps() -> None:
     fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     mislabeled_period = _exception_query().replace("THEN 'normal'", "THEN 'abnormal'", 1)
     boundary_case = (
@@ -984,7 +1726,7 @@ def test_formal_v27_requires_aggregate_periods_to_follow_source_timestamps() -> 
     ).mechanism_evidence_match
 
 
-def test_formal_v27_rejects_wrong_scope_window_and_incomplete_mechanism() -> None:
+def test_formal_v30_rejects_wrong_scope_window_and_incomplete_mechanism() -> None:
     fixture = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     mutations = (
         _exception_query().replace("ts-train-service", "ts-route-plan-service"),
@@ -1012,7 +1754,7 @@ def test_formal_v27_rejects_wrong_scope_window_and_incomplete_mechanism() -> Non
     ).mechanism_evidence_match
 
 
-def test_formal_v27_malformed_combined_result_fails_closed() -> None:
+def test_formal_v30_malformed_combined_result_fails_closed() -> None:
     malformed = QueryResult(
         query_id="q01",
         columns=["period", "error_span_count", "exception_log_count"],
@@ -1068,7 +1810,7 @@ LEFT JOIN observations o ON o.period = p.period
 GROUP BY p.period"""
 
 
-def test_formal_v27_accepts_split_trace_and_log_aggregates() -> None:
+def test_formal_v30_accepts_split_trace_and_log_aggregates() -> None:
     base = _exception_run()
     assert base.diagnosis is not None
     traces: list[ToolTrace] = []
@@ -1094,7 +1836,7 @@ def test_formal_v27_accepts_split_trace_and_log_aggregates() -> None:
             Evidence(
                 query_id=query_id,
                 claim=f"The {table} result proves its baseline-to-anomaly transition.",
-                claim_types=[EvidenceClaimType.CAUSAL_SCOPE, EvidenceClaimType.FAULT_MECHANISM],
+                claim_types=[EvidenceClaimType.CAUSAL_LOCUS, EvidenceClaimType.FAULT_MECHANISM],
             )
         )
     run = base.model_copy(
@@ -1114,7 +1856,7 @@ def test_formal_v27_accepts_split_trace_and_log_aggregates() -> None:
     assert evaluation.success is True
 
 
-def test_formal_v27_malformed_split_aggregate_fails_closed() -> None:
+def test_formal_v30_malformed_split_aggregate_fails_closed() -> None:
     run = _exception_run()
     malformed = QueryResult(
         query_id="q01",
@@ -1137,7 +1879,7 @@ def test_formal_v27_malformed_split_aggregate_fails_closed() -> None:
     assert evaluation.mechanism_evidence_match is False
 
 
-def test_formal_v27_accepts_equivalent_filter_and_count_expressions() -> None:
+def test_formal_v30_accepts_equivalent_filter_and_count_expressions() -> None:
     base = _exception_run()
     assert base.diagnosis is not None
     traces: list[ToolTrace] = []
@@ -1175,7 +1917,7 @@ def test_formal_v27_accepts_equivalent_filter_and_count_expressions() -> None:
             Evidence(
                 query_id=query_id,
                 claim=f"The {table} result proves its baseline-to-anomaly transition.",
-                claim_types=[EvidenceClaimType.CAUSAL_SCOPE, EvidenceClaimType.FAULT_MECHANISM],
+                claim_types=[EvidenceClaimType.CAUSAL_LOCUS, EvidenceClaimType.FAULT_MECHANISM],
             )
         )
     run = base.model_copy(
@@ -1194,7 +1936,7 @@ def test_formal_v27_accepts_equivalent_filter_and_count_expressions() -> None:
     assert evaluation.success is True
 
 
-def test_formal_v27_graph_entity_does_not_substitute_for_mechanism_evidence() -> None:
+def test_formal_v30_graph_entity_does_not_ground_locus_or_mechanism() -> None:
     run = _exception_run()
     assert run.diagnosis is not None
     result = QueryResult(
@@ -1212,7 +1954,7 @@ def test_formal_v27_graph_entity_does_not_substitute_for_mechanism_evidence() ->
                             query_id="q01",
                             claim="The semantic entity identifies the affected component.",
                             claim_types=[
-                                EvidenceClaimType.CAUSAL_SCOPE,
+                                EvidenceClaimType.CAUSAL_LOCUS,
                                 EvidenceClaimType.FAULT_MECHANISM,
                             ],
                         )
@@ -1236,6 +1978,6 @@ def test_formal_v27_graph_entity_does_not_substitute_for_mechanism_evidence() ->
         run, load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     )
 
-    assert evaluation.causal_scope_evidence_match is True
+    assert evaluation.causal_locus_evidence_match is False
     assert evaluation.mechanism_evidence_match is False
     assert evaluation.success is False

@@ -29,7 +29,7 @@ from semantic_rca_bench.contracts import AgentRun
 from semantic_rca_bench.evidence import is_valid_evidence_trace
 from semantic_rca_bench.report import MODEL_PRICING, _estimated_api_cost, _raw_input_breakdown
 
-ARTIFACT_SCHEMA_VERSION = 1
+ARTIFACT_SCHEMA_VERSION = 2
 
 
 def build_measurement_artifact(
@@ -93,6 +93,9 @@ def build_measurement_artifact(
             "ground_truth": scorer_fixture.ground_truth.model_dump(mode="json"),
             "normal_window": list(scorer_fixture.normal_window),
             "abnormal_window": list(scorer_fixture.abnormal_window),
+            "required_evidence_claims": [
+                claim.value for claim in scorer_fixture.required_evidence_claims
+            ],
             "mechanism_evidence": scorer_fixture.mechanism_evidence.model_dump(
                 mode="json", exclude_none=True
             ),
@@ -475,7 +478,7 @@ def _run_payload(
     evidence = diagnosis.evidence if diagnosis is not None else []
     evidence_ids_unique = len({entry.query_id for entry in evidence}) == len(evidence)
     supporting_ids = set(evaluation.supporting_evidence_query_ids)
-    causal_scope_ids = set(evaluation.causal_scope_evidence_query_ids)
+    causal_locus_ids = set(evaluation.causal_locus_evidence_query_ids)
     mechanism_ids = set(evaluation.mechanism_evidence_query_ids)
     citations = []
     mechanism_queries = []
@@ -488,8 +491,8 @@ def _run_payload(
                 and bool(entry.claim.strip())
                 and is_valid_evidence_trace(matches)
             ),
-            "supports_mechanism": entry.query_id in supporting_ids,
-            "supports_causal_scope": entry.query_id in causal_scope_ids,
+            "supports_required_evidence": entry.query_id in supporting_ids,
+            "supports_causal_locus": entry.query_id in causal_locus_ids,
             "supports_fault_mechanism": entry.query_id in mechanism_ids,
             "claim_types": [claim.value for claim in entry.claim_types],
         }
@@ -526,19 +529,33 @@ def _run_payload(
     evaluation_payload = evaluation.model_dump(mode="json")
     for field in (
         "correct_completion_tool_calls",
-        "tool_calls_through_mechanism_evidence",
-        "rows_returned_through_mechanism_evidence",
+        "tool_calls_through_required_evidence",
+        "rows_returned_through_required_evidence",
     ):
         if evaluation_payload.get(field) is None:
             evaluation_payload.pop(field)
     evaluation_payload.pop("supporting_evidence_query_ids")
-    evaluation_payload.pop("causal_scope_evidence_query_ids")
+    evaluation_payload.pop("causal_locus_evidence_query_ids")
     evaluation_payload.pop("mechanism_evidence_query_ids")
+    evidence_ordinals = {entry.query_id: index for index, entry in enumerate(evidence, start=1)}
+    claim_grounding = evaluation_payload.get("claim_grounding")
+    if isinstance(claim_grounding, dict):
+        for grounding in claim_grounding.values():
+            if not isinstance(grounding, dict):
+                continue
+            query_ids = grounding.pop("supporting_query_ids", [])
+            grounding["supporting_evidence_ordinals"] = [
+                evidence_ordinals[query_id]
+                for query_id in query_ids
+                if query_id in evidence_ordinals
+            ]
     evaluation_payload["supporting_evidence_ordinals"] = [
-        citation["ordinal"] for citation in citations if citation["supports_mechanism"] is True
+        citation["ordinal"]
+        for citation in citations
+        if citation["supports_required_evidence"] is True
     ]
-    evaluation_payload["causal_scope_evidence_ordinals"] = [
-        citation["ordinal"] for citation in citations if citation["supports_causal_scope"] is True
+    evaluation_payload["causal_locus_evidence_ordinals"] = [
+        citation["ordinal"] for citation in citations if citation["supports_causal_locus"] is True
     ]
     evaluation_payload["mechanism_evidence_ordinals"] = [
         citation["ordinal"]

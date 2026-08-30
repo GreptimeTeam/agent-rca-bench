@@ -57,14 +57,14 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v29-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v30-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
 
 
 def test_noncurrent_protocol_cannot_start_new_agent_execution() -> None:
-    require_current_protocol(29)
+    require_current_protocol(30)
 
-    with pytest.raises(ValueError, match="does not match current protocol v29"):
+    with pytest.raises(ValueError, match="does not match current protocol v30"):
         require_current_protocol(28)
 
 
@@ -174,7 +174,7 @@ def test_aegis_transfer_scorer_audit_uses_frozen_fixture_by_default() -> None:
         ]
     )
 
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v29-scorer.json"
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v30-scorer.json"
 
 
 def test_aegis_transfer_protocol_audit_uses_current_fixtures_without_paid_flag() -> None:
@@ -190,8 +190,8 @@ def test_aegis_transfer_protocol_audit_uses_current_fixtures_without_paid_flag()
         ]
     )
 
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v29-scorer.json"
-    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v29-four-model-protocol.json")
+    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v30-scorer.json"
+    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v30-four-model-protocol.json")
     assert not hasattr(args, "confirm_paid_api")
 
 
@@ -206,9 +206,9 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
             "--protocol-audit",
             "protocol.json",
             "--scorer",
-            "fixtures/reference/aegis-transfer-v29-scorer.json",
+            "fixtures/reference/aegis-transfer-v30-scorer.json",
             "--protocol",
-            "fixtures/reference/aegis-transfer-v29-four-model-protocol.json",
+            "fixtures/reference/aegis-transfer-v30-four-model-protocol.json",
             "--output",
             "formal.json",
         ]
@@ -234,9 +234,9 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v29-scorer.json"
+    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v30-scorer.json"
     assert str(preflight.protocol) == (
-        "fixtures/reference/aegis-transfer-v29-four-model-protocol.json"
+        "fixtures/reference/aegis-transfer-v30-four-model-protocol.json"
     )
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
@@ -253,9 +253,9 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
             "--protocol-audit",
             "protocol.json",
             "--scorer",
-            "fixtures/reference/aegis-transfer-v29-scorer.json",
+            "fixtures/reference/aegis-transfer-v30-scorer.json",
             "--protocol",
-            "fixtures/reference/aegis-transfer-v29-four-model-protocol.json",
+            "fixtures/reference/aegis-transfer-v30-four-model-protocol.json",
             "--output",
             "measurement.json",
         ]
@@ -265,12 +265,12 @@ def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
     assert paid.max_new_runs == 1
     assert paid.database == "case_03"
     assert str(paid.selection) == "fixtures/reference/aegis-transfer-v27-selection.json"
-    assert str(paid.scorer) == "fixtures/reference/aegis-transfer-v29-scorer.json"
-    assert str(paid.protocol) == "fixtures/reference/aegis-transfer-v29-four-model-protocol.json"
+    assert str(paid.scorer) == "fixtures/reference/aegis-transfer-v30-scorer.json"
+    assert str(paid.protocol) == "fixtures/reference/aegis-transfer-v30-four-model-protocol.json"
     assert not hasattr(export, "confirm_paid_api")
-    assert str(export.scorer) == "fixtures/reference/aegis-transfer-v29-scorer.json"
+    assert str(export.scorer) == "fixtures/reference/aegis-transfer-v30-scorer.json"
     assert str(export.protocol) == (
-        "fixtures/reference/aegis-transfer-v29-four-model-protocol.json"
+        "fixtures/reference/aegis-transfer-v30-four-model-protocol.json"
     )
 
 
@@ -302,7 +302,7 @@ def test_aegis_transfer_run_requires_explicit_paid_api_confirmation() -> None:
     assert str(args.selection) == (
         "fixtures/reference/aegis-transfer-v27-calibration-selection.json"
     )
-    assert str(args.scorer) == ("fixtures/reference/aegis-transfer-v29-calibration-scorer.json")
+    assert str(args.scorer) == ("fixtures/reference/aegis-transfer-v30-calibration-scorer.json")
     assert not hasattr(args, "model")
 
 
@@ -360,6 +360,21 @@ def test_graph_cli_freezes_balanced_two_treatment_schedule() -> None:
 def test_current_transfer_protocol_binds_the_extended_semantic_surface() -> None:
     assert benchmark_protocol()["semantic_graph"].endswith("v7")
     assert benchmark_protocol()["table_profile"].endswith("entity-roles-v3")
+    assert benchmark_protocol()["treatment_estimand"] == "complete-agent-facing-interface-v1"
+    assert benchmark_protocol()["treatment_components"] == {
+        "raw": ["telemetry", "ordinary-schema-metadata", "read-only-sql"],
+        "semantic_graph": [
+            "telemetry",
+            "ordinary-schema-metadata",
+            "read-only-sql",
+            "table-semantics",
+            "semantic-entities",
+            "semantic-relationships",
+            "usage-guidance",
+            "runtime-recovery-guidance",
+            "coverage-snapshot",
+        ],
+    }
 
 
 def test_discovery_runner_persists_failed_cells_and_continues(monkeypatch, tmp_path) -> None:
@@ -388,7 +403,7 @@ def test_discovery_runner_persists_failed_cells_and_continues(monkeypatch, tmp_p
         canonical_result=canonical,
         predicate_match=True,
         catalog_query="node disk write I/O",
-        catalog_matched_table_count=29,
+        catalog_matched_table_count=30,
         catalog_target_rank=2,
         catalog_target_in_top_five=True,
         catalog_top_five=["system_io_w_await", "system_io_w_s"],

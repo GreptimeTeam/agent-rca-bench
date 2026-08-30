@@ -275,7 +275,7 @@ def _agent_run(visibility: Visibility, model: str, *, error: str | None = None) 
                         query_id=result.query_id,
                         claim="private evidence claim",
                         claim_types=[
-                            EvidenceClaimType.CAUSAL_SCOPE,
+                            EvidenceClaimType.CAUSAL_LOCUS,
                             EvidenceClaimType.FAULT_MECHANISM,
                         ],
                     )
@@ -390,13 +390,13 @@ def test_preflight_binds_pricing_snapshot_across_resume(monkeypatch) -> None:
         )
 
 
-def test_v29_protocol_binds_development_case_and_strong_model_roster() -> None:
+def test_v30_protocol_binds_development_case_and_strong_model_roster() -> None:
     protocol = load_transfer_protocol_fixture(DEFAULT_PROTOCOL_FIXTURE)
     scorer = load_transfer_scorer_fixture(FORMAL_SCORER_FIXTURE)
     schedule = formal_schedule(protocol)
 
     assert protocol.agent_case_id == scorer.agent_case_id == "aegis-transfer-003"
-    assert protocol.benchmark_protocol_version == 29
+    assert protocol.benchmark_protocol_version == 30
     assert protocol.case_role == scorer.case_role == "development"
     assert [model.model for model in protocol.models] == [
         "gpt-5.6-sol",
@@ -671,7 +671,7 @@ def test_formal_runner_checks_protocol_with_wrapped_agent(monkeypatch) -> None:
         raise RuntimeError(f"protocol guard called for v{version}")
 
     monkeypatch.setattr(formal_module, "require_current_protocol", reject_protocol)
-    with pytest.raises(RuntimeError, match="protocol guard called for v29"):
+    with pytest.raises(RuntimeError, match="protocol guard called for v30"):
         execute_formal_runs(
             _Client(),  # type: ignore[arg-type]
             _case(),

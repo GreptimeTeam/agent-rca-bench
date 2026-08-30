@@ -206,6 +206,13 @@ def test_diagnosis_requires_canonical_fault_category() -> None:
     assert "call_path_delay" in schema["properties"]["mechanism_code"]["enum"]
     evidence = schema["properties"]["evidence"]["items"]
     assert "claim_types" in evidence["required"]
+    claim_types = evidence["properties"]["claim_types"]["items"]["enum"]
+    assert "causal_locus" in claim_types
+    assert "propagated_impact" in claim_types
+    assert "causal_scope" not in claim_types
+    claim_description = evidence["properties"]["claim_types"]["description"]
+    assert "where the mechanism occurs" in claim_description
+    assert "downstream symptom" in claim_description
 
 
 def test_current_diagnosis_contract_is_case_independent() -> None:

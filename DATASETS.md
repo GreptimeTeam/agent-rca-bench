@@ -14,7 +14,7 @@ but it must record every lossy or synthetic protocol field.
 | OpenRCA 1.0 Bank | OpenRCA Bank | Wide enterprise metric schema and legacy multimodal telemetry | Included | Not applicable: no standard entity identity or span roles |
 | OpenRCA 1.0 Market | OpenRCA Market | Multi-level node, pod, and service failures over wide legacy telemetry | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
 | OpenRCA 1.0 Telecom | OpenRCA Telecom | Independent telecom/database system with metrics and traces but no logs | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
-| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v24-v29 development evidence; the supported cohort is exhausted for fresh measurement | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
+| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v24-v30 development evidence; the supported cohort is exhausted for fresh measurement | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
 | OpenRCA 2.0 ops-lite | Hotel Reservation | Native OTel and verified causal paths | Provisional; internal protocol-formal measurement only | Positive when standard client/server spans witness service calls |
 | Amazon PetShop | Amazon PetShop | Component-level causal RCA over service metrics | Rejected | Metric-only; no incident-local mechanism label or continuous baseline |
 | AnoMod TrainTicket | TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
@@ -304,7 +304,7 @@ therefore rejected rather than repaired.
 - Stored telemetry reproduces the frozen mechanism evidence exactly: 57 normal
   paired Server `GET` spans, 758 abnormal Client `GET` spans, and 758 abnormal
   paired Server `OPTIONS` spans on the declared edge. The evaluator-side fixture
-  `fixtures/reference/aegis-transfer-scorer.json` freezes this predicate, the
+  The v24 scorer froze this predicate, the
   directed two-service answer, accepted method-replacement labels, and the
   canonical API runner contract. The agent-facing case exposes neither the
   source case name nor the source fault taxonomy. Raw SQL retains the publisher
@@ -341,9 +341,8 @@ therefore rejected rather than repaired.
   exhaustion. Its measurement interpretation is invalid because the scorer used the wrong
   observable and hidden exact-output contracts. The runs are retained as development evidence;
   their zero eligible pairs are not a model-quality or semantic-layer result.
-- `fixtures/reference/aegis-transfer-v26-calibration-selection.json` binds the corrected source
-  predicate to the same consumed case with `case_role=development` and to the exact parent v25
-  manifest bytes. `fixtures/reference/aegis-transfer-v26-calibration-scorer.json` freezes the
+- The v26 calibration cycle bound the corrected source predicate to the same consumed case with
+  `case_role=development` and to the exact parent v25 manifest bytes. Its scorer froze the
   corrected no-model oracle. It scores a structured dependency edge and global
   `call_path_delay` mechanism, routes citations by claim type, and accepts equivalent start-gap
   threshold proofs without requiring exact source counts or a prescribed SQL shape. SQL evidence
@@ -354,9 +353,8 @@ therefore rejected rather than repaired.
   a complete Client/Server start-gap transition proof, so the calibration yielded no eligible
   efficiency pair. Protocol v27 copies the current development fixtures under new bindings without
   changing the evidence semantics.
-- Protocol v24-v26 files and `artifacts/development/aegis-transfer-v24-deepseek.json` remain
-  immutable historical records. The current runtime does not shadow-score, resume, or export their
-  report, scorer, or protocol schemas.
+- `artifacts/development/aegis-transfer-v24-deepseek.json` remains a historical development record.
+  Superseded development fixtures are not part of the current runtime.
 - The fresh v27 selection preserves the trajectory-blind v26 selection and recomputes eligibility
   before agent execution over graph-eligible cases whose source predicate is also supported end to
   end by the transfer loader, stored oracle, and scorer. That support surface contains the
@@ -385,18 +383,41 @@ therefore rejected rather than repaired.
   source edge set, then compares the complete raw and Graph edge sets over the contiguous union.
   The union has 40 edges, and both sides have SHA-256
   `adde43389704b978531ae025cd478907a4eb0c7be473f361b746c96606d07d45`.
-- `fixtures/reference/aegis-transfer-v28-four-model-protocol.json` freezes 16 API cells over Raw
+- The v28 development protocol froze 16 API cells over Raw
   and GreptimeDB Semantic Graph for `deepseek-v4-pro`, `claude-sonnet-5`,
   `claude-opus-4-8`, and `gpt-5.6-sol`. It reuses the trajectory-blind v27 selection while binding
   the v28 scorer and runner surface. The two independent final source
   audits have the same semantic hash,
   `6ee4f3c43dfffca8e63195f2d614a70be63b75663a9a54a1c03a44c3b9d38428`. Preflight does not
   authorize or execute any provider call.
-- `fixtures/reference/aegis-transfer-v29-four-model-protocol.json` reclassifies case 003 as a
+- The v29 development cycle reclassified case 003 as a
   development calibration case because its v28 trajectory caused the diagnosis-contract change.
   Component scope now binds `causal_component`; dependency-edge scope binds both directed edge
   endpoints. SQL returns 200 rows by default, allows an explicit per-query limit up to 1,000, and
   rejects truncated final citations for repair. V29 does not supply fresh measurement evidence.
+- The two v29 OpenAI development cells exposed a query-recipe false negative. The Raw trajectory
+  cited a complete `STATUS_CODE_ERROR` transition at the selected operation and a complete grouped
+  severe-log result containing 1,981 `NullPointerException` records. The scorer rejected both
+  because the query split at the first observed error rather than the hidden intervention time and
+  returned the exception signature instead of filtering by it. The Graph trajectory cited the
+  correct component and operation but no exception logs. Protocol v30 accepts the Raw claim and
+  continues to reject the ungrounded Graph mechanism. These shadow-score results validate scorer
+  semantics only; they do not rewrite the v29 development report.
+- `fixtures/reference/aegis-transfer-v30-four-model-protocol.json` binds the claim-grounding
+  contract in `SCORING.md`. The source oracle remains 0/0 normal to 1,981/1,981 abnormal. Agent
+  evidence may use a telemetry-derived onset and noncanonical counts. Baseline absence still
+  requires complete coverage, OTel Error status cannot be replaced by HTTP 5xx, and an exception
+  signature must derive from returned log data. Entity existence and ordinary calls edges remain
+  navigation evidence and cannot independently ground the causal locus.
+- A two-cell v30 `gpt-5.6-sol` development calibration ran one Raw/Graph pair. Both trajectories
+  diagnosed the correct component, operation, and local `NullPointerException`, with valid
+  citations and no runner, budget, or SQL failure. Their initial evaluations exposed equivalent
+  result shapes missing from the scorer: status-grouped trace counts, single-row conditional
+  period counts, multi-service aggregates with projected identities, and a missing zero-period row
+  in a complete grouped result. Scorer revision `aegis-transfer-jvm-exception-v5` accepts those
+  forms while retaining the source-status, complete-window, lineage, and non-truncation checks.
+  Deterministic rescoring makes both cells auditable completions. Because these trajectories shaped
+  the scorer, they remain development calibration rather than measurement evidence.
 
 ## OpenRCA 2.0 ops-lite
 

@@ -204,7 +204,7 @@ def _agent_run(visibility: Visibility) -> AgentRun:
                     query_id="q01",
                     claim="paired timestamps cross the injected-delay threshold",
                     claim_types=[
-                        EvidenceClaimType.CAUSAL_SCOPE,
+                        EvidenceClaimType.CAUSAL_LOCUS,
                         EvidenceClaimType.FAULT_MECHANISM,
                     ],
                 )
@@ -241,6 +241,7 @@ def test_canonical_transfer_wiring_balances_positions_and_uses_graph_envelope(mo
     source = _source_audit()
     fixture = load_transfer_scorer_fixture(SCORER_PATH)
     scorer = audit_transfer_scorer(source, fixture, SCORER_PATH)
+    assert scorer["synthetic_regressions"]["graph_navigation_only"]["pass"] is True
     coverage = {"graph": {"status": "relational"}}
     report = build_transfer_run_report(case, fixture, SCORER_PATH, source, scorer, coverage)
     calls = []

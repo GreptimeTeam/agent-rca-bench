@@ -1,43 +1,55 @@
 {
   "version": 2,
-  "protocol_revision": "aegis-transfer-three-model-v3",
+  "protocol_revision": "aegis-transfer-four-model-v11",
   "agent_case_id": "aegis-transfer-003",
-  "case_role": "measurement",
-  "selection_fixture": "fixtures/reference/aegis-transfer-v26-selection.json",
+  "case_role": "development",
+  "selection_fixture": "fixtures/reference/aegis-transfer-v27-selection.json",
   "selection_fixture_sha256": "e4fefe3c39e8264467ebfa9373bce39cdee2ad68b9aeea84b46b0fd4d1f90819",
-  "scorer_fixture": "fixtures/reference/aegis-transfer-v26-scorer.json",
-  "scorer_fixture_sha256": "68e685f209082dc0dbc412983097ae9c7b01d51de600a3a3bd0c84c008bd71d7",
-  "benchmark_protocol_version": 26,
+  "scorer_fixture": "fixtures/reference/aegis-transfer-v30-scorer.json",
+  "scorer_fixture_sha256": "3d662a028fed86c32c135b03a881802bf3777916c88664b93683817817464d6e",
+  "benchmark_protocol_version": 30,
   "runner": "api",
   "models": [
+    {
+      "model": "gpt-5.6-sol",
+      "provider": "openai",
+      "api_transport": "openai-responses",
+      "prompt_cache": "implicit-prefix-30m",
+      "max_output_tokens": 16384,
+      "reasoning_effort": "medium"
+    },
     {
       "model": "deepseek-v4-pro",
       "provider": "deepseek",
       "api_transport": "anthropic-compatible-messages",
-      "prompt_cache": "provider-automatic-prefix"
+      "prompt_cache": "provider-automatic-prefix",
+      "max_output_tokens": 4096,
+      "reasoning_effort": null
     },
     {
       "model": "claude-sonnet-5",
       "provider": "anthropic",
       "api_transport": "anthropic-messages",
-      "prompt_cache": "ephemeral-request-cache-control"
+      "prompt_cache": "ephemeral-request-cache-control",
+      "max_output_tokens": 4096,
+      "reasoning_effort": null
     },
     {
       "model": "claude-opus-4-8",
       "provider": "anthropic",
       "api_transport": "anthropic-messages",
-      "prompt_cache": "ephemeral-request-cache-control"
+      "prompt_cache": "ephemeral-request-cache-control",
+      "max_output_tokens": 4096,
+      "reasoning_effort": null
     }
   ],
   "visibility_levels": [
     "raw",
-    "table_semantics",
     "semantic_graph"
   ],
   "max_tool_calls": 48,
   "max_turns": 58,
-  "max_tokens": 4096,
-  "repetitions_per_model": 3,
+  "repetitions_per_model": 2,
   "treatment_order_seed": 0,
   "parallel_runs": 1,
   "sampling": "provider-default; no seed sent",
@@ -53,6 +65,6 @@
     "correctness_pooled_across_models": false,
     "case_is_independent_unit": true,
     "repetitions_are_descriptive": true,
-    "single_case_claim": "fresh case-level transfer demonstration; not a general semantic-layer effect estimate"
+    "single_case_claim": "development calibration after claim-grounding revision; not fresh measurement evidence"
   }
 }
