@@ -37,6 +37,20 @@ only that minute-aligned half-open window. The benchmark SQL uses the same
 client window and the graph implementation's five-minute early and one-hour
 late server-span allowances.
 
+The end-to-end OpenRCA2 transfer gate uses the same relationship primitive but cannot assume that
+publisher windows are minute-aligned. It first reconstructs each source half-open period directly
+from stored spans and checks it against the independent source projection. It then compares Raw and
+Graph over the minimal whole-minute envelope containing the contiguous normal and abnormal windows.
+When the boundary minute belongs to only one period, it also proves exact equality per period; when
+both periods contain Client spans in that minute, only the contiguous union is representable without
+misassigning a Graph bucket. The audit records the boundary counts and chosen branch. It never moves
+the publisher boundary to manufacture equality.
+
+Every equality check compares the complete normalized set, not a selected edge or only a hash. The
+fields are source type and ID, destination type and ID, relationship type, provenance, request count,
+and error count. Request count is the number of paired Server spans. Error count uses only the
+Server span's source OTel `STATUS_CODE_ERROR`; HTTP 5xx is not promoted to OTel Error.
+
 ## Development fixtures
 
 These fixtures and earlier RCA trajectories influenced the protocol. They are
@@ -79,19 +93,22 @@ with exactly these fields: `src_type`, `src_id`, `dst_type`, `dst_id`,
 only the current database's trace table, pair client and server spans, scope the
 caller, use the frozen client window, and group by both service endpoints.
 
-In `semantic_graph`, the citation must be a successful, untruncated
+In `semantic_graph`, the citation may be either the same valid trace-table
+reconstruction accepted in `raw` or a successful, untruncated
 `query_semantic_graph` result for trace-provenance `calls` edges from the
-supplied service caller. It must not set `dst_id`, and its limit must cover the
-independently audited edge set. An explicit `dst_type` filter is optional: the
-cited result must itself contain only the canonical `service` destinations.
+supplied service caller. A Graph query must not set `dst_id`, and its limit must
+cover the independently audited edge set. An explicit `dst_type` filter is
+optional: the cited result must itself contain only the canonical `service`
+destinations. This is an intention-to-treat comparison: Graph assignment is not
+discarded when an agent chooses to verify the answer through raw telemetry.
 
 ## Deterministic scoring
 
 A run succeeds only when all conditions hold:
 
 1. The submitted edge identity and RED counts equal the frozen winner.
-2. `evidence_query_id` names exactly one executed query of the treatment's
-   required tool type.
+2. `evidence_query_id` names exactly one executed query accepted by the assigned
+   treatment: SQL in `raw`, or SQL or Semantic Graph in `semantic_graph`.
 3. The cited query has the complete caller scope described above.
 4. The cited result's normalized edge set equals the independent canonical
    Graph result, including every endpoint and its request/error counts.

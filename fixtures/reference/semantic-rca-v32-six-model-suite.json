@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "protocol_revision": "semantic-rca-six-model-suite-v6",
+  "benchmark_protocol_version": 32,
+  "greptimedb_revision": "e67af3fad8f698d964398843d78df782f20847bb",
+  "greptimedb_build_profile": "release",
+  "runner": "api",
+  "transfer_protocol_fixture": "fixtures/reference/openrca2-transfer-v32-protocol.json",
+  "transfer_protocol_fixture_sha256": "45a9cba7ddd32989d346bed93492e76f97ab79c290c9f48a3fd8a3a72863547f",
+  "discovery_selection_fixture": "fixtures/measurement/discovery-selection.json",
+  "discovery_selection_fixture_sha256": "68da5ba70d2856eb97bca1ca159aa4ca0d9208d2ad95b548d5187953a7946258",
+  "graph_selection_fixture": "fixtures/measurement/graph-v3-selection.json",
+  "graph_selection_fixture_sha256": "1de63cf22a88430bf0bd382e3bc69f49ff410c38ff9a6df8f3f01d8824b56892",
+  "discovery_protocol": {
+    "version": 3,
+    "treatments": [
+      "raw",
+      "semantic_graph"
+    ],
+    "task": "frozen-table-localization-and-temporal-evidence-v1",
+    "scorer": "current-database-qualified-cited-query-canonical-result-v2",
+    "tool_budget": 12,
+    "api_turn_limit": 22,
+    "subscription_turn_limit": null,
+    "subscription_process_timeout_seconds": 1800,
+    "catalog": "token-safe-io-direction-aware-v1",
+    "prompt": "case-preserving-double-quoted-identifiers-v2",
+    "case_role": "explicit-development-or-measurement-v1",
+    "fixture_binding": "source-case-matched-external-fixture-v1"
+  },
+  "graph_protocol": {
+    "version": 5,
+    "treatments": [
+      "raw",
+      "semantic_graph"
+    ],
+    "task": "direct-callee-max-error-red-evidence-v1",
+    "scorer": "intention-to-treat-canonical-edge-set-v3",
+    "prompt": "dual-surface-canonical-edge-evidence-v2",
+    "window": "minute-aligned-half-open-v1",
+    "tool_budget": 12,
+    "api_turn_limit": 22,
+    "subscription_turn_limit": null,
+    "subscription_process_timeout_seconds": 1800,
+    "case_role": "explicit-development-or-measurement-v1",
+    "fixture_binding": "source-case-matched-external-fixture-v1",
+    "selection": "manifest-ranked-prior-trajectory-excluded-v1"
+  },
+  "micro_execution": {
+    "visibility_levels": [
+      "raw",
+      "semantic_graph"
+    ],
+    "repetitions_per_model": 2,
+    "treatment_order_seed": 0,
+    "parallel_runs": 1,
+    "sampling": "provider-default; no seed sent",
+    "execution_order": "benchmark cases in manifest order; models in transfer roster order; seeded rotating treatments within each model"
+  },
+  "micro_cases": [
+    {
+      "benchmark": "discovery",
+      "adapter": "openrca",
+      "source_case": "Bank/task_5@2021-03-04T20:00",
+      "fixture": "fixtures/measurement/discovery-openrca-bank-redis02-cpu-user-time.json",
+      "fixture_sha256": "2e954c964efb833f3a541592895c81e3338a0b93d0a66d3f7be83964ff73fb91"
+    },
+    {
+      "benchmark": "discovery",
+      "adapter": "openrca",
+      "source_case": "Bank/task_6@2021-03-25T09:00",
+      "fixture": "fixtures/measurement/discovery-openrca-bank-tomcat01-disk-read.json",
+      "fixture_sha256": "42d5bb1cd68bef06049323c4ed37d20643153d33d45050c9add67fa908300f1c"
+    },
+    {
+      "benchmark": "discovery",
+      "adapter": "openrca",
+      "source_case": "Market/cloudbed-1@2022-03-20T09:30",
+      "fixture": "fixtures/measurement/discovery-openrca-market-c1-email-read.json",
+      "fixture_sha256": "59824dd4ef94fbe5b94e6bc3c6936baca06cfc07ccb0590c09c3e3387b1a7a6e"
+    },
+    {
+      "benchmark": "discovery",
+      "adapter": "openrca",
+      "source_case": "Market/cloudbed-2@2022-03-20T14:30",
+      "fixture": "fixtures/measurement/discovery-openrca-market-c2-email-write.json",
+      "fixture_sha256": "6749d323df5b1b9c9356585bd06079e1bc1e44f086894fdd4d4b9a95300a811b"
+    },
+    {
+      "benchmark": "discovery",
+      "adapter": "openrca",
+      "source_case": "Telecom@2020-05-29T03:30",
+      "fixture": "fixtures/measurement/discovery-openrca-telecom-docker001-cpu.json",
+      "fixture_sha256": "c02ee664de14a190f38cacdbb46df97d5fc46c0a0b2d5bce953419997faf5555"
+    },
+    {
+      "benchmark": "discovery",
+      "adapter": "openrca",
+      "source_case": "Telecom@2020-05-23T04:30",
+      "fixture": "fixtures/measurement/discovery-openrca-telecom-docker006-cpu.json",
+      "fixture_sha256": "9ac7efc2d3f434bc980b4f429252739d8c3f9b50192c4538751013d98d38a980"
+    },
+    {
+      "benchmark": "graph",
+      "adapter": "openrca2",
+      "source_case": "hs4-geo-pod-failure-pdt289",
+      "fixture": "fixtures/measurement/graph-v3-openrca2-hs4-geo.json",
+      "fixture_sha256": "d35ac488580ddf1e53c245231de98abb8e249e073b7050ff5eccd98795de1fb0"
+    },
+    {
+      "benchmark": "graph",
+      "adapter": "openrca2",
+      "source_case": "hs1-rate-pod-failure-vmvtxr",
+      "fixture": "fixtures/measurement/graph-v3-openrca2-hs1-rate.json",
+      "fixture_sha256": "ef39dc5f56a503fe4a9a1acd41d4e1cc5d88d83d8867b87b9bc6c1a8b87d3a67"
+    }
+  ],
+  "expected_micro_cells": 192,
+  "expected_transfer_cells": 240,
+  "expected_total_cells": 432
+}

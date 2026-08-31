@@ -12,29 +12,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from statistics import median
 
-from semantic_rca_bench.aegis_transfer_benchmark import (
-    TransferEnvironmentConfig,
-    prepare_transfer_environment,
-)
-from semantic_rca_bench.aegis_transfer_formal import (
-    bind_formal_execution,
-    build_formal_preflight_report,
-    execute_formal_runs,
-    write_formal_report,
-)
-from semantic_rca_bench.aegis_transfer_protocol import (
-    DEFAULT_PROTOCOL_FIXTURE,
-    audit_transfer_protocol,
-    load_transfer_protocol_fixture,
-)
-from semantic_rca_bench.aegis_transfer_release import (
-    build_measurement_artifact_from_files,
-)
-from semantic_rca_bench.aegis_transfer_scorer import (
-    FORMAL_SCORER_FIXTURE,
-    audit_transfer_scorer,
-    load_transfer_scorer_fixture,
-)
 from semantic_rca_bench.agent import run_agent
 from semantic_rca_bench.contracts import (
     AgentRun,
@@ -76,6 +53,9 @@ from semantic_rca_bench.datasets.openrca2 import OpenRCA2Repository
 from semantic_rca_bench.datasets.openrca2 import ingest_case as ingest_openrca2_case
 from semantic_rca_bench.datasets.openrca2 import source_audit as source_audit_openrca2
 from semantic_rca_bench.datasets.openrca2 import validate_ingest as validate_openrca2_ingest
+from semantic_rca_bench.datasets.openrca2_transfer import (
+    build_selection_fixture as build_openrca2_transfer_selection,
+)
 from semantic_rca_bench.datasets.rca100 import (
     DATASET_REVISION as RCA100_DATASET_REVISION,
 )
@@ -109,6 +89,27 @@ from semantic_rca_bench.discovery import (
     run_discovery_agent,
 )
 from semantic_rca_bench.evaluation import evaluate
+from semantic_rca_bench.formal_report import (
+    build_formal_measurement_report_from_files,
+    render_formal_measurement_report,
+    validate_formal_measurement_report,
+)
+from semantic_rca_bench.formal_suite import (
+    MicroEnvironmentConfig,
+    build_micro_preflight_report,
+    execute_micro_case_runs,
+    prepare_micro_environment,
+    validate_micro_report,
+    write_micro_report,
+)
+from semantic_rca_bench.formal_suite_protocol import (
+    DEFAULT_SUITE_PROTOCOL_FIXTURE,
+    load_formal_suite_protocol,
+)
+from semantic_rca_bench.formal_suite_release import (
+    build_micro_measurement_artifact_from_files,
+    validate_micro_measurement_artifact,
+)
 from semantic_rca_bench.graph_benchmark import (
     GRAPH_MAX_TOOL_CALLS,
     GraphAgentRun,
@@ -137,7 +138,6 @@ from semantic_rca_bench.protocol import (
     benchmark_protocol,
     discovery_protocol,
     graph_protocol,
-    require_current_protocol,
 )
 from semantic_rca_bench.protocol import (
     run_orders as _run_orders,
@@ -149,6 +149,29 @@ from semantic_rca_bench.report import (
     render_reports,
 )
 from semantic_rca_bench.subscription import run_subscription_agent
+from semantic_rca_bench.transfer_formal import (
+    TransferEnvironmentConfig as OpenRCA2TransferEnvironmentConfig,
+)
+from semantic_rca_bench.transfer_formal import (
+    bind_pilot_gate as bind_openrca2_pilot_gate,
+)
+from semantic_rca_bench.transfer_formal import (
+    build_preflight_report as build_openrca2_transfer_preflight,
+)
+from semantic_rca_bench.transfer_formal import (
+    execute_case_runs as execute_openrca2_transfer_case_runs,
+)
+from semantic_rca_bench.transfer_formal import (
+    prepare_transfer_environment as prepare_openrca2_transfer_environment,
+)
+from semantic_rca_bench.transfer_formal import validate_private_report
+from semantic_rca_bench.transfer_protocol import (
+    DEFAULT_PROTOCOL_FIXTURE as DEFAULT_OPENRCA2_TRANSFER_PROTOCOL,
+)
+from semantic_rca_bench.transfer_protocol import load_transfer_protocol
+from semantic_rca_bench.transfer_release import (
+    build_measurement_artifact as build_openrca2_transfer_artifact,
+)
 
 DEFAULT_GREPTIMEDB_REPO = Path("/Users/dennis/programming/rust/greptimedb")
 
@@ -190,23 +213,24 @@ def _add_api_transport_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-output-tokens", type=int, default=4096)
 
 
-def _add_aegis_formal_environment_arguments(
-    parser: argparse.ArgumentParser,
-    *,
-    selection: Path = Path("fixtures/reference/aegis-transfer-v31-selection.json"),
-    database: str = "case_04",
-) -> None:
-    parser.add_argument("--cases-dir", type=Path, required=True)
-    parser.add_argument("--meta-dir", type=Path, required=True)
-    parser.add_argument("--archive", type=Path, required=True)
+def _add_formal_suite_environment_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--selection",
+        "--openrca-cache-dir",
         type=Path,
-        default=selection,
+        default=Path(".data/openrca"),
+    )
+    parser.add_argument(
+        "--openrca2-cache-dir",
+        type=Path,
+        default=Path(".data/openrca2"),
     )
     parser.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
-    parser.add_argument("--run-dir", type=Path, required=True)
-    parser.add_argument("--database", default=database)
+    parser.add_argument("--run-root", type=Path, required=True)
+    parser.add_argument(
+        "--protocol",
+        type=Path,
+        default=DEFAULT_SUITE_PROTOCOL_FIXTURE,
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -233,94 +257,94 @@ def _parser() -> argparse.ArgumentParser:
     )
     aegis_fetch.add_argument("--output", type=Path, required=True)
 
-    aegis_transfer = subparsers.add_parser("aegis-transfer-audit")
-    _add_aegis_formal_environment_arguments(aegis_transfer)
-    aegis_transfer.add_argument("--output", type=Path, required=True)
+    suite_preflight = subparsers.add_parser("formal-suite-micro-preflight")
+    _add_formal_suite_environment_arguments(suite_preflight)
+    suite_preflight.add_argument("--source-audits-dir", type=Path, required=True)
+    suite_preflight.add_argument("--output", type=Path, required=True)
 
-    aegis_transfer_scorer = subparsers.add_parser("aegis-transfer-scorer-audit")
-    aegis_transfer_scorer.add_argument("--transfer-audit", type=Path, required=True)
-    aegis_transfer_scorer.add_argument(
-        "--scorer",
-        type=Path,
-        default=FORMAL_SCORER_FIXTURE,
-    )
-    aegis_transfer_scorer.add_argument("--output", type=Path, required=True)
-
-    aegis_transfer_protocol = subparsers.add_parser("aegis-transfer-protocol-audit")
-    aegis_transfer_protocol.add_argument("--source-audit", type=Path, required=True)
-    aegis_transfer_protocol.add_argument("--scorer-audit", type=Path, required=True)
-    aegis_transfer_protocol.add_argument(
-        "--scorer",
-        type=Path,
-        default=FORMAL_SCORER_FIXTURE,
-    )
-    aegis_transfer_protocol.add_argument(
-        "--protocol",
-        type=Path,
-        default=DEFAULT_PROTOCOL_FIXTURE,
-    )
-    aegis_transfer_protocol.add_argument("--output", type=Path, required=True)
-
-    aegis_formal_preflight = subparsers.add_parser("aegis-transfer-formal-preflight")
-    aegis_formal_preflight.add_argument("--source-audit", type=Path, required=True)
-    aegis_formal_preflight.add_argument("--scorer-audit", type=Path, required=True)
-    aegis_formal_preflight.add_argument("--protocol-audit", type=Path, required=True)
-    aegis_formal_preflight.add_argument(
-        "--scorer",
-        type=Path,
-        default=FORMAL_SCORER_FIXTURE,
-    )
-    aegis_formal_preflight.add_argument(
-        "--protocol",
-        type=Path,
-        default=DEFAULT_PROTOCOL_FIXTURE,
-    )
-    aegis_formal_preflight.add_argument("--output", type=Path, required=True)
-
-    aegis_formal_run = subparsers.add_parser("aegis-transfer-formal-run")
-    _add_aegis_formal_environment_arguments(aegis_formal_run)
-    aegis_formal_run.add_argument("--report", type=Path, required=True)
-    aegis_formal_run.add_argument("--source-audit-output", type=Path, required=True)
-    aegis_formal_run.add_argument("--scorer-audit-output", type=Path, required=True)
-    aegis_formal_run.add_argument("--protocol-audit-output", type=Path, required=True)
-    aegis_formal_run.add_argument(
-        "--scorer",
-        type=Path,
-        default=FORMAL_SCORER_FIXTURE,
-    )
-    aegis_formal_run.add_argument(
-        "--protocol",
-        type=Path,
-        default=DEFAULT_PROTOCOL_FIXTURE,
-    )
-    aegis_formal_run.add_argument(
+    suite_run = subparsers.add_parser("formal-suite-micro-run")
+    _add_formal_suite_environment_arguments(suite_run)
+    suite_run.add_argument("--report", type=Path, required=True)
+    suite_run.add_argument("--live-audits-dir", type=Path, required=True)
+    suite_run.add_argument(
         "--confirm-paid-api",
         action="store_true",
         required=True,
         help="acknowledge that this invocation may execute pending paid API cells",
     )
-    aegis_formal_run.add_argument(
+    suite_run.add_argument(
         "--max-new-runs",
         type=int,
-        help="execute at most this many pending cells in this invocation",
+        help="execute at most this many pending micro-benchmark cells",
     )
 
-    aegis_measurement_export = subparsers.add_parser("aegis-transfer-measurement-export")
-    aegis_measurement_export.add_argument("--run-report", type=Path, required=True)
-    aegis_measurement_export.add_argument("--source-audit", type=Path, required=True)
-    aegis_measurement_export.add_argument("--scorer-audit", type=Path, required=True)
-    aegis_measurement_export.add_argument("--protocol-audit", type=Path, required=True)
-    aegis_measurement_export.add_argument(
-        "--scorer",
-        type=Path,
-        required=True,
-    )
-    aegis_measurement_export.add_argument(
+    suite_export = subparsers.add_parser("formal-suite-micro-export")
+    suite_export.add_argument("--run-report", type=Path, required=True)
+    suite_export.add_argument(
         "--protocol",
         type=Path,
-        required=True,
+        default=DEFAULT_SUITE_PROTOCOL_FIXTURE,
     )
-    aegis_measurement_export.add_argument("--output", type=Path, required=True)
+    suite_export.add_argument("--output", type=Path, required=True)
+
+    suite_report = subparsers.add_parser("formal-suite-report")
+    suite_report.add_argument("--micro-artifact", type=Path, required=True)
+    suite_report.add_argument("--transfer-artifact", type=Path, required=True)
+    suite_report.add_argument(
+        "--suite-protocol",
+        type=Path,
+        default=DEFAULT_SUITE_PROTOCOL_FIXTURE,
+    )
+    suite_report.add_argument(
+        "--transfer-protocol",
+        type=Path,
+        default=DEFAULT_OPENRCA2_TRANSFER_PROTOCOL,
+    )
+    suite_report.add_argument("--output-json", type=Path, required=True)
+    suite_report.add_argument("--output-html", type=Path, required=True)
+
+    transfer_selection = subparsers.add_parser("transfer-selection-audit")
+    transfer_selection.add_argument("--cache-dir", type=Path, default=Path(".data/openrca2"))
+    transfer_selection.add_argument(
+        "--manifest", type=Path, default=Path(".data/openrca2/manifest.jsonl")
+    )
+    transfer_selection.add_argument(
+        "--protocol", type=Path, default=DEFAULT_OPENRCA2_TRANSFER_PROTOCOL
+    )
+    transfer_selection.add_argument("--output", type=Path, required=True)
+
+    transfer_preflight = subparsers.add_parser("transfer-preflight")
+    transfer_preflight.add_argument("--phase", choices=["pilot", "measurement"], required=True)
+    transfer_preflight.add_argument("--cache-dir", type=Path, default=Path(".data/openrca2"))
+    transfer_preflight.add_argument(
+        "--manifest", type=Path, default=Path(".data/openrca2/manifest.jsonl")
+    )
+    transfer_preflight.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
+    transfer_preflight.add_argument("--run-root", type=Path, required=True)
+    transfer_preflight.add_argument(
+        "--protocol", type=Path, default=DEFAULT_OPENRCA2_TRANSFER_PROTOCOL
+    )
+    transfer_preflight.add_argument("--output", type=Path, required=True)
+
+    transfer_run = subparsers.add_parser("transfer-run")
+    transfer_run.add_argument("--report", type=Path, required=True)
+    transfer_run.add_argument("--pilot-report", type=Path)
+    transfer_run.add_argument("--cache-dir", type=Path, default=Path(".data/openrca2"))
+    transfer_run.add_argument(
+        "--manifest", type=Path, default=Path(".data/openrca2/manifest.jsonl")
+    )
+    transfer_run.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
+    transfer_run.add_argument("--run-dir", type=Path, required=True)
+    transfer_run.add_argument("--protocol", type=Path, default=DEFAULT_OPENRCA2_TRANSFER_PROTOCOL)
+    transfer_run.add_argument("--confirm-paid-api", action="store_true", required=True)
+    transfer_run.add_argument("--max-new-runs", type=int)
+
+    transfer_export = subparsers.add_parser("transfer-export")
+    transfer_export.add_argument("--run-report", type=Path, required=True)
+    transfer_export.add_argument(
+        "--protocol", type=Path, default=DEFAULT_OPENRCA2_TRANSFER_PROTOCOL
+    )
+    transfer_export.add_argument("--output", type=Path, required=True)
 
     smoke = subparsers.add_parser("smoke")
     smoke.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
@@ -457,153 +481,262 @@ def aegis_fetch(args: argparse.Namespace) -> int:
     return 0
 
 
-def aegis_transfer_audit(args: argparse.Namespace) -> int:
-    with prepare_transfer_environment(_transfer_environment_config(args)) as prepared:
-        report = prepared.source_audit
-    write_json(args.output, report)
-    print(args.output)
-    return 0 if report["no_model_gates"]["all_passed"] else 1
-
-
-def aegis_transfer_scorer_audit(args: argparse.Namespace) -> int:
-    fixture = load_transfer_scorer_fixture(args.scorer)
-    transfer_audit = json.loads(args.transfer_audit.read_text())
-    if not isinstance(transfer_audit, dict):
-        raise ValueError("Aegis transfer audit must be a JSON object")
-    report = audit_transfer_scorer(transfer_audit, fixture, args.scorer)
-    write_json(args.output, report)
-    print(args.output)
-    return 0 if report["no_model_gates"]["all_passed"] else 1
-
-
-def aegis_transfer_protocol_audit(args: argparse.Namespace) -> int:
-    protocol = load_transfer_protocol_fixture(args.protocol)
-    scorer = load_transfer_scorer_fixture(args.scorer)
-    source_audit = json.loads(args.source_audit.read_text())
-    scorer_audit = json.loads(args.scorer_audit.read_text())
-    if not isinstance(source_audit, dict) or not isinstance(scorer_audit, dict):
-        raise ValueError("Aegis transfer protocol inputs must be JSON objects")
-    report = audit_transfer_protocol(
-        protocol,
-        args.protocol,
-        scorer,
-        args.scorer,
-        source_audit,
-        scorer_audit,
-    )
-    write_json(args.output, report)
-    print(args.output)
-    return 0 if report["no_model_gates"]["all_passed"] else 1
-
-
-def aegis_transfer_formal_preflight(args: argparse.Namespace) -> int:
+def formal_suite_micro_preflight(args: argparse.Namespace) -> int:
     if args.output.exists():
-        raise ValueError(f"refusing to overwrite formal preflight report: {args.output}")
-    scorer = load_transfer_scorer_fixture(args.scorer)
-    protocol = load_transfer_protocol_fixture(args.protocol)
-    source_audit = _read_json_object(args.source_audit)
-    scorer_audit = _read_json_object(args.scorer_audit)
-    protocol_audit = _read_json_object(args.protocol_audit)
-    report = build_formal_preflight_report(
-        source_audit,
-        scorer_audit,
-        protocol_audit,
-        scorer,
-        args.scorer,
-        protocol,
+        raise ValueError(f"refusing to overwrite formal suite preflight: {args.output}")
+    if args.run_root.exists():
+        raise ValueError(f"formal suite run root already exists: {args.run_root}")
+    if args.source_audits_dir.exists():
+        raise ValueError(
+            f"formal suite source audit directory already exists: {args.source_audits_dir}"
+        )
+    suite, transfer = load_formal_suite_protocol(args.protocol)
+    source_audits: list[dict[str, object]] = []
+    args.source_audits_dir.mkdir(parents=True)
+    for case_index, case_contract in enumerate(suite.micro_cases):
+        source_report = None
+        with prepare_micro_environment(
+            suite,
+            args.protocol,
+            case_contract,
+            _micro_environment_config(args, case_index),
+        ) as prepared:
+            source_report = prepared.source_audit
+        if source_report is None:
+            raise ValueError("formal suite source preflight produced no audit")
+        write_json(args.source_audits_dir / f"case-{case_index + 1:02d}.json", source_report)
+        source_audits.append(source_report)
+    report = build_micro_preflight_report(
+        suite,
+        transfer,
         args.protocol,
+        source_audits,
     )
-    write_formal_report(args.output, report)
+    write_micro_report(args.output, report)
     print(args.output)
     return 0
 
 
-def aegis_transfer_formal_run(args: argparse.Namespace) -> int:
+def formal_suite_micro_run(args: argparse.Namespace) -> int:
     if args.confirm_paid_api is not True:
-        raise ValueError("formal Aegis transfer run requires explicit paid API confirmation")
+        raise ValueError("formal suite micro run requires explicit paid API confirmation")
     if not args.report.is_file():
-        raise ValueError("formal Aegis transfer run requires an existing preflight report")
-    audit_paths = (
-        args.source_audit_output,
-        args.scorer_audit_output,
-        args.protocol_audit_output,
-    )
-    if len({path.resolve() for path in (*audit_paths, args.report)}) != 4:
-        raise ValueError("formal run report and audit output paths must be distinct")
-    for path in audit_paths:
-        if path.exists():
-            raise ValueError(f"refusing to overwrite formal audit artifact: {path}")
-    scorer = load_transfer_scorer_fixture(args.scorer)
-    protocol = load_transfer_protocol_fixture(args.protocol)
-    require_current_protocol(protocol.benchmark_protocol_version)
+        raise ValueError("formal suite micro run requires an existing preflight report")
+    if args.run_root.exists():
+        raise ValueError(f"formal suite run root already exists: {args.run_root}")
+    if args.live_audits_dir.exists():
+        raise ValueError(
+            f"formal suite live audit directory already exists: {args.live_audits_dir}"
+        )
+    if args.max_new_runs is not None and args.max_new_runs < 1:
+        raise ValueError("max_new_runs must be positive")
+    suite, transfer = load_formal_suite_protocol(args.protocol)
     report = _read_json_object(args.report)
-    source_report = None
-    scorer_report = None
-    protocol_report = None
+    validate_micro_report(report, suite, transfer, args.protocol)
+    args.live_audits_dir.mkdir(parents=True)
+    remaining = args.max_new_runs
     try:
-        with prepare_transfer_environment(_transfer_environment_config(args)) as prepared:
-            source_report = prepared.source_audit
-            scorer_report = audit_transfer_scorer(source_report, scorer, args.scorer)
-            protocol_report = audit_transfer_protocol(
-                protocol,
-                args.protocol,
-                scorer,
-                args.scorer,
-                source_report,
-                scorer_report,
-            )
-            bind_formal_execution(
-                report,
-                prepared.case,
-                source_report,
-                scorer_report,
-                protocol_report,
-                prepared.semantic_coverage,
-                scorer,
-                args.scorer,
-                protocol,
-                args.protocol,
-            )
-            write_json(args.source_audit_output, source_report)
-            write_json(args.scorer_audit_output, scorer_report)
-            write_json(args.protocol_audit_output, protocol_report)
-            write_formal_report(args.report, report)
-            execute_formal_runs(
-                prepared.client,
-                prepared.case,
-                scorer,
-                args.scorer,
-                protocol,
-                args.protocol,
-                report,
-                paid_api_confirmed=args.confirm_paid_api,
-                max_new_runs=args.max_new_runs,
-                on_update=lambda value: write_formal_report(args.report, value),
-            )
+        while report["execution"]["complete"] is not True and (remaining is None or remaining > 0):
+            schedule = report["schedule"]
+            runs = report["runs"]
+            if not isinstance(schedule, list) or not isinstance(runs, list):
+                raise ValueError("formal suite micro report schedule or runs are malformed")
+            next_cell = schedule[len(runs)]
+            if not isinstance(next_cell, dict):
+                raise ValueError("formal suite micro schedule cell is malformed")
+            case_index = int(next_cell["case_index"])
+            case_contract = suite.micro_cases[case_index]
+            source_report = None
+            before = len(runs)
+            try:
+                with prepare_micro_environment(
+                    suite,
+                    args.protocol,
+                    case_contract,
+                    _micro_environment_config(args, case_index),
+                ) as prepared:
+                    source_report = prepared.source_audit
+                    execute_micro_case_runs(
+                        report,
+                        suite,
+                        transfer,
+                        args.protocol,
+                        prepared,
+                        paid_api_confirmed=True,
+                        max_new_runs=remaining,
+                        on_update=lambda value: write_micro_report(args.report, value),
+                    )
+            finally:
+                if source_report is not None:
+                    write_json(
+                        args.live_audits_dir / f"case-{case_index + 1:02d}.json",
+                        source_report,
+                    )
+                write_micro_report(args.report, report)
+            completed = len(report["runs"]) - before
+            if completed < 1:
+                raise ValueError("formal suite micro execution made no progress")
+            if remaining is not None:
+                remaining -= completed
     finally:
-        if source_report is not None:
-            write_json(args.source_audit_output, source_report)
-        if scorer_report is not None:
-            write_json(args.scorer_audit_output, scorer_report)
-        if protocol_report is not None:
-            write_json(args.protocol_audit_output, protocol_report)
-        write_formal_report(args.report, report)
+        write_micro_report(args.report, report)
     execution = report["execution"]
     print(args.report)
     return 0 if execution["runner_errors"] == 0 and execution["budget_exhaustions"] == 0 else 1
 
 
-def aegis_transfer_measurement_export(args: argparse.Namespace) -> int:
+def formal_suite_micro_export(args: argparse.Namespace) -> int:
     if args.output.exists():
-        raise ValueError(f"refusing to overwrite measurement artifact: {args.output}")
-    artifact = build_measurement_artifact_from_files(
-        args.run_report,
-        args.source_audit,
-        args.scorer_audit,
-        args.protocol_audit,
-        args.scorer,
-        args.protocol,
+        raise ValueError(f"refusing to overwrite formal micro artifact: {args.output}")
+    artifact = build_micro_measurement_artifact_from_files(args.run_report, args.protocol)
+    validate_micro_measurement_artifact(artifact, args.protocol)
+    write_json(args.output, artifact)
+    print(args.output)
+    return 0
+
+
+def formal_suite_report(args: argparse.Namespace) -> int:
+    for output in (args.output_json, args.output_html):
+        if output.exists():
+            raise ValueError(f"refusing to overwrite formal measurement report: {output}")
+    report = build_formal_measurement_report_from_files(
+        args.micro_artifact,
+        args.transfer_artifact,
+        args.suite_protocol,
+        args.transfer_protocol,
     )
+    validate_formal_measurement_report(report)
+    write_json(args.output_json, report)
+    render_formal_measurement_report(report, args.output_html)
+    print(args.output_json)
+    print(args.output_html)
+    return 0
+
+
+def transfer_selection_audit(args: argparse.Namespace) -> int:
+    if args.output.exists():
+        raise ValueError(f"refusing to overwrite transfer selection audit: {args.output}")
+    _, frozen, _ = load_transfer_protocol(args.protocol)
+    rebuilt = build_openrca2_transfer_selection(
+        args.cache_dir,
+        args.manifest,
+        trajectory_exclusions=frozen.trajectory_exclusions,
+        case_role="measurement",
+    )
+    report = {
+        "mode": "semantic-rca-openrca2-transfer-selection-audit",
+        "frozen_selection": frozen.model_dump(mode="json"),
+        "rebuilt_selection": rebuilt.model_dump(mode="json"),
+        "exact_match": rebuilt == frozen,
+        "no_model_gates": {"all_passed": rebuilt == frozen},
+    }
+    write_json(args.output, report)
+    print(args.output)
+    return 0 if rebuilt == frozen else 1
+
+
+def transfer_preflight(args: argparse.Namespace) -> int:
+    if args.output.exists():
+        raise ValueError(f"refusing to overwrite transfer preflight: {args.output}")
+    if args.run_root.exists():
+        raise ValueError(f"transfer preflight run root already exists: {args.run_root}")
+    protocol, measurement, pilot = load_transfer_protocol(args.protocol)
+    selection = pilot if args.phase == "pilot" else measurement
+    source_audits = []
+    for spec in selection.selected_cases:
+        source_report = None
+        config = OpenRCA2TransferEnvironmentConfig(
+            cache_dir=args.cache_dir,
+            manifest_path=args.manifest,
+            greptimedb_repo=args.greptimedb_repo,
+            run_dir=args.run_root / spec.opaque_case_id,
+            database=spec.opaque_case_id.replace("-", "_"),
+        )
+        with prepare_openrca2_transfer_environment(protocol, spec, config) as prepared:
+            source_report = prepared.source_audit
+        if source_report is None:
+            raise ValueError("transfer no-model preflight produced no source audit")
+        source_audits.append(source_report)
+    report = build_openrca2_transfer_preflight(
+        protocol,
+        args.protocol,
+        selection,
+        source_audits,
+        phase=args.phase,
+    )
+    write_json(args.output, report)
+    print(args.output)
+    return 0
+
+
+def transfer_run(args: argparse.Namespace) -> int:
+    if args.confirm_paid_api is not True:
+        raise ValueError("transfer run requires explicit paid API confirmation")
+    if not args.report.is_file():
+        raise ValueError("transfer run requires an existing preflight report")
+    protocol, measurement, pilot = load_transfer_protocol(args.protocol)
+    report = _read_json_object(args.report)
+    phase = report.get("phase")
+    selection = pilot if phase == "pilot" else measurement if phase == "measurement" else None
+    if selection is None:
+        raise ValueError("transfer report has an unsupported phase")
+    validate_private_report(report, protocol, args.protocol, selection)
+    if phase == "measurement" and report.get("pilot_gate") is None:
+        if args.pilot_report is None:
+            raise ValueError("measurement execution requires --pilot-report")
+        pilot_report = _read_json_object(args.pilot_report)
+        validate_private_report(
+            pilot_report,
+            protocol,
+            args.protocol,
+            pilot,
+            require_complete=True,
+        )
+        bind_openrca2_pilot_gate(report, pilot_report, protocol)
+        write_json(args.report, report)
+    execution = report.get("execution")
+    if not isinstance(execution, dict) or execution.get("complete") is True:
+        print(args.report)
+        return 0
+    schedule = report.get("schedule")
+    runs = report.get("runs")
+    if not isinstance(schedule, list) or not isinstance(runs, list):
+        raise ValueError("transfer report schedule or runs are malformed")
+    next_cell = schedule[len(runs)]
+    if not isinstance(next_cell, dict):
+        raise ValueError("transfer schedule cell is malformed")
+    spec = selection.selected_cases[int(next_cell["case_index"])]
+    config = OpenRCA2TransferEnvironmentConfig(
+        cache_dir=args.cache_dir,
+        manifest_path=args.manifest,
+        greptimedb_repo=args.greptimedb_repo,
+        run_dir=args.run_dir,
+        database=spec.opaque_case_id.replace("-", "_"),
+    )
+    try:
+        with prepare_openrca2_transfer_environment(protocol, spec, config) as prepared:
+            execute_openrca2_transfer_case_runs(
+                report,
+                protocol,
+                args.protocol,
+                selection,
+                prepared,
+                paid_api_confirmed=True,
+                max_new_runs=args.max_new_runs,
+                on_update=lambda value: write_json(args.report, value),
+            )
+    finally:
+        write_json(args.report, report)
+    print(args.report)
+    execution = report["execution"]
+    return 0 if execution["runner_errors"] == 0 else 1
+
+
+def transfer_export(args: argparse.Namespace) -> int:
+    if args.output.exists():
+        raise ValueError(f"refusing to overwrite transfer artifact: {args.output}")
+    private = _read_json_object(args.run_report)
+    artifact = build_openrca2_transfer_artifact(private, args.protocol)
     write_json(args.output, artifact)
     print(args.output)
     return 0
@@ -616,15 +749,13 @@ def _read_json_object(path: Path) -> dict[str, object]:
     return value
 
 
-def _transfer_environment_config(args: argparse.Namespace) -> TransferEnvironmentConfig:
-    return TransferEnvironmentConfig(
-        cases_dir=args.cases_dir,
-        meta_dir=args.meta_dir,
-        archive=args.archive,
-        selection=args.selection,
+def _micro_environment_config(args: argparse.Namespace, case_index: int) -> MicroEnvironmentConfig:
+    return MicroEnvironmentConfig(
+        openrca_cache_dir=args.openrca_cache_dir,
+        openrca2_cache_dir=args.openrca2_cache_dir,
         greptimedb_repo=args.greptimedb_repo,
-        run_dir=args.run_dir,
-        database=args.database,
+        run_dir=args.run_root / f"case-{case_index + 1:02d}",
+        database=f"suite_case_{case_index + 1:02d}",
     )
 
 
@@ -1725,18 +1856,22 @@ def main() -> None:
             code = aegis_audit(args)
         elif args.command == "aegis-fetch":
             code = aegis_fetch(args)
-        elif args.command == "aegis-transfer-audit":
-            code = aegis_transfer_audit(args)
-        elif args.command == "aegis-transfer-scorer-audit":
-            code = aegis_transfer_scorer_audit(args)
-        elif args.command == "aegis-transfer-protocol-audit":
-            code = aegis_transfer_protocol_audit(args)
-        elif args.command == "aegis-transfer-formal-preflight":
-            code = aegis_transfer_formal_preflight(args)
-        elif args.command == "aegis-transfer-formal-run":
-            code = aegis_transfer_formal_run(args)
-        elif args.command == "aegis-transfer-measurement-export":
-            code = aegis_transfer_measurement_export(args)
+        elif args.command == "formal-suite-micro-preflight":
+            code = formal_suite_micro_preflight(args)
+        elif args.command == "formal-suite-micro-run":
+            code = formal_suite_micro_run(args)
+        elif args.command == "formal-suite-micro-export":
+            code = formal_suite_micro_export(args)
+        elif args.command == "formal-suite-report":
+            code = formal_suite_report(args)
+        elif args.command == "transfer-selection-audit":
+            code = transfer_selection_audit(args)
+        elif args.command == "transfer-preflight":
+            code = transfer_preflight(args)
+        elif args.command == "transfer-run":
+            code = transfer_run(args)
+        elif args.command == "transfer-export":
+            code = transfer_export(args)
         elif args.command == "smoke":
             code = smoke(args)
         elif args.command == "smoke-rca100":

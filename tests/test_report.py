@@ -53,7 +53,7 @@ def test_deepseek_pricing_separates_uncached_and_cache_read_input() -> None:
 
 def test_anthropic_api_usage_reconstructs_cached_tokens_and_cost() -> None:
     run = {
-        "usage": {"input_tokens": 120, "output_tokens": 150},
+        "usage": {"input_tokens": 2_336, "output_tokens": 150},
         "responses": [
             {
                 "usage": {
@@ -73,7 +73,7 @@ def test_anthropic_api_usage_reconstructs_cached_tokens_and_cost() -> None:
 
 def test_deepseek_api_usage_uses_native_automatic_cache_breakdown() -> None:
     run = {
-        "usage": {"input_tokens": 120, "output_tokens": 150},
+        "usage": {"input_tokens": 2_296, "output_tokens": 150},
         "responses": [
             {
                 "usage": {
@@ -141,7 +141,7 @@ def test_claude_subscription_does_not_double_count_cached_input() -> None:
 
 def test_openai_cache_breakdown_drives_usage_and_cost() -> None:
     run = {
-        "usage": {"input_tokens": 30, "output_tokens": 5},
+        "usage": {"input_tokens": 120, "output_tokens": 5},
         "responses": [
             {
                 "usage": {
@@ -161,7 +161,7 @@ def test_openai_cache_breakdown_drives_usage_and_cost() -> None:
         (30 * 4 + 80 * 0.4 + 10 * 5 + 5 * 20) / 1_000_000
     )
     assert "including reasoning" in TOKEN_ACCOUNTING["api"]["output_tokens"]
-    assert "subset of output_tokens" in TOKEN_ACCOUNTING["api"]["reasoning_tokens"]
+    assert "subset of output tokens" in TOKEN_ACCOUNTING["api"]["reasoning_tokens"]
 
 
 def test_qwen_china_pricing_uses_provider_cache_breakdown() -> None:
@@ -179,7 +179,7 @@ def test_qwen_china_pricing_uses_provider_cache_breakdown() -> None:
         ],
     }
     cached_run = {
-        "usage": {"input_tokens": 20, "output_tokens": 20},
+        "usage": {"input_tokens": 100, "output_tokens": 20},
         "responses": [
             {
                 "usage": {
@@ -202,7 +202,7 @@ def test_qwen_china_pricing_uses_provider_cache_breakdown() -> None:
 
 def test_bigmodel_cost_fails_closed_until_glm_5_3_china_price_is_published() -> None:
     run = {
-        "usage": {"input_tokens": 20, "output_tokens": 10},
+        "usage": {"input_tokens": 100, "output_tokens": 10},
         "responses": [
             {
                 "usage": {

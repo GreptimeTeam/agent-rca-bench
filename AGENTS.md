@@ -61,12 +61,16 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
   `database_load.rows_returned`（combined report 中为 `rows_returned`）和
   `evaluation.correct_completion_tool_calls`。两者使用冻结 protocol 定义的同一个
   eligibility guardrail。通用 RCA v23 guardrail 要求正确 diagnosis、至少一条 citation、
-  全部 citation 有效、无 runner error、无 budget hit。Aegis transfer v31 使用分层契约：
+  全部 citation 有效、无 runner error、无 budget hit。当前 OpenRCA2 transfer 使用分层契约：
   diagnosis 正确、全部 required evidence claim 由 execution-valid citation 覆盖、且无
   runner error/budget hit 时可比较效率；无关的额外无效 citation 只使
   `auditable_completion=false`，不能抹掉已经成立的 required evidence 或效率轨迹。
   Graph entity 存在和普通 calls edge 只能用于导航或传播分析，不能单独证明 required
   `causal_locus`；locus 必须由 incident-local、绑定所声明 operation 或 mechanism 的证据支持。
+- Metric evidence may query a population wider than the causal container when the complete result
+  directly projects a source identity and the scorer selects the target rows. Pod identity is
+  equivalent to container identity only when that equivalence is frozen by the provider-free
+  source audit; SQL spelling is not the identity contract.
 - 端到端 execution-valid citation 必须唯一对应一次成功、非截断的
   `execute_sql` 或 `query_semantic_graph` `QueryResult`，且 output query ID 与 citation
   一致。Schema/catalog discovery 和空 claim 不构成 evidence。这个检查只证明引用了
@@ -75,7 +79,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 - Discovery 与 Graph micro-benchmark 的预注册主要效率字段是
   `rows_returned_through_evidence` 和 `tool_calls_through_evidence`。它们只统计到
   cited canonical evidence，不得与端到端 RCA 字段混用。
-- Model token 结果在 runner accounting contract 完成审计和预注册前属于 exploratory metric。必须说明 cached input、system prompt、tool schema、tool results、structured output 和 reasoning output 的计量范围；reasoning 是 output 的子集时不得重复计数。
+- Model token 结果在 runner accounting contract 完成审计和预注册前属于 exploratory metric。API `run.usage.input_tokens` 保存 provider-visible total input；cache breakdown 留在 raw response usage。必须说明 cached input、system prompt、tool schema、tool results、structured output 和 reasoning output 的计量范围；reasoning 是 output 的子集时不得重复计数。
 - 跨 provider 的 reasoning effort 名称不是共同算力标尺。模型 report card 使用相同外部资源上限，并显式冻结各 provider 对所选模型公布的默认 reasoning 档位；报告比较的是完整冻结配置，不能把结果表述成脱离配置的模型能力排名。
 - Latency 只有在 treatment execution position 平衡、服务器负载可比时才能跨 treatment 解释。
 - Dataset taxonomy 不同的 correctness 结果分 corpus 报告，除非存在经过论证的共同 scoring contract。
@@ -84,7 +88,9 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
   injection timestamp 或精确 source count。查询必须保留 claim 所依赖的 source identity、
   operation、role、status、parent、time 和 result lineage；硬编码、谓词中和、row multiplication、
   truncated result，以及不能证明完整区间的 absence claim 必须 fail closed。规范见
-  `SCORING.md`。
+  `SCORING.md`。Transfer scorer 按 `scope × values × claim` 判定：SQL 确定 population 和
+  lineage，rows 确定观测事实，claim 的逻辑形式决定完整性要求。Citation 的 `claim_types`
+  只记录 agent 意图，不能直接让证据通过。
 - Protocol、prompt、scorer、selection、runner representation 或主要指标发生实质变化时，升级 protocol，并禁止与旧 protocol 混合统计。
 - `benchmark_protocol()` 必须以机器可读字段声明 treatment estimand 和每个 treatment 的
   agent-facing components。主实验测量完整 Semantic Graph interface，包括 metadata、Graph、
@@ -105,6 +111,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 
 - API、Codex subscription 和 Claude subscription 必须表达同一 system contract，并记录 runner capability 差异。API transport、provider endpoint、credential source、reasoning effort 和 reasoning/visible output 共享的预算必须由执行协议显式绑定，不能根据模型名或 provider 默认值推断。不同币种的 provider 成本必须保留原币种，未冻结汇率时不得聚合。SQL 默认返回 200 行，agent 可逐次显式提高到 1000 行；截断结果不能成为最终 citation，runner 必须给 agent 一次可修复的错误反馈。
 - Tenant-specific provider endpoints stay in runtime configuration. The protocol must validate the provider, region, and API surface without publishing workspace identifiers.
+- DeepSeek, BigModel, and DashScope API clients must bypass process-level proxy environment variables. OpenAI and Anthropic retain the operator's environment routing.
 - Subscription runner 不能静默回退到 API billing。Provider credentials 和 endpoint overrides 不得传入 subscription child process。
 - Tool-call cap 必须对 agent 可见；未知工具和 cap rejection 分开记录。Turn exhaustion 或 runner failure 应持久化为可评分失败，不能中断整个 batch。
 - 一个正式 case 使用独占 GreptimeDB instance。Semantic Graph 会枚举实例中的 user schemas，单纯使用不同 database 不能保证隔离。
@@ -113,7 +120,7 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 
 ## Benchmark 1.0 与研究结论边界
 
-`v24`、`v25`、`v26`、`v27`、`v28`、`v29`、`v30`、`v31` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
+`v24` 至 `v32` 等 protocol 编号是内部研发周期标识，用于区分工具、prompt、
 scorer 和实验装置的迭代，不是公开发布版本。冻结前的运行均为研发实验；当前代码不为
 旧研发周期保留 loader、scorer、resume、renderer 或其他兼容层。
 
@@ -133,9 +140,10 @@ scorer 和实验装置的迭代，不是公开发布版本。冻结前的运行�
 4. 从 retrieval micro-benchmark 到完整 RCA 的 correctness-preserving transfer demonstration，并公开每个 case 的 effect size、负结果和 applicability boundary。
 5. Machine-readable public summary、sanitized audit-artifact hashes、reproduction commands、英文与中文报告，以及已知限制。
 
-多模型 report cards、跨多个独立 system families 的 powered effect estimate、
-correctness-efficiency Pareto frontier 和 catalog broad-recall study 是后续研究交付，
-不是 1.0 发布门槛。要发布宽泛的 semantic-layer effect claim，必须先冻结 practical
+首个公开报告包含六个冻结模型配置，但模型之间不做 pooled score，模型数量也不构成
+统计样本量。跨多个独立 system families 的 powered effect estimate、
+correctness-efficiency Pareto frontier 和 catalog broad-recall study 是后续研究交付。
+要发布宽泛的 semantic-layer effect claim，必须先冻结 practical
 effect threshold、power analysis、multiplicity policy 和独立 case enrollment；
 repetitions 不能计入样本量。不要把一个可运行的 1.0 benchmark 表述成已经完成的
 confirmatory study。
@@ -157,6 +165,12 @@ confirmatory study。
 - `src/semantic_rca_bench/evidence.py`：runner 和 scorer 共用的 execution-valid citation 契约。
 - `src/semantic_rca_bench/report.py`、`assets/report.html`：combined report、case-level inference、token/cost accounting 和 report card UI。
 - `src/semantic_rca_bench/measurement_summary.py`：从 ignored formal reports 生成 case-level aggregate 和 report hashes。
+- `fixtures/reference/semantic-rca-v32-six-model-suite.json`：当前 432-cell suite 的 case、模型、GreptimeDB revision、release build profile、协议和文件哈希绑定。
+- `src/semantic_rca_bench/formal_suite_protocol.py`、`formal_suite.py`：192 个 Discovery/Graph cells 的 schedule、独占实例 no-model preflight、exact-prefix resume 和确定性重评分。
+- `src/semantic_rca_bench/formal_suite_release.py`：micro measurement artifact 的脱敏、公开重评分和按模型/benchmark 的 case-level aggregate；不得在这里创建跨任务或跨模型总分。
+- `src/semantic_rca_bench/datasets/openrca2_transfer.py`、`edge_audit.py`：十个 fresh transfer cases 的冻结 loader、source-faithful replay、独立 raw-span edge reconstruction 和完整 Graph equality gate。
+- `src/semantic_rca_bench/transfer_scorer.py`、`transfer_protocol.py`、`transfer_formal.py`、`transfer_release.py`：transfer claim grounding、24-cell development pilot、240-cell measurement schedule、resume、脱敏和公开确定性重评分。
+- `src/semantic_rca_bench/formal_report.py`、`assets/formal-measurement-report.html`：从两份脱敏 measurement artifact 生成综合 JSON 和自包含 HTML；只能做分 benchmark、分模型汇总，不得创建 pooled score。
 - `src/semantic_rca_bench/selection.py`：离线构造和审计 selection manifest 的 deterministic ranking primitive；运行时 CLI 不重新选 case。
 - `src/semantic_rca_bench/datasets/`：dataset adapters 和 source audits。
 - `src/semantic_rca_bench/agent.py`、`subscription.py`：API 与 subscription runner contracts。
@@ -198,6 +212,14 @@ uv run semantic-rca discovery-audit --help
 uv run semantic-rca discovery-run --help
 uv run semantic-rca graph-audit --help
 uv run semantic-rca graph-run --help
+uv run semantic-rca formal-suite-micro-preflight --help
+uv run semantic-rca formal-suite-micro-run --help
+uv run semantic-rca formal-suite-micro-export --help
+uv run semantic-rca formal-suite-report --help
+uv run semantic-rca transfer-selection-audit --help
+uv run semantic-rca transfer-preflight --help
+uv run semantic-rca transfer-run --help
+uv run semantic-rca transfer-export --help
 uv run semantic-rca run --help
 uv run semantic-rca batch --help
 uv run semantic-rca render --help

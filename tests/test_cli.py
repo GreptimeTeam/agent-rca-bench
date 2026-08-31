@@ -57,14 +57,14 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v31-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v32-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
 
 
 def test_noncurrent_protocol_cannot_start_new_agent_execution() -> None:
-    require_current_protocol(31)
+    require_current_protocol(32)
 
-    with pytest.raises(ValueError, match="does not match current protocol v31"):
+    with pytest.raises(ValueError, match="does not match current protocol v32"):
         require_current_protocol(30)
 
 
@@ -123,28 +123,6 @@ def test_openrca2_smoke_defaults_to_the_frozen_measurement_case() -> None:
     assert str(args.cache_dir) == ".data/openrca2"
 
 
-def test_aegis_transfer_audit_requires_exclusive_run_directory() -> None:
-    args = _parser().parse_args(
-        [
-            "aegis-transfer-audit",
-            "--cases-dir",
-            "cases",
-            "--meta-dir",
-            "meta",
-            "--archive",
-            "segments",
-            "--run-dir",
-            "instance",
-            "--output",
-            "audit.json",
-        ]
-    )
-
-    assert args.database == "case_04"
-    assert str(args.selection) == "fixtures/reference/aegis-transfer-v31-selection.json"
-    assert str(args.run_dir) == "instance"
-
-
 def test_aegis_source_commands_default_to_cohort_audit() -> None:
     audit = _parser().parse_args(
         [
@@ -163,113 +141,54 @@ def test_aegis_source_commands_default_to_cohort_audit() -> None:
     assert fetch.selection is None
 
 
-def test_aegis_transfer_scorer_audit_uses_frozen_fixture_by_default() -> None:
-    args = _parser().parse_args(
-        [
-            "aegis-transfer-scorer-audit",
-            "--transfer-audit",
-            "transfer.json",
-            "--output",
-            "scorer.json",
-        ]
-    )
-
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v31-scorer.json"
-
-
-def test_aegis_transfer_protocol_audit_uses_current_fixtures_without_paid_flag() -> None:
-    args = _parser().parse_args(
-        [
-            "aegis-transfer-protocol-audit",
-            "--source-audit",
-            "source.json",
-            "--scorer-audit",
-            "scorer.json",
-            "--output",
-            "protocol.json",
-        ]
-    )
-
-    assert str(args.scorer) == "fixtures/reference/aegis-transfer-v31-scorer.json"
-    assert str(args.protocol) == ("fixtures/reference/aegis-transfer-v31-six-model-protocol.json")
-    assert not hasattr(args, "confirm_paid_api")
-
-
-def test_aegis_formal_commands_separate_preflight_from_paid_execution() -> None:
+def test_formal_suite_separates_micro_preflight_from_paid_execution() -> None:
     preflight = _parser().parse_args(
         [
-            "aegis-transfer-formal-preflight",
-            "--source-audit",
-            "source.json",
-            "--scorer-audit",
-            "scorer.json",
-            "--protocol-audit",
-            "protocol.json",
-            "--scorer",
-            "fixtures/reference/aegis-transfer-v31-scorer.json",
-            "--protocol",
-            "fixtures/reference/aegis-transfer-v31-six-model-protocol.json",
+            "formal-suite-micro-preflight",
+            "--run-root",
+            "preflight-instances",
+            "--source-audits-dir",
+            "source-audits",
             "--output",
-            "formal.json",
+            "formal-micro.json",
         ]
     )
     execution = [
-        "aegis-transfer-formal-run",
-        "--cases-dir",
-        "cases",
-        "--meta-dir",
-        "meta",
-        "--archive",
-        "segments",
-        "--run-dir",
-        "instance",
+        "formal-suite-micro-run",
+        "--run-root",
+        "paid-instances",
         "--report",
-        "formal.json",
-        "--source-audit-output",
-        "source-live.json",
-        "--scorer-audit-output",
-        "scorer-live.json",
-        "--protocol-audit-output",
-        "protocol-live.json",
+        "formal-micro.json",
+        "--live-audits-dir",
+        "live-audits",
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.scorer) == "fixtures/reference/aegis-transfer-v31-scorer.json"
-    assert str(preflight.protocol) == (
-        "fixtures/reference/aegis-transfer-v31-six-model-protocol.json"
-    )
+    assert str(preflight.protocol) == ("fixtures/reference/semantic-rca-v32-six-model-suite.json")
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
     paid = _parser().parse_args([*execution, "--max-new-runs", "1", "--confirm-paid-api"])
-    export = _parser().parse_args(
+    assert paid.confirm_paid_api is True
+    assert paid.max_new_runs == 1
+
+
+def test_formal_suite_report_uses_current_public_fixtures() -> None:
+    args = _parser().parse_args(
         [
-            "aegis-transfer-measurement-export",
-            "--run-report",
-            "formal.json",
-            "--source-audit",
-            "source.json",
-            "--scorer-audit",
-            "scorer.json",
-            "--protocol-audit",
-            "protocol.json",
-            "--scorer",
-            "fixtures/reference/aegis-transfer-v31-scorer.json",
-            "--protocol",
-            "fixtures/reference/aegis-transfer-v31-six-model-protocol.json",
-            "--output",
-            "measurement.json",
+            "formal-suite-report",
+            "--micro-artifact",
+            "micro.json",
+            "--transfer-artifact",
+            "transfer.json",
+            "--output-json",
+            "report.json",
+            "--output-html",
+            "report.html",
         ]
     )
 
-    assert paid.confirm_paid_api is True
-    assert paid.max_new_runs == 1
-    assert paid.database == "case_04"
-    assert str(paid.selection) == "fixtures/reference/aegis-transfer-v31-selection.json"
-    assert str(paid.scorer) == "fixtures/reference/aegis-transfer-v31-scorer.json"
-    assert str(paid.protocol) == "fixtures/reference/aegis-transfer-v31-six-model-protocol.json"
-    assert not hasattr(export, "confirm_paid_api")
-    assert str(export.scorer) == "fixtures/reference/aegis-transfer-v31-scorer.json"
-    assert str(export.protocol) == ("fixtures/reference/aegis-transfer-v31-six-model-protocol.json")
+    assert str(args.suite_protocol) == ("fixtures/reference/semantic-rca-v32-six-model-suite.json")
+    assert str(args.transfer_protocol) == ("fixtures/reference/openrca2-transfer-v32-protocol.json")
 
 
 def test_measurement_database_name_cannot_leak_ground_truth() -> None:
@@ -341,6 +260,34 @@ def test_current_transfer_protocol_binds_the_extended_semantic_surface() -> None
             "coverage-snapshot",
         ],
     }
+
+
+def test_openrca2_transfer_cli_separates_no_model_and_paid_commands() -> None:
+    preflight = _parser().parse_args(
+        [
+            "transfer-preflight",
+            "--phase",
+            "pilot",
+            "--run-root",
+            "runs",
+            "--output",
+            "preflight.json",
+        ]
+    )
+    execution = [
+        "transfer-run",
+        "--report",
+        "preflight.json",
+        "--run-dir",
+        "live-run",
+    ]
+
+    assert not hasattr(preflight, "confirm_paid_api")
+    assert str(preflight.protocol) == "fixtures/reference/openrca2-transfer-v32-protocol.json"
+    with pytest.raises(SystemExit):
+        _parser().parse_args(execution)
+    paid = _parser().parse_args([*execution, "--confirm-paid-api"])
+    assert paid.confirm_paid_api is True
 
 
 def test_discovery_runner_persists_failed_cells_and_continues(monkeypatch, tmp_path) -> None:
@@ -420,7 +367,7 @@ def test_discovery_runner_persists_failed_cells_and_continues(monkeypatch, tmp_p
     assert report["discovery_report_schema_version"] == 2
     assert (
         report["token_accounting"]["cached_input"]
-        == "separate raw response fields; omitted from run.usage"
+        == "included in input_tokens and retained separately in raw response usage"
     )
     assert report["run_pair_descriptive"]["task_success"] == {
         "paired_observations": 2,

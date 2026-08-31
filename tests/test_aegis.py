@@ -410,6 +410,17 @@ def test_fresh_selection_only_admits_end_to_end_supported_mechanisms(
     assert aegis._transfer_mechanism_supported(mechanism) is supported
 
 
+def test_release_selection_preserves_start_gap_fallback() -> None:
+    mechanism = {
+        "predicate": "source_declared_http_delay_threshold",
+        "predicate_match": False,
+        "start_gap_predicate": "source_declared_http_client_server_start_gap",
+        "start_gap_predicate_match": True,
+    }
+
+    assert aegis._release_mechanism_observable(mechanism) is True
+
+
 def test_aegis_repository_verifies_and_extracts_only_dataset(tmp_path: Path, monkeypatch) -> None:
     case = (
         "ts0-ts-security-service-request-replace-method-j6gpxx",

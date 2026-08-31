@@ -98,7 +98,6 @@ MODEL_PRICING = {
         "input_per_million": 12.0,
         "input_cache_hit_per_million": 1.5,
         "output_per_million": 36.0,
-        "cache_breakdown_required": True,
         "checked_at": "2026-08-30",
         "note": (
             "Alibaba Cloud Model Studio China (Beijing) workspace deployment. Automatic "
@@ -112,18 +111,21 @@ MODEL_PRICING = {
 TOKEN_ACCOUNTING = {
     "api": {
         "scope": "sum of provider usage across all responses in one run",
-        "input_tokens": "uncached input only",
-        "cached_input": "separate raw response fields; omitted from run.usage",
-        "cached_input_included_in_input_tokens": False,
+        "input_tokens": (
+            "provider-reported total input; Anthropic totals are reconstructed from input, "
+            "cache creation, and cache-read fields"
+        ),
+        "cached_input": "included in input_tokens and retained separately in raw response usage",
+        "cached_input_included_in_input_tokens": True,
         "context": "system prompt, tool schemas, and prior tool results are sent to the provider",
         "output_tokens": (
             "normalized provider-reported output_tokens or completion_tokens, including "
             "reasoning where the provider includes it"
         ),
         "reasoning_tokens": (
-            "Responses API reasoning_tokens is recorded as a subset of output_tokens when the "
-            "provider returns it; BigModel Chat Completions does not expose a separate token "
-            "breakdown"
+            "reasoning_tokens or thinking_tokens is recorded as a subset of output tokens when "
+            "the provider returns an output-token breakdown; providers without that breakdown "
+            "still include reasoning in output tokens"
         ),
         "comparability": "paired comparisons only within the same provider and runner contract",
     },
@@ -230,9 +232,7 @@ def _estimated_api_cost(run: Mapping[str, object], pricing: Mapping[str, object]
         run
     )
     cache_read_rate = pricing.get("input_cache_hit_per_million")
-    if (
-        cache_read_rate is not None or pricing.get("cache_breakdown_required") is True
-    ) and not cache_breakdown_available:
+    if cache_read_rate is not None and not cache_breakdown_available:
         return None
     if cache_read and cache_read_rate is None:
         return None

@@ -79,7 +79,7 @@ def _fixture(root: Path) -> Path:
                         "direction": "to",
                     }
                 ],
-                "ground_truth": [{"service": ["shipping"]}],
+                "ground_truth": [{"service": ["shipping", "quote"]}],
             }
         )
     )
@@ -216,13 +216,24 @@ def test_openrca2_case_uses_system_scoped_taxonomy_and_native_alert(tmp_path: Pa
     assert case.ground_truth.fault_type == "NetworkDelay"
 
 
-def test_openrca2_rejects_ambiguous_manifest_and_injection_roots(tmp_path: Path) -> None:
+def test_openrca2_accepts_directed_injection_target_outside_manifest_root(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "cases" / "otel-demo3-shipping-delay-m6fhpx"
+    root.mkdir(parents=True)
+
+    case = _load_case(root, _fixture(root))
+
+    assert case.ground_truth.causal_component == "shipping"
+
+
+def test_openrca2_rejects_directed_injection_with_wrong_manifest_root(tmp_path: Path) -> None:
     root = tmp_path / "cases" / "otel-demo3-shipping-delay-m6fhpx"
     root.mkdir(parents=True)
     manifest = _fixture(root)
     injection_path = root / "injection.json"
     injection = json.loads(injection_path.read_text())
-    injection["ground_truth"] = [{"service": ["shipping", "quote"]}]
+    injection["ground_truth"] = [{"service": ["shipping", "currency"]}]
     injection_path.write_text(json.dumps(injection))
 
     try:
@@ -231,7 +242,24 @@ def test_openrca2_rejects_ambiguous_manifest_and_injection_roots(tmp_path: Path)
         assert "manifest roots" in str(error)
         assert "injection ground truth" in str(error)
     else:
-        raise AssertionError("ambiguous root-cause services must fail the no-model gate")
+        raise AssertionError("inconsistent directed injection must fail the no-model gate")
+
+
+def test_openrca2_transfer_can_use_generic_alert_when_source_has_no_issue(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "cases" / "otel-demo3-shipping-delay-m6fhpx"
+    root.mkdir(parents=True)
+    manifest = _fixture(root)
+    _write_parquet(
+        root / "conclusion.parquet",
+        {"Issues": [json.dumps({})]},
+        pa.schema([("Issues", pa.large_string())]),
+    )
+
+    case = _load_case(root, manifest, require_observable_alert=False)
+
+    assert case.input.alert_text is None
 
 
 def test_openrca2_audit_preserves_source_defects_and_native_trace_semantics(

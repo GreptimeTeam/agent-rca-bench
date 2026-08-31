@@ -14,7 +14,7 @@ def is_valid_evidence_trace(matches: list[ToolTrace]) -> bool:
         return False
     if trace.tool_name == "execute_sql":
         query = str(trace.input.get("query") or trace.input.get("sql") or "")
-        if not _is_evidence_sql(query):
+        if not is_evidence_sql(query):
             return False
     if not isinstance(trace.output, dict):
         return False
@@ -25,7 +25,7 @@ def is_valid_evidence_trace(matches: list[ToolTrace]) -> bool:
     return result.query_id == trace.query_id and not result.truncated
 
 
-def _is_evidence_sql(query: str) -> bool:
+def is_evidence_sql(query: str) -> bool:
     statement = None
     for dialect in ("postgres", "mysql"):
         try:

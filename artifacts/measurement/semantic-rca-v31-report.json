@@ -1,0 +1,1220 @@
+{
+  "audit": {
+    "micro_no_model_gates_passed": true,
+    "private_provider_payloads_included": false,
+    "raw_telemetry_rows_included": false,
+    "transfer_no_model_gates_passed": true,
+    "transfer_raw_graph_exact_edge_equality": true
+  },
+  "costs": {
+    "cross_currency_total": null,
+    "known_totals_by_currency": {
+      "CNY": 12.0569415,
+      "USD": 29.223846104000003
+    },
+    "models": {
+      "claude-fable-5": {
+        "currency": "USD",
+        "estimated_cost": 12.217559000000001
+      },
+      "claude-opus-5": {
+        "currency": "USD",
+        "estimated_cost": 9.29234
+      },
+      "deepseek-v4-pro": {
+        "currency": "USD",
+        "estimated_cost": 1.436561104
+      },
+      "glm-5.3": {
+        "currency": "CNY",
+        "estimated_cost": null
+      },
+      "gpt-5.6-sol": {
+        "currency": "USD",
+        "estimated_cost": 6.277386000000001
+      },
+      "qwen3.8-2.4t-a95b": {
+        "currency": "CNY",
+        "estimated_cost": 12.0569415
+      }
+    },
+    "models_with_unavailable_estimate": [
+      "glm-5.3"
+    ]
+  },
+  "descriptive_totals": {
+    "inference_role": "descriptive only; models and repetitions are not pooled samples",
+    "micro_success": {
+      "raw": 89,
+      "semantic_graph": 85
+    },
+    "transfer_auditable_completion": {
+      "raw": 0,
+      "semantic_graph": 1
+    },
+    "transfer_diagnosis_correct": {
+      "raw": 12,
+      "semantic_graph": 12
+    },
+    "transfer_required_evidence_covered": {
+      "raw": 0,
+      "semantic_graph": 1
+    }
+  },
+  "execution": {
+    "budget_exhaustions": 0,
+    "completed_cells": 216,
+    "expected_cells": 216,
+    "micro_cases": 8,
+    "micro_cells": 192,
+    "models": 6,
+    "repetitions_per_model_case": 2,
+    "runner_errors": 0,
+    "transfer_cases": 1,
+    "transfer_cells": 24,
+    "treatments": [
+      "raw",
+      "semantic_graph"
+    ]
+  },
+  "integrity": {
+    "hash_scope": "all report fields except integrity",
+    "semantic_payload_sha256": "98dad92574b1439f3b8f4eb9bc96d08c02f2aad5b1058ed836f6cc0da0f97491"
+  },
+  "license": {
+    "micro_source_terms": {
+      "artifact_schema_and_derived_aggregates": "Apache-2.0 benchmark artifact",
+      "benchmark_code": "Apache-2.0",
+      "openrca_1_telemetry": "CC BY-NC 4.0; telemetry rows are not redistributed",
+      "openrca_2_terms": "dataset card says Apache-2.0; paper says CC-BY-SA 4.0; telemetry rows are not redistributed"
+    },
+    "report_schema_and_derived_aggregates": "Apache-2.0",
+    "source_telemetry_redistributed": false,
+    "transfer_source_terms": {
+      "artifact_schema_and_benchmark_metadata": "Apache-2.0",
+      "benchmark_code": "Apache-2.0",
+      "derived_source_facts": "Source dataset record declares CC-BY-4.0; reviewer artifact data coverage remains unclear.",
+      "publication_mode": "pinned-downloader; telemetry not redistributed",
+      "reviewer_artifact_data_license": "not explicitly covered by root Apache-2.0",
+      "source_dataset_record": "CC-BY-4.0",
+      "source_telemetry_redistributed": false
+    }
+  },
+  "limitations": [
+    "The eight-case micro cohort is a fixed reference cohort, not a fresh population holdout.",
+    "The end-to-end transfer result contains one independent Aegis case; it cannot estimate a broad population effect.",
+    "No transfer treatment pair covered all required evidence, so end-to-end efficiency deltas are not estimable.",
+    "Provider reasoning settings are frozen configurations, not a common compute scale.",
+    "Costs are provider-price estimates in original currencies; missing prices remain unavailable and currencies are not converted.",
+    "Claude prompt caching was enabled, but provider usage reported no cache creation or reads for the micro-benchmark cells; the longer transfer cells did report cache usage. Costs use the reported usage without imputing hits.",
+    "This execution did not bind the benchmark worktree to a Git commit; a tagged public release requires a clean, commit-bound rerun."
+  ],
+  "model_order": [
+    "gpt-5.6-sol",
+    "deepseek-v4-pro",
+    "claude-opus-5",
+    "claude-fable-5",
+    "glm-5.3",
+    "qwen3.8-2.4t-a95b"
+  ],
+  "model_reports": {
+    "claude-fable-5": {
+      "configuration": {
+        "api_transport": "anthropic-messages",
+        "max_output_tokens": 16384,
+        "model": "claude-fable-5",
+        "prompt_cache": "ephemeral-request-cache-control",
+        "provider": "anthropic",
+        "reasoning_effort": "high"
+      },
+      "micro": {
+        "benchmarks": {
+          "discovery": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 6,
+                "exact_two_sided_sign_test_p_value": 0.03125,
+                "improvements": 0,
+                "median_delta": 12363.0,
+                "regressions": 6,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 6,
+                "exact_two_sided_sign_test_p_value": 0.6875,
+                "improvements": 2,
+                "median_delta": 12.0,
+                "regressions": 4,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 6,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": 0.0,
+                "regressions": 0,
+                "ties": 4
+              }
+            },
+            "runs": 24,
+            "success": {
+              "raw": 12,
+              "semantic_graph": 12
+            }
+          },
+          "graph": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -8610.75,
+                "regressions": 0,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -67.0,
+                "regressions": 0,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -2.75,
+                "regressions": 0,
+                "ties": 0
+              }
+            },
+            "runs": 8,
+            "success": {
+              "raw": 4,
+              "semantic_graph": 4
+            }
+          }
+        },
+        "runs": 32,
+        "success": {
+          "raw": 16,
+          "semantic_graph": 16
+        }
+      },
+      "reliability": {
+        "budget_exhaustions": 0,
+        "failed_database_queries": 5,
+        "runner_errors": 0,
+        "runs": 36
+      },
+      "transfer": {
+        "auditable_completion": {
+          "raw": 0,
+          "semantic_graph": 0
+        },
+        "diagnosis_correct": {
+          "raw": 2,
+          "semantic_graph": 2
+        },
+        "graph_tool_usage": {
+          "query_semantic_graph_calls": 2,
+          "runs_using_query_semantic_graph": 2,
+          "semantic_graph_runs": 2
+        },
+        "paired_treatment_deltas": {
+          "semantic_graph_minus_raw": {
+            "eligible_pairs": 0,
+            "median_deltas": null,
+            "pairs": [
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 0
+              },
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 1
+              }
+            ]
+          }
+        },
+        "required_evidence_covered": {
+          "raw": 0,
+          "semantic_graph": 0
+        },
+        "runs": 4
+      },
+      "usage": {
+        "combined": {
+          "cache_creation_input_tokens": 116342,
+          "cache_hit_rate": 0.592825252236779,
+          "cache_read_input_tokens": 1035824,
+          "cost_currency": "USD",
+          "estimated_cost": 12.217559000000001,
+          "output_tokens": 75529,
+          "reasoning_output_tokens": 14307,
+          "uncached_input_tokens": 595101
+        },
+        "micro": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cost_currency": "USD",
+          "estimated_cost": 7.60919,
+          "output_tokens": 33188,
+          "reasoning_output_tokens": 2172,
+          "uncached_input_tokens": 594979
+        },
+        "transfer": {
+          "cache_creation_input_tokens": 116342,
+          "cache_hit_rate": 0.8989280457663362,
+          "cache_read_input_tokens": 1035824,
+          "cost_currency": "USD",
+          "estimated_cost": 4.608369000000001,
+          "estimated_off_peak_cost": null,
+          "output_tokens": 42341,
+          "pricing": {
+            "checked_at": "2026-08-30",
+            "currency": "USD",
+            "input_cache_hit_per_million": 1.0,
+            "input_cache_write_per_million": 12.5,
+            "input_per_million": 10.0,
+            "output_per_million": 50.0,
+            "source": "https://platform.claude.com/docs/en/about-claude/pricing"
+          },
+          "reasoning_output_tokens": 12135,
+          "uncached_input_tokens": 122
+        }
+      }
+    },
+    "claude-opus-5": {
+      "configuration": {
+        "api_transport": "anthropic-messages",
+        "max_output_tokens": 16384,
+        "model": "claude-opus-5",
+        "prompt_cache": "ephemeral-request-cache-control",
+        "provider": "anthropic",
+        "reasoning_effort": "high"
+      },
+      "micro": {
+        "benchmarks": {
+          "discovery": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 5,
+                "exact_two_sided_sign_test_p_value": 0.375,
+                "improvements": 1,
+                "median_delta": 2662.5,
+                "regressions": 4,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 5,
+                "exact_two_sided_sign_test_p_value": 0.0625,
+                "improvements": 5,
+                "median_delta": -228.0,
+                "regressions": 0,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 5,
+                "exact_two_sided_sign_test_p_value": 1.0,
+                "improvements": 1,
+                "median_delta": 0.0,
+                "regressions": 2,
+                "ties": 2
+              }
+            },
+            "runs": 24,
+            "success": {
+              "raw": 10,
+              "semantic_graph": 10
+            }
+          },
+          "graph": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 0,
+                "exact_two_sided_sign_test_p_value": null,
+                "improvements": 0,
+                "median_delta": null,
+                "regressions": 0,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 0,
+                "exact_two_sided_sign_test_p_value": null,
+                "improvements": 0,
+                "median_delta": null,
+                "regressions": 0,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 0,
+                "exact_two_sided_sign_test_p_value": null,
+                "improvements": 0,
+                "median_delta": null,
+                "regressions": 0,
+                "ties": 0
+              }
+            },
+            "runs": 8,
+            "success": {
+              "raw": 4,
+              "semantic_graph": 0
+            }
+          }
+        },
+        "runs": 32,
+        "success": {
+          "raw": 14,
+          "semantic_graph": 10
+        }
+      },
+      "reliability": {
+        "budget_exhaustions": 0,
+        "failed_database_queries": 1,
+        "runner_errors": 0,
+        "runs": 36
+      },
+      "transfer": {
+        "auditable_completion": {
+          "raw": 0,
+          "semantic_graph": 0
+        },
+        "diagnosis_correct": {
+          "raw": 2,
+          "semantic_graph": 2
+        },
+        "graph_tool_usage": {
+          "query_semantic_graph_calls": 2,
+          "runs_using_query_semantic_graph": 2,
+          "semantic_graph_runs": 2
+        },
+        "paired_treatment_deltas": {
+          "semantic_graph_minus_raw": {
+            "eligible_pairs": 0,
+            "median_deltas": null,
+            "pairs": [
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 0
+              },
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 1
+              }
+            ]
+          }
+        },
+        "required_evidence_covered": {
+          "raw": 0,
+          "semantic_graph": 0
+        },
+        "runs": 4
+      },
+      "usage": {
+        "combined": {
+          "cache_creation_input_tokens": 197138,
+          "cache_hit_rate": 0.6117075503553593,
+          "cache_read_input_tokens": 1893085,
+          "cost_currency": "USD",
+          "estimated_cost": 9.29234,
+          "output_tokens": 83641,
+          "reasoning_output_tokens": 21301,
+          "uncached_input_tokens": 1004532
+        },
+        "micro": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cost_currency": "USD",
+          "estimated_cost": 6.037945,
+          "output_tokens": 40637,
+          "reasoning_output_tokens": 4556,
+          "uncached_input_tokens": 1004404
+        },
+        "transfer": {
+          "cache_creation_input_tokens": 197138,
+          "cache_hit_rate": 0.905630202774558,
+          "cache_read_input_tokens": 1893085,
+          "cost_currency": "USD",
+          "estimated_cost": 3.254395,
+          "estimated_off_peak_cost": null,
+          "output_tokens": 43004,
+          "pricing": {
+            "checked_at": "2026-08-30",
+            "currency": "USD",
+            "input_cache_hit_per_million": 0.5,
+            "input_cache_write_per_million": 6.25,
+            "input_per_million": 5.0,
+            "output_per_million": 25.0,
+            "source": "https://platform.claude.com/docs/en/about-claude/pricing"
+          },
+          "reasoning_output_tokens": 16745,
+          "uncached_input_tokens": 128
+        }
+      }
+    },
+    "deepseek-v4-pro": {
+      "configuration": {
+        "api_transport": "anthropic-compatible-messages",
+        "max_output_tokens": 16384,
+        "model": "deepseek-v4-pro",
+        "prompt_cache": "provider-automatic-prefix",
+        "provider": "deepseek",
+        "reasoning_effort": "high"
+      },
+      "micro": {
+        "benchmarks": {
+          "discovery": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 6,
+                "exact_two_sided_sign_test_p_value": 0.6875,
+                "improvements": 2,
+                "median_delta": 774.0,
+                "regressions": 4,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 6,
+                "exact_two_sided_sign_test_p_value": 0.21875,
+                "improvements": 5,
+                "median_delta": -180.0,
+                "regressions": 1,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 6,
+                "exact_two_sided_sign_test_p_value": 0.375,
+                "improvements": 1,
+                "median_delta": 0.5,
+                "regressions": 4,
+                "ties": 1
+              }
+            },
+            "runs": 24,
+            "success": {
+              "raw": 12,
+              "semantic_graph": 11
+            }
+          },
+          "graph": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -15141.25,
+                "regressions": 0,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -98.0,
+                "regressions": 0,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -4.75,
+                "regressions": 0,
+                "ties": 0
+              }
+            },
+            "runs": 8,
+            "success": {
+              "raw": 4,
+              "semantic_graph": 4
+            }
+          }
+        },
+        "runs": 32,
+        "success": {
+          "raw": 16,
+          "semantic_graph": 15
+        }
+      },
+      "reliability": {
+        "budget_exhaustions": 0,
+        "failed_database_queries": 13,
+        "runner_errors": 0,
+        "runs": 36
+      },
+      "transfer": {
+        "auditable_completion": {
+          "raw": 0,
+          "semantic_graph": 0
+        },
+        "diagnosis_correct": {
+          "raw": 2,
+          "semantic_graph": 2
+        },
+        "graph_tool_usage": {
+          "query_semantic_graph_calls": 4,
+          "runs_using_query_semantic_graph": 2,
+          "semantic_graph_runs": 2
+        },
+        "paired_treatment_deltas": {
+          "semantic_graph_minus_raw": {
+            "eligible_pairs": 0,
+            "median_deltas": null,
+            "pairs": [
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 0
+              },
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 1
+              }
+            ]
+          }
+        },
+        "required_evidence_covered": {
+          "raw": 0,
+          "semantic_graph": 0
+        },
+        "runs": 4
+      },
+      "usage": {
+        "combined": {
+          "cache_creation_input_tokens": 0,
+          "cache_hit_rate": 0.9114036474297692,
+          "cache_read_input_tokens": 4687616,
+          "cost_currency": "USD",
+          "estimated_cost": 1.436561104,
+          "output_tokens": 158791,
+          "reasoning_output_tokens": 0,
+          "uncached_input_tokens": 455677
+        },
+        "micro": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 834304,
+          "cost_currency": "USD",
+          "estimated_cost": 0.669423656,
+          "output_tokens": 95452,
+          "reasoning_output_tokens": 0,
+          "uncached_input_tokens": 192973
+        },
+        "transfer": {
+          "cache_creation_input_tokens": 0,
+          "cache_hit_rate": 0.9361751752179778,
+          "cache_read_input_tokens": 3853312,
+          "cost_currency": "USD",
+          "estimated_cost": 0.7671374479999999,
+          "estimated_off_peak_cost": 0.38356872399999997,
+          "output_tokens": 63339,
+          "pricing": {
+            "checked_at": "2026-08-28",
+            "currency": "USD",
+            "input_cache_hit_per_million": 0.044,
+            "input_cache_write_per_million": 1.32,
+            "input_per_million": 1.32,
+            "note": "Peak-rate upper bound; off-peak rates are half. Context caching is automatic. Cost is unavailable unless the provider returns a cache breakdown.",
+            "off_peak_multiplier": 0.5,
+            "output_per_million": 3.96,
+            "source": "https://api-docs.deepseek.com/quick_start/pricing/"
+          },
+          "reasoning_output_tokens": 0,
+          "uncached_input_tokens": 262704
+        }
+      }
+    },
+    "glm-5.3": {
+      "configuration": {
+        "api_transport": "bigmodel-chat-completions",
+        "max_output_tokens": 16384,
+        "model": "glm-5.3",
+        "prompt_cache": "provider-automatic-prefix",
+        "provider": "zhipu-bigmodel",
+        "reasoning_effort": "max"
+      },
+      "micro": {
+        "benchmarks": {
+          "discovery": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 4,
+                "exact_two_sided_sign_test_p_value": 0.625,
+                "improvements": 3,
+                "median_delta": -4096.25,
+                "regressions": 1,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 4,
+                "exact_two_sided_sign_test_p_value": 0.125,
+                "improvements": 4,
+                "median_delta": -461.75,
+                "regressions": 0,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 4,
+                "exact_two_sided_sign_test_p_value": 0.125,
+                "improvements": 4,
+                "median_delta": -1.5,
+                "regressions": 0,
+                "ties": 0
+              }
+            },
+            "runs": 24,
+            "success": {
+              "raw": 8,
+              "semantic_graph": 11
+            }
+          },
+          "graph": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -11052.0,
+                "regressions": 0,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -183.0,
+                "regressions": 0,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -4.75,
+                "regressions": 0,
+                "ties": 0
+              }
+            },
+            "runs": 8,
+            "success": {
+              "raw": 4,
+              "semantic_graph": 4
+            }
+          }
+        },
+        "runs": 32,
+        "success": {
+          "raw": 12,
+          "semantic_graph": 15
+        }
+      },
+      "reliability": {
+        "budget_exhaustions": 0,
+        "failed_database_queries": 9,
+        "runner_errors": 0,
+        "runs": 36
+      },
+      "transfer": {
+        "auditable_completion": {
+          "raw": 0,
+          "semantic_graph": 0
+        },
+        "diagnosis_correct": {
+          "raw": 2,
+          "semantic_graph": 2
+        },
+        "graph_tool_usage": {
+          "query_semantic_graph_calls": 4,
+          "runs_using_query_semantic_graph": 2,
+          "semantic_graph_runs": 2
+        },
+        "paired_treatment_deltas": {
+          "semantic_graph_minus_raw": {
+            "eligible_pairs": 0,
+            "median_deltas": null,
+            "pairs": [
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 0
+              },
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 1
+              }
+            ]
+          }
+        },
+        "required_evidence_covered": {
+          "raw": 0,
+          "semantic_graph": 0
+        },
+        "runs": 4
+      },
+      "usage": {
+        "combined": {
+          "cache_creation_input_tokens": 0,
+          "cache_hit_rate": 0.9085620920175087,
+          "cache_read_input_tokens": 3464320,
+          "cost_currency": "CNY",
+          "estimated_cost": null,
+          "output_tokens": 142396,
+          "reasoning_output_tokens": 95537,
+          "uncached_input_tokens": 348650
+        },
+        "micro": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 531968,
+          "cost_currency": "CNY",
+          "estimated_cost": null,
+          "output_tokens": 40975,
+          "reasoning_output_tokens": 21205,
+          "uncached_input_tokens": 151840
+        },
+        "transfer": {
+          "cache_creation_input_tokens": 0,
+          "cache_hit_rate": 0.9371045666539476,
+          "cache_read_input_tokens": 2932352,
+          "cost_currency": "CNY",
+          "estimated_cost": null,
+          "estimated_off_peak_cost": null,
+          "output_tokens": 101421,
+          "pricing": {
+            "checked_at": "2026-08-30",
+            "cost_available": false,
+            "currency": "CNY",
+            "note": "The BigModel China pricing page did not yet list GLM-5.3 rates when the protocol was prepared. Token usage remains auditable, but estimated cost is unavailable until an official model-specific rate is frozen.",
+            "source": "https://bigmodel.cn/pricing"
+          },
+          "reasoning_output_tokens": 74332,
+          "uncached_input_tokens": 196810
+        }
+      }
+    },
+    "gpt-5.6-sol": {
+      "configuration": {
+        "api_transport": "openai-responses",
+        "max_output_tokens": 16384,
+        "model": "gpt-5.6-sol",
+        "prompt_cache": "implicit-prefix-30m",
+        "provider": "openai",
+        "reasoning_effort": "medium"
+      },
+      "micro": {
+        "benchmarks": {
+          "discovery": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 6,
+                "exact_two_sided_sign_test_p_value": 1.0,
+                "improvements": 3,
+                "median_delta": -377.5,
+                "regressions": 3,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 6,
+                "exact_two_sided_sign_test_p_value": 0.03125,
+                "improvements": 6,
+                "median_delta": -197.25,
+                "regressions": 0,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 6,
+                "exact_two_sided_sign_test_p_value": 1.0,
+                "improvements": 2,
+                "median_delta": 0.0,
+                "regressions": 1,
+                "ties": 3
+              }
+            },
+            "runs": 24,
+            "success": {
+              "raw": 12,
+              "semantic_graph": 12
+            }
+          },
+          "graph": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -2159.25,
+                "regressions": 0,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -64.0,
+                "regressions": 0,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -1.5,
+                "regressions": 0,
+                "ties": 0
+              }
+            },
+            "runs": 8,
+            "success": {
+              "raw": 4,
+              "semantic_graph": 4
+            }
+          }
+        },
+        "runs": 32,
+        "success": {
+          "raw": 16,
+          "semantic_graph": 16
+        }
+      },
+      "reliability": {
+        "budget_exhaustions": 0,
+        "failed_database_queries": 0,
+        "runner_errors": 0,
+        "runs": 36
+      },
+      "transfer": {
+        "auditable_completion": {
+          "raw": 0,
+          "semantic_graph": 1
+        },
+        "diagnosis_correct": {
+          "raw": 2,
+          "semantic_graph": 2
+        },
+        "graph_tool_usage": {
+          "query_semantic_graph_calls": 3,
+          "runs_using_query_semantic_graph": 2,
+          "semantic_graph_runs": 2
+        },
+        "paired_treatment_deltas": {
+          "semantic_graph_minus_raw": {
+            "eligible_pairs": 0,
+            "median_deltas": null,
+            "pairs": [
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 0
+              },
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 1
+              }
+            ]
+          }
+        },
+        "required_evidence_covered": {
+          "raw": 0,
+          "semantic_graph": 1
+        },
+        "runs": 4
+      },
+      "usage": {
+        "combined": {
+          "cache_creation_input_tokens": 820824,
+          "cache_hit_rate": 0.7993457378850066,
+          "cache_read_input_tokens": 3320965,
+          "cost_currency": "USD",
+          "estimated_cost": 6.277386000000001,
+          "output_tokens": 39681,
+          "reasoning_output_tokens": 9527,
+          "uncached_input_tokens": 12815
+        },
+        "micro": {
+          "cache_creation_input_tokens": 112340,
+          "cache_read_input_tokens": 296509,
+          "cost_currency": "USD",
+          "estimated_cost": 1.1226396,
+          "output_tokens": 19576,
+          "reasoning_output_tokens": 4988,
+          "uncached_input_tokens": 12704
+        },
+        "transfer": {
+          "cache_creation_input_tokens": 708484,
+          "cache_hit_rate": 0.8101834129777493,
+          "cache_read_input_tokens": 3024456,
+          "cost_currency": "USD",
+          "estimated_cost": 5.1547464000000005,
+          "estimated_off_peak_cost": null,
+          "output_tokens": 20105,
+          "pricing": {
+            "checked_at": "2026-08-30",
+            "currency": "USD",
+            "input_cache_hit_per_million": 0.4,
+            "input_cache_write_per_million": 5.0,
+            "input_per_million": 4.0,
+            "note": "Promotional pricing is available at least through 2026-11-21. Cache writes cost 1.25 times uncached input.",
+            "output_per_million": 20.0,
+            "source": "https://developers.openai.com/api/docs/models/gpt-5.6-sol"
+          },
+          "reasoning_output_tokens": 4539,
+          "uncached_input_tokens": 111
+        }
+      }
+    },
+    "qwen3.8-2.4t-a95b": {
+      "configuration": {
+        "api_transport": "dashscope-cn-beijing-responses",
+        "max_output_tokens": 16384,
+        "model": "qwen3.8-2.4t-a95b",
+        "prompt_cache": "session-cache-header",
+        "provider": "alibaba-cloud-model-studio",
+        "reasoning_effort": "xhigh"
+      },
+      "micro": {
+        "benchmarks": {
+          "discovery": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 5,
+                "exact_two_sided_sign_test_p_value": 1.0,
+                "improvements": 2,
+                "median_delta": 4134.0,
+                "regressions": 3,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 5,
+                "exact_two_sided_sign_test_p_value": 0.0625,
+                "improvements": 5,
+                "median_delta": -288.5,
+                "regressions": 0,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 5,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": 0.0,
+                "regressions": 0,
+                "ties": 3
+              }
+            },
+            "runs": 24,
+            "success": {
+              "raw": 11,
+              "semantic_graph": 9
+            }
+          },
+          "graph": {
+            "case_level_effect": {
+              "reported_total_tokens": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -7211.75,
+                "regressions": 0,
+                "ties": 0
+              },
+              "rows_returned_through_evidence": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -152.5,
+                "regressions": 0,
+                "ties": 0
+              },
+              "tool_calls_through_evidence": {
+                "eligible_cases": 2,
+                "exact_two_sided_sign_test_p_value": 0.5,
+                "improvements": 2,
+                "median_delta": -2.25,
+                "regressions": 0,
+                "ties": 0
+              }
+            },
+            "runs": 8,
+            "success": {
+              "raw": 4,
+              "semantic_graph": 4
+            }
+          }
+        },
+        "runs": 32,
+        "success": {
+          "raw": 15,
+          "semantic_graph": 13
+        }
+      },
+      "reliability": {
+        "budget_exhaustions": 0,
+        "failed_database_queries": 17,
+        "runner_errors": 0,
+        "runs": 36
+      },
+      "transfer": {
+        "auditable_completion": {
+          "raw": 0,
+          "semantic_graph": 0
+        },
+        "diagnosis_correct": {
+          "raw": 2,
+          "semantic_graph": 2
+        },
+        "graph_tool_usage": {
+          "query_semantic_graph_calls": 4,
+          "runs_using_query_semantic_graph": 2,
+          "semantic_graph_runs": 2
+        },
+        "paired_treatment_deltas": {
+          "semantic_graph_minus_raw": {
+            "eligible_pairs": 0,
+            "median_deltas": null,
+            "pairs": [
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 0
+              },
+              {
+                "deltas": null,
+                "eligible": false,
+                "repetition": 1
+              }
+            ]
+          }
+        },
+        "required_evidence_covered": {
+          "raw": 0,
+          "semantic_graph": 0
+        },
+        "runs": 4
+      },
+      "usage": {
+        "combined": {
+          "cache_creation_input_tokens": 0,
+          "cache_hit_rate": 0.8488590337304786,
+          "cache_read_input_tokens": 2195753,
+          "cost_currency": "CNY",
+          "estimated_cost": 12.0569415,
+          "output_tokens": 113106,
+          "reasoning_output_tokens": 70489,
+          "uncached_input_tokens": 390958
+        },
+        "micro": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 411392,
+          "cost_currency": "CNY",
+          "estimated_cost": 4.77474,
+          "output_tokens": 49007,
+          "reasoning_output_tokens": 26131,
+          "uncached_input_tokens": 199450
+        },
+        "transfer": {
+          "cache_creation_input_tokens": 0,
+          "cache_hit_rate": 0.9030765703596747,
+          "cache_read_input_tokens": 1784361,
+          "cost_currency": "CNY",
+          "estimated_cost": 7.2822015,
+          "estimated_off_peak_cost": null,
+          "output_tokens": 64099,
+          "pricing": {
+            "checked_at": "2026-08-30",
+            "currency": "CNY",
+            "input_cache_hit_per_million": 1.5,
+            "input_per_million": 12.0,
+            "note": "Alibaba Cloud Model Studio China (Beijing) workspace deployment. Automatic cache hits cost CNY 1.5 per million tokens. Explicit cache creation is not used by this runner; cost fails closed if a cache-write field is nevertheless returned.",
+            "output_per_million": 36.0,
+            "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-2-4t-a95b"
+          },
+          "reasoning_output_tokens": 44358,
+          "uncached_input_tokens": 191508
+        }
+      }
+    }
+  },
+  "publication_status": "release-candidate measurement report",
+  "report_schema_version": 1,
+  "report_type": "semantic-rca-six-model-measurement-report",
+  "research_question": "Does the complete GreptimeDB Semantic Graph interface reduce RCA investigation work while preserving diagnosis and evidence validity?",
+  "scope": {
+    "benchmark_protocol_version": 31,
+    "greptimedb_build_profile": "release",
+    "greptimedb_revision": "e67af3fad8f698d964398843d78df782f20847bb",
+    "inference": {
+      "cross_model_pooling": false,
+      "cross_task_overall_score": false,
+      "independent_unit": "case",
+      "repetitions": "descriptive, not independent samples",
+      "semantic_effect": "paired within the same model and case"
+    },
+    "protocol_revision": "semantic-rca-six-model-suite-v1",
+    "treatment_components": {
+      "raw": [
+        "telemetry",
+        "ordinary-schema-metadata",
+        "read-only-sql"
+      ],
+      "semantic_graph": [
+        "telemetry",
+        "ordinary-schema-metadata",
+        "read-only-sql",
+        "table-semantics",
+        "semantic-entities",
+        "semantic-relationships",
+        "usage-guidance",
+        "runtime-recovery-guidance",
+        "coverage-snapshot"
+      ]
+    },
+    "treatment_estimand": "complete-agent-facing-interface-v1"
+  },
+  "semantic_layer_findings": {
+    "discovery_micro": {
+      "interpretation": "Discovery effects vary by model and metric; the semantic interface is not a uniform efficiency win for table localization."
+    },
+    "end_to_end_transfer": {
+      "efficiency_effect_estimable": false,
+      "eligible_pairs": 0,
+      "interpretation": "All models found the causal component and mechanism, but required evidence was covered in only one unpaired Graph run; no end-to-end efficiency effect can be estimated.",
+      "semantic_graph_runs": 12,
+      "semantic_graph_runs_using_graph_tool": 12
+    },
+    "graph_relation_micro": {
+      "interpretation": "The relationship query surface reduced calls and rows for every model with eligible paired cases; one model had no eligible Graph pair.",
+      "models_with_correctness_preserving_case_deltas": [
+        "gpt-5.6-sol",
+        "deepseek-v4-pro",
+        "claude-fable-5",
+        "glm-5.3",
+        "qwen3.8-2.4t-a95b"
+      ],
+      "models_with_lower_median_calls_and_rows": [
+        "gpt-5.6-sol",
+        "deepseek-v4-pro",
+        "claude-fable-5",
+        "glm-5.3",
+        "qwen3.8-2.4t-a95b"
+      ]
+    }
+  },
+  "source_artifacts": {
+    "micro": {
+      "artifact_type": "semantic-rca-micro-measurement-result",
+      "semantic_payload_sha256": "d6821fbc927548853622019954f88fca523663b6baa83c44c1e637d698c9a52d",
+      "sha256": "61959f8be05bb6e610c05b78c28c0b877ddf3469fafa47a385b05f76ca980a34"
+    },
+    "transfer": {
+      "artifact_type": "aegis-transfer-measurement-result",
+      "semantic_payload_sha256": "f451217c5c4e36265b1962b37a283194f7a670e61f988b871bb415d456373597",
+      "sha256": "fbffdcfb68100cf527388c5b80328532ce6cc31ea73b10ccc7c40eb6117c9d7e"
+    }
+  }
+}

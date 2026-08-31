@@ -151,10 +151,14 @@ the same deterministic rule to a replacement.
 
 The pre-registered primary efficiency metrics are GreptimeDB rows returned and
 tool calls through a correct diagnosis whose required causal claims are grounded
-by execution-valid evidence. Apply the same eligibility guardrail to both metrics. For each case,
+by execution-valid evidence. Claim annotations record agent intent but do not determine support;
+the scorer derives scope from SQL, facts from returned rows, and the claim verdict from the frozen
+rubric. Apply the same eligibility guardrail to both metrics. For each case,
 take the median eligible run-pair delta; use the case medians for the exact
 two-sided sign test and adjust the two primary tests with Holm's method. Run-pair
-directions are descriptive only. Discovery ordering and other trajectory metrics
+directions are descriptive only. A direction-consistent result that does not pass Holm is reported
+with the directional case count, eligible case count, case median, unadjusted p-value, and
+Holm-adjusted p-value; it is not called statistically significant. Discovery ordering and other trajectory metrics
 are exploratory and cannot support headline claims.
 
 Protocol v26 introduced, and protocol v30 retains, a transfer guardrail that does not collapse
@@ -226,9 +230,10 @@ Benchmark 1.0 requires a frozen specification and canonical API runner, a small
 legally reproducible cohort covering Semantic Graph positive and negative roles,
 one fresh end-to-end transfer demonstration, and public
 artifacts from which a third party can reproduce scoring and primary metrics.
-It does not require multiple models, many system families, or statistical power
-for a population claim. Results must be labeled as evidence over the fixed
-cohort rather than a general effect.
+The first report includes six model configurations, but does not pool them into
+one score or use model count as statistical power. It does not require many
+system families or power for a population claim. Results must be labeled as
+evidence over the fixed cohort rather than a general effect.
 
 The pinned Aegis FSE 2026 reviewer cohort supplies the Graph-positive ingestion source for
 the downloader-backed 1.0 path. Its source dataset record declares CC BY 4.0,
@@ -385,6 +390,44 @@ by corpus because the taxonomies are heterogeneous.
 
 ## Current status and next step
 
+### Current v32 release candidate
+
+The current formal suite compares `raw` with the complete `semantic_graph` product surface. It
+binds one release GreptimeDB revision, one six-model API roster, one shared 16,384-token output
+ceiling, provider-specific reasoning settings, and two position-balanced repetitions. The suite
+contains 192 fixed-cohort Discovery/Graph cells and 240 fresh end-to-end OpenRCA2 cells, for 432
+cells total. Case is the independent unit; repetitions describe variability only.
+
+The fresh transfer selection contains ten trajectory-blind cases: four workload restarts, three
+call-path delays, two CPU-saturation cases, and one memory-pressure case across Hotel Reservation
+and OpenTelemetry Demo. It uses opaque agent IDs and never ingests the publisher causal graph. Two
+development cases form a 24-cell pilot over three models. Measurement expansion requires at least
+6 of 12 paired repetitions to be jointly efficiency-eligible, at least three eligible pairs per
+pilot case. This 50% floor is a post-hoc development calibration set after observing the first
+pilot case's v5 shadow score of four jointly eligible pairs out of six. It tests whether the primary
+paired metrics remain estimable rather than requiring near-perfect model evidence behavior; it is
+not a pre-registered effect threshold. Treatment-asymmetric eligibility and its per-claim rejection reasons are mandatory
+diagnostics rather than a hard gate: unequal completion may be a real treatment outcome.
+
+All ten measurement cases have completed two independent provider-free preflights against the
+bound release binary. Both passes accepted the same source and protocol row counts, rejected no
+trace or span IDs, produced exact complete raw-span/Graph edge-set equality, matched the frozen
+stored mechanism predicate, and produced identical source-semantic hashes. No measurement provider
+cell has run. Twelve development cells completed for the first pilot case. Their trajectories
+exposed result-side identity false negatives. After closing UNION source, namespace identity, and
+`HAVING` completeness fail-open paths, deterministic v6 shadow scoring still yields ten eligible
+runs and four jointly eligible pairs out of six. The second
+pilot case has not run. The current verifier and bound fixtures require provider-free validation and
+code review before a newly authorized paid continuation.
+
+The 240-cell transfer schedule must not start until the 24-cell development pilot passes. The
+public artifact exporter must deterministically recompute diagnosis, claim grounding, citation
+integrity, execution reliability, primary efficiency fields, case medians, the fixed 12-hypothesis
+Holm family, and the artifact hash from sanitized tool inputs and result projections. The combined
+JSON and HTML report must be generated only from the validated micro and transfer artifacts.
+
+### Prior internal evidence
+
 The fresh micro-benchmark stage is complete. Discovery v2 has six formal
 trajectory-blind OpenRCA cases, 24 agent cells, and 12 paired observations.
 Table Semantics improved task success in one pair, regressed in none, and tied
@@ -413,10 +456,11 @@ retrieval results into an RCA claim.
 The release-focused Aegis path has a fresh measurement case. Protocol v31 freezes
 `aegis-transfer-004`, a component-scoped `PodFailure` whose source restart counter changes from 24
 zero samples to 24 one-valued samples. The loader preserves the stale publisher pod label as an
-audited mismatch and binds the mechanism to the exact source container identity. Production OTLP,
-Loki, and OTLP replay passes row-count, protocol-rejection, and ID-remapping gates. The complete raw
-and Graph union contains 43 equal distinct edges with the same normalized hash. Source, scorer, protocol,
-and preflight audits pass. The execution roster contains `gpt-5.6-sol`, `deepseek-v4-pro`,
+audited mismatch and binds the mechanism to the exact source container identity. Production OTLP
+metrics and traces plus Loki logs pass row-count, protocol-rejection, and ID-remapping gates. The
+complete raw and Graph union contains 43 equal distinct edges with the same normalized hash. Source,
+scorer, protocol, and preflight audits pass. The execution roster contains `gpt-5.6-sol`,
+`deepseek-v4-pro`,
 `claude-opus-5`, `claude-fable-5`, `glm-5.3`, and the open-weight
 `qwen3.8-2.4t-a95b`. Two Raw/Graph repetitions produce 24 cells. GLM and Qwen use explicit
 provider-bound China transports rather than model-name routing: BigModel Chat Completions for GLM
@@ -425,10 +469,28 @@ must not enter repository fixtures or public artifacts. Qwen's Session cache hea
 parallel tool calls are explicit runner parameters rather than provider defaults. All models use a
 16,384-token combined reasoning-and-visible-output limit. Provider-specific reasoning levels are
 set explicitly to their documented defaults and are not treated as a common cross-provider compute
-scale. No v31 provider cell has run.
-The next action requires new explicit paid-API approval and bounded interface probes before the
-formal schedule. Catalog broad-recall, powered cross-system enrollment, and additional report UI
-remain deferred.
+scale. The v31 provider run completed all 24 transfer cells without runner errors or budget
+exhaustion. Every run produced the correct structured diagnosis. One `gpt-5.6-sol` Graph run
+covered both required evidence claims; no Raw/Graph repetition pair was jointly eligible for an
+end-to-end efficiency comparison.
+The provider interface probes are complete. DeepSeek accepted the frozen Anthropic-compatible
+`output_config.effort` request; BigModel and DashScope returned the usage-detail objects used for
+reasoning and cache breakdown. These were synthetic interface probes, not formal cells.
+
+The formal suite manifest binds the six Discovery cases, two Graph cases, Aegis case 004, the
+GreptimeDB revision, the `release` build profile, and the six-model roster. All 192 micro cells and
+24 Aegis cells completed, for 216 total. The eight independent micro preflights and the Aegis
+source, scorer, protocol, exact-edge, and mechanism gates passed against the bound release binary.
+The sanitized micro artifact deterministically rescores all 192 cells from canonical cited
+aggregates. The transfer artifact deterministically validates the public diagnosis, citation
+grounding, reliability, primary-metric eligibility, and model summaries. The combined report
+generator reads only those public artifacts and produces machine-readable JSON and self-contained
+HTML.
+
+This is a release-candidate measurement, not the first public 1.0 run. The model execution started
+from a dirty benchmark worktree, so the private reports do not bind the benchmark source to a Git
+commit. The 1.0 run must start from the tagged clean commit required by the release contract.
+Catalog broad-recall and powered cross-system enrollment remain deferred.
 
 ## Historical development status
 
@@ -550,7 +612,7 @@ result instead of requiring a redundant query argument; saved trajectories were
 rescored without rerunning a model. These results validate the retrieval
 mechanism but are not an RCA or measurement effect.
 
-The current Discovery v3 and Graph v4 protocols compare `raw` with
+The current Discovery v3 and Graph v5 protocols compare `raw` with
 `semantic_graph`. They do not preserve `table_semantics` as a standalone
 treatment. Earlier Table-versus-Raw and Graph-versus-Table results remain
 development ablations and are not mixed with the current paired comparison.
@@ -570,5 +632,5 @@ holdout. No full RCA batch is authorized at this stage.
   shared boundary.
 - Paid RCA runs before the measurement dataset and protocol are frozen.
 - Catalog broad-recall measurement and further micro-benchmark expansion.
-- Multi-model report cards or a powered cross-system effect claim.
+- A cross-model pooled score or a powered cross-system effect claim.
 - Publishing raw provider trajectories as benchmark evidence.

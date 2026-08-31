@@ -33,8 +33,9 @@ not reported as wholly wrong.
 
 ## Ground causal claims, not query recipes
 
-Each final citation declares one or more claim types. A transfer case specifies which claim types
-are required. The Aegis transfer cases require:
+Each final citation declares one or more claim types. These annotations describe the agent's
+intent; they do not decide whether the cited result supports a claim. The scorer infers support
+from the executed query and returned values. The current OpenRCA2 transfer cases require:
 
 - `causal_locus`: evidence identifies the component or directed edge where the mechanism occurs.
 - `fault_mechanism`: evidence discriminates the stated mechanism from plausible alternatives.
@@ -51,11 +52,13 @@ fault mechanism occurs at that entity or edge. They do not by themselves ground 
 `causal_locus`. Incident-local evidence tied to the declared operation or mechanism must establish
 the locus. A mechanism-bound result may ground `causal_locus` and `fault_mechanism` together.
 
-The case rubric defines observable facts and their relationships. It does not define one canonical
-agent query. Equivalent queries can differ in aliases, aggregation, common table expressions,
-filter placement, or whether they return complete raw rows. Exact source counts remain part of the
-provider-free source audit, but an agent result does not need to reproduce those counts unless the
-count itself is the causal predicate.
+The verifier separates three concerns: SQL establishes the measured scope and output lineage,
+returned rows establish the observed values, and the case rubric defines the logical claim those
+facts must satisfy. The rubric does not define one canonical agent query. Equivalent queries can
+differ in aliases, aggregation, transparent common table expressions, filter placement, or whether
+they return raw rows. Exact source counts remain part of the provider-free source audit, but an
+agent result does not need to reproduce those counts unless the count itself is the causal
+predicate.
 
 ## Preserve evidence provenance
 
@@ -92,12 +95,23 @@ split at that observed onset when the baseline covers the source baseline window
 result contains enough observations to establish the transition. The scorer does not require the
 hidden intervention timestamp to appear in agent SQL.
 
-Absence claims need complete temporal coverage under the same source predicate used for the
-anomalous period. Counted transitions must explicitly bind both outer window bounds so rows outside
-the incident cannot inflate the anomalous count. A limited or truncated result cannot prove
-absence. The v31 source audit proves that the selected metric has no rows on the window end
-boundaries, so `BETWEEN` and half-open explicit comparisons cover the same source rows for this
-case.
+Claim strength determines the required scope. A universal baseline claim such as "no restart at or
+above the threshold" requires complete baseline coverage, telemetry-derived lineage, no predicate
+on the asserted value, and a complete result. An existential anomalous claim needs only enough
+in-window source observations to meet the frozen minimum; it may use a partial anomalous interval
+or filter for threshold hits.
+
+An aggregate threshold count is evaluated separately for each claim. Its predicate must include
+every frozen-threshold violation to prove the universal baseline, and every counted row must meet
+the frozen threshold to prove the existential anomaly.
+
+Counted transitions must bind their measured interval so rows outside the incident cannot inflate
+the result. A truncated tool result never proves a claim. A SQL `LIMIT` is complete only when the
+returned cardinality is strictly below that limit; reaching the limit cannot prove a universal
+claim. A case may accept an inclusive upper bound only after its provider-free source audit proves
+that no source row lies on that boundary. `BETWEEN` and explicit comparisons are scored by their
+actual temporal coverage. A time bucket that crosses the normal/anomalous boundary without an
+unambiguous period projection cannot establish the transition.
 
 ## Separate the reported dimensions
 
@@ -120,18 +134,43 @@ does not, the result contributes to completion-rate differences rather than a co
 efficiency delta. Rows, calls, tokens, cost, and latency from noneligible runs may be reported only
 as descriptive trajectory data.
 
-## Current Aegis evidence rubric
+## Current OpenRCA2 evidence rubric
 
-The workload-restart rubric requires `k8s.container.restarts` under the exact source container
-identity for the causal service. The normal-window maximum must be zero. At least two anomalous
-samples must establish a restart value of one or greater. Evidence may use one complete period
-aggregate, separate complete normal and abnormal aggregates, or complete raw metric rows.
+The v32 cohort covers four source-observable mechanisms: workload restart, container CPU
+saturation, container memory pressure, and call-path start delay. Every rubric requires a nonempty
+normal baseline with no value at or above its frozen threshold and at least two anomalous
+observations at or above that threshold. The frozen threshold and exact source aggregate belong to
+the provider-free oracle; the agent must prove the transition, not reproduce the evaluator's row
+count or SQL text.
 
-The query must retain the metric table, container identity, time bounds, and value lineage. A
-pod-only filter is not a substitute for the source container identity. Value filtering, a wrong
-metric or workload, incomplete windows, `LIMIT`, truncation, and literal aggregates fail closed.
-Graph entity existence and ordinary calls edges may guide the investigation, but neither proves a
-workload restart.
+Metric rubrics require the exact source metric table, an unambiguous container population, and
+telemetry-derived value lineage. Evidence may combine a complete baseline aggregate with a partial
+anomalous query, or use one period-aware aggregate, separate period aggregates, unambiguous grouped
+buckets, conditional aggregates, or raw rows. The population may be bound by the canonical
+container identity, by a pod identity whose equivalence is frozen by the source audit, or by direct
+identity columns in a complete result drawn from a wider population. Namespace and pod predicates
+are accepted only when the frozen source audit proves they do not exclude rows from the selected
+container population. `LIKE`, `IN`, and disjunction are judged by whether the frozen identity still
+satisfies the predicate, not by their spelling. A wider result is bound only by the canonical
+identity or a source-proven equivalent identity projected in the result; namespace alone cannot
+identify the target container. Other identity narrowing, a wrong metric or workload, ambiguous
+periods, truncation, and literal aggregates fail closed. A value predicate may prove anomalous
+existence but cannot prove baseline absence. `HAVING` cannot prove baseline absence when it filters
+the asserted value or can remove a subset of target-period buckets. It remains valid for a returned
+aggregate whose grouping keys contain only the frozen identity and an unambiguous period. An
+explicitly discriminated `UNION` may contribute an isolated source branch; undiscriminated rows or
+overlapping source periods fail closed.
+
+Call-path delay is edge-scoped. Its evidence pairs a source Client span with its Server child using
+the same trace ID and exact parent-span relation, retains both source services and an allowed source
+operation, and derives server-start minus client-start nanoseconds. Trace, span, or parent ID
+filters cannot select a convenient example. Wrong roles or edge direction, arbitrary operation
+patterns, incomplete windows, row multiplication, and hard-coded gaps fail closed.
+
+Component-scoped metric cases do not publish a causal operation. That field is diagnostic rather
+than scored for those cases: a model may leave it null or report an observed endpoint without
+changing diagnosis correctness. Graph entities and ordinary calls edges may guide an investigation,
+but they do not by themselves prove any of the four mechanisms.
 
 ## Regression standard
 
@@ -146,9 +185,18 @@ Before a protocol can call a model, its no-model scorer audit must cover:
 - hard-coded, neutralized, multiplied, truncated, and incomplete evidence;
 - additional invalid citations without loss of already grounded required claims.
 
+The public artifact stores each cited query's derived scope, period facts, baseline and anomaly
+verdicts, and per-claim rejection codes. It omits raw telemetry rows while retaining enough
+information to deterministically recompute the scored claims and audit treatment-specific
+eligibility failures.
+
 Development trajectories can supply regression examples. They do not become measurement evidence,
 and the runtime does not rescore old development protocols. A scoring-semantic change increments the
 internal protocol before another model run.
+
+The deterministic verdict remains the primary score. An optional blinded LLM adjudication may be
+published later as sensitivity analysis for alternative telemetry signals that are outside the
+frozen rubric. It cannot replace or silently override the deterministic primary result.
 
 ## Design basis
 

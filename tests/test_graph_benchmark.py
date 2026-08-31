@@ -270,6 +270,20 @@ def test_valid_trace_self_join_matches_complete_canonical_edge_set() -> None:
     assert evaluation.evidence_scope_valid
 
 
+def test_graph_assignment_keeps_valid_raw_verification_in_intention_to_treat() -> None:
+    evaluation = evaluate_graph_run(
+        _run(Visibility.SEMANTIC_GRAPH, _sql_trace()),
+        RCA100,
+        _canonical_result(),
+        database="case_04",
+    )
+
+    assert evaluation.success
+    assert evaluation.citation_valid
+    assert evaluation.evidence_scope_valid
+    assert evaluation.evidence_result_match
+
+
 def test_trace_query_without_parent_child_join_is_rejected() -> None:
     query = canonical_trace_query(RCA100).replace(
         " AND s.parent_span_id = c.span_id",

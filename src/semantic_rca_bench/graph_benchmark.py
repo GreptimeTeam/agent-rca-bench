@@ -295,11 +295,11 @@ SERVER span by trace_id and parent_span_id = span_id. request_count counts paire
 error_count counts paired server spans whose status is STATUS_CODE_ERROR.
 
 Return evidence for every direct callee of the supplied caller, not a query prefiltered to the
-winning destination. When query_semantic_graph is available, cite one successful, untruncated
-relationships query scoped to service calls from the supplied caller with trace provenance. When
-it is unavailable, reconstruct the edge set from the trace table and cite one successful,
-untruncated SQL result with exactly these columns: src_type, src_id, dst_type, dst_id, rel_type,
-provenance, request_count, and error_count. Use the supplied half-open window for CLIENT spans.
+winning destination. You may cite either a successful, untruncated relationships query or an
+independent trace-table reconstruction when the corresponding tool is available. A relationships
+query must cover service calls from the supplied caller with trace provenance. A trace query must
+return exactly these columns: src_type, src_id, dst_type, dst_id, rel_type, provenance,
+request_count, and error_count. Use the supplied half-open window for CLIENT spans.
 Discover physical tables and columns before relying on them. Copy the real query_id from the cited
 result into the final output."""
 
@@ -344,8 +344,8 @@ def audit_graph_fixture(client: GreptimeClient, fixture: GraphFixture) -> GraphA
 def edge_results_match(left: QueryResult, right: QueryResult) -> bool:
     if left.truncated or right.truncated:
         return False
-    left_edges = _edge_rows(left)
-    return left_edges is not None and left_edges == _edge_rows(right)
+    left_edges = canonical_edge_set(left)
+    return left_edges is not None and left_edges == canonical_edge_set(right)
 
 
 def canonical_trace_query(fixture: GraphFixture) -> str:
@@ -403,40 +403,48 @@ def evaluate_graph_run(
         run,
         run.answer.evidence_query_id if run.answer else None,
     )
-    expected_tool = (
-        "query_semantic_graph" if run.visibility is Visibility.SEMANTIC_GRAPH else "execute_sql"
+    allowed_tools = (
+        {"execute_sql", "query_semantic_graph"}
+        if run.visibility is Visibility.SEMANTIC_GRAPH
+        else {"execute_sql"}
     )
     citation_valid = (
         trace is not None
-        and trace.tool_name == expected_tool
+        and trace.tool_name in allowed_tools
         and trace.error is None
         and isinstance(trace.output, dict)
         and not bool(trace.output.get("truncated"))
     )
     evidence_result = _query_result_from_trace(trace) if citation_valid else None
-    if run.visibility is Visibility.SEMANTIC_GRAPH:
+    if trace is not None and trace.tool_name == "query_semantic_graph":
         evidence_scope_valid = (
-            _valid_graph_scope(trace.input, fixture, len(_edge_rows(canonical_result) or set()))
+            _valid_graph_scope(
+                trace.input,
+                fixture,
+                len(canonical_edge_set(canonical_result) or set()),
+            )
             if trace is not None
             else False
         )
-    else:
+    elif trace is not None and trace.tool_name == "execute_sql":
         query = str(trace.input.get("query", "")) if trace is not None else ""
         evidence_scope_valid = _valid_trace_scope(query, fixture, database)
-    evidence_edges = _edge_rows(evidence_result) if evidence_result is not None else None
-    canonical_edges = _edge_rows(canonical_result)
+    else:
+        evidence_scope_valid = False
+    evidence_edges = canonical_edge_set(evidence_result) if evidence_result is not None else None
+    canonical_edges = canonical_edge_set(canonical_result)
     evidence_result_match = (
         evidence_edges is not None
         and evidence_edges == canonical_edges
         and (
-            run.visibility is Visibility.SEMANTIC_GRAPH
+            (trace is not None and trace.tool_name == "query_semantic_graph")
             or _has_exact_trace_result_columns(evidence_result)
         )
     )
     unique_winner = _unique_winner(canonical_result, fixture.caller) == expected
     checks = {
         "submitted edge or RED counts do not match the frozen winner": answer_match,
-        "missing, failed, truncated, or treatment-incompatible evidence citation": citation_valid,
+        "missing, failed, truncated, or unavailable-tool evidence citation": citation_valid,
         "evidence query does not cover the frozen caller and complete destination set": (
             evidence_scope_valid
         ),
@@ -529,7 +537,7 @@ def _answer_edge(answer: GraphAnswer) -> tuple[str, str, str, str, str, str, int
     )
 
 
-def _edge_rows(
+def canonical_edge_set(
     result: QueryResult,
 ) -> set[tuple[str, str, str, str, str, str, int, int]] | None:
     required = [
@@ -572,7 +580,7 @@ def _unique_winner(
     result: QueryResult,
     caller: str,
 ) -> tuple[str, str, str, str, str, str, int, int] | None:
-    edges = _edge_rows(result)
+    edges = canonical_edge_set(result)
     if not edges:
         return None
     candidates = [

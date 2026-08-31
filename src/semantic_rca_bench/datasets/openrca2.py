@@ -78,14 +78,23 @@ class OpenRCA2Repository:
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def fetch_case(self, case_name: str = DEFAULT_CASE) -> OpenRCA2Case:
+    def fetch_case(
+        self,
+        case_name: str = DEFAULT_CASE,
+        *,
+        require_observable_alert: bool = True,
+    ) -> OpenRCA2Case:
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]+", case_name):
             raise OpenRCA2Error(f"invalid ops-lite case name: {case_name}")
         manifest_path = self._download("manifest.jsonl")
         root = self.cache_dir / "cases" / case_name
         for filename in CASE_FILES:
             self._download(f"cases/{case_name}/{filename}")
-        return _load_case(root, manifest_path)
+        return _load_case(
+            root,
+            manifest_path,
+            require_observable_alert=require_observable_alert,
+        )
 
     def _download(self, filename: str) -> Path:
         target = self.cache_dir / filename
@@ -101,7 +110,12 @@ class OpenRCA2Repository:
         return Path(downloaded)
 
 
-def _load_case(root: Path, manifest_path: Path) -> OpenRCA2Case:
+def _load_case(
+    root: Path,
+    manifest_path: Path,
+    *,
+    require_observable_alert: bool = True,
+) -> OpenRCA2Case:
     manifest = _manifest_entry(manifest_path, root.name)
     injection = _read_json(root / "injection.json")
     env = _read_json(root / "env.json")
@@ -117,7 +131,10 @@ def _load_case(root: Path, manifest_path: Path) -> OpenRCA2Case:
     if not isinstance(roots, list) or len(roots) != 1:
         raise OpenRCA2Error(f"{root.name} does not have one root service")
     injection_services = _injection_ground_truth_services(injection)
-    if injection_services != {str(roots[0])}:
+    endpoint = _injection_fault_endpoint(injection)
+    expected_services = set(endpoint) if endpoint is not None else {str(roots[0])}
+    root_matches = endpoint is None or str(roots[0]) == endpoint[0]
+    if not root_matches or injection_services != expected_services:
         raise OpenRCA2Error(
             f"{root.name} manifest roots {roots} disagree with injection ground truth "
             f"{sorted(injection_services)}"
@@ -143,7 +160,11 @@ def _load_case(root: Path, manifest_path: Path) -> OpenRCA2Case:
             time_start=normal_start,
             time_end=abnormal_end,
             alert_time=abnormal_start,
-            alert_text=_alert_text(root / "conclusion.parquet", system),
+            alert_text=_alert_text(
+                root / "conclusion.parquet",
+                system,
+                required=require_observable_alert,
+            ),
             fault_taxonomy=_fault_taxonomy(manifest_path, str(manifest["system"])),
         ),
         ground_truth=GroundTruth(
@@ -513,7 +534,7 @@ def _fault_taxonomy(path: Path, system: str) -> list[str]:
     return sorted(values)
 
 
-def _alert_text(path: Path, system: str) -> str:
+def _alert_text(path: Path, system: str, *, required: bool = True) -> str | None:
     table = pq.read_table(path, columns=["Issues"])
     issues = set()
     for raw in table["Issues"].to_pylist():
@@ -523,7 +544,9 @@ def _alert_text(path: Path, system: str) -> str:
         if isinstance(value, dict):
             issues.update(str(key) for key in value)
     if not issues:
-        raise OpenRCA2Error("case conclusion has no observable alert condition")
+        if required:
+            raise OpenRCA2Error("case conclusion has no observable alert condition")
+        return None
     return f"{system} alert: {', '.join(sorted(issues))}"
 
 
@@ -574,7 +597,10 @@ def _window_summary(case: OpenRCA2Case, period: str) -> dict[str, object]:
 
 
 def _fault_endpoint_call(path: Path) -> tuple[str, str] | None:
-    injection = _read_json(path)
+    return _injection_fault_endpoint(_read_json(path))
+
+
+def _injection_fault_endpoint(injection: Mapping[str, object]) -> tuple[str, str] | None:
     configs = injection.get("engine_config")
     if not isinstance(configs, list) or len(configs) != 1:
         raise OpenRCA2Error("expected one injection engine config")

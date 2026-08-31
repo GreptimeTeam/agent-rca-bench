@@ -719,6 +719,12 @@ def _evidence_rows(
     return output if set(output) == {"baseline", "incident"} else None
 
 
+def canonical_evidence_rows(
+    result: QueryResult,
+) -> dict[str, dict[str, float | int | None]] | None:
+    return _evidence_rows(result)
+
+
 def _same_evidence_rows(left: QueryResult, right: QueryResult) -> bool:
     left_rows = _evidence_rows(left)
     right_rows = _evidence_rows(right)

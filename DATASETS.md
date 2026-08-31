@@ -14,8 +14,8 @@ but it must record every lossy or synthetic protocol field.
 | OpenRCA 1.0 Bank | OpenRCA Bank | Wide enterprise metric schema and legacy multimodal telemetry | Included | Not applicable: no standard entity identity or span roles |
 | OpenRCA 1.0 Market | OpenRCA Market | Multi-level node, pod, and service failures over wide legacy telemetry | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
 | OpenRCA 1.0 Telecom | OpenRCA Telecom | Independent telecom/database system with metrics and traces but no logs | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
-| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Protocol v31 fresh measurement case selected; paid cells not run | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
-| OpenRCA 2.0 ops-lite | Hotel Reservation | Native OTel and verified causal paths | Provisional; internal protocol-formal measurement only | Positive when standard client/server spans witness service calls |
+| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Historical v24-v31 development evidence | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
+| OpenRCA 2.0 ops-lite | Hotel Reservation and OpenTelemetry Demo | Native OTel and source-observable mechanisms | Current ten-case fresh v32 measurement cohort; no provider cells run | Positive when standard client/server spans witness service calls |
 | Amazon PetShop | Amazon PetShop | Component-level causal RCA over service metrics | Rejected | Metric-only; no incident-local mechanism label or continuous baseline |
 | AnoMod TrainTicket | TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
 | Eadro / Nezha | Mixed microservice benchmarks | Earlier multimodal RCA corpora | Not audited | No rejection claim until source artifacts are audited |
@@ -33,11 +33,11 @@ needed to audit a benchmark result.
 | Aegis FSE 2026 reviewer cohort | The source dataset record declares CC BY 4.0. The reviewer artifact's root `LICENSE` applies Apache-2.0 to packaging and support code, but does not explicitly apply it to `reproduction/data`. | Use the pinned source download without redistributing telemetry. Obtain clearer permission before bundling any source data in a release. |
 | OpenRCA 2.0 ops-lite | Dataset card says Apache-2.0, paper says CC-BY-SA 4.0, and the artifact is not the promised archival release | Internal protocol-formal evidence until provenance and terms are reconciled |
 
-The Aegis reviewer cohort supplies a public, pinned, downloader-backed path for
-the Graph-positive transfer case. The benchmark does not redistribute its
-telemetry or label files. The release must keep the benchmark code license and
-dataset terms separate. Bundling telemetry remains blocked until the publisher
-clarifies the reduced subset's license.
+The Aegis reviewer cohort supplied the downloader-backed Graph-positive transfer path during
+development. The benchmark does not redistribute its telemetry or label files. The current
+OpenRCA2 transfer evidence is also downloader-backed and does not resolve the mismatch between the
+dataset card and paper license statements. A public release must keep benchmark code, derived
+artifact, and upstream dataset terms separate.
 
 ## Fresh micro-benchmark measurement audit
 
@@ -73,6 +73,19 @@ Hotel cases each expose six direct callees of `frontend`; raw span reconstructio
 and Graph rows match exactly. Their unique `search` winners have 504/1,043 and
 1,504/2,772 errors/requests respectively. Candidate exhaustion is part of the
 result and limits Graph v3 to one system family.
+
+The current six-model suite reuses these six Discovery and two Graph cases as a fixed reference
+cohort. They are not new holdouts: their earlier trajectories influenced the mature micro-task
+interfaces, and the new run measures those interfaces across the current model roster. The suite
+manifest binds every task fixture, selection manifest, protocol, GreptimeDB revision, and release build profile by
+file hash. Each of the eight live preflights uses an exclusive instance and repeats source
+ingestion plus the canonical task gate before model execution.
+
+Public artifacts contain the frozen task fixture, canonical aggregate evidence, result digests,
+query inputs, and derived counts, but not source telemetry rows. OpenRCA 1.0 remains subject to CC
+BY-NC 4.0. OpenRCA 2.0 remains provisional because its dataset card and paper state different
+licenses; reproduction downloads the pinned source under its own terms. The benchmark's
+Apache-2.0 license covers the harness and artifact schema, not the upstream telemetry.
 
 ## RCA100 v1.1
 
@@ -439,14 +452,17 @@ therefore rejected rather than repaired.
   SHA-256 `2b6ddb0349b41cb1864f817a151c6123a3dd33506b5775080db26fce3c85477c`.
 - The v31 scorer accepts complete aggregates, split normal/abnormal aggregates, and complete raw
   metric rows. It requires source metric and identity lineage, complete time coverage, a zero
-  baseline, and at least two abnormal restart observations. It rejects pod or value
-  cherry-picking, wrong metric or workload, incomplete windows, limits, truncation, and hard-coded
-  results. The six-model Raw/Graph protocol has 24 cells. GLM uses BigModel China Chat Completions;
+  baseline, and at least two abnormal restart observations whose values are each at least one. It
+  rejects pod or value cherry-picking, wrong metric or workload, incomplete windows, limits,
+  truncation, and hard-coded results. The six-model Raw/Graph protocol has 24 cells. GLM uses
+  BigModel China Chat Completions;
   Qwen uses a runtime-supplied China (Beijing) workspace Responses endpoint without publishing the
   tenant hostname. The Claude roster is `claude-opus-5` and `claude-fable-5`. All models use the
   same 16,384-token combined output limit and explicitly bind the provider's documented default
-  reasoning level. Provider-free source, scorer, protocol, and preflight gates pass; no v31
-  provider cell has run.
+  reasoning level. Provider-free source, scorer, protocol, and preflight gates pass. All 24 v31
+  provider cells completed without runner errors or budget exhaustion. All diagnoses matched the
+  frozen component and mechanism; one Graph run covered both required evidence claims, leaving no
+  jointly eligible Raw/Graph pair for an end-to-end efficiency estimate.
 
 ## OpenRCA 2.0 ops-lite
 
@@ -458,6 +474,52 @@ therefore rejected rather than repaired.
   says an archival public release will follow acceptance. The dataset card says
   Apache-2.0 while the paper says CC-BY-SA 4.0 for the dataset. Pinning the
   revision makes bytes reproducible but does not resolve either issue.
+
+### Fresh v32 end-to-end cohort
+
+`fixtures/reference/openrca2-transfer-v32-selection.json` freezes ten measurement cases before
+their agent trajectories were observed. Deterministic source ranking follows mechanism and system
+quotas after excluding all cases used by earlier development work. The selected strata are four
+workload restarts, three call-path delays, two CPU-saturation cases, and one memory-pressure case.
+The agent sees only `semantic-rca-transfer-001` through `semantic-rca-transfer-010`.
+
+| Opaque ID | System | Mechanism | Source-derived causal locus |
+| --- | --- | --- | --- |
+| `semantic-rca-transfer-001` | Hotel Reservation | workload restart | component `user` |
+| `semantic-rca-transfer-002` | Hotel Reservation | workload restart | component `reservation` |
+| `semantic-rca-transfer-003` | Hotel Reservation | workload restart | component `user` |
+| `semantic-rca-transfer-004` | OpenTelemetry Demo | workload restart | component `product-catalog` |
+| `semantic-rca-transfer-005` | Hotel Reservation | call-path delay | edge `search -> rate` |
+| `semantic-rca-transfer-006` | Hotel Reservation | call-path delay | edge `search -> rate` |
+| `semantic-rca-transfer-007` | OpenTelemetry Demo | call-path delay | edge `shipping -> quote` |
+| `semantic-rca-transfer-008` | Hotel Reservation | CPU saturation | component `search` |
+| `semantic-rca-transfer-009` | Hotel Reservation | CPU saturation | component `reservation` |
+| `semantic-rca-transfer-010` | Hotel Reservation | memory pressure | component `geo` |
+
+The frozen manifest records every ranked candidate, trajectory exclusion, source-gate rejection,
+selected source file hash, normal and abnormal half-open window, exact source identity, mechanism
+threshold, source aggregate, and source-proven identity facts. A constant namespace is recorded as
+a scope-preserving predicate. A pod is recorded as identity-equivalent only when every selected
+container row has that pod and every row for that pod has the selected container. Every exclusion
+must name a source-manifest case; an unknown name fails selection
+audit instead of silently leaving a consumed case eligible. The loader reads metrics, logs, traces, injection metadata,
+environment metadata, manifest, and conclusion labels for audit and scoring. It never reads or
+ingests a reference causal graph. Agent input does not contain the source case name, injection
+label, conclusion, threshold, or source aggregate.
+
+Two previously consumed development cases form the separate 24-cell pilot:
+`semantic-rca-pilot-001` is a Hotel Reservation workload restart and
+`semantic-rca-pilot-002` is an OpenTelemetry Demo call-path delay. Pilot behavior cannot change the
+ten measurement rubrics or selection. Both pilot source cases are machine-checked members of the
+measurement trajectory-exclusion set.
+
+Each measurement case was replayed twice into a new exclusive GreptimeDB release instance. Both
+passes produced identical per-case source-semantic hashes. All ten runs accepted the pinned source
+and protocol row counts with zero trace/span remapping, reconstructed the complete calls edge set
+from stored Client/Server parent-child spans, matched that normalized set and counts exactly to the
+Semantic Graph, and matched the frozen mechanism aggregate on stored telemetry. These are
+provider-free gates; no v32 measurement model cell has run.
+
 - `otel-demo3-shipping-delay-m6fhpx` is retained only as a development audit.
   Its manifest names `shipping` as the root while `injection.json` lists both
   `shipping` and `quote` as ground-truth services. The previous single-component

@@ -38,12 +38,18 @@ from semantic_rca_bench.inspect import summarize_semantic_surfaces
 
 def test_deepseek_model_uses_compatible_anthropic_endpoint(monkeypatch) -> None:
     calls = []
+    direct_client = object()
 
     def fake_client(**kwargs):
         calls.append(kwargs)
         return kwargs
 
     monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
+    monkeypatch.setattr(
+        agent_module.anthropic,
+        "DefaultHttpxClient",
+        lambda **kwargs: direct_client if kwargs == {"trust_env": False} else None,
+    )
     monkeypatch.setattr(agent_module.anthropic, "Anthropic", fake_client)
 
     client = _anthropic_client(ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES)
@@ -51,6 +57,7 @@ def test_deepseek_model_uses_compatible_anthropic_endpoint(monkeypatch) -> None:
     assert client == {
         "api_key": "test-deepseek-key",
         "base_url": "https://api.deepseek.com/anthropic",
+        "http_client": direct_client,
     }
     assert calls == [client]
 
@@ -89,6 +96,7 @@ def test_responses_clients_use_transport_bound_credentials_and_endpoints(
     monkeypatch, transport, environment_variable, expected
 ) -> None:
     calls = []
+    direct_client = object()
 
     def fake_client(**kwargs):
         calls.append(kwargs)
@@ -100,6 +108,14 @@ def test_responses_clients_use_transport_bound_credentials_and_endpoints(
         "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
     )
     monkeypatch.setattr(agent_module.openai, "OpenAI", fake_client)
+    monkeypatch.setattr(
+        agent_module.openai,
+        "DefaultHttpxClient",
+        lambda **kwargs: direct_client if kwargs == {"trust_env": False} else None,
+    )
+
+    if transport is ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES:
+        expected["http_client"] = direct_client
 
     client = _responses_client(transport)
 
@@ -109,12 +125,18 @@ def test_responses_clients_use_transport_bound_credentials_and_endpoints(
 
 def test_bigmodel_client_uses_china_endpoint_and_dedicated_credential(monkeypatch) -> None:
     calls = []
+    direct_client = object()
 
     def fake_client(**kwargs):
         calls.append(kwargs)
         return kwargs
 
     monkeypatch.setenv("BIGMODEL_API_KEY", "test-key")
+    monkeypatch.setattr(
+        agent_module.openai,
+        "DefaultHttpxClient",
+        lambda **kwargs: direct_client if kwargs == {"trust_env": False} else None,
+    )
     monkeypatch.setattr(agent_module.openai, "OpenAI", fake_client)
 
     client = _chat_completions_client(ApiTransport.BIGMODEL_CHAT_COMPLETIONS)
@@ -122,6 +144,7 @@ def test_bigmodel_client_uses_china_endpoint_and_dedicated_credential(monkeypatc
     assert client == {
         "api_key": "test-key",
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "http_client": direct_client,
     }
     assert calls == [client]
 
@@ -140,6 +163,19 @@ def test_dashscope_responses_rejects_wrong_region_or_protocol(monkeypatch, base_
 
     with pytest.raises(AgentError, match="China \\(Beijing\\) workspace Responses"):
         _responses_client(ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES)
+
+
+def test_dashscope_base_url_falls_back_to_keychain(monkeypatch) -> None:
+    base_url = "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+    monkeypatch.delenv("DASHSCOPE_BASE_URL", raising=False)
+    monkeypatch.setattr(agent_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        agent_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=f"{base_url}\n"),
+    )
+
+    assert agent_module._dashscope_base_url() == base_url
 
 
 def test_responses_request_keeps_provider_specific_options_separate() -> None:
@@ -587,11 +623,115 @@ def test_deepseek_uses_automatic_cache_and_counts_native_usage(monkeypatch) -> N
         max_tool_calls=2,
     )
 
-    assert result.usage.input_tokens == 20
+    assert result.usage.input_tokens == 120
     assert result.usage.output_tokens == 5
     assert "cache_control" not in requests[0]
     assert requests[0]["output_config"] == {"effort": "high"}
     assert requests[0]["max_tokens"] == 16_384
+
+
+def test_api_input_usage_remains_total_when_provider_omits_cache_details() -> None:
+    assert (
+        agent_module._provider_total_input_tokens(
+            {"usage": {"prompt_tokens": 120, "completion_tokens": 5}}
+        )
+        == 120
+    )
+    assert (
+        agent_module._provider_total_input_tokens(
+            {
+                "usage": {
+                    "input_tokens": 20,
+                    "cache_creation_input_tokens": 40,
+                    "cache_read_input_tokens": 160,
+                }
+            }
+        )
+        == 220
+    )
+
+
+def test_reasoning_usage_normalizes_provider_breakdown_names() -> None:
+    assert (
+        agent_module._reasoning_tokens(
+            {
+                "usage": {
+                    "output_tokens": 70,
+                    "output_tokens_details": {"thinking_tokens": 50},
+                }
+            }
+        )
+        == 50
+    )
+    assert (
+        agent_module._reasoning_tokens(
+            {
+                "usage": {
+                    "completion_tokens": 80,
+                    "completion_tokens_details": {"reasoning_tokens": 60},
+                }
+            }
+        )
+        == 60
+    )
+    assert (
+        agent_module._reasoning_tokens(
+            {
+                "usage": {
+                    "output_tokens": 10,
+                    "output_tokens_details": {
+                        "reasoning_tokens": 0,
+                        "thinking_tokens": 7,
+                    },
+                }
+            }
+        )
+        == 0
+    )
+
+
+def test_anthropic_refusal_fails_without_retrying(monkeypatch) -> None:
+    class Response:
+        content: list[object] = []
+        usage = SimpleNamespace(input_tokens=10, output_tokens=0)
+
+        def model_dump(self, *, mode: str) -> dict[str, object]:
+            assert mode == "json"
+            return {
+                "content": [],
+                "stop_reason": "refusal",
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 0,
+                    "output_tokens_details": {"thinking_tokens": 0},
+                },
+            }
+
+    requests: list[dict[str, object]] = []
+
+    def create(**kwargs):
+        requests.append(kwargs)
+        return Response()
+
+    monkeypatch.setattr(
+        agent_module,
+        "_anthropic_client",
+        lambda _: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+
+    result = run_agent(
+        SimpleNamespace(client=SimpleNamespace()),  # type: ignore[arg-type]
+        CaseInput(case_token="case", time_start=100, time_end=200, alert_time=200),
+        Visibility.RAW,
+        model="claude-fable-5",
+        api_transport=ApiTransport.ANTHROPIC_MESSAGES,
+        reasoning_effort="high",
+        max_output_tokens=16_384,
+        max_tool_calls=2,
+    )
+
+    assert result.error == "agent provider refused the request"
+    assert len(requests) == 1
 
 
 def test_openai_responses_runner_projects_continuation_items_and_counts_cache_usage(
@@ -732,7 +872,7 @@ def test_openai_responses_runner_projects_continuation_items_and_counts_cache_us
     )
 
     assert result.diagnosis is not None
-    assert result.usage.input_tokens == 40
+    assert result.usage.input_tokens == 170
     assert result.usage.output_tokens == 11
     assert result.usage.reasoning_tokens == 4
     assert result.api_transport is ApiTransport.OPENAI_RESPONSES
@@ -911,7 +1051,7 @@ def test_bigmodel_chat_completions_runner_replays_tools_and_counts_cached_input(
     )
 
     assert result.diagnosis is not None
-    assert result.usage.input_tokens == 40
+    assert result.usage.input_tokens == 170
     assert result.usage.output_tokens == 11
     assert result.usage.reasoning_tokens == 0
     assert result.api_transport is ApiTransport.BIGMODEL_CHAT_COMPLETIONS

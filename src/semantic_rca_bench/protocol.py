@@ -25,7 +25,7 @@ def run_orders(
 
 def benchmark_protocol() -> dict[str, object]:
     return {
-        "version": 31,
+        "version": 32,
         "treatments": ["raw", "semantic_graph"],
         "treatment_estimand": "complete-agent-facing-interface-v1",
         "treatment_components": {
@@ -48,20 +48,21 @@ def benchmark_protocol() -> dict[str, object]:
         "semantic_context": "benchmark-preflight-v1",
         "sql_contract": "greptimedb-read-only-default-200-explicit-1000-v2",
         "citation": "typed-claim-successful-nonmetadata-nontruncated-query-result-v5",
-        "evaluator": "workload-restart-transition-claim-grounding-v16",
-        "primary_metrics": "correctness-preserving-case-median-rows-and-calls-v3",
+        "evaluator": "scope-values-claim-verifier-with-result-side-identity-lineage-v22",
+        "primary_metrics": "correctness-preserving-case-median-rows-and-calls-v5",
         "repetition_schedule": "seeded-rotating-order-with-position-v2",
         "tool_budget": "shared-visible-cap-api-turn-limit-subscription-timeout-v5",
         "case_role": "explicit-development-or-measurement-v1",
         "case_context": "baseline-availability-v1",
         "database_load": "client-query-boundary-v1",
         "alert": "dataset-native-when-available-v1",
-        "agent_runner": "repairable-final-citation-validation-v12",
-        "model_usage": "typed-cache-and-reasoning-output-breakdown-v5",
+        "agent_runner": "repairable-final-citation-validation-v13",
+        "model_usage": "provider-total-input-and-reasoning-output-breakdown-v6",
+        "provider_network": "openai-anthropic-environment-domestic-direct-v1",
         "tool_error_feedback": "anthropic-native-flag-openai-json-envelope-v1",
-        "diagnosis": "scope-isomorphic-component-or-directed-edge-locus-v5",
-        "mechanism_ontology": "case-independent-workload-restart-v2",
-        "investigation_prompt": "case-invariant-symmetric-hypothesis-discrimination-v3",
+        "diagnosis": "scope-isomorphic-locus-operation-diagnostic-v6",
+        "mechanism_ontology": "case-independent-restart-delay-cpu-memory-v3",
+        "investigation_prompt": "case-invariant-symmetric-hypothesis-discrimination-v4",
     }
 
 
@@ -92,10 +93,11 @@ def discovery_protocol() -> dict[str, object]:
 
 def graph_protocol() -> dict[str, object]:
     return {
-        "version": 4,
+        "version": 5,
         "treatments": ["raw", "semantic_graph"],
         "task": "direct-callee-max-error-red-evidence-v1",
-        "scorer": "result-proven-destination-type-canonical-edge-set-v2",
+        "scorer": "intention-to-treat-canonical-edge-set-v3",
+        "prompt": "dual-surface-canonical-edge-evidence-v2",
         "window": "minute-aligned-half-open-v1",
         "tool_budget": 12,
         "api_turn_limit": 22,

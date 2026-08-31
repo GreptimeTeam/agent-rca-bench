@@ -150,15 +150,17 @@ uv run semantic-rca run \
 ```
 
 The Qwen arm uses the open-weight `qwen3.8-2.4t-a95b` model, not `qwen3.8-max`. It reads
-`DASHSCOPE_API_KEY` or the `semantic-rca-bench-dashscope` Keychain service. `DASHSCOPE_BASE_URL`
-must name the caller's China (Beijing) workspace Responses endpoint; the tenant-specific hostname
-is runtime configuration and is not written to reports. The contract fixes `xhigh` reasoning and
-enables the provider's Session cache header:
+`DASHSCOPE_API_KEY` or the `semantic-rca-bench-dashscope` Keychain service. The
+`DASHSCOPE_BASE_URL` environment variable or `semantic-rca-bench-dashscope-base-url` Keychain
+service must name the caller's China (Beijing) workspace Responses endpoint; the tenant-specific
+hostname is runtime configuration and is not written to reports. The contract fixes `xhigh`
+reasoning and enables the provider's Session cache header:
 
 ```bash
 security add-generic-password -U -a "$USER" \
   -s semantic-rca-bench-dashscope -w
-export DASHSCOPE_BASE_URL='https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
+security add-generic-password -U -a "$USER" \
+  -s semantic-rca-bench-dashscope-base-url -w
 uv run semantic-rca run \
   --report .reports/smoke-<run-id>.json \
   --model qwen3.8-2.4t-a95b \
@@ -202,6 +204,12 @@ claims rather than canonical query recipes and reports per-claim grounding. Prot
 case-independent `workload_restart` mechanism and binds the first fresh Aegis measurement case. The
 agent establishes the failing operation, uses discriminating queries instead of unconditional
 resource sweeps, and compares the same operation across the change point. The
+v32 transfer scorer separates query scope, returned values, and the logical claim. A complete,
+value-independent baseline proves absence; enough in-window anomalous observations prove existence.
+Claim support is inferred from cited results rather than citation labels, evaluator-specific
+aliases, or one identity-filter spelling. A complete result may establish the target population
+through direct identity columns, and source-proven pod identities are accepted as equivalent to the
+canonical container identity. The
 API runner sets its turn limit above the visible tool-call cap and records turn
 exhaustion as a failed run instead of aborting the batch. The supported
 subscription CLIs do not expose a turn-limit option; their broker enforces the
@@ -293,203 +301,189 @@ uv run python -m semantic_rca_bench.measurement_summary
 ```
 
 The hashes make a retained local cohort auditable but are not sufficient for
-independent public reproduction. The current formal reports are raw working
-trajectories and are not the 1.0 release contract. Before 1.0, freeze a legally
-usable reference cohort and a public artifact from which a third party can
-reproduce scoring and primary metrics without exposing provider payloads,
-credentials, or local machine data.
+independent public reproduction. The current v32 workflow exports sanitized
+micro and transfer artifacts and deterministically produces combined JSON and
+HTML. Development pilot cells have run, but no measurement cell has run. The first public report must execute the
+complete suite from one clean tagged benchmark commit.
 
 Benchmark 1.0 targets one canonical API runner and a small fixed public cohort
-covering Table-positive, Graph-positive, and Graph-negative roles, plus a fresh
-end-to-end RCA transfer demonstration. Subscription runners, multiple-model
-report cards, catalog broad-recall, and a powered cross-system effect estimate
-remain post-1.0 work.
+covering discovery and Graph retrieval plus a fresh end-to-end RCA transfer
+demonstration. The first report uses the same six-model roster throughout;
+model report cards remain separate by benchmark and do not create a pooled
+cross-task score. Subscription runners, catalog broad-recall, and a powered
+cross-system effect estimate remain post-1.0 work.
 
-The Graph-positive transfer source audit does not call a model or require a
-GreptimeDB server. Download, verify, extract, and audit the pinned artifact with:
+The current end-to-end transfer cohort uses ten fresh OpenRCA2 cases selected before any of
+their agent trajectories were observed. The frozen strata contain four workload-restart cases,
+three call-path-delay cases, two CPU-saturation cases, and one memory-pressure case across Hotel
+Reservation and OpenTelemetry Demo. Agent input uses only opaque IDs
+`semantic-rca-transfer-001` through `semantic-rca-transfer-010`; source case names, injection
+labels, conclusions, and reference causal graphs remain outside the prompt and ingestion path.
+
+The provider-free workflow is:
 
 ```bash
-uv run semantic-rca aegis-fetch \
-  --cache-dir .data/aegis \
-  --output .reports/aegis-source-audit.json
+uv run semantic-rca transfer-selection-audit \
+  --output .reports/openrca2-transfer-v32-selection-audit.json
+
+uv run semantic-rca transfer-preflight \
+  --phase pilot \
+  --greptimedb-repo /path/to/greptimedb \
+  --run-root .instances/openrca2-transfer-v32-pilot-preflight \
+  --output .reports/openrca2-transfer-v32-pilot.json
+
+uv run semantic-rca transfer-preflight \
+  --phase measurement \
+  --greptimedb-repo /path/to/greptimedb \
+  --run-root .instances/openrca2-transfer-v32-measurement-preflight \
+  --output .reports/openrca2-transfer-v32-measurement.json
 ```
 
-The command requires the exact archive size and MD5 from the Zenodo record. It
-extracts only `reproduction/data/rcabench-platform-v2`, rejects unsafe archive
-members, and reconstructs service-call edges only from native Client-to-Server
-parent-child spans. The audit applies the frozen selection gate in
-`fixtures/reference/aegis-selection.json`. It does not ingest
-`causal_graph.json` or redistribute source telemetry. `DATASETS.md` records the
-license boundary, exclusions, and selected case. Use `aegis-audit` instead when
-you already have a verified, extracted artifact.
+Each preflight starts the bound release GreptimeDB binary in one exclusive loopback-only instance
+per case, uses an independent data directory and database, and stops only the process it started.
+It rejects source-file or selection drift, protocol rejection, trace/span ID remapping, source
+identity changes, stored row-count changes, reference causal-graph ingestion, and a non-empty
+Semantic Graph instance. It independently reconstructs every service `calls` edge from stored
+Client-to-Server parent-child spans and requires complete normalized edge-set equality with
+`greptime_private.semantic_relationships`, including request and OTel server-error counts. The
+window audit records source half-open windows, the minimal whole-minute Graph envelope, widened
+server scan, boundary-bin strategy, normalized rows, and both edge-set hashes.
 
-Protocol v24 and v25 model runs are complete historical development runs. V25 executed all 27
-three-model cells without runner errors or budget exhaustion, and one later Opus Graph diagnostic
-also completed. Their scorer used server duration for a fault injected between client and server
-start, required a hidden exact fault label, and constrained evidence to the canonical aggregate.
-The resulting zero eligible pairs are not a model-quality or semantic-layer result. Historical
-local reports remain development records and are not release artifacts. The runtime only accepts
-v31 for new agent execution and does not rescore, resume, or export earlier development report,
-scorer, or protocol schemas. A non-v31 execution request fails before contacting a provider.
+The mechanism gate replays one source-faithful stored-telemetry predicate per selected mechanism.
+It requires a non-empty baseline with no observations above the frozen threshold and at least two
+anomalous observations above it. Delay evidence uses the directed source edge, native Client and
+Server roles, exact trace/parent identity, source operation, and server-start minus client-start
+nanoseconds. Metric mechanisms retain the source table, container identity, value, timestamp, and
+threshold. The scorer accepts complete raw rows, expression-equivalent aggregates, split windows,
+`BETWEEN`, aliases, transparent CTEs, unambiguous grouped partitions, and a complete baseline paired
+with partial anomalous existence evidence. A frozen exact namespace predicate is accepted when the
+source audit proves it preserves the container population. Value filtering cannot prove baseline
+absence but may prove anomalous existence. A SQL limit is accepted only when the returned row count
+is strictly below it; truncated results always fail. Wrong identity, roles, parent relations,
+lineage, ambiguous periods, and hard-coded result constants fail closed.
 
-Protocol v29 used the source-observable JVM exception case for development calibration. Its Raw
-trajectory proved the correct operation-level Error transition and returned the exception signature,
-but the scorer rejected it because the query used an observed onset and did not filter log text by
-`exception`. Its Graph trajectory found the correct component and operation but did not establish
-the exception mechanism. Protocol v30 replaces query-recipe matching with the claim-grounding
-contract in [`SCORING.md`](SCORING.md). It accepts the Raw evidence without treating the Graph path
-as exception evidence. The case remains development-only because its trajectories shaped both
-contracts.
+The formal transfer fixture freezes six models, Raw and Semantic Graph, two position-balanced
+repetitions, and 48 executed tool calls per cell. All configurations have a 16,384-token shared
+reasoning-and-visible-output ceiling. Reasoning settings are provider-specific frozen
+configurations, not a common compute scale: OpenAI `medium`, DeepSeek and Claude `high`, GLM
+`max`, and Qwen `xhigh`. Prefix caching is enabled through each provider's supported interface.
+DeepSeek, BigModel, and DashScope connect directly and ignore process-level proxy environment
+variables. OpenAI and Anthropic retain the operator's environment routing.
 
-A later two-cell v30 `gpt-5.6-sol` Raw/Graph calibration produced correct diagnoses and valid
-citations in both treatments. It exposed four additional SQL-equivalent evidence shapes. Scorer
-revision `aegis-transfer-jvm-exception-v5` accepts status-grouped and conditional-period trace
-counts, target rows projected from multi-service aggregates, and omitted zero-period rows from
-complete grouped results. It still requires source identity, source OTel Error status, complete
-window coverage, aggregate lineage, and non-truncated results. Deterministic rescoring accepts both
-cells, but they remain development calibration because they changed the scorer. The agent sees only
-`aegis-transfer-003`, an empty fault taxonomy, and the incident windows. Source labels, the source
-case name, and `causal_graph.json` remain outside the agent input and ingestion path.
+Before the 240-cell measurement schedule, the frozen 24-cell development pilot runs two untouched
+development cases with `gpt-5.6-sol`, `deepseek-v4-pro`, and
+`qwen3.8-2.4t-a95b`. Expansion requires at least 10 of 12 Raw/Graph pairs to be
+efficiency-eligible and at least five eligible pairs per case. Treatment-asymmetric eligibility is
+reported with per-claim rejection reasons; it is not a hard gate because unequal completion is part
+of the treatment outcome. The measurement report stores all 12 pair decisions and recomputes this
+gate on every resume.
 
-Run the complete provider-free gate sequence before requesting paid execution:
-
-```bash
-uv run semantic-rca aegis-transfer-audit \
-  --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
-  --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
-  --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
-  --selection fixtures/reference/aegis-transfer-v31-selection.json \
-  --run-dir .instances/aegis-transfer-v31-source-01 \
-  --database case_04 \
-  --output .reports/aegis-transfer-v31-source.json
-
-uv run semantic-rca aegis-transfer-scorer-audit \
-  --transfer-audit .reports/aegis-transfer-v31-source.json \
-  --scorer fixtures/reference/aegis-transfer-v31-scorer.json \
-  --output .reports/aegis-transfer-v31-scorer.json
-
-uv run semantic-rca aegis-transfer-protocol-audit \
-  --source-audit .reports/aegis-transfer-v31-source.json \
-  --scorer-audit .reports/aegis-transfer-v31-scorer.json \
-  --scorer fixtures/reference/aegis-transfer-v31-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v31-six-model-protocol.json \
-  --output .reports/aegis-transfer-v31-protocol.json
-
-uv run semantic-rca aegis-transfer-formal-preflight \
-  --source-audit .reports/aegis-transfer-v31-source.json \
-  --scorer-audit .reports/aegis-transfer-v31-scorer.json \
-  --protocol-audit .reports/aegis-transfer-v31-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v31-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v31-six-model-protocol.json \
-  --output .reports/aegis-transfer-v31-formal.json
-```
-
-The source oracle binds `k8s.container.restarts` to the exact source field
-`attr.k8s.container.name=ts-auth-service`. It contains 24 samples at zero during the normal window
-and 24 samples at one during the abnormal window. The publisher pod label is stale, so the audit
-records both the declared and observed pod names and reports the mismatch. It does not repair the
-pod identity or use it as the causal component. The case has one source-labeled service and no
-declared dependency edge; the loader and scorer do not invent one.
-
-The Graph equality audit derives its comparison strategy from source boundary counts. A boundary
-that can be represented by `observed_at` minute bins must pass normal and abnormal raw/Graph exact
-equality separately and also pass the combined-window comparison. If both periods contain clients
-in the same minute, separate Graph periods are not representable; the audit records that fact and
-requires exact equality over the contiguous union. The selected source follows the latter path.
-Its normalized union contains 43 distinct edges. Raw spans and Semantic Graph have the same SHA-256,
-`2b6ddb0349b41cb1864f817a151c6123a3dd33506b5775080db26fce3c85477c`.
-
-The scorer accepts a complete normal/abnormal aggregate, separate complete-window aggregates, or
-complete raw metric rows. It requires the restart metric, the source container identity, both time
-windows, and result lineage. It does not require the canonical SQL or exact source counts. It
-rejects a wrong workload or metric, pod-level cherry-picking, value filtering, incomplete windows,
-truncated or limited results, and hard-coded aggregates. The diagnosis passes only when the normal
-maximum is zero and at least two abnormal samples establish a restart value of one or greater.
-
-Protocol v31 reports `diagnosis_correct`, per-claim `claim_grounding`,
-`required_evidence_covered`, `citation_integrity`,
-`execution_reliability`, `auditable_completion`, and `efficiency_eligible` separately. The primary
-efficiency comparison requires correct structured diagnosis, required claim coverage, and reliable
-execution. An unrelated invalid extra citation blocks auditable completion without changing
-diagnosis correctness or erasing valid required evidence. Every citation used to cover a required
-claim must still be execution-valid. Free-text `fault_type` is explanatory; the scored mechanism is
-the global, case-independent `mechanism_code`.
-
-Graph entity existence and an ordinary witnessed calls edge can guide investigation, but do not
-alone ground required `causal_locus`. Both treatments must cite incident-local evidence tied to the
-declared operation or mechanism; a mechanism-bound result may ground locus and mechanism together.
-
-The formal fixture freezes `gpt-5.6-sol`, `deepseek-v4-pro`, `claude-opus-5`,
-`claude-fable-5`, `glm-5.3`, and the open-weight `qwen3.8-2.4t-a95b`. Each model runs two
-position-balanced repetitions over Raw and GreptimeDB Semantic Graph, for 24 cells. DeepSeek and
-GLM use provider-managed prefix caching. Qwen explicitly enables its Session cache. Claude uses
-ephemeral request cache control. OpenAI uses implicit 30-minute prefix caching. OpenAI and Qwen use
-provider-specific Responses contracts; GLM uses BigModel Chat Completions. Every model uses the
-same 16,384-token reasoning-and-visible-output limit. The fixture explicitly binds each provider's
-documented default reasoning level: OpenAI `medium`, DeepSeek and Claude `high`, GLM `max`, and Qwen
-`xhigh`. Preflight records zero
-completed cells and does not read credentials, start GreptimeDB, or call a provider.
-
-**Warning:** The next command calls a paid API. The manifest schedules OpenAI first, and
-`--max-new-runs 1` limits this invocation to one cell so output-budget and transport behavior can
-be inspected before separately approving the remaining cells.
+**The following commands call paid APIs. Run them only after reviewing the current code, fixtures,
+and no-model artifacts and granting a new approval for that invocation.** A run executes pending
+cells only for the next scheduled case. Every resume uses a new empty run directory; the private
+report is updated atomically and must remain an exact schedule prefix.
 
 ```bash
-uv run semantic-rca aegis-transfer-formal-run \
-  --cases-dir .data/aegis/rcabench-platform-v2/data/rcabench \
-  --meta-dir .data/aegis/rcabench-platform-v2/meta/rcabench \
-  --archive .data/aegis/FSE_26_RCA_dataset_study_reviewer.tar.gz \
-  --selection fixtures/reference/aegis-transfer-v31-selection.json \
-  --run-dir .instances/aegis-transfer-v31-paid-01 \
-  --database case_04 \
-  --report .reports/aegis-transfer-v31-formal.json \
-  --source-audit-output .reports/aegis-transfer-v31-paid-01-source.json \
-  --scorer-audit-output .reports/aegis-transfer-v31-paid-01-scorer.json \
-  --protocol-audit-output .reports/aegis-transfer-v31-paid-01-protocol.json \
-  --scorer fixtures/reference/aegis-transfer-v31-scorer.json \
-  --protocol fixtures/reference/aegis-transfer-v31-six-model-protocol.json \
-  --max-new-runs 1 \
+uv run semantic-rca transfer-run \
+  --report .reports/openrca2-transfer-v32-pilot.json \
+  --run-dir .instances/openrca2-transfer-v32-pilot-case-01 \
+  --confirm-paid-api
+
+# Repeat with a new run directory for pilot case 02. After the pilot gate passes:
+uv run semantic-rca transfer-run \
+  --report .reports/openrca2-transfer-v32-measurement.json \
+  --pilot-report .reports/openrca2-transfer-v32-pilot.json \
+  --run-dir .instances/openrca2-transfer-v32-measurement-case-01 \
   --confirm-paid-api
 ```
 
-The runner atomically persists every completed cell and resumes only an exact schedule prefix.
-An intentionally bounded invocation returns success when its requested cells complete without a
-runner error or budget exhaustion, even though the full schedule remains incomplete. Resume the
-same report only after separate approval, omit `--max-new-runs`, and use a new empty run directory
-and new audit-output paths.
-Runner errors and budget exhaustion remain scored cell outcomes and do not stop the rest of the
-batch. A roster, scheduled-model, or tool-budget contract violation is a harness failure and stops
-the invocation after recording the cell. Resume with the same report, a new empty run directory,
-new audit output paths, and a new explicit approval. The preflight binds the pricing snapshot by
-content so a later pricing-table update cannot invalidate an in-progress report or alter its
-exported cost estimate.
+Use `--max-new-runs 1` for an explicitly approved transport probe. Runner failures are persisted
+as scoreable failed cells instead of aborting the batch. Provider confirmation is never stored and
+subscription fallback is forbidden.
 
-Protocol v31 marks case 004 as fresh measurement input because no agent trajectory from this case
-influenced the prompt, tools, diagnosis contract, or scorer. Do not publish a measurement artifact
-until all scheduled cells complete and the deterministic export and report checks pass.
+The fixed Discovery and Graph reference cohort contributes 192 cells: eight cases, six models, two
+treatments, and two repetitions. It must be rerun from the same v32 suite fixture because the agent
+surface and model roster are part of the protocol:
+
+```bash
+uv run semantic-rca formal-suite-micro-preflight \
+  --greptimedb-repo /path/to/greptimedb \
+  --run-root .instances/formal-suite-v32-preflight \
+  --source-audits-dir .reports/formal-suite-v32-source-audits \
+  --output .reports/formal-suite-v32-micro.json
+
+# Paid API boundary:
+uv run semantic-rca formal-suite-micro-run \
+  --greptimedb-repo /path/to/greptimedb \
+  --run-root .instances/formal-suite-v32-paid \
+  --live-audits-dir .reports/formal-suite-v32-live-audits \
+  --report .reports/formal-suite-v32-micro.json \
+  --confirm-paid-api
+```
+
+The complete report contains 432 cells: 192 fixed-cohort micro cells and 240 fresh end-to-end
+transfer cells. Repetitions describe model variability; the ten transfer cases are the independent
+units for the transfer estimate. Primary transfer metrics are Graph-minus-Raw rows returned and
+correct-completion tool calls, reduced to a median within each case before cross-case summaries.
+The fixed Holm family contains two metrics for each of six models. Null means not estimable, a zero
+call delta means no observed step reduction, and non-significance is not equivalence. A
+direction-consistent result that does not pass Holm is reported descriptively with its directional
+case count, eligible case count, case median, unadjusted p-value, and Holm-adjusted p-value.
+
+After both schedules complete, export sanitized artifacts and generate the combined report:
+
+```bash
+uv run semantic-rca formal-suite-micro-export \
+  --run-report .reports/formal-suite-v32-micro.json \
+  --output artifacts/measurement/semantic-rca-v32-micro.json
+
+uv run semantic-rca transfer-export \
+  --run-report .reports/openrca2-transfer-v32-measurement.json \
+  --output artifacts/measurement/openrca2-transfer-v32-six-model.json
+
+uv run semantic-rca formal-suite-report \
+  --micro-artifact artifacts/measurement/semantic-rca-v32-micro.json \
+  --transfer-artifact artifacts/measurement/openrca2-transfer-v32-six-model.json \
+  --output-json artifacts/measurement/semantic-rca-v32-report.json \
+  --output-html artifacts/measurement/semantic-rca-v32-report.html
+```
+
+The transfer artifact retains every tool input, result row count, truncation flag, result hash,
+per-call database load, citation-to-call resolution, deterministic scope/facts/claim verdicts,
+per-claim rejection codes, locus projection, treatment-specific eligibility, and case-level effect.
+It excludes provider responses, reasoning text, provider and query IDs, free-form
+claims and explanations, raw telemetry rows, local paths, endpoints, and provider error text. The
+tagged source deterministically revalidates every public citation, score, primary metric, aggregate,
+and artifact hash without a provider call.
+
+Aegis v24-v31 and the earlier one-case six-model run are historical development experiments. Their
+JSON records may remain in the repository, but current code intentionally provides no loader,
+scorer, resume, export, or renderer compatibility for those internal protocols.
 
 Since protocol v24, end-to-end RCA counts a citation as execution-valid only when
 it uniquely identifies a successful, non-truncated SQL or Graph query result,
 the result carries the same query ID, and the evidence claim is non-empty.
 Catalog and schema discovery are not incident evidence. This check prevents
 failed or fabricated references from unlocking efficiency metrics, but it does
-not prove that the cited rows support the diagnosis. The Aegis transfer scorer
-adds a source-specific deterministic evidence-support predicate. Protocol v31
-also requires each citation to declare the structured claim types it supports,
-then evaluates causal-locus coverage, mechanism coverage, referential integrity,
+not prove that the cited rows support the diagnosis. The current transfer scorer
+adds deterministic source-derived evidence-support predicates. Each citation
+also declares structured claim types as an auditable annotation; the scorer infers actual support
+from the executed query scope and returned facts. It evaluates causal-locus coverage, mechanism coverage, referential integrity,
 and execution reliability separately. The generic RCA scorer still does not
 infer evidence entailment.
 
 Token fields are runner-specific. The API runner sums provider usage over all
-responses; `run.usage.input_tokens` excludes cache creation and cache reads.
-Raw response usage keeps those fields so reports reconstruct total model-visible
-input and billing. Anthropic API requests enable automatic
-5-minute prompt caching. DeepSeek context caching is enabled by the provider and
-requires no request flag; its Anthropic-compatible endpoint ignores
-`cache_control`. OpenAI Responses requests use implicit 30-minute caching and
-persist `cached_tokens` and `cache_write_tokens` in raw usage. OpenAI reasoning tokens are recorded
-as a subset of provider-reported output tokens; cost and total-token calculations do not add them
-again. Codex reads exactly one cumulative
+responses; `run.usage.input_tokens` is total provider-visible input. Anthropic
+totals are reconstructed from input, cache-creation, and cache-read fields. Raw
+response usage retains the cache breakdown for billing. Anthropic API requests
+enable automatic 5-minute prompt caching. DeepSeek context caching is enabled by
+the provider and requires no request flag; its Anthropic-compatible endpoint
+ignores `cache_control`. OpenAI Responses requests use implicit 30-minute caching
+and persist `cached_tokens` and `cache_write_tokens` in raw usage. The runner
+normalizes `reasoning_tokens` and `thinking_tokens` as a subset of
+provider-reported output tokens when a provider returns that breakdown; cost and
+total-token calculations do not add them again. Providers without a separate
+breakdown still include reasoning in output tokens. Codex reads exactly one cumulative
 `turn.completed` event and persists input including cache without a cache
 breakdown. Claude adds input, cache creation, and cache reads into
 `input_tokens`. Provider context includes system prompts, tool schemas, prior

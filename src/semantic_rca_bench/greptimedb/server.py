@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import httpx
 
@@ -25,7 +28,12 @@ def _run(repo: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
-def inspect_checkout(repo: Path, *, expected_branch: str | None = None) -> dict[str, object]:
+def inspect_checkout(
+    repo: Path,
+    *,
+    expected_branch: str | None = None,
+    build_profile: Literal["debug", "release"] = "debug",
+) -> dict[str, object]:
     if not (repo / "Cargo.toml").is_file():
         raise EnvironmentError(f"not a GreptimeDB checkout: {repo}")
     dirty = _run(repo, "git", "status", "--porcelain", "--untracked-files=no")
@@ -35,7 +43,7 @@ def inspect_checkout(repo: Path, *, expected_branch: str | None = None) -> dict[
     if expected_branch and branch != expected_branch:
         raise EnvironmentError(f"expected branch {expected_branch}, found {branch}")
     head = _run(repo, "git", "rev-parse", "HEAD")
-    binary = repo / "target" / "debug" / "greptime"
+    binary = repo / "target" / build_profile / "greptime"
     binary_version = None
     if binary.is_file():
         result = subprocess.run(
@@ -50,6 +58,7 @@ def inspect_checkout(repo: Path, *, expected_branch: str | None = None) -> dict[
         "repo": str(repo),
         "branch": branch,
         "head": head,
+        "build_profile": build_profile,
         "binary": str(binary),
         "binary_version": binary_version,
     }
@@ -147,4 +156,22 @@ class ManagedGreptime:
 
 def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, sort_keys=True, default=str) + "\n")
+    payload = json.dumps(value, indent=2, sort_keys=True) + "\n"
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(path)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()

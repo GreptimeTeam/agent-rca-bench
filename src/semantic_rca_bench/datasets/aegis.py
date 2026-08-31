@@ -417,13 +417,14 @@ def _transfer_mechanism_supported(mechanism: object) -> bool:
 
 
 def _release_mechanism_observable(mechanism: object) -> bool:
-    if not isinstance(mechanism, dict) or mechanism.get("predicate_match") is not True:
+    if not isinstance(mechanism, dict):
         return False
     predicate = mechanism.get("predicate")
     if predicate == "source_declared_workload_restart":
         observed_pods = mechanism.get("observed_pod_names")
         return bool(
-            mechanism.get("identity_field") == "attr.k8s.container.name"
+            mechanism.get("predicate_match") is True
+            and mechanism.get("identity_field") == "attr.k8s.container.name"
             and mechanism.get("identity_value")
             and isinstance(observed_pods, list)
             and len(observed_pods) == 1
@@ -435,7 +436,8 @@ def _release_mechanism_observable(mechanism: object) -> bool:
     if predicate == "source_declared_memory_pressure":
         observed_pods = mechanism.get("observed_pod_names")
         return bool(
-            mechanism.get("identity_field") == "service_name"
+            mechanism.get("predicate_match") is True
+            and mechanism.get("identity_field") == "service_name"
             and mechanism.get("identity_value")
             and isinstance(observed_pods, list)
             and len(observed_pods) == 1

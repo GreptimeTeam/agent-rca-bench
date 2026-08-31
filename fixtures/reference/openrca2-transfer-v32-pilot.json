@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "pilot_revision": "openrca2-development-pilot-v1",
+  "dataset_revision": "ops-lite@9ac09981c08ab02a0b923eab7830d778934851a8",
+  "source_revision": "9ac09981c08ab02a0b923eab7830d778934851a8",
+  "case_role": "development",
+  "selected_cases": [
+    {
+      "opaque_case_id": "semantic-rca-pilot-001",
+      "source_case": "hs4-geo-pod-failure-pdt289",
+      "system": "Hotel Reservation",
+      "case_role": "development",
+      "causal_scope": "component",
+      "causal_component": "geo",
+      "edge_source": null,
+      "edge_destination": null,
+      "fault_category": "other",
+      "mechanism_code": "workload_restart",
+      "source_fault_type": "PodFailure",
+      "normal_window": [
+        1777725806,
+        1777726106
+      ],
+      "abnormal_window": [
+        1777726106,
+        1777726406
+      ],
+      "mechanism_evidence": {
+        "predicate": "workload_restart_transition",
+        "source_table": "k8s_container_restarts",
+        "value_column": "greptime_value",
+        "identity_column": "k8s_container_name",
+        "identity_value": "hotel-reserv-geo",
+        "threshold": 1.0,
+        "minimum_anomalous_observations": 2,
+        "allowed_operations": [],
+        "scope_preserving_predicates": [
+          {
+            "column": "k8s_namespace_name",
+            "value": "hs4"
+          }
+        ],
+        "identity_equivalent_predicates": [
+          {
+            "column": "k8s_pod_name",
+            "value": "geo-578bc47cdf-45rjk"
+          }
+        ],
+        "normal": {
+          "count": 14,
+          "min": 0.0,
+          "max": 0.0,
+          "high_count": 0
+        },
+        "abnormal": {
+          "count": 19,
+          "min": 3.0,
+          "max": 6.0,
+          "high_count": 19
+        }
+      },
+      "source_files_sha256": {
+        "normal_metrics.parquet": "8323346d5d99a50fb362ec09a821cee889580e6a591d90f1a942c7eea9bd3849",
+        "abnormal_metrics.parquet": "8fe12b31c0cb943ce85e0f8e7aa3bc0fda940029de148aceefe6b3feaf8e6c38",
+        "normal_metrics_sum.parquet": "46fdb3e7e35e5c3f908d11fd3f615cf6054b6f494b5a2b059edca368cde90c38",
+        "abnormal_metrics_sum.parquet": "fe3f76eca3750b293e1adcf616176d32aaa01ee43c656f5158d4ca6e4a1fba1e",
+        "normal_metrics_histogram.parquet": "c3eb37f89b747f1e7457d927762bfff5ae9472c67d73ef3d04c289b8c2c5aa0d",
+        "abnormal_metrics_histogram.parquet": "a67709404fe0b8e79bc4cf3c41cba563ba036bb7ea3958ea5d052c01a4dcb786",
+        "normal_logs.parquet": "6183fe480f7fe6ff4604e4157c1cc12c4efdc9b7bdc6edf3e846c2e00df774f2",
+        "abnormal_logs.parquet": "27dc2f67bd0cd221ece42f672794756700f19b54135997a71aaec68e9bf619cc",
+        "normal_traces.parquet": "994b3829e5e47c033272a21f94eae4d38d228efe6600f8e84a2679cdc9197523",
+        "abnormal_traces.parquet": "4635f6aebed936cb26b75218eb7546d2a482b05ffb1edb75f169985e771910f8",
+        "injection.json": "96d91ddcaa5088fa0511816f0bf6e7a1be8399229c864e1620c3b98e5d2c63fa",
+        "env.json": "b82e93b9a46ddac1030c58c79231922f6fe081d7ddeccdf74b6f99e9f150df4f",
+        "conclusion.parquet": "ba6519ca0c0f6206d28b39e50bd929e0c49da58c397badc1ed13ecf1f5dc7fd7"
+      }
+    },
+    {
+      "opaque_case_id": "semantic-rca-pilot-002",
+      "source_case": "otel-demo3-shipping-delay-m6fhpx",
+      "system": "OpenTelemetry Demo",
+      "case_role": "development",
+      "causal_scope": "dependency_edge",
+      "causal_component": null,
+      "edge_source": "shipping",
+      "edge_destination": "quote",
+      "fault_category": "delay",
+      "mechanism_code": "call_path_delay",
+      "source_fault_type": "NetworkDelay",
+      "normal_window": [
+        1777725006,
+        1777725306
+      ],
+      "abnormal_window": [
+        1777725306,
+        1777725606
+      ],
+      "mechanism_evidence": {
+        "predicate": "call_path_start_gap_transition",
+        "source_table": "traces",
+        "value_column": "server_start_minus_client_start_ns",
+        "identity_column": null,
+        "identity_value": null,
+        "threshold": 500000000.0,
+        "minimum_anomalous_observations": 2,
+        "allowed_operations": [
+          "POST /getquote",
+          "POST quote"
+        ],
+        "scope_preserving_predicates": [],
+        "identity_equivalent_predicates": [],
+        "normal": {
+          "count": 6,
+          "min": 1035854,
+          "max": 1327363,
+          "high_count": 0
+        },
+        "abnormal": {
+          "count": 5,
+          "min": 1619997884,
+          "max": 1620184870,
+          "high_count": 5
+        }
+      },
+      "source_files_sha256": {
+        "normal_metrics.parquet": "a7b1e83433df84619dfb86402ec53f7e57d85dc5a0972d196b14ff0ca81ba155",
+        "abnormal_metrics.parquet": "43a32f48db4cf8ee79518dc0a54a887be599fc9574fda088b2221a8e8ce10a14",
+        "normal_metrics_sum.parquet": "511561ccb9ce0d0d784c8e0b73846f79e8b24227061405bb1e93e916bec28eb1",
+        "abnormal_metrics_sum.parquet": "9689c641fb004a421c3c7eb141237f552079d27db26a0bf97e33996a796f37d5",
+        "normal_metrics_histogram.parquet": "0651b05970fb7fa79c626abecb22e98e10998f61a2e944d8caaa217bdc0037d2",
+        "abnormal_metrics_histogram.parquet": "a62c530ff5d9cc5dd2af35225652d5f780a9d1e2987f58901be2a1f0719c09ca",
+        "normal_logs.parquet": "283e58e3174418e4f7057c1a601b82975c6c55266a8c1a6928b191b76a5b1c43",
+        "abnormal_logs.parquet": "283e58e3174418e4f7057c1a601b82975c6c55266a8c1a6928b191b76a5b1c43",
+        "normal_traces.parquet": "dad406a911f6338bdf23744f1f93b4d844b5a82024289ce5173c14d47ecc94e5",
+        "abnormal_traces.parquet": "28584116e66c34a3f1be38acca70deb87bad62c24733f6190a7e26c9e991523c",
+        "injection.json": "ea0a6e1f2a90de48a8260c44d9921c625de8396951b4139345857d00d1b61940",
+        "env.json": "77eea9da5a5c1d44c8d699e1a18da3227970f8988ce50f8fcc568c9fdd0eb403",
+        "conclusion.parquet": "e99d2abd0e91c121e02f7e9d0c70acd00fd6ee6917adb95f8528397053c7bc24"
+      }
+    }
+  ]
+}

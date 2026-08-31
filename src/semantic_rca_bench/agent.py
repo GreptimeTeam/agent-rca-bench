@@ -73,6 +73,7 @@ DEEPSEEK_KEYCHAIN_SERVICE = "semantic-rca-bench-deepseek"
 OPENAI_KEYCHAIN_SERVICE = "semantic-rca-bench-openai"
 BIGMODEL_KEYCHAIN_SERVICE = "semantic-rca-bench-bigmodel"
 DASHSCOPE_KEYCHAIN_SERVICE = "semantic-rca-bench-dashscope"
+DASHSCOPE_BASE_URL_KEYCHAIN_SERVICE = "semantic-rca-bench-dashscope-base-url"
 DEEPSEEK_ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
 BIGMODEL_CHAT_COMPLETIONS_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
 DASHSCOPE_BASE_URL_ENV = "DASHSCOPE_BASE_URL"
@@ -638,8 +639,17 @@ def run_structured_api_agent(
         try:
             raw_response = response.model_dump(mode="json")
             responses.append(raw_response)
-            usage.input_tokens += _uncached_input_tokens(raw_response)
+            usage.input_tokens += _provider_total_input_tokens(raw_response)
             usage.output_tokens += int(response.usage.output_tokens)
+            usage.reasoning_tokens += _reasoning_tokens(raw_response)
+            if raw_response.get("stop_reason") == "refusal":
+                return _structured_result(
+                    session,
+                    usage,
+                    responses,
+                    started,
+                    error="agent provider refused the request",
+                )
             content = response.content
         except Exception as error:
             return _structured_result(
@@ -802,8 +812,9 @@ def _run_chat_completions_structured_api_agent(
         try:
             raw_response = response.model_dump(mode="json")
             responses.append(raw_response)
-            usage.input_tokens += _uncached_input_tokens(raw_response)
+            usage.input_tokens += _provider_total_input_tokens(raw_response)
             usage.output_tokens += _provider_output_tokens(raw_response)
+            usage.reasoning_tokens += _reasoning_tokens(raw_response)
             if len(response.choices) != 1:
                 raise AgentError("Chat Completions response must contain exactly one choice")
             choice = response.choices[0]
@@ -968,7 +979,7 @@ def _run_responses_structured_api_agent(
         try:
             raw_response = response.model_dump(mode="json")
             responses.append(raw_response)
-            usage.input_tokens += _uncached_input_tokens(raw_response)
+            usage.input_tokens += _provider_total_input_tokens(raw_response)
             usage.output_tokens += int(response.usage.output_tokens)
             usage.reasoning_tokens += _reasoning_tokens(raw_response)
             _validate_responses_status(raw_response)
@@ -1103,6 +1114,7 @@ def _anthropic_client(api_transport: ApiTransport) -> anthropic.Anthropic:
         return anthropic.Anthropic(
             api_key=api_key,
             base_url=DEEPSEEK_ANTHROPIC_BASE_URL,
+            http_client=anthropic.DefaultHttpxClient(trust_env=False),
         )
     if api_transport is not ApiTransport.ANTHROPIC_MESSAGES:
         raise AgentError(f"unsupported Anthropic transport: {api_transport.value}")
@@ -1114,7 +1126,11 @@ def _chat_completions_client(api_transport: ApiTransport) -> openai.OpenAI:
     if api_transport is not ApiTransport.BIGMODEL_CHAT_COMPLETIONS:
         raise AgentError(f"unsupported Chat Completions transport: {api_transport.value}")
     api_key = _api_credential("BIGMODEL_API_KEY", BIGMODEL_KEYCHAIN_SERVICE)
-    return openai.OpenAI(api_key=api_key, base_url=BIGMODEL_CHAT_COMPLETIONS_BASE_URL)
+    return openai.OpenAI(
+        api_key=api_key,
+        base_url=BIGMODEL_CHAT_COMPLETIONS_BASE_URL,
+        http_client=openai.DefaultHttpxClient(trust_env=False),
+    )
 
 
 def _chat_completions_function_tool(tool: dict[str, object]) -> dict[str, object]:
@@ -1181,12 +1197,19 @@ def _responses_client(api_transport: ApiTransport) -> openai.OpenAI:
         return openai.OpenAI(api_key=api_key)
     if api_transport is ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES:
         api_key = _api_credential("DASHSCOPE_API_KEY", DASHSCOPE_KEYCHAIN_SERVICE)
-        return openai.OpenAI(api_key=api_key, base_url=_dashscope_base_url())
+        return openai.OpenAI(
+            api_key=api_key,
+            base_url=_dashscope_base_url(),
+            http_client=openai.DefaultHttpxClient(trust_env=False),
+        )
     raise AgentError(f"unsupported Responses transport: {api_transport.value}")
 
 
 def _dashscope_base_url() -> str:
-    base_url = os.environ.get(DASHSCOPE_BASE_URL_ENV, "").rstrip("/")
+    base_url = _environment_or_keychain(
+        DASHSCOPE_BASE_URL_ENV,
+        DASHSCOPE_BASE_URL_KEYCHAIN_SERVICE,
+    ).rstrip("/")
     parsed = urlsplit(base_url)
     if (
         parsed.scheme != "https"
@@ -1339,22 +1362,38 @@ def _reasoning_tokens(response: dict[str, object]) -> int:
     raw_usage = response.get("usage")
     if not isinstance(raw_usage, dict):
         raise AgentError("provider response has no usage object")
-    output_tokens = int(raw_usage.get("output_tokens", 0) or 0)
-    details = raw_usage.get("output_tokens_details")
-    reasoning_tokens = (
-        int(details.get("reasoning_tokens", 0) or 0) if isinstance(details, dict) else 0
-    )
+    output_tokens = int(raw_usage.get("output_tokens", raw_usage.get("completion_tokens", 0)) or 0)
+    details = raw_usage.get("output_tokens_details", raw_usage.get("completion_tokens_details"))
+    reasoning_tokens = 0
+    if isinstance(details, dict):
+        raw_reasoning = (
+            details["reasoning_tokens"]
+            if "reasoning_tokens" in details
+            else details.get("thinking_tokens", 0)
+        )
+        reasoning_tokens = int(raw_reasoning or 0)
     if reasoning_tokens < 0 or reasoning_tokens > output_tokens:
         raise AgentError("provider reasoning token breakdown exceeds output_tokens")
     return reasoning_tokens
 
 
-def _uncached_input_tokens(response: dict[str, object]) -> int:
+def _provider_total_input_tokens(response: dict[str, object]) -> int:
     raw_usage = response.get("usage")
     if not isinstance(raw_usage, dict):
         raise AgentError("provider response has no usage object")
     if "prompt_cache_hit_tokens" in raw_usage and "prompt_cache_miss_tokens" in raw_usage:
-        return int(raw_usage["prompt_cache_miss_tokens"] or 0)
+        return int(raw_usage["prompt_cache_hit_tokens"] or 0) + int(
+            raw_usage["prompt_cache_miss_tokens"] or 0
+        )
+    if "cache_read_input_tokens" in raw_usage and "cache_creation_input_tokens" in raw_usage:
+        return sum(
+            int(raw_usage.get(field, 0) or 0)
+            for field in (
+                "input_tokens",
+                "cache_creation_input_tokens",
+                "cache_read_input_tokens",
+            )
+        )
     input_tokens = int(raw_usage.get("input_tokens", raw_usage.get("prompt_tokens", 0)) or 0)
     details = raw_usage.get("input_tokens_details", raw_usage.get("prompt_tokens_details"))
     if isinstance(details, dict):
@@ -1367,7 +1406,6 @@ def _uncached_input_tokens(response: dict[str, object]) -> int:
         )
         if cached < 0 or cache_write < 0 or cached + cache_write > input_tokens:
             raise AgentError("provider cache token breakdown exceeds input_tokens")
-        return input_tokens - cached - cache_write
     return input_tokens
 
 
@@ -1379,8 +1417,18 @@ def _provider_output_tokens(response: dict[str, object]) -> int:
 
 
 def _api_credential(environment_variable: str, keychain_service: str) -> str:
-    api_key = os.environ.get(environment_variable)
-    if not api_key and sys.platform == "darwin":
+    api_key = _environment_or_keychain(environment_variable, keychain_service)
+    if not api_key:
+        raise AgentError(
+            f"credential not found in {environment_variable} or macOS Keychain "
+            f"service {keychain_service}"
+        )
+    return api_key
+
+
+def _environment_or_keychain(environment_variable: str, keychain_service: str) -> str:
+    value = os.environ.get(environment_variable, "")
+    if not value and sys.platform == "darwin":
         result = subprocess.run(
             ["/usr/bin/security", "find-generic-password", "-s", keychain_service, "-w"],
             check=False,
@@ -1388,13 +1436,8 @@ def _api_credential(environment_variable: str, keychain_service: str) -> str:
             text=True,
         )
         if result.returncode == 0:
-            api_key = result.stdout.strip()
-    if not api_key:
-        raise AgentError(
-            f"credential not found in {environment_variable} or macOS Keychain "
-            f"service {keychain_service}"
-        )
-    return api_key
+            value = result.stdout.strip()
+    return value
 
 
 def _agent_tools(
@@ -1785,7 +1828,8 @@ remains plausible.
 
 GreptimeDB SQL notes:
 - Compare Timestamp columns with timestamp string literals, not integer Unix epochs.
-- Use date_bin('1 minute', timestamp_column) for time buckets.
+- Use date_bin for time buckets only when the bucket boundaries preserve the incident's required
+  baseline/anomalous split; otherwise keep the exact timestamp boundary.
 - Quote identifiers containing dots with double quotes.
 - In UNION queries, put ORDER BY only after the combined query, or run separate queries.
 - Confirm tables and columns through discovery tools before querying them. table_schema is an
