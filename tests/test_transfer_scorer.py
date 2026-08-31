@@ -164,6 +164,123 @@ def test_metric_scorer_accepts_expression_equivalent_aggregate_aliases(index: in
 
 
 @pytest.mark.parametrize(
+    ("index", "value_expression", "query_threshold", "result_factor"),
+    [
+        (7, "greptime_value * 100", 50, 100),
+        (9, "greptime_value / 1048576", 512, 1 / 1048576),
+    ],
+)
+def test_metric_scorer_normalizes_equivalent_units(
+    index: int,
+    value_expression: str,
+    query_threshold: float,
+    result_factor: float,
+) -> None:
+    case = _case(index)
+    evidence = case.mechanism_evidence
+    query = f"""
+        SELECT
+          CASE WHEN greptime_timestamp < '{_time(case.abnormal_window[0])}'
+               THEN 'normal' ELSE 'abnormal' END AS phase,
+          COUNT(*) AS observations,
+          MIN({value_expression}) AS low_value,
+          MAX({value_expression}) AS high_value,
+          SUM(CASE WHEN {value_expression} >= {query_threshold}
+                   THEN 1 ELSE 0 END) AS threshold_hits
+        FROM {evidence.source_table}
+        WHERE {evidence.identity_column} = '{evidence.identity_value}'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+        GROUP BY phase
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["phase", "observations", "low_value", "high_value", "threshold_hits"],
+        rows=[
+            [
+                "normal",
+                evidence.normal["count"],
+                evidence.normal["min"] * result_factor,
+                evidence.normal["max"] * result_factor,
+                evidence.normal["high_count"],
+            ],
+            [
+                "abnormal",
+                evidence.abnormal["count"],
+                evidence.abnormal["min"] * result_factor,
+                evidence.abnormal["max"] * result_factor,
+                evidence.abnormal["high_count"],
+            ],
+        ],
+        elapsed_seconds=0,
+    )
+
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match is True
+
+
+def test_metric_scorer_normalizes_scaled_raw_rows() -> None:
+    case = _case(7)
+    evidence = case.mechanism_evidence
+    query = f"""
+        SELECT greptime_timestamp, greptime_value * 100 AS utilization_percent
+        FROM {evidence.source_table}
+        WHERE {evidence.identity_column} = '{evidence.identity_value}'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["greptime_timestamp", "utilization_percent"],
+        rows=[
+            [_time(case.normal_window[0] + 1), 1.0],
+            [_time(case.abnormal_window[0] + 1), 100.0],
+            [_time(case.abnormal_window[0] + 2), 110.0],
+        ],
+        elapsed_seconds=0,
+    )
+
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match is True
+
+
+@pytest.mark.parametrize("non_finite", [float("nan"), float("inf"), float("-inf")])
+def test_metric_scorer_rejects_non_finite_raw_values(non_finite: float) -> None:
+    case = _case(7)
+    evidence = case.mechanism_evidence
+    query = f"""
+        SELECT greptime_timestamp, greptime_value
+        FROM {evidence.source_table}
+        WHERE {evidence.identity_column} = '{evidence.identity_value}'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["greptime_timestamp", "greptime_value"],
+        rows=[
+            [_time(case.normal_window[0] + 1), non_finite],
+            [_time(case.abnormal_window[0] + 1), 1.0],
+            [_time(case.abnormal_window[0] + 2), 1.0],
+        ],
+        elapsed_seconds=0,
+    )
+
+    assert not _evaluate(_run(case, query, result), case).mechanism_evidence_match
+
+
+@pytest.mark.parametrize(
+    "value_expression",
+    ["greptime_value + 1", "greptime_value * -1", "ROUND(greptime_value, 0)"],
+)
+def test_metric_scorer_rejects_non_equivalent_or_lossy_transform(
+    value_expression: str,
+) -> None:
+    case = _case(7)
+    query = _metric_query(case).replace("greptime_value", value_expression)
+
+    assert not _evaluate(_run(case, query, _metric_result(case)), case).mechanism_evidence_match
+
+
+@pytest.mark.parametrize(
     ("operator", "query_threshold"),
     [(">=", 1_000_000_000), (">=", -1), (">", 1)],
 )
@@ -755,6 +872,68 @@ def test_metric_scorer_accepts_conditional_extremes_with_observed_onset() -> Non
     assert _evaluate(_run(case, query, result), case).mechanism_evidence_match
 
 
+def test_restart_scorer_does_not_fabricate_period_counts_from_counter_extremes() -> None:
+    case = _case(0)
+    evidence = case.mechanism_evidence
+    query = f"""
+        SELECT {evidence.identity_column},
+               MIN(greptime_value) AS minimum,
+               MAX(greptime_value) AS maximum,
+               MIN(CASE WHEN greptime_value > 0
+                        THEN greptime_timestamp ELSE NULL END) AS first_restart
+        FROM {evidence.source_table}
+        WHERE {evidence.identity_column} = '{evidence.identity_value}'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+        GROUP BY {evidence.identity_column}
+        HAVING MAX(greptime_value) > MIN(greptime_value)
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=[evidence.identity_column, "minimum", "maximum", "first_restart"],
+        rows=[
+            [
+                evidence.identity_value,
+                0.0,
+                6.0,
+                _time(case.abnormal_window[0] + 1),
+            ]
+        ],
+        elapsed_seconds=0,
+    )
+
+    assert not _evaluate(_run(case, query, result), case).mechanism_evidence_match
+
+
+def test_metric_scorer_normalizes_conditional_extreme_units() -> None:
+    case = _case(7)
+    evidence = case.mechanism_evidence
+    onset = _time(case.abnormal_window[0] + 1)
+    value = "greptime_value * 100"
+    query = f"""
+        SELECT MIN(CASE WHEN greptime_timestamp < '{onset}'
+                        THEN {value} END) AS baseline_min,
+               MAX(CASE WHEN greptime_timestamp < '{onset}'
+                        THEN {value} END) AS baseline_max,
+               MIN(CASE WHEN greptime_timestamp >= '{onset}'
+                        THEN {value} END) AS anomalous_min,
+               MAX(CASE WHEN greptime_timestamp >= '{onset}'
+                        THEN {value} END) AS anomalous_max
+        FROM {evidence.source_table}
+        WHERE {evidence.identity_column} = '{evidence.identity_value}'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["baseline_min", "baseline_max", "anomalous_min", "anomalous_max"],
+        rows=[[1.0, 1.0, 100.0, 110.0]],
+        elapsed_seconds=0,
+    )
+
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match
+
+
 def test_metric_scorer_rejects_short_conditional_aggregate_row() -> None:
     case = _case(7)
     evidence = case.mechanism_evidence
@@ -1009,6 +1188,173 @@ def test_delay_scorer_accepts_nanosecond_aggregate_transition() -> None:
     assert _evaluate(_run(case, query, result), case).mechanism_evidence_match is True
 
 
+def test_delay_scorer_rejects_client_duration_as_start_gap_evidence() -> None:
+    case = _case(6)
+    query = (
+        _delay_query(case).replace(
+            "c.timestamp AS caller_time,\n               s.timestamp AS callee_time",
+            "CASE WHEN c.timestamp < '"
+            f"{_time(case.abnormal_window[0])}' THEN 'baseline' "
+            "ELSE 'anomalous' END AS period,\n"
+            "               COUNT(*) AS paired_calls,\n"
+            "               ROUND(AVG(c.duration_nano) / 1000000.0, 3) "
+            "AS avg_client_ms,\n"
+            "               ROUND(MAX(c.duration_nano) / 1000000.0, 3) "
+            "AS max_client_ms,\n"
+            "               ROUND(AVG(s.duration_nano) / 1000000.0, 3) "
+            "AS avg_server_ms,\n"
+            "               ROUND(MAX(s.duration_nano) / 1000000.0, 3) "
+            "AS max_server_ms",
+        )
+        + " GROUP BY period"
+    )
+    result = QueryResult(
+        query_id="q1",
+        columns=[
+            "period",
+            "paired_calls",
+            "avg_client_ms",
+            "max_client_ms",
+            "avg_server_ms",
+            "max_server_ms",
+        ],
+        rows=[
+            ["baseline", 20, 400.0, 400.0, 390.0, 400.0],
+            ["anomalous", 20, 550.0, 600.0, 390.0, 400.0],
+        ],
+        elapsed_seconds=0,
+    )
+
+    assert not _evaluate(_run(case, query, result), case).mechanism_evidence_match
+
+
+@pytest.mark.parametrize(
+    ("gap_expression", "query_threshold", "normal_gap", "abnormal_gap"),
+    [
+        ("date_part('epoch', s.timestamp - c.timestamp) * 1000", 500, 1, 1000),
+        (
+            "(CAST(s.timestamp AS BIGINT) - CAST(c.timestamp AS BIGINT)) / 1000000000",
+            0.5,
+            0.001,
+            1.0,
+        ),
+    ],
+)
+def test_delay_scorer_normalizes_equivalent_time_units(
+    gap_expression: str,
+    query_threshold: float,
+    normal_gap: float,
+    abnormal_gap: float,
+) -> None:
+    case = _case(6)
+    query = (
+        _delay_query(case)
+        .replace(
+            "c.timestamp AS caller_time,\n               s.timestamp AS callee_time",
+            f"MIN({gap_expression}) AS min_gap,\n"
+            f"               MAX({gap_expression}) AS max_gap,\n"
+            f"               SUM(CASE WHEN {gap_expression} >= {query_threshold} "
+            "THEN 1 ELSE 0 END) AS delayed,\n"
+            "               COUNT(*) AS observations,\n"
+            "               CASE WHEN c.timestamp < '"
+            f"{_time(case.abnormal_window[0] + 1)}' THEN 'normal' ELSE 'abnormal' END AS phase",
+        )
+        .replace(
+            f"AND c.timestamp >= '{_time(case.normal_window[0])}'",
+            f"AND s.span_name = '{case.mechanism_evidence.allowed_operations[1]}'\n"
+            f"          AND c.timestamp >= '{_time(case.normal_window[0])}'",
+        )
+        + " GROUP BY phase"
+    )
+    result = QueryResult(
+        query_id="q1",
+        columns=["min_gap", "max_gap", "delayed", "observations", "phase"],
+        rows=[
+            [normal_gap, normal_gap, 0, 1, "normal"],
+            [abnormal_gap, abnormal_gap, 2, 2, "abnormal"],
+        ],
+        elapsed_seconds=0,
+    )
+
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match is True
+
+
+def test_delay_scorer_uses_average_and_maximum_to_prove_anomaly_count() -> None:
+    case = _case(6)
+    gap = "(CAST(s.timestamp AS BIGINT) - CAST(c.timestamp AS BIGINT)) / 1000000000"
+    query = (
+        _delay_query(case).replace(
+            "c.timestamp AS caller_time,\n               s.timestamp AS callee_time",
+            f"AVG({gap}) AS avg_gap,\n"
+            f"               MAX({gap}) AS max_gap,\n"
+            "               COUNT(*) AS observations,\n"
+            "               CASE WHEN c.timestamp < '"
+            f"{_time(case.abnormal_window[0] + 1)}' THEN 'normal' ELSE 'abnormal' END AS phase",
+        )
+        + " GROUP BY phase"
+    )
+    result = QueryResult(
+        query_id="q1",
+        columns=["avg_gap", "max_gap", "observations", "phase"],
+        rows=[[0.001, 0.002, 6, "normal"], [1.62, 1.621, 5, "abnormal"]],
+        elapsed_seconds=0,
+    )
+
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match is True
+
+
+def test_delay_scorer_rejects_average_that_can_come_from_one_anomaly() -> None:
+    case = _case(6)
+    gap = "(CAST(s.timestamp AS BIGINT) - CAST(c.timestamp AS BIGINT)) / 1000000000"
+    query = (
+        _delay_query(case).replace(
+            "c.timestamp AS caller_time,\n               s.timestamp AS callee_time",
+            f"AVG({gap}) AS avg_gap,\n"
+            f"               MAX({gap}) AS max_gap,\n"
+            "               COUNT(*) AS observations,\n"
+            "               CASE WHEN c.timestamp < '"
+            f"{_time(case.abnormal_window[0] + 1)}' THEN 'normal' ELSE 'abnormal' END AS phase",
+        )
+        + " GROUP BY phase"
+    )
+    result = QueryResult(
+        query_id="q1",
+        columns=["avg_gap", "max_gap", "observations", "phase"],
+        rows=[[0.001, 0.002, 6, "normal"], [0.7, 2.0, 5, "abnormal"]],
+        elapsed_seconds=0,
+    )
+
+    assert not _evaluate(_run(case, query, result), case).mechanism_evidence_match
+
+
+def test_delay_scorer_does_not_hide_a_baseline_violation_behind_a_low_average() -> None:
+    case = _case(6)
+    gap = "(CAST(s.timestamp AS BIGINT) - CAST(c.timestamp AS BIGINT)) / 1000000000"
+    query = (
+        _delay_query(case).replace(
+            "c.timestamp AS caller_time,\n               s.timestamp AS callee_time",
+            f"AVG({gap}) AS avg_gap,\n"
+            f"               MAX({gap}) AS max_gap,\n"
+            "               COUNT(*) AS observations,\n"
+            "               CASE WHEN c.timestamp < '"
+            f"{_time(case.abnormal_window[0] + 1)}' THEN 'normal' ELSE 'abnormal' END AS phase",
+        )
+        + " GROUP BY phase"
+    )
+    result = QueryResult(
+        query_id="q1",
+        columns=["avg_gap", "max_gap", "observations", "phase"],
+        rows=[[0.1, 0.6, 6, "normal"], [1.62, 1.621, 5, "abnormal"]],
+        elapsed_seconds=0,
+    )
+
+    evaluation = _evaluate(_run(case, query, result), case)
+
+    assert evaluation.mechanism_evidence_match is False
+    assert evaluation.baseline_evidence_match is False
+    assert evaluation.anomaly_evidence_match is True
+
+
 def test_delay_scorer_rejects_wrong_parent_relation() -> None:
     case = _case(6)
 
@@ -1071,7 +1417,6 @@ def test_api_runner_is_part_of_the_execution_contract() -> None:
     "gap_expression",
     [
         "date_part('epoch', c.timestamp - s.timestamp) * 1000000000",
-        "date_part('epoch', s.timestamp - c.timestamp) * 1000",
         "s.timestamp + c.timestamp",
     ],
 )
@@ -1096,6 +1441,29 @@ def test_delay_scorer_rejects_wrong_gap_direction_or_unit(gap_expression: str) -
     )
 
     assert _evaluate(_run(case, query, result), case).mechanism_evidence_match is False
+
+
+def test_delay_scorer_rejects_threshold_literal_in_the_wrong_unit() -> None:
+    case = _case(6)
+    gap = "date_part('epoch', s.timestamp - c.timestamp) * 1000"
+    query = (
+        _delay_query(case).replace(
+            "c.timestamp AS caller_time,\n               s.timestamp AS callee_time",
+            f"SUM(CASE WHEN {gap} >= 500000000 THEN 1 ELSE 0 END) AS delayed,\n"
+            "               COUNT(*) AS observations,\n"
+            "               CASE WHEN c.timestamp < '"
+            f"{_time(case.abnormal_window[0])}' THEN 'normal' ELSE 'abnormal' END AS phase",
+        )
+        + " GROUP BY phase"
+    )
+    result = QueryResult(
+        query_id="q1",
+        columns=["delayed", "observations", "phase"],
+        rows=[[0, 1, "normal"], [2, 2, "abnormal"]],
+        elapsed_seconds=0,
+    )
+
+    assert not _evaluate(_run(case, query, result), case).mechanism_evidence_match
 
 
 def test_causal_operation_is_reported_but_not_a_diagnosis_guardrail() -> None:

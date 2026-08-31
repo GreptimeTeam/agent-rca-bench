@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -56,6 +57,8 @@ class TransferEvaluation(BaseModel):
     mechanism_evidence_query_ids: list[str]
     claim_grounding: dict[str, ClaimGrounding]
     failure_reasons: list[str]
+    semantic_adjudication_required: bool
+    semantic_adjudication_reason_codes: list[str]
     correct_completion_tool_calls: int | None = None
     tool_calls_through_required_evidence: int | None = None
     rows_returned_through_required_evidence: int | None = None
@@ -217,6 +220,23 @@ def evaluate_transfer_run(
         and not run.tool_budget_exhausted
         and not any(item.reason_code == "invalid" for item in run.rejected_tool_calls)
     )
+    adjudication_reason_codes = list(
+        dict.fromkeys(
+            code
+            for _, _, verdict in verdicts
+            for code in (
+                *verdict.baseline_rejection_codes,
+                *verdict.anomaly_rejection_codes,
+            )
+        )
+    )
+    semantic_adjudication_required = (
+        diagnosis_correct
+        and typed_evidence
+        and citations_execution_valid
+        and execution_reliability
+        and not required_evidence_covered
+    )
     efficiency_eligible = diagnosis_correct and required_evidence_covered and execution_reliability
     auditable_completion = efficiency_eligible and citations_execution_valid
     support_indexes = [
@@ -272,6 +292,10 @@ def evaluate_transfer_run(
         mechanism_evidence_query_ids=mechanism_ids,
         claim_grounding=claim_grounding,
         failure_reasons=[reason for reason, passed in checks.items() if not passed],
+        semantic_adjudication_required=semantic_adjudication_required,
+        semantic_adjudication_reason_codes=(
+            adjudication_reason_codes if semantic_adjudication_required else []
+        ),
         correct_completion_tool_calls=len(run.tool_calls) if efficiency_eligible else None,
         tool_calls_through_required_evidence=(
             support_index + 1 if support_index is not None else None
@@ -380,7 +404,17 @@ def _metric_verdict(
     )
     if not identity_bound and not result_identity_bound:
         return _rejected_verdict("identity_missing")
-    facts = _raw_metric_result(scoped_result, result_scope, periods, case)
+
+    def value_scale(node: exp.Expression) -> float | None:
+        return _source_value_scale(node, evidence.value_column)
+
+    facts = _raw_metric_result(
+        scoped_result,
+        result_scope,
+        periods,
+        case,
+        value_scale=value_scale,
+    )
     lineage_valid_periods = tuple(sorted(periods)) if facts is not None else ()
     if coverage is None and facts is not None:
         coverage = _raw_result_time_coverage(statement, "greptime_timestamp", case)
@@ -392,9 +426,7 @@ def _metric_verdict(
             result_scope,
             periods,
             case,
-            value_expression=lambda node: (
-                isinstance(node, exp.Column) and node.name.lower() == evidence.value_column.lower()
-            ),
+            value_scale=value_scale,
         )
         if aggregate is not None:
             facts, lineage_valid_periods = aggregate
@@ -403,9 +435,7 @@ def _metric_verdict(
             scoped_result,
             result_scope,
             case,
-            value_expression=lambda node: (
-                isinstance(node, exp.Column) and node.name.lower() == evidence.value_column.lower()
-            ),
+            value_scale=value_scale,
         )
         if aggregate is not None:
             facts, lineage_valid_periods = aggregate
@@ -539,7 +569,7 @@ def _delay_verdict(
             scope,
             periods,
             case,
-            value_expression=lambda node: _gap_ns_expression(node, client_alias, server_alias),
+            value_scale=lambda node: _delay_value_scale(node, client_alias, server_alias),
             period_time_column="timestamp",
             period_table_alias=client_alias,
         )
@@ -991,7 +1021,7 @@ def _delay_value_filtered(
     if where is None:
         return False
     return any(
-        _gap_ns_expression(node, client_alias, server_alias)
+        _delay_value_scale(node, client_alias, server_alias) is not None
         for predicate in where.find_all(
             exp.EQ,
             exp.NEQ,
@@ -1010,10 +1040,26 @@ def _raw_metric_result(
     scope: exp.Select,
     periods: set[str],
     case: TransferCaseSpec,
+    *,
+    value_scale: Callable[[exp.Expression], float | None],
 ) -> PeriodEvidence | None:
     time_column = _projection_alias(scope, "greptime_timestamp")
-    value_column = _projection_alias(scope, case.mechanism_evidence.value_column)
-    return _raw_values_result(result, periods, case, time_column, value_column)
+    value_projection = _scaled_projection(scope, value_scale)
+    if value_projection is None:
+        value_column = _projection_alias(scope, case.mechanism_evidence.value_column)
+        if value_column is not None:
+            value_projection = (value_column, 1.0)
+    if value_projection is None:
+        return None
+    value_column, canonical_scale = value_projection
+    return _raw_values_result(
+        result,
+        periods,
+        case,
+        time_column,
+        value_column,
+        canonical_scale,
+    )
 
 
 def _raw_delay_result(
@@ -1045,21 +1091,32 @@ def _raw_delay_result(
                 return None
             values.append((left, right - left))
         return _period_evidence_from_rows(values, periods, case)
-    gap_aliases = [
-        projection.alias_or_name.lower()
+    gap_projections = [
+        (projection.alias_or_name.lower(), scale)
         for projection in scope.expressions
-        if projection.alias_or_name
-        and _gap_ns_expression(
-            projection.this if isinstance(projection, exp.Alias) else projection,
-            client_alias,
-            server_alias,
+        if (
+            scale := _delay_value_scale(
+                projection.this if isinstance(projection, exp.Alias) else projection,
+                client_alias,
+                server_alias,
+            )
         )
+        is not None
+        if projection.alias_or_name
         and not any(isinstance(node, exp.AggFunc) for node in projection.find_all(exp.AggFunc))
     ]
     client_time = _qualified_projection_alias(scope, client_alias, "timestamp")
-    if len(gap_aliases) != 1 or client_time is None:
+    if len(gap_projections) != 1 or client_time is None:
         return None
-    return _raw_values_result(result, periods, case, client_time, gap_aliases[0])
+    gap_alias, canonical_scale = gap_projections[0]
+    return _raw_values_result(
+        result,
+        periods,
+        case,
+        client_time,
+        gap_alias,
+        canonical_scale,
+    )
 
 
 def _raw_values_result(
@@ -1068,6 +1125,7 @@ def _raw_values_result(
     case: TransferCaseSpec,
     time_column: str | None,
     value_column: str | None,
+    canonical_scale: float,
 ) -> PeriodEvidence | None:
     columns = [column.lower() for column in result.columns]
     if (
@@ -1083,7 +1141,10 @@ def _raw_values_result(
     for row in result.rows:
         if not _row_covers(row, time_index, value_index):
             return None
-        rows.append((row[time_index], row[value_index]))
+        value = _strict_number(row[value_index])
+        if value is None:
+            return None
+        rows.append((row[time_index], value * canonical_scale))
     return _period_evidence_from_rows(rows, periods, case)
 
 
@@ -1119,7 +1180,7 @@ def _aggregate_result(
     periods: set[str],
     case: TransferCaseSpec,
     *,
-    value_expression: Callable[[exp.Expression], bool],
+    value_scale: Callable[[exp.Expression], float | None],
     period_time_column: str = "greptime_timestamp",
     period_table_alias: str | None = None,
 ) -> PeriodEvidence | None:
@@ -1130,18 +1191,28 @@ def _aggregate_result(
             and (isinstance(node.this, exp.Star) or _numeric_literal(node.this) == 1)
         ),
     )
-    minimum_alias = _aggregate_alias(
+    minimum_projection = _scaled_aggregate_projection(
         scope,
-        lambda node: isinstance(node, exp.Min) and value_expression(node.this),
+        exp.Min,
+        value_scale,
     )
-    maximum_alias = _aggregate_alias(
+    maximum_projection = _scaled_aggregate_projection(
         scope,
-        lambda node: isinstance(node, exp.Max) and value_expression(node.this),
+        exp.Max,
+        value_scale,
     )
-    high_projection = _high_count_alias(scope, value_expression, case.mechanism_evidence.threshold)
+    average_projection = _scaled_aggregate_projection(
+        scope,
+        exp.Avg,
+        value_scale,
+    )
+    minimum_alias = minimum_projection[0] if minimum_projection is not None else None
+    maximum_alias = maximum_projection[0] if maximum_projection is not None else None
+    average_alias = average_projection[0] if average_projection is not None else None
+    high_projection = _high_count_alias(scope, value_scale, case.mechanism_evidence.threshold)
     high_alias = high_projection[0] if high_projection is not None else None
     if count_alias is None or all(
-        alias is None for alias in (minimum_alias, maximum_alias, high_alias)
+        alias is None for alias in (minimum_alias, maximum_alias, average_alias, high_alias)
     ):
         return None
     period_alias = None
@@ -1158,7 +1229,9 @@ def _aggregate_result(
     columns = [column.lower() for column in result.columns]
     required = [count_alias]
     required.extend(
-        alias for alias in (minimum_alias, maximum_alias, high_alias, period_alias) if alias
+        alias
+        for alias in (minimum_alias, maximum_alias, average_alias, high_alias, period_alias)
+        if alias
     )
     if any(columns.count(alias) != 1 for alias in required):
         return None
@@ -1185,14 +1258,39 @@ def _aggregate_result(
                 high_count = _strict_int(row[indexes[high_alias]])
         minimum = _strict_number(row[indexes[minimum_alias]]) if minimum_alias else None
         maximum = _strict_number(row[indexes[maximum_alias]]) if maximum_alias else None
+        average = _strict_number(row[indexes[average_alias]]) if average_alias else None
+        if minimum is not None and minimum_projection is not None:
+            minimum *= minimum_projection[1]
+        if maximum is not None and maximum_projection is not None:
+            maximum *= maximum_projection[1]
+        if average is not None and average_projection is not None:
+            average *= average_projection[1]
+        inconsistent_summary = (
+            minimum is not None and maximum is not None and minimum > maximum
+        ) or (
+            average is not None
+            and (
+                minimum is not None
+                and average < minimum
+                or maximum is not None
+                and average > maximum
+            )
+        )
+        if inconsistent_summary:
+            return None
         if high_count is None:
             if minimum is not None and minimum >= threshold:
                 high_count = count
             elif maximum is not None and maximum < threshold:
                 high_count = 0
+            elif average is not None and maximum is not None:
+                high_count = _minimum_threshold_hits(count, average, maximum, threshold)
             else:
                 valid_periods.discard(period)
                 high_count = 0
+        if high_count is None:
+            valid_periods.discard(period)
+            high_count = 0
         if not 0 <= high_count <= count:
             return None
         previous_count, previous_high = observed.get(period, (0, 0))
@@ -1202,45 +1300,60 @@ def _aggregate_result(
     return _period_part(observed), tuple(sorted(valid_periods & set(observed)))
 
 
+def _minimum_threshold_hits(
+    count: int,
+    average: float,
+    maximum: float,
+    threshold: float,
+) -> int | None:
+    if count <= 0 or maximum < average:
+        return None
+    if maximum < threshold:
+        return 0
+    if maximum == threshold:
+        return count if average == threshold else 1
+    if average <= threshold:
+        return 1
+    excess = count * (average - threshold)
+    lower_bound = math.floor(excess / (maximum - threshold)) + 1
+    return min(count, max(1, lower_bound))
+
+
 def _conditional_aggregate_result(
     result: QueryResult,
     scope: exp.Select,
     case: TransferCaseSpec,
     *,
-    value_expression: Callable[[exp.Expression], bool],
+    value_scale: Callable[[exp.Expression], float | None],
 ) -> tuple[PeriodEvidence, tuple[str, ...]] | None:
-    aliases: dict[tuple[str, str], str] = {}
+    aliases: dict[tuple[str, str], tuple[str, float]] = {}
     for projection in scope.expressions:
         node = projection.this if isinstance(projection, exp.Alias) else projection
-        if not isinstance(node, (exp.Min, exp.Max)) or not projection.alias_or_name:
+        if not projection.alias_or_name:
             continue
-        branch = node.this
-        if not isinstance(branch, exp.Case):
-            continue
-        ifs = branch.args.get("ifs") or []
-        if len(ifs) != 1 or not value_expression(ifs[0].args.get("true")):
-            continue
-        default = branch.args.get("default")
-        if default is not None and not isinstance(default, exp.Null):
-            continue
-        period = _conditional_period(ifs[0].this, case)
-        if period is None:
-            continue
-        kind = "minimum" if isinstance(node, exp.Min) else "maximum"
-        aliases[(period, kind)] = projection.alias_or_name.lower()
+        for aggregate_type, kind in ((exp.Min, "minimum"), (exp.Max, "maximum")):
+            match = _conditional_aggregate_scale(node, aggregate_type, value_scale, case)
+            if match is not None:
+                period, canonical_scale = match
+                aliases[(period, kind)] = (
+                    projection.alias_or_name.lower(),
+                    canonical_scale,
+                )
     if not aliases:
         return None
     columns = [column.lower() for column in result.columns]
-    if any(columns.count(alias) != 1 for alias in aliases.values()):
+    if any(columns.count(alias) != 1 for alias, _ in aliases.values()):
         return None
     threshold = case.mechanism_evidence.threshold
     observed: dict[str, tuple[int, int]] = {}
     valid_periods = set()
     for period in ("normal", "abnormal"):
-        minimum_alias = aliases.get((period, "minimum"))
-        maximum_alias = aliases.get((period, "maximum"))
-        if maximum_alias is None:
+        minimum_projection = aliases.get((period, "minimum"))
+        maximum_projection = aliases.get((period, "maximum"))
+        if maximum_projection is None:
             continue
+        maximum_alias, maximum_scale = maximum_projection
+        minimum_alias, minimum_scale = minimum_projection or (None, 1.0)
         maximum_index = columns.index(maximum_alias)
         minimum_index = columns.index(minimum_alias) if minimum_alias else None
         if any(
@@ -1256,6 +1369,9 @@ def _conditional_aggregate_result(
             minimum = _strict_number(row[minimum_index]) if minimum_index is not None else None
             if maximum is None:
                 continue
+            maximum *= maximum_scale
+            if minimum is not None:
+                minimum *= minimum_scale
             if period == "normal":
                 observation_floor += 1
                 high_floor += int(maximum >= threshold)
@@ -1364,38 +1480,44 @@ def _delay_filters_are_complete(
         return False
 
     operation_predicates = _predicates_using_columns(scope, {"span_name"})
-    if len(operation_predicates) != 1:
+    if not operation_predicates:
         return False
-    operation = operation_predicates[0]
-    if isinstance(operation, exp.EQ):
-        values = [
-            str(literal.this)
-            for column, literal in (
-                (operation.this, operation.expression),
-                (operation.expression, operation.this),
-            )
-            if isinstance(column, exp.Column)
-            and column.table.lower() in {client_alias, server_alias}
-            and column.name.lower() == "span_name"
-            and isinstance(literal, exp.Literal)
-            and literal.is_string
-        ]
-        return len(values) == 1 and values[0] in allowed_operations
-    if isinstance(operation, exp.In):
-        column = operation.this
-        return (
-            isinstance(column, exp.Column)
-            and column.table.lower() in {client_alias, server_alias}
-            and column.name.lower() == "span_name"
-            and bool(operation.expressions)
-            and all(
-                isinstance(value, exp.Literal)
-                and value.is_string
-                and str(value.this) in allowed_operations
-                for value in operation.expressions
-            )
-        )
-    return False
+    aliases = {client_alias, server_alias}
+    for operation in operation_predicates:
+        if isinstance(operation, exp.EQ):
+            values = [
+                str(literal.this)
+                for column, literal in (
+                    (operation.this, operation.expression),
+                    (operation.expression, operation.this),
+                )
+                if isinstance(column, exp.Column)
+                and column.table.lower() in aliases
+                and column.name.lower() == "span_name"
+                and isinstance(literal, exp.Literal)
+                and literal.is_string
+            ]
+            if len(values) != 1 or values[0] not in allowed_operations:
+                return False
+            continue
+        if isinstance(operation, exp.In):
+            column = operation.this
+            if not (
+                isinstance(column, exp.Column)
+                and column.table.lower() in aliases
+                and column.name.lower() == "span_name"
+                and bool(operation.expressions)
+                and all(
+                    isinstance(value, exp.Literal)
+                    and value.is_string
+                    and str(value.this) in allowed_operations
+                    for value in operation.expressions
+                )
+            ):
+                return False
+            continue
+        return False
+    return True
 
 
 def _predicates_using_columns(
@@ -1566,6 +1688,19 @@ def _projection_alias(scope: exp.Select, source_column: str) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def _scaled_projection(
+    scope: exp.Select,
+    value_scale: Callable[[exp.Expression], float | None],
+) -> tuple[str, float] | None:
+    matches = []
+    for projection in scope.expressions:
+        node = projection.this if isinstance(projection, exp.Alias) else projection
+        canonical_scale = value_scale(node)
+        if projection.alias_or_name and canonical_scale is not None:
+            matches.append((projection.alias_or_name.lower(), canonical_scale))
+    return matches[0] if len(matches) == 1 else None
+
+
 def _qualified_projection_alias(
     scope: exp.Select, table_alias: str, source_column: str
 ) -> str | None:
@@ -1586,9 +1721,62 @@ def _aggregate_alias(scope: exp.Select, predicate: Callable[[exp.Expression], bo
     return matches[0] if len(matches) == 1 else None
 
 
+def _scaled_aggregate_projection(
+    scope: exp.Select,
+    aggregate_type: type[exp.AggFunc],
+    value_scale: Callable[[exp.Expression], float | None],
+) -> tuple[str, float] | None:
+    matches = []
+    for projection in scope.expressions:
+        node = projection.this if isinstance(projection, exp.Alias) else projection
+        canonical_scale = _linear_unit_scale(
+            node,
+            lambda candidate: (
+                value_scale(candidate.this) if isinstance(candidate, aggregate_type) else None
+            ),
+        )
+        if projection.alias_or_name and canonical_scale is not None:
+            matches.append((projection.alias_or_name.lower(), canonical_scale))
+    return matches[0] if len(matches) == 1 else None
+
+
+def _conditional_aggregate_scale(
+    node: exp.Expression,
+    aggregate_type: type[exp.AggFunc],
+    value_scale: Callable[[exp.Expression], float | None],
+    case: TransferCaseSpec,
+) -> tuple[str, float] | None:
+    period = None
+
+    def base_scale(candidate: exp.Expression) -> float | None:
+        nonlocal period
+        if not isinstance(candidate, aggregate_type) or not isinstance(candidate.this, exp.Case):
+            return None
+        branches = candidate.this.args.get("ifs") or []
+        if len(branches) != 1:
+            return None
+        scale = value_scale(branches[0].args.get("true"))
+        default = candidate.this.args.get("default")
+        candidate_period = _conditional_period(branches[0].this, case)
+        if (
+            scale is None
+            or candidate_period is None
+            or default is not None
+            and not isinstance(default, exp.Null)
+        ):
+            return None
+        period = candidate_period
+        return scale
+
+    canonical_scale = _linear_unit_scale(node, base_scale)
+    if canonical_scale is None or period is None:
+        return None
+    return period, canonical_scale
+
+
 def _high_count_alias(
     scope: exp.Select,
-    value_expression: Callable[[exp.Expression], bool],
+    value_scale: Callable[[exp.Expression], float | None],
     threshold: float,
 ) -> tuple[str, bool, bool] | None:
     matches: list[tuple[str, bool, bool]] = []
@@ -1598,7 +1786,7 @@ def _high_count_alias(
             continue
         case = node.this if isinstance(node.this, exp.Case) else node.find(exp.Case)
         compatibility = (
-            _case_counts_threshold(case, value_expression, threshold) if case is not None else None
+            _case_counts_threshold(case, value_scale, threshold) if case is not None else None
         )
         if compatibility is None:
             continue
@@ -1609,7 +1797,7 @@ def _high_count_alias(
 
 def _case_counts_threshold(
     case: exp.Case,
-    value_expression: Callable[[exp.Expression], bool],
+    value_scale: Callable[[exp.Expression], float | None],
     threshold: float,
 ) -> tuple[bool, bool] | None:
     branches = case.args.get("ifs") or []
@@ -1622,10 +1810,16 @@ def _case_counts_threshold(
     if not isinstance(condition, (exp.GTE, exp.GT)):
         return None
     number = _numeric_literal(condition.expression)
-    if not value_expression(condition.this) or number is None:
+    canonical_scale = value_scale(condition.this)
+    if canonical_scale is None or number is None:
         return None
-    baseline_valid = number <= threshold if isinstance(condition, exp.GTE) else number < threshold
-    anomaly_valid = number >= threshold
+    canonical_threshold = number * canonical_scale
+    baseline_valid = (
+        canonical_threshold <= threshold
+        if isinstance(condition, exp.GTE)
+        else canonical_threshold < threshold
+    )
+    anomaly_valid = canonical_threshold >= threshold
     return baseline_valid, anomaly_valid
 
 
@@ -1685,10 +1879,21 @@ def _period_case_matches(
         return False
     period, bounds = next(iter(observed.items()))
     default_period = _canonical_period(str(default.this))
-    boundary = case.abnormal_window[0]
+    if len(bounds) != 1:
+        return False
+    boundary = next(iter(bounds))[1]
+    boundary_is_observed_onset = case.normal_window[1] <= boundary < case.abnormal_window[1]
     return (
-        period == "normal" and default_period == "abnormal" and bounds == {("lt", boundary)}
-    ) or (period == "abnormal" and default_period == "normal" and bounds == {("gte", boundary)})
+        boundary_is_observed_onset
+        and period == "normal"
+        and default_period == "abnormal"
+        and bounds == {("lt", boundary)}
+    ) or (
+        boundary_is_observed_onset
+        and period == "abnormal"
+        and default_period == "normal"
+        and bounds == {("gte", boundary)}
+    )
 
 
 def _service_alias(scope: exp.Select, service: str) -> str | None:
@@ -1783,31 +1988,99 @@ def _qualified_allowed_operation(scope: exp.Select, aliases: set[str], allowed: 
     return False
 
 
-def _gap_ns_expression(node: exp.Expression, client_alias: str, server_alias: str) -> bool:
+def _source_value_scale(node: exp.Expression, source_column: str) -> float | None:
+    return _linear_unit_scale(
+        node,
+        lambda candidate: (
+            1.0
+            if isinstance(candidate, exp.Column) and candidate.name.lower() == source_column.lower()
+            else None
+        ),
+    )
+
+
+def _delay_value_scale(
+    node: exp.Expression,
+    client_alias: str,
+    server_alias: str,
+) -> float | None:
+    return _linear_unit_scale(
+        node,
+        lambda candidate: _base_delay_value_scale(candidate, client_alias, server_alias),
+    )
+
+
+def _linear_unit_scale(
+    node: exp.Expression,
+    base_scale: Callable[[exp.Expression], float | None],
+) -> float | None:
+    direct = base_scale(node)
+    if direct is not None:
+        return direct if math.isfinite(direct) and direct > 0 else None
+    if isinstance(node, exp.Paren):
+        return _linear_unit_scale(node.this, base_scale)
+    if isinstance(node, exp.Div):
+        scale = _linear_unit_scale(node.this, base_scale)
+        divisor = _numeric_literal(node.expression)
+        if scale is None or divisor is None or not math.isfinite(divisor) or divisor <= 0:
+            return None
+        return scale * divisor
+    if isinstance(node, exp.Mul):
+        for value, factor_node in (
+            (node.this, node.expression),
+            (node.expression, node.this),
+        ):
+            scale = _linear_unit_scale(value, base_scale)
+            factor = _numeric_literal(factor_node)
+            if scale is not None and factor is not None and math.isfinite(factor) and factor > 0:
+                return scale / factor
+    return None
+
+
+def _base_delay_value_scale(
+    node: exp.Expression,
+    client_alias: str,
+    server_alias: str,
+) -> float | None:
     if (
         isinstance(node, exp.Sub)
         and _timestamp_bigint_cast(node.this, server_alias)
         and _timestamp_bigint_cast(node.expression, client_alias)
     ):
-        return True
+        return 1.0
     if not isinstance(node, exp.Mul):
-        return False
+        return None
     for extracted, multiplier in (
         (node.this, node.expression),
         (node.expression, node.this),
     ):
-        if _numeric_literal(multiplier) != 1_000_000_000 or not isinstance(extracted, exp.Extract):
+        factor = _numeric_literal(multiplier)
+        if factor is None or not isinstance(extracted, exp.Extract):
             continue
         unit = extracted.this
         difference = extracted.expression
+        if isinstance(difference, exp.Paren):
+            difference = difference.this
         if (
             str(getattr(unit, "this", unit)).lower() == "epoch"
             and isinstance(difference, exp.Sub)
             and _qualified_column(difference.this, server_alias, "timestamp")
             and _qualified_column(difference.expression, client_alias, "timestamp")
         ):
-            return True
-    return False
+            return 1_000_000_000 / factor
+    if isinstance(node, exp.Extract):
+        unit = node.this
+        difference = node.expression
+        if isinstance(difference, exp.Paren):
+            difference = difference.this
+        if (
+            str(getattr(unit, "this", unit)).lower() == "epoch"
+            and isinstance(difference, exp.Sub)
+            and _qualified_column(difference.this, server_alias, "timestamp")
+            and _qualified_column(difference.expression, client_alias, "timestamp")
+        ):
+            return 1_000_000_000.0
+    return None
 
 
 def _timestamp_bigint_cast(node: exp.Expression, table_alias: str) -> bool:
@@ -1884,7 +2157,10 @@ def _numeric_literal(node: exp.Expression | None) -> float | None:
 
 
 def _strict_number(value: object) -> float | None:
-    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
 
 
 def _strict_int(value: object) -> int | None:

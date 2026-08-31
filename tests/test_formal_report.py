@@ -23,10 +23,9 @@ def _model_report() -> dict[str, object]:
         "positive_cases": 1,
         "sign_test_two_sided_p": 0.125,
         "holm_adjusted_p": 1.0,
-        "multiplicity_family_size": 12,
+        "multiplicity_family_size": 10,
     }
-    return {
-        "runs": 40,
+    analysis = {
         "valid_completion": {"raw": 18, "semantic_graph": 19},
         "efficiency_eligibility": {
             "by_treatment": {"raw": 18, "semantic_graph": 19},
@@ -46,6 +45,11 @@ def _model_report() -> dict[str, object]:
             "rows_returned": metric,
             "correct_completion_tool_calls": {**metric, "case_median_delta": 0},
         },
+    }
+    return {
+        "runs": 40,
+        **analysis,
+        "adjudicated_sensitivity": copy.deepcopy(analysis),
         "reliability": {
             "runner_errors": 0,
             "budget_exhaustions": 0,
@@ -147,13 +151,13 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     validate_formal_measurement_report(report)
 
     assert report["execution"] == {
-        "expected_cells": 432,
-        "completed_cells": 432,
-        "micro_cells": 192,
-        "transfer_cells": 240,
+        "expected_cells": 360,
+        "completed_cells": 360,
+        "micro_cells": 160,
+        "transfer_cells": 200,
         "runner_errors": 0,
         "budget_exhaustions": 0,
-        "models": 6,
+        "models": 5,
         "micro_cases": 8,
         "transfer_cases": 10,
         "treatments": ["raw", "semantic_graph"],
@@ -163,7 +167,7 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
         "models": {
             model: {"estimated_cost": 4.0, "currency": "USD"} for model in report["model_order"]
         },
-        "known_totals_by_currency": {"USD": 24.0},
+        "known_totals_by_currency": {"USD": 20.0},
         "models_with_unavailable_estimate": [],
         "cross_currency_total": None,
     }
@@ -172,7 +176,7 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     render_formal_measurement_report(report, output)
     document = output.read_text()
     assert "__REPORT_DATA__" not in document
-    assert "432" in document
+    assert "360" in document
     assert "gpt-5.6-sol" in document
     assert "Retrieval micro-benchmarks" in document
     assert "End-to-end case effects" in document

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "protocol_revision": "openrca2-transfer-six-model-v6",
+  "protocol_revision": "openrca2-transfer-five-model-v11",
   "benchmark_protocol_version": 32,
   "case_role": "measurement",
   "selection_fixture": "fixtures/reference/openrca2-transfer-v32-selection.json",
@@ -48,14 +48,6 @@
       "prompt_cache": "provider-automatic-prefix",
       "max_output_tokens": 16384,
       "reasoning_effort": "max"
-    },
-    {
-      "model": "qwen3.8-2.4t-a95b",
-      "provider": "alibaba-cloud-model-studio",
-      "api_transport": "dashscope-cn-beijing-responses",
-      "prompt_cache": "session-cache-header",
-      "max_output_tokens": 16384,
-      "reasoning_effort": "xhigh"
     }
   ],
   "visibility_levels": [
@@ -69,7 +61,7 @@
   "parallel_runs": 1,
   "sampling": "provider-default; no seed sent",
   "execution_order": "cases in selection order; models in roster order; seeded rotating treatments",
-  "expected_cells": 240,
+  "expected_cells": 200,
   "paid_execution": {
     "explicit_user_approval_required_per_batch": true,
     "subscription_fallback_allowed": false,
@@ -82,9 +74,30 @@
     "selection_fixture": "fixtures/reference/openrca2-transfer-v32-pilot.json",
     "selection_fixture_sha256": "cb9a587097d1dcea9914f644b6487c7097a3a33bf35d42ddfd53db5b200a7c33",
     "models": [
-      "gpt-5.6-sol",
-      "deepseek-v4-pro",
-      "qwen3.8-2.4t-a95b"
+      {
+        "model": "gpt-5.6-sol",
+        "provider": "openai",
+        "api_transport": "openai-responses",
+        "prompt_cache": "implicit-prefix-30m",
+        "max_output_tokens": 16384,
+        "reasoning_effort": "medium"
+      },
+      {
+        "model": "deepseek-v4-pro",
+        "provider": "deepseek",
+        "api_transport": "anthropic-compatible-messages",
+        "prompt_cache": "provider-automatic-prefix",
+        "max_output_tokens": 16384,
+        "reasoning_effort": "high"
+      },
+      {
+        "model": "qwen3.8-max",
+        "provider": "alibaba-cloud-model-studio",
+        "api_transport": "dashscope-cn-beijing-responses",
+        "prompt_cache": "session-cache-header",
+        "max_output_tokens": 16384,
+        "reasoning_effort": "xhigh"
+      }
     ],
     "repetitions": 2,
     "expected_cells": 24,
@@ -102,9 +115,20 @@
       "rows_returned",
       "correct_completion_tool_calls"
     ],
-    "holm_family_size": 12,
+    "holm_family_size": 10,
     "null_metric_meaning": "not estimable; no eligible paired cases",
     "tied_calls_meaning": "no observed tool-call reduction in the cohort",
     "direction_consistent_non_significant_meaning": "descriptive evidence only; report the directional case count, eligible case count, case median, unadjusted p, and Holm-adjusted p"
+  },
+  "semantic_adjudication": {
+    "enabled": true,
+    "trigger": "diagnosis-correct-execution-valid-deterministic-grounding-incomplete",
+    "judge_models": [
+      "claude-sonnet-5",
+      "deepseek-v4-flash"
+    ],
+    "decision_rule": "unanimous-sufficient; disagreement-human-tiebreak",
+    "deterministic_hard_gates_remain_authoritative": true,
+    "publish_deterministic_and_adjudicated_results": true
   }
 }

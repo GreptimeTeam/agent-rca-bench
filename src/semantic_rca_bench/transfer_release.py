@@ -20,13 +20,21 @@ from semantic_rca_bench.datasets.openrca2_transfer import TransferCaseSpec
 from semantic_rca_bench.evaluation import component_matches
 from semantic_rca_bench.evidence import is_evidence_sql, is_valid_evidence_trace
 from semantic_rca_bench.report import _estimated_api_cost, _raw_input_breakdown
+from semantic_rca_bench.transfer_adjudication import (
+    JUDGE_MODELS,
+    HumanAdjudicationDecision,
+    SemanticJudgeDecision,
+    apply_semantic_adjudication,
+    build_semantic_adjudication_queue,
+    validate_semantic_adjudication_resolution,
+)
 from semantic_rca_bench.transfer_scorer import (
     ClaimVerdict,
     TransferEvaluation,
     _mechanism_verdict_from_trace,
 )
 
-ARTIFACT_SCHEMA_VERSION = 1
+ARTIFACT_SCHEMA_VERSION = 2
 
 
 def sanitize_transfer_run(
@@ -396,6 +404,23 @@ def validate_public_transfer_run(
         and all(citation.get("execution_valid") is True for citation in citations)
     )
     efficiency_eligible = diagnosis_correct and required_evidence_covered and execution_reliability
+    adjudication_reason_codes = list(
+        dict.fromkeys(
+            code
+            for verdict in verdicts
+            for code in (
+                *verdict.baseline_rejection_codes,
+                *verdict.anomaly_rejection_codes,
+            )
+        )
+    )
+    semantic_adjudication_required = (
+        diagnosis_correct
+        and typed_evidence
+        and citations_execution_valid
+        and execution_reliability
+        and not required_evidence_covered
+    )
     supporting_ordinals = [
         int(citation["ordinal"])
         for citation in citations
@@ -471,6 +496,10 @@ def validate_public_transfer_run(
             },
         },
         "failure_reasons": [reason for reason, passed in checks.items() if not passed],
+        "semantic_adjudication_required": semantic_adjudication_required,
+        "semantic_adjudication_reason_codes": (
+            adjudication_reason_codes if semantic_adjudication_required else []
+        ),
         "correct_completion_tool_calls": len(tool_calls) if efficiency_eligible else None,
         "tool_calls_through_required_evidence": support_call_ordinal,
         "rows_returned_through_required_evidence": rows_through_evidence,
@@ -496,9 +525,38 @@ def canonical_sha256(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _public_adjudication_resolution(
+    resolution: Mapping[str, object],
+) -> dict[str, object]:
+    public_resolutions = []
+    for item in _mapping_list(resolution, "resolutions"):
+        public_item = dict(item)
+        public_item["judge_decisions"] = [
+            {
+                **dict(decision),
+                "rationale": "redacted from public artifact",
+                "failed_requirements": [],
+            }
+            for decision in _mapping_list(item, "judge_decisions")
+        ]
+        human = item.get("human_decision")
+        if human is not None:
+            public_item["human_decision"] = {
+                **dict(_mapping(item, "human_decision")),
+                "rationale": "redacted from public artifact",
+            }
+        public_resolutions.append(public_item)
+    return {
+        "schema_version": resolution.get("schema_version"),
+        "queue_sha256": resolution.get("queue_sha256"),
+        "resolutions": public_resolutions,
+    }
+
+
 def build_measurement_artifact(
     private_report: dict[str, object],
     protocol_path: Path,
+    adjudication_resolution: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     from semantic_rca_bench.transfer_formal import validate_private_report
     from semantic_rca_bench.transfer_protocol import load_transfer_protocol, sha256_file
@@ -519,6 +577,24 @@ def build_measurement_artifact(
     }
     specs = {case.opaque_case_id: case for case in selection.selected_cases}
     models = {model.model: model for model in protocol.models}
+    queue = build_semantic_adjudication_queue(private_report, protocol, selection)
+    queue_candidates = _mapping_list(queue, "candidates")
+    if queue_candidates and adjudication_resolution is None:
+        raise ValueError("measurement report requires a complete semantic adjudication")
+    if adjudication_resolution is None:
+        adjudication_resolution = {
+            "schema_version": 1,
+            "queue_sha256": canonical_sha256(queue),
+            "resolutions": [],
+        }
+    validated_adjudication = validate_semantic_adjudication_resolution(
+        queue, adjudication_resolution
+    )
+    public_resolution = _public_adjudication_resolution(validated_adjudication)
+    resolutions_by_cell = {
+        int(_mapping(item, "private_binding")["cell_index"]): item
+        for item in _mapping_list(public_resolution, "resolutions")
+    }
     public_runs = []
     for item in _mapping_list(private_report, "runs"):
         case = specs[str(item["case_id"])]
@@ -526,6 +602,37 @@ def build_measurement_artifact(
         evaluation = TransferEvaluation.model_validate(item.get("evaluation"))
         load = DatabaseLoad.model_validate(item.get("database_load"))
         public = sanitize_transfer_run(run, evaluation, case, load)
+        resolution = resolutions_by_cell.get(int(item["cell_index"]))
+        if resolution is None:
+            effective_evaluation = evaluation
+            public_adjudication = {"status": "not-required"}
+            supporting_ordinals: list[int] | None = None
+        else:
+            supporting_ordinals = [
+                int(value) for value in resolution["supporting_evidence_ordinals"]
+            ]
+            effective_evaluation = apply_semantic_adjudication(
+                run,
+                evaluation,
+                evidence_sufficient=resolution["evidence_sufficient"] is True,
+                supporting_evidence_ordinals=supporting_ordinals,
+            )
+            public_adjudication = {
+                key: value for key, value in resolution.items() if key != "private_binding"
+            }
+            public_adjudication["status"] = (
+                "accepted" if resolution["evidence_sufficient"] is True else "rejected"
+            )
+        public["adjudication"] = public_adjudication
+        public["adjudicated_sensitivity"] = _public_adjudicated_sensitivity(
+            effective_evaluation,
+            public["citations"],
+            supporting_evidence_ordinals=(
+                supporting_ordinals
+                if resolution is not None and resolution["evidence_sufficient"] is True
+                else None
+            ),
+        )
         model = models[str(item["model"])]
         raw_run = run.model_dump(mode="json")
         uncached, cache_read, cache_creation, complete = _raw_input_breakdown(raw_run)
@@ -579,7 +686,11 @@ def build_measurement_artifact(
         _public_source(source_by_case[case.opaque_case_id], case)
         for case in selection.selected_cases
     ]
-    model_reports = _model_reports(public_runs, [model.model for model in protocol.models])
+    model_reports = _model_reports(
+        public_runs,
+        [model.model for model in protocol.models],
+        family_size=protocol.inference.holm_family_size,
+    )
     payload = {
         "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
         "artifact_type": "semantic-rca-openrca2-transfer-measurement",
@@ -599,6 +710,30 @@ def build_measurement_artifact(
         "pilot_gate": private_report["pilot_gate"],
         "sources": public_sources,
         "runs": public_runs,
+        "semantic_adjudication": {
+            "queue_sha256": validated_adjudication["queue_sha256"],
+            "candidate_count": len(queue_candidates),
+            "accepted_count": sum(
+                item.get("evidence_sufficient") is True
+                for item in _mapping_list(public_resolution, "resolutions")
+            ),
+            "rejected_count": sum(
+                item.get("evidence_sufficient") is False
+                for item in _mapping_list(public_resolution, "resolutions")
+            ),
+            "by_treatment": {
+                visibility: {
+                    status: sum(
+                        item["visibility"] == visibility
+                        and _mapping(_mapping(item, "run"), "adjudication").get("status") == status
+                        for item in public_runs
+                    )
+                    for status in ("accepted", "rejected")
+                }
+                for visibility in ("raw", "semantic_graph")
+            },
+            "decision_rule": protocol.semantic_adjudication.decision_rule,
+        },
         "model_reports": model_reports,
         "inference": _public_inference(protocol.inference),
         "sanitization": {
@@ -607,6 +742,7 @@ def build_measurement_artifact(
                 "run IDs, query IDs, elapsed wall time, ports, endpoints, and local paths",
                 "raw telemetry rows and provider error text",
                 "free-form citation claims and diagnosis explanations",
+                "judge and human-adjudicator rationales",
             ],
             "included": [
                 "structured diagnosis fields",
@@ -619,6 +755,7 @@ def build_measurement_artifact(
         "bindings": {
             "protocol_fixture_sha256": sha256_file(protocol_path),
             "private_report_semantic_sha256": canonical_sha256(private_report),
+            "semantic_adjudication_resolution_sha256": canonical_sha256(public_resolution),
         },
     }
     artifact = {
@@ -666,7 +803,7 @@ def validate_measurement_artifact(
         if any(item.get(key) != value for key, value in expected.items()):
             raise ValueError("public transfer schedule drifted")
         model = models[str(item["model"])]
-        validate_public_transfer_run(
+        deterministic = validate_public_transfer_run(
             _mapping(item, "run"),
             specs[str(item["case_id"])],
             expected_model=model.model,
@@ -675,7 +812,65 @@ def validate_measurement_artifact(
             expected_max_output_tokens=model.max_output_tokens,
             max_tool_calls=protocol.max_tool_calls,
         )
-    expected_reports = _model_reports(runs, [model.model for model in protocol.models])
+        _validate_public_adjudication(_mapping(item, "run"), deterministic)
+    adjudication = _mapping(artifact, "semantic_adjudication")
+    candidate_runs = [
+        _mapping(item, "run")
+        for item in runs
+        if _mapping(_mapping(item, "run"), "adjudication").get("status") in {"accepted", "rejected"}
+    ]
+    public_resolutions = sorted(
+        [
+            {
+                **{
+                    key: value
+                    for key, value in _mapping(run, "adjudication").items()
+                    if key != "status"
+                },
+                "private_binding": {
+                    "cell_index": item["cell_index"],
+                    "case_id": item["case_id"],
+                },
+            }
+            for item in runs
+            if (run := _mapping(item, "run"))
+            and _mapping(run, "adjudication").get("status") in {"accepted", "rejected"}
+        ],
+        key=lambda item: str(item["candidate_sha256"]),
+    )
+    replayed_resolution = {
+        "schema_version": 1,
+        "queue_sha256": adjudication.get("queue_sha256"),
+        "resolutions": public_resolutions,
+    }
+    if (
+        adjudication.get("candidate_count") != len(candidate_runs)
+        or adjudication.get("accepted_count")
+        != sum(_mapping(run, "adjudication").get("status") == "accepted" for run in candidate_runs)
+        or adjudication.get("rejected_count")
+        != sum(_mapping(run, "adjudication").get("status") == "rejected" for run in candidate_runs)
+        or adjudication.get("decision_rule") != protocol.semantic_adjudication.decision_rule
+        or adjudication.get("by_treatment")
+        != {
+            visibility: {
+                status: sum(
+                    item["visibility"] == visibility
+                    and _mapping(_mapping(item, "run"), "adjudication").get("status") == status
+                    for item in runs
+                )
+                for status in ("accepted", "rejected")
+            }
+            for visibility in ("raw", "semantic_graph")
+        }
+        or _mapping(artifact, "bindings").get("semantic_adjudication_resolution_sha256")
+        != canonical_sha256(replayed_resolution)
+    ):
+        raise ValueError("public semantic adjudication summary drifted")
+    expected_reports = _model_reports(
+        runs,
+        [model.model for model in protocol.models],
+        family_size=protocol.inference.holm_family_size,
+    )
     if artifact.get("model_reports") != expected_reports:
         raise ValueError("public transfer model reports drifted")
     if artifact.get("inference") != _public_inference(protocol.inference):
@@ -765,129 +960,33 @@ def _public_inference(inference: object) -> dict[str, object]:
     }
 
 
-def _model_reports(runs: list[Mapping[str, object]], model_names: list[str]) -> dict[str, object]:
+def _model_reports(
+    runs: list[Mapping[str, object]],
+    model_names: list[str],
+    *,
+    family_size: int,
+) -> dict[str, object]:
     reports: dict[str, object] = {}
-    primary_p_values: list[tuple[str, str, float]] = []
+    deterministic_p_values: list[tuple[str, str, float]] = []
+    sensitivity_p_values: list[tuple[str, str, float]] = []
     for model in model_names:
         model_runs = [item for item in runs if item["model"] == model]
-        pairs: dict[tuple[str, int], dict[str, Mapping[str, object]]] = defaultdict(dict)
-        for item in model_runs:
-            pairs[(str(item["case_id"]), int(item["repetition"]))][str(item["visibility"])] = item
-        pair_deltas: dict[str, list[dict[str, object]]] = defaultdict(list)
-        eligibility_disposition = Counter()
-        for (case_id, repetition), values in sorted(pairs.items()):
-            if set(values) != {"raw", "semantic_graph"}:
-                continue
-            raw = _mapping(values["raw"], "run")
-            graph = _mapping(values["semantic_graph"], "run")
-            raw_eval = _mapping(raw, "evaluation")
-            graph_eval = _mapping(graph, "evaluation")
-            eligible = (
-                raw_eval.get("efficiency_eligible") is True
-                and graph_eval.get("efficiency_eligible") is True
-            )
-            raw_eligible = raw_eval.get("efficiency_eligible") is True
-            graph_eligible = graph_eval.get("efficiency_eligible") is True
-            eligibility_status = (
-                "both"
-                if raw_eligible and graph_eligible
-                else "raw_only"
-                if raw_eligible
-                else "semantic_graph_only"
-                if graph_eligible
-                else "neither"
-            )
-            eligibility_disposition[eligibility_status] += 1
-            delta = {
-                "case_id": case_id,
-                "repetition": repetition,
-                "eligible": eligible,
-                "eligibility_status": eligibility_status,
-                "rows_returned": (
-                    int(_mapping(graph, "database_load")["rows_returned"])
-                    - int(_mapping(raw, "database_load")["rows_returned"])
-                    if eligible
-                    else None
-                ),
-                "correct_completion_tool_calls": (
-                    int(graph_eval["correct_completion_tool_calls"])
-                    - int(raw_eval["correct_completion_tool_calls"])
-                    if eligible
-                    else None
-                ),
-            }
-            pair_deltas[case_id].append(delta)
-        case_effects = []
-        for case_id, deltas in sorted(pair_deltas.items()):
-            eligible = [item for item in deltas if item["eligible"]]
-            case_effects.append(
-                {
-                    "case_id": case_id,
-                    "eligible_repetitions": len(eligible),
-                    "rows_returned": _median_or_none([item["rows_returned"] for item in eligible]),
-                    "correct_completion_tool_calls": _median_or_none(
-                        [item["correct_completion_tool_calls"] for item in eligible]
-                    ),
-                }
-            )
-        metrics = {}
-        for metric in ("rows_returned", "correct_completion_tool_calls"):
-            values = [item[metric] for item in case_effects if item[metric] is not None]
-            p_value = _sign_test(values)
-            metrics[metric] = {
-                "eligible_cases": len(values),
-                "case_median_delta": _median_or_none(values),
-                "negative_cases": sum(value < 0 for value in values),
-                "tied_cases": sum(value == 0 for value in values),
-                "positive_cases": sum(value > 0 for value in values),
-                "sign_test_two_sided_p": p_value,
-                "holm_adjusted_p": None,
-                "multiplicity_family_size": 12,
-            }
-            if p_value is not None:
-                primary_p_values.append((model, metric, p_value))
+        deterministic, p_values = _effect_report(
+            model_runs,
+            evaluation_key="evaluation",
+            family_size=family_size,
+        )
+        deterministic_p_values.extend((model, metric, value) for metric, value in p_values)
+        sensitivity, p_values = _effect_report(
+            model_runs,
+            evaluation_key="adjudicated_sensitivity",
+            family_size=family_size,
+        )
+        sensitivity_p_values.extend((model, metric, value) for metric, value in p_values)
         reports[model] = {
             "runs": len(model_runs),
-            "valid_completion": {
-                visibility: sum(
-                    _mapping(_mapping(item, "run"), "evaluation").get("auditable_completion")
-                    is True
-                    for item in model_runs
-                    if item["visibility"] == visibility
-                )
-                for visibility in ("raw", "semantic_graph")
-            },
-            "efficiency_eligibility": {
-                "by_treatment": {
-                    visibility: sum(
-                        _mapping(_mapping(item, "run"), "evaluation").get("efficiency_eligible")
-                        is True
-                        for item in model_runs
-                        if item["visibility"] == visibility
-                    )
-                    for visibility in ("raw", "semantic_graph")
-                },
-                "paired_disposition": {
-                    status: eligibility_disposition[status]
-                    for status in ("both", "raw_only", "semantic_graph_only", "neither")
-                },
-                "claim_rejection_codes": {
-                    visibility: dict(
-                        sorted(
-                            Counter(
-                                code
-                                for item in model_runs
-                                if item["visibility"] == visibility
-                                for citation in _mapping_list(_mapping(item, "run"), "citations")
-                                for code in _claim_rejection_codes(citation)
-                            ).items()
-                        )
-                    )
-                    for visibility in ("raw", "semantic_graph")
-                },
-            },
-            "case_effects": case_effects,
-            "primary_metrics": metrics,
+            **deterministic,
+            "adjudicated_sensitivity": sensitivity,
             "reliability": {
                 "runner_errors": sum(
                     _mapping(_mapping(item, "run"), "execution").get("runner_error") is True
@@ -922,8 +1021,140 @@ def _model_reports(runs: list[Mapping[str, object]], model_names: list[str]) -> 
             },
             "usage": _usage_summary(model_runs),
         }
-    _apply_holm(reports, primary_p_values, family_size=12)
+    _apply_holm(reports, deterministic_p_values, family_size=family_size)
+    sensitivity_reports = {
+        model: _mapping(report, "adjudicated_sensitivity") for model, report in reports.items()
+    }
+    _apply_holm(sensitivity_reports, sensitivity_p_values, family_size=family_size)
     return reports
+
+
+def _effect_report(
+    model_runs: list[Mapping[str, object]],
+    *,
+    evaluation_key: str,
+    family_size: int,
+) -> tuple[dict[str, object], list[tuple[str, float]]]:
+    pairs: dict[tuple[str, int], dict[str, Mapping[str, object]]] = defaultdict(dict)
+    for item in model_runs:
+        pairs[(str(item["case_id"]), int(item["repetition"]))][str(item["visibility"])] = item
+    pair_deltas: dict[str, list[dict[str, object]]] = defaultdict(list)
+    eligibility_disposition = Counter()
+    for (case_id, repetition), values in sorted(pairs.items()):
+        if set(values) != {"raw", "semantic_graph"}:
+            continue
+        raw = _mapping(values["raw"], "run")
+        graph = _mapping(values["semantic_graph"], "run")
+        raw_eval = _mapping(raw, evaluation_key)
+        graph_eval = _mapping(graph, evaluation_key)
+        raw_eligible = raw_eval.get("efficiency_eligible") is True
+        graph_eligible = graph_eval.get("efficiency_eligible") is True
+        eligible = raw_eligible and graph_eligible
+        status = (
+            "both"
+            if eligible
+            else "raw_only"
+            if raw_eligible
+            else "semantic_graph_only"
+            if graph_eligible
+            else "neither"
+        )
+        eligibility_disposition[status] += 1
+        pair_deltas[case_id].append(
+            {
+                "case_id": case_id,
+                "repetition": repetition,
+                "eligible": eligible,
+                "eligibility_status": status,
+                "rows_returned": (
+                    int(_mapping(graph, "database_load")["rows_returned"])
+                    - int(_mapping(raw, "database_load")["rows_returned"])
+                    if eligible
+                    else None
+                ),
+                "correct_completion_tool_calls": (
+                    int(graph_eval["correct_completion_tool_calls"])
+                    - int(raw_eval["correct_completion_tool_calls"])
+                    if eligible
+                    else None
+                ),
+            }
+        )
+    case_effects = []
+    for case_id, deltas in sorted(pair_deltas.items()):
+        eligible = [item for item in deltas if item["eligible"]]
+        case_effects.append(
+            {
+                "case_id": case_id,
+                "eligible_repetitions": len(eligible),
+                "rows_returned": _median_or_none([item["rows_returned"] for item in eligible]),
+                "correct_completion_tool_calls": _median_or_none(
+                    [item["correct_completion_tool_calls"] for item in eligible]
+                ),
+            }
+        )
+    metrics = {}
+    p_values = []
+    for metric in ("rows_returned", "correct_completion_tool_calls"):
+        values = [item[metric] for item in case_effects if item[metric] is not None]
+        p_value = _sign_test(values)
+        metrics[metric] = {
+            "eligible_cases": len(values),
+            "case_median_delta": _median_or_none(values),
+            "negative_cases": sum(value < 0 for value in values),
+            "tied_cases": sum(value == 0 for value in values),
+            "positive_cases": sum(value > 0 for value in values),
+            "sign_test_two_sided_p": p_value,
+            "holm_adjusted_p": None,
+            "multiplicity_family_size": family_size,
+        }
+        if p_value is not None:
+            p_values.append((metric, p_value))
+    return (
+        {
+            "valid_completion": {
+                visibility: sum(
+                    _mapping(_mapping(item, "run"), evaluation_key).get("auditable_completion")
+                    is True
+                    for item in model_runs
+                    if item["visibility"] == visibility
+                )
+                for visibility in ("raw", "semantic_graph")
+            },
+            "efficiency_eligibility": {
+                "by_treatment": {
+                    visibility: sum(
+                        _mapping(_mapping(item, "run"), evaluation_key).get("efficiency_eligible")
+                        is True
+                        for item in model_runs
+                        if item["visibility"] == visibility
+                    )
+                    for visibility in ("raw", "semantic_graph")
+                },
+                "paired_disposition": {
+                    status: eligibility_disposition[status]
+                    for status in ("both", "raw_only", "semantic_graph_only", "neither")
+                },
+                "claim_rejection_codes": {
+                    visibility: dict(
+                        sorted(
+                            Counter(
+                                code
+                                for item in model_runs
+                                if item["visibility"] == visibility
+                                for citation in _mapping_list(_mapping(item, "run"), "citations")
+                                for code in _claim_rejection_codes(citation)
+                            ).items()
+                        )
+                    )
+                    for visibility in ("raw", "semantic_graph")
+                },
+            },
+            "case_effects": case_effects,
+            "primary_metrics": metrics,
+        },
+        p_values,
+    )
 
 
 def _usage_summary(runs: list[Mapping[str, object]]) -> dict[str, object]:
@@ -1110,23 +1341,26 @@ def _public_evaluation(
         "mechanism_evidence_query_ids",
     ):
         value.pop(key, None)
-    value["supporting_evidence_ordinals"] = [
-        item["ordinal"]
-        for item in citations
-        if item["supports_causal_locus"] or item["supports_fault_mechanism"]
-    ]
-    value["causal_locus_evidence_ordinals"] = [
-        item["ordinal"] for item in citations if item["supports_causal_locus"]
-    ]
-    value["baseline_evidence_ordinals"] = [
-        item["ordinal"] for item in citations if item["supports_baseline_clear"]
-    ]
-    value["anomaly_evidence_ordinals"] = [
-        item["ordinal"] for item in citations if item["supports_anomaly_present"]
-    ]
-    value["mechanism_evidence_ordinals"] = [
-        item["ordinal"] for item in citations if item["supports_fault_mechanism"]
-    ]
+    ordinal_fields = {
+        "supporting_evidence_ordinals": [
+            item["ordinal"]
+            for item in citations
+            if item["supports_causal_locus"] or item["supports_fault_mechanism"]
+        ],
+        "causal_locus_evidence_ordinals": [
+            item["ordinal"] for item in citations if item["supports_causal_locus"]
+        ],
+        "baseline_evidence_ordinals": [
+            item["ordinal"] for item in citations if item["supports_baseline_clear"]
+        ],
+        "anomaly_evidence_ordinals": [
+            item["ordinal"] for item in citations if item["supports_anomaly_present"]
+        ],
+        "mechanism_evidence_ordinals": [
+            item["ordinal"] for item in citations if item["supports_fault_mechanism"]
+        ],
+    }
+    value.update(ordinal_fields)
     grounding = value.get("claim_grounding")
     if isinstance(grounding, dict):
         for claim, item in grounding.items():
@@ -1140,6 +1374,140 @@ def _public_evaluation(
                 citation["ordinal"] for citation in citations if citation[flag]
             ]
     return value
+
+
+def _public_adjudicated_sensitivity(
+    evaluation: TransferEvaluation,
+    citations: list[dict[str, object]],
+    *,
+    supporting_evidence_ordinals: list[int] | None = None,
+) -> dict[str, object]:
+    deterministic = _public_evaluation(evaluation, citations)
+    return _adjudicated_sensitivity_projection(
+        deterministic,
+        supporting_evidence_ordinals=supporting_evidence_ordinals,
+    )
+
+
+def _adjudicated_sensitivity_projection(
+    evaluation: Mapping[str, object],
+    *,
+    supporting_evidence_ordinals: list[int] | None = None,
+) -> dict[str, object]:
+    return {
+        "evidence_sufficient": evaluation.get("required_evidence_covered") is True,
+        "efficiency_eligible": evaluation.get("efficiency_eligible") is True,
+        "auditable_completion": evaluation.get("auditable_completion") is True,
+        "success": evaluation.get("success") is True,
+        "correct_completion_tool_calls": evaluation.get("correct_completion_tool_calls"),
+        "tool_calls_through_required_evidence": evaluation.get(
+            "tool_calls_through_required_evidence"
+        ),
+        "rows_returned_through_required_evidence": evaluation.get(
+            "rows_returned_through_required_evidence"
+        ),
+        "supporting_evidence_ordinals": (
+            list(supporting_evidence_ordinals)
+            if supporting_evidence_ordinals is not None
+            else evaluation.get("supporting_evidence_ordinals")
+        ),
+    }
+
+
+def _validate_public_adjudication(
+    payload: Mapping[str, object],
+    deterministic: Mapping[str, object],
+) -> None:
+    adjudication = _mapping(payload, "adjudication")
+    effective = _mapping(payload, "adjudicated_sensitivity")
+    status = adjudication.get("status")
+    if status == "not-required":
+        if deterministic.get(
+            "semantic_adjudication_required"
+        ) is True or effective != _adjudicated_sensitivity_projection(deterministic):
+            raise ValueError("public non-candidate adjudication drifted")
+        return
+    if status not in {"accepted", "rejected"}:
+        raise ValueError("public semantic adjudication status is invalid")
+    if deterministic.get("semantic_adjudication_required") is not True:
+        raise ValueError("public semantic adjudication bypasses its deterministic trigger")
+    candidate = adjudication.get("candidate_sha256")
+    if not isinstance(candidate, str) or len(candidate) != 64:
+        raise ValueError("public semantic adjudication candidate hash is malformed")
+    decisions = [
+        SemanticJudgeDecision.model_validate(item)
+        for item in _mapping_list(adjudication, "judge_decisions")
+    ]
+    if len(decisions) != 2 or {item.judge_model for item in decisions} != set(JUDGE_MODELS):
+        raise ValueError("public semantic adjudication lacks both frozen judges")
+    if any(item.candidate_sha256 != candidate for item in decisions):
+        raise ValueError("public judge decision candidate binding drifted")
+    observed = {item.evidence_sufficient for item in decisions}
+    human_value = adjudication.get("human_decision")
+    if human_value is not None and not isinstance(human_value, Mapping):
+        raise ValueError("public human adjudication decision is malformed")
+    human = (
+        HumanAdjudicationDecision.model_validate(human_value)
+        if isinstance(human_value, Mapping)
+        else None
+    )
+    if len(observed) == 1:
+        if human is not None:
+            raise ValueError("public unanimous adjudication has a human tiebreak")
+        sufficient = next(iter(observed))
+        basis = "unanimous-judge-sufficient" if sufficient else "unanimous-judge-insufficient"
+        support = sorted(
+            {ordinal for decision in decisions for ordinal in decision.supporting_evidence_ordinals}
+        )
+    else:
+        if human is None or human.candidate_sha256 != candidate:
+            raise ValueError("public judge disagreement lacks its human tiebreak")
+        sufficient = human.evidence_sufficient
+        basis = "human-tiebreak"
+        support = list(human.supporting_evidence_ordinals)
+    if (
+        adjudication.get("basis") != basis
+        or adjudication.get("evidence_sufficient") is not sufficient
+        or adjudication.get("supporting_evidence_ordinals") != support
+        or status != ("accepted" if sufficient else "rejected")
+    ):
+        raise ValueError("public semantic adjudication decision does not replay")
+    citations = _mapping_list(payload, "citations")
+    if any(
+        ordinal < 1
+        or ordinal > len(citations)
+        or citations[ordinal - 1].get("execution_valid") is not True
+        for ordinal in support
+    ):
+        raise ValueError("public semantic adjudication cites invalid evidence")
+    expected = _adjudicated_sensitivity_projection(deterministic)
+    if sufficient:
+        call_ordinals = [
+            int(call_ordinal)
+            for ordinal in support
+            for call_ordinal in citations[ordinal - 1]["matching_tool_call_ordinals"]
+        ]
+        if not call_ordinals:
+            raise ValueError("public accepted adjudication has no cited execution")
+        support_call = max(call_ordinals)
+        calls = _mapping_list(payload, "tool_calls")[:support_call]
+        if not all(isinstance(call.get("database_load"), Mapping) for call in calls):
+            raise ValueError("public accepted adjudication lacks database-load accounting")
+        rows = sum(int(_mapping(call, "database_load")["rows_returned"]) for call in calls)
+        expected.update(
+            {
+                "evidence_sufficient": True,
+                "efficiency_eligible": True,
+                "auditable_completion": True,
+                "success": True,
+                "correct_completion_tool_calls": len(_mapping_list(payload, "tool_calls")),
+                "tool_calls_through_required_evidence": support_call,
+                "rows_returned_through_required_evidence": rows,
+            }
+        )
+        expected["supporting_evidence_ordinals"] = support
+    if effective != expected:
+        raise ValueError("public adjudicated evaluation does not replay")
 
 
 def _validate_query_summary(

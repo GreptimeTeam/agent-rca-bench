@@ -149,6 +149,7 @@ from semantic_rca_bench.report import (
     render_reports,
 )
 from semantic_rca_bench.subscription import run_subscription_agent
+from semantic_rca_bench.transfer_adjudication import build_semantic_adjudication_queue
 from semantic_rca_bench.transfer_formal import (
     TransferEnvironmentConfig as OpenRCA2TransferEnvironmentConfig,
 )
@@ -344,7 +345,15 @@ def _parser() -> argparse.ArgumentParser:
     transfer_export.add_argument(
         "--protocol", type=Path, default=DEFAULT_OPENRCA2_TRANSFER_PROTOCOL
     )
+    transfer_export.add_argument("--adjudication", type=Path)
     transfer_export.add_argument("--output", type=Path, required=True)
+
+    transfer_adjudication = subparsers.add_parser("transfer-adjudication-queue")
+    transfer_adjudication.add_argument("--run-report", type=Path, required=True)
+    transfer_adjudication.add_argument(
+        "--protocol", type=Path, default=DEFAULT_OPENRCA2_TRANSFER_PROTOCOL
+    )
+    transfer_adjudication.add_argument("--output", type=Path, required=True)
 
     smoke = subparsers.add_parser("smoke")
     smoke.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
@@ -736,8 +745,29 @@ def transfer_export(args: argparse.Namespace) -> int:
     if args.output.exists():
         raise ValueError(f"refusing to overwrite transfer artifact: {args.output}")
     private = _read_json_object(args.run_report)
-    artifact = build_openrca2_transfer_artifact(private, args.protocol)
+    adjudication = _read_json_object(args.adjudication) if args.adjudication is not None else None
+    artifact = build_openrca2_transfer_artifact(private, args.protocol, adjudication)
     write_json(args.output, artifact)
+    print(args.output)
+    return 0
+
+
+def transfer_adjudication_queue(args: argparse.Namespace) -> int:
+    if args.output.exists():
+        raise ValueError(f"refusing to overwrite adjudication queue: {args.output}")
+    report = _read_json_object(args.run_report)
+    protocol, measurement, pilot = load_transfer_protocol(args.protocol)
+    selection = (
+        pilot
+        if report.get("phase") == "pilot"
+        else measurement
+        if report.get("phase") == "measurement"
+        else None
+    )
+    if selection is None:
+        raise ValueError("adjudication report has an unsupported phase")
+    queue = build_semantic_adjudication_queue(report, protocol, selection)
+    write_json(args.output, queue)
     print(args.output)
     return 0
 
@@ -1872,6 +1902,8 @@ def main() -> None:
             code = transfer_run(args)
         elif args.command == "transfer-export":
             code = transfer_export(args)
+        elif args.command == "transfer-adjudication-queue":
+            code = transfer_adjudication_queue(args)
         elif args.command == "smoke":
             code = smoke(args)
         elif args.command == "smoke-rca100":

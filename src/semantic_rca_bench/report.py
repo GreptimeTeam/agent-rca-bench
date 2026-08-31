@@ -93,18 +93,18 @@ MODEL_PRICING = {
         ),
         "source": "https://bigmodel.cn/pricing",
     },
-    "qwen3.8-2.4t-a95b": {
+    "qwen3.8-max": {
         "currency": "CNY",
         "input_per_million": 12.0,
         "input_cache_hit_per_million": 1.5,
         "output_per_million": 36.0,
-        "checked_at": "2026-08-30",
+        "checked_at": "2026-08-31",
         "note": (
             "Alibaba Cloud Model Studio China (Beijing) workspace deployment. Automatic "
             "cache hits cost CNY 1.5 per million tokens. Explicit cache creation is not used "
             "by this runner; cost fails closed if a cache-write field is nevertheless returned."
         ),
-        "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-2-4t-a95b",
+        "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-max",
     },
 }
 

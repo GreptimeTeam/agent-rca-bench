@@ -74,7 +74,7 @@ and Graph rows match exactly. Their unique `search` winners have 504/1,043 and
 1,504/2,772 errors/requests respectively. Candidate exhaustion is part of the
 result and limits Graph v3 to one system family.
 
-The current six-model suite reuses these six Discovery and two Graph cases as a fixed reference
+The current five-model suite reuses these six Discovery and two Graph cases as a fixed reference
 cohort. They are not new holdouts: their earlier trajectories influenced the mature micro-task
 interfaces, and the new run measures those interfaces across the current model roster. The suite
 manifest binds every task fixture, selection manifest, protocol, GreptimeDB revision, and release build profile by

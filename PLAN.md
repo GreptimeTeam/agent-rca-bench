@@ -194,8 +194,15 @@ uniquely references a successful, non-truncated `execute_sql` or
 `query_semantic_graph` `QueryResult` with the same output query ID. Catalog and
 schema discovery do not count as incident evidence. This referential check does
 not establish that the result supports the diagnosis. Before the end-to-end
-transfer cohort is frozen, each case must therefore add a deterministic,
-source-faithful evidence-support predicate. Do not substitute an LLM judge.
+transfer cohort is frozen, each case must therefore add deterministic,
+source-faithful hard gates and evidence-support predicates. Runs with a correct
+diagnosis, execution-valid citations, reliable execution, and unresolved
+deterministic grounding enter the frozen semantic-adjudication queue. Two
+independent model-family judges review every queued run without model identity,
+the explicit treatment label, run order, or aggregate outcomes; treatment remains inferable from
+the query surface. Disagreement requires a human decision under the same rubric. Deterministic
+provenance and execution failures cannot be overruled. Deterministic case effects and inference are
+the headline result; adjudicated results are a separately computed sensitivity analysis.
 
 Reported model tokens remain exploratory until a runner-specific accounting
 contract is frozen. API usage sums provider response usage and stores uncached
@@ -393,36 +400,48 @@ by corpus because the taxonomies are heterogeneous.
 ### Current v32 release candidate
 
 The current formal suite compares `raw` with the complete `semantic_graph` product surface. It
-binds one release GreptimeDB revision, one six-model API roster, one shared 16,384-token output
+binds one release GreptimeDB revision, a five-model API roster, one shared 16,384-token output
 ceiling, provider-specific reasoning settings, and two position-balanced repetitions. The suite
-contains 192 fixed-cohort Discovery/Graph cells and 240 fresh end-to-end OpenRCA2 cells, for 432
-cells total. Case is the independent unit; repetitions describe variability only.
+contains 160 fixed-cohort Discovery/Graph cells and 200 fresh end-to-end OpenRCA2 cells, for 360
+cells total. Case is the independent unit; repetitions describe variability only. Qwen remains in
+the completed development pilot but is excluded from the formal roster: its eight pilot cells took
+about 1.35 hours, with 8.8-minute median and 15.4-minute maximum cell latency.
 
 The fresh transfer selection contains ten trajectory-blind cases: four workload restarts, three
 call-path delays, two CPU-saturation cases, and one memory-pressure case across Hotel Reservation
 and OpenTelemetry Demo. It uses opaque agent IDs and never ingests the publisher causal graph. Two
-development cases form a 24-cell pilot over three models. Measurement expansion requires at least
-6 of 12 paired repetitions to be jointly efficiency-eligible, at least three eligible pairs per
+development cases form a 24-cell pilot over three models. Its diagnostic thresholds are at least
+6 of 12 paired repetitions jointly efficiency-eligible overall and at least three eligible pairs per
 pilot case. This 50% floor is a post-hoc development calibration set after observing the first
 pilot case's v5 shadow score of four jointly eligible pairs out of six. It tests whether the primary
 paired metrics remain estimable rather than requiring near-perfect model evidence behavior; it is
-not a pre-registered effect threshold. Treatment-asymmetric eligibility and its per-claim rejection reasons are mandatory
+not a pre-registered effect threshold and does not block measurement execution. Treatment-asymmetric eligibility and its per-claim rejection reasons are mandatory
 diagnostics rather than a hard gate: unequal completion may be a real treatment outcome.
 
 All ten measurement cases have completed two independent provider-free preflights against the
 bound release binary. Both passes accepted the same source and protocol row counts, rejected no
 trace or span IDs, produced exact complete raw-span/Graph edge-set equality, matched the frozen
 stored mechanism predicate, and produced identical source-semantic hashes. No measurement provider
-cell has run. Twelve development cells completed for the first pilot case. Their trajectories
-exposed result-side identity false negatives. After closing UNION source, namespace identity, and
-`HAVING` completeness fail-open paths, deterministic v6 shadow scoring still yields ten eligible
-runs and four jointly eligible pairs out of six. The second
-pilot case has not run. The current verifier and bound fixtures require provider-free validation and
-code review before a newly authorized paid continuation.
+cell has run. All 24 development pilot cells completed without runner errors or budget exhaustion.
+The final deterministic replay produced six of twelve jointly efficiency-eligible pairs: five of
+six for the restart case and one of six for the delay case. The per-case diagnostic threshold is
+false. Two diagnosis-correct Qwen Graph runs enter semantic adjudication, but their Raw
+counterparts have incorrect diagnoses, so accepting either cannot change paired eligibility.
 
-The 240-cell transfer schedule must not start until the 24-cell development pilot passes. The
+The semantic-adjudication decision was made on 2026-08-31 after examining the completed development
+pilot and before any measurement provider cell. Repeated development trajectories showed that a
+finite SQL verifier can reject semantically sufficient evidence expressed through equivalent result
+shapes. The earlier rule forbidding an LLM judge was therefore narrowed: deterministic execution,
+provenance, identity, diagnosis, and directly decidable claim checks remain authoritative, while
+uniformly triggered unresolved evidence may enter a non-roster two-model review. The deterministic
+analysis remains primary; adjudication is sensitivity analysis. In the observed pilot, the only two
+candidates are Qwen Graph runs and cannot retrospectively change any paired result.
+
+The 200-cell transfer schedule must not start until the completed 24-cell development pilot and its
+diagnostic result are bound into the measurement report. A failed diagnostic threshold remains a
+measurement-planning result and does not exclude weak models or difficult cases. The
 public artifact exporter must deterministically recompute diagnosis, claim grounding, citation
-integrity, execution reliability, primary efficiency fields, case medians, the fixed 12-hypothesis
+integrity, execution reliability, primary efficiency fields, case medians, the fixed 10-hypothesis
 Holm family, and the artifact hash from sanitized tool inputs and result projections. The combined
 JSON and HTML report must be generated only from the validated micro and transfer artifacts.
 
@@ -461,8 +480,8 @@ metrics and traces plus Loki logs pass row-count, protocol-rejection, and ID-rem
 complete raw and Graph union contains 43 equal distinct edges with the same normalized hash. Source,
 scorer, protocol, and preflight audits pass. The execution roster contains `gpt-5.6-sol`,
 `deepseek-v4-pro`,
-`claude-opus-5`, `claude-fable-5`, `glm-5.3`, and the open-weight
-`qwen3.8-2.4t-a95b`. Two Raw/Graph repetitions produce 24 cells. GLM and Qwen use explicit
+`claude-opus-5`, `claude-fable-5`, `glm-5.3`, and `qwen3.8-max`. Two Raw/Graph repetitions produce
+24 cells. GLM and Qwen use explicit
 provider-bound China transports rather than model-name routing: BigModel Chat Completions for GLM
 and a caller-supplied Beijing workspace Responses endpoint for Qwen. Tenant endpoint identifiers
 must not enter repository fixtures or public artifacts. Qwen's Session cache header and disabled
@@ -626,7 +645,7 @@ holdout. No full RCA batch is authorized at this stage.
 ## Out of scope for the current stage
 
 - Demo-generated telemetry as a substitute for an open failure dataset.
-- Multi-agent RCA, remediation, or an LLM judge.
+- Multi-agent RCA or remediation.
 - Artificial topology or manually declared relationships.
 - A generic dataset plugin framework before two concrete adapters prove the
   shared boundary.

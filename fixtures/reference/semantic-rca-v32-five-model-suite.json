@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "protocol_revision": "semantic-rca-six-model-suite-v6",
+  "protocol_revision": "semantic-rca-five-model-suite-v11",
   "benchmark_protocol_version": 32,
   "greptimedb_revision": "e67af3fad8f698d964398843d78df782f20847bb",
   "greptimedb_build_profile": "release",
   "runner": "api",
   "transfer_protocol_fixture": "fixtures/reference/openrca2-transfer-v32-protocol.json",
-  "transfer_protocol_fixture_sha256": "45a9cba7ddd32989d346bed93492e76f97ab79c290c9f48a3fd8a3a72863547f",
+  "transfer_protocol_fixture_sha256": "95a29a7e4191fb459d6bc129478085a4a5ef4ce63af752a12eb468a77e2278cd",
   "discovery_selection_fixture": "fixtures/measurement/discovery-selection.json",
   "discovery_selection_fixture_sha256": "68da5ba70d2856eb97bca1ca159aa4ca0d9208d2ad95b548d5187953a7946258",
   "graph_selection_fixture": "fixtures/measurement/graph-v3-selection.json",
@@ -115,7 +115,7 @@
       "fixture_sha256": "ef39dc5f56a503fe4a9a1acd41d4e1cc5d88d83d8867b87b9bc6c1a8b87d3a67"
     }
   ],
-  "expected_micro_cells": 192,
-  "expected_transfer_cells": 240,
-  "expected_total_cells": 432
+  "expected_micro_cells": 160,
+  "expected_transfer_cells": 200,
+  "expected_total_cells": 360
 }

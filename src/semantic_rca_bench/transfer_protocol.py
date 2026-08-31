@@ -16,7 +16,7 @@ from semantic_rca_bench.datasets.openrca2_transfer import (
 from semantic_rca_bench.protocol import benchmark_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "openrca2-transfer-six-model-v6"
+PROTOCOL_REVISION = "openrca2-transfer-five-model-v11"
 DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/openrca2-transfer-v32-protocol.json")
 
 
@@ -47,7 +47,7 @@ class PilotContract(BaseModel):
     cases: int
     selection_fixture: str
     selection_fixture_sha256: str
-    models: tuple[str, ...]
+    models: tuple[ModelContract, ...]
     repetitions: int
     expected_cells: int
     minimum_eligible_pairs: int
@@ -68,6 +68,17 @@ class InferenceContract(BaseModel):
     null_metric_meaning: str
     tied_calls_meaning: str
     direction_consistent_non_significant_meaning: str
+
+
+class SemanticAdjudicationContract(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool
+    trigger: str
+    judge_models: tuple[str, str]
+    decision_rule: str
+    deterministic_hard_gates_remain_authoritative: bool
+    publish_deterministic_and_adjudicated_results: bool
 
 
 class TransferProtocolFixture(BaseModel):
@@ -95,6 +106,7 @@ class TransferProtocolFixture(BaseModel):
     paid_execution: PaidExecutionContract
     pilot: PilotContract
     inference: InferenceContract
+    semantic_adjudication: SemanticAdjudicationContract
 
 
 def load_transfer_protocol(
@@ -142,14 +154,6 @@ def load_transfer_protocol(
             16384,
             "max",
         ),
-        (
-            "qwen3.8-2.4t-a95b",
-            "alibaba-cloud-model-studio",
-            ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES,
-            "session-cache-header",
-            16384,
-            "xhigh",
-        ),
     )
     observed_models = tuple(
         (
@@ -181,7 +185,7 @@ def load_transfer_protocol(
         != "cases in selection order; models in roster order; seeded rotating treatments"
     ):
         raise ValueError("OpenRCA2 transfer protocol contract drifted")
-    if any(model.model not in MODEL_PRICING for model in fixture.models):
+    if any(model.model not in MODEL_PRICING for model in (*fixture.models, *fixture.pilot.models)):
         raise ValueError("OpenRCA2 transfer protocol has no pricing contract for a model")
     selection_path = _bound_path(
         path,
@@ -190,7 +194,7 @@ def load_transfer_protocol(
     )
     selection = load_selection_fixture(selection_path)
     schedule = formal_schedule(fixture, selection)
-    if fixture.expected_cells != 240 or len(schedule) != fixture.expected_cells:
+    if fixture.expected_cells != 200 or len(schedule) != fixture.expected_cells:
         raise ValueError("OpenRCA2 transfer protocol cell count drifted")
     paid = fixture.paid_execution
     if not (
@@ -210,7 +214,43 @@ def load_transfer_protocol(
     pilot_selection = load_pilot_fixture(pilot_path)
     if (
         pilot.cases != 2
-        or pilot.models != ("gpt-5.6-sol", "deepseek-v4-pro", "qwen3.8-2.4t-a95b")
+        or tuple(
+            (
+                model.model,
+                model.provider,
+                model.api_transport,
+                model.prompt_cache,
+                model.max_output_tokens,
+                model.reasoning_effort,
+            )
+            for model in pilot.models
+        )
+        != (
+            (
+                "gpt-5.6-sol",
+                "openai",
+                ApiTransport.OPENAI_RESPONSES,
+                "implicit-prefix-30m",
+                16384,
+                "medium",
+            ),
+            (
+                "deepseek-v4-pro",
+                "deepseek",
+                ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
+                "provider-automatic-prefix",
+                16384,
+                "high",
+            ),
+            (
+                "qwen3.8-max",
+                "alibaba-cloud-model-studio",
+                ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES,
+                "session-cache-header",
+                16384,
+                "xhigh",
+            ),
+        )
         or pilot.repetitions != 2
         or pilot.expected_cells != 24
         or pilot.minimum_eligible_pairs != 6
@@ -229,7 +269,7 @@ def load_transfer_protocol(
         or not inference.case_is_independent_unit
         or not inference.repetitions_are_descriptive
         or inference.primary_metrics != ("rows_returned", "correct_completion_tool_calls")
-        or inference.holm_family_size != 12
+        or inference.holm_family_size != 10
         or inference.null_metric_meaning != "not estimable; no eligible paired cases"
         or inference.tied_calls_meaning != "no observed tool-call reduction in the cohort"
         or inference.direction_consistent_non_significant_meaning
@@ -239,6 +279,22 @@ def load_transfer_protocol(
         )
     ):
         raise ValueError("OpenRCA2 transfer inference contract drifted")
+    adjudication = fixture.semantic_adjudication
+    if (
+        not adjudication.enabled
+        or adjudication.trigger
+        != "diagnosis-correct-execution-valid-deterministic-grounding-incomplete"
+        or adjudication.judge_models != ("claude-sonnet-5", "deepseek-v4-flash")
+        or adjudication.decision_rule != "unanimous-sufficient; disagreement-human-tiebreak"
+        or not adjudication.deterministic_hard_gates_remain_authoritative
+        or not adjudication.publish_deterministic_and_adjudicated_results
+    ):
+        raise ValueError("OpenRCA2 transfer semantic adjudication contract drifted")
+    formal_models = {model.model for model in fixture.models}
+    if formal_models.intersection(adjudication.judge_models):
+        raise ValueError("OpenRCA2 transfer adjudication judges must be outside the formal roster")
+    if any(model not in MODEL_PRICING for model in adjudication.judge_models):
+        raise ValueError("OpenRCA2 transfer adjudication judge has no pricing contract")
     return fixture, selection, pilot_selection
 
 
@@ -280,7 +336,7 @@ def pilot_schedule(
     fixture: TransferProtocolFixture,
     selection: TransferPilotFixture,
 ) -> list[dict[str, object]]:
-    models = [model for model in fixture.models if model.model in fixture.pilot.models]
+    models = fixture.pilot.models
     orders = run_orders(
         list(fixture.visibility_levels),
         fixture.pilot.repetitions,

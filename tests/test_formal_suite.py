@@ -152,17 +152,17 @@ def _source_audits() -> list[dict[str, object]]:
     return audits
 
 
-def test_formal_suite_freezes_all_432_cells() -> None:
+def test_formal_suite_freezes_all_360_cells() -> None:
     suite, transfer = load_formal_suite_protocol()
     schedule = micro_schedule(suite, transfer)
 
-    assert len(schedule) == 192
-    assert suite.expected_transfer_cells == 240
-    assert suite.expected_total_cells == 432
+    assert len(schedule) == 160
+    assert suite.expected_transfer_cells == 200
+    assert suite.expected_total_cells == 360
     assert {cell["model"] for cell in schedule} == {model.model for model in transfer.models}
     for source_case in {str(cell["source_case"]) for cell in schedule}:
         cells = [cell for cell in schedule if cell["source_case"] == source_case]
-        assert len(cells) == 24
+        assert len(cells) == 20
         for model in transfer.models:
             model_cells = [cell for cell in cells if cell["model"] == model.model]
             assert [cell["visibility"] for cell in model_cells] == [
@@ -185,8 +185,8 @@ def test_micro_preflight_has_no_provider_calls_and_validates() -> None:
     assert report["authorization"]["preflight_calls_provider"] is False
     assert report["execution"] == {
         "completed_runs": 0,
-        "expected_runs": 192,
-        "remaining_runs": 192,
+        "expected_runs": 160,
+        "remaining_runs": 160,
         "runner_errors": 0,
         "budget_exhaustions": 0,
         "complete": False,
@@ -660,8 +660,8 @@ def test_complete_micro_artifact_sanitizes_and_deterministically_rescores() -> N
         )
     report["runs"] = runs
     report["execution"] = {
-        "completed_runs": 192,
-        "expected_runs": 192,
+        "completed_runs": 160,
+        "expected_runs": 160,
         "remaining_runs": 0,
         "runner_errors": 0,
         "budget_exhaustions": 0,
@@ -676,7 +676,7 @@ def test_complete_micro_artifact_sanitizes_and_deterministically_rescores() -> N
     validate_micro_measurement_artifact(artifact, DEFAULT_SUITE_PROTOCOL_FIXTURE)
 
     encoded = json.dumps(artifact, sort_keys=True)
-    assert len(artifact["runs"]) == 192
+    assert len(artifact["runs"]) == 160
     assert "private_provider_payload" not in encoded
     assert "private-run-id-must-not-leak" not in encoded
     assert "private free-form claim must not leak" not in encoded

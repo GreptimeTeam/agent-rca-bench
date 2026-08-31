@@ -11,8 +11,11 @@ grounding, citation integrity, execution reliability, and efficiency as separate
 single `success` field may summarize auditable completion for machine control, but it is not a
 substitute for the dimension results.
 
-The scorer is deterministic. It does not use an LLM judge. Dataset labels and reference causal
-graphs remain hidden from the agent.
+Execution validity, provenance, source identity, diagnosis structure, and directly decidable claim
+grounding use deterministic checks. A run enters semantic adjudication only when its diagnosis is
+correct, every citation is execution-valid, execution is reliable, and deterministic claim
+grounding remains incomplete. Dataset labels and reference causal graphs remain hidden from the
+investigating agent.
 
 ## Score the causal answer at its declared granularity
 
@@ -161,6 +164,13 @@ aggregate whose grouping keys contain only the frozen identity and an unambiguou
 explicitly discriminated `UNION` may contribute an isolated source branch; undiscriminated rows or
 overlapping source periods fail closed.
 
+Metric values and call-path gaps are compared in their frozen source units. Exact positive linear
+unit conversions in projections, aggregates, and threshold predicates are normalized before the
+claim is checked, such as CPU ratio to percent, bytes to MiB, or nanoseconds to seconds. Affine,
+negative, lossy, reversed, or otherwise unproven transforms fail closed. `AVG`, `MAX`, and `COUNT`
+may establish anomalous existence only when their values mathematically imply the required number
+of threshold observations; `MAX` at or above the threshold always invalidates baseline absence.
+
 Call-path delay is edge-scoped. Its evidence pairs a source Client span with its Server child using
 the same trace ID and exact parent-span relation, retains both source services and an allowed source
 operation, and derives server-start minus client-start nanoseconds. Trace, span, or parent ID
@@ -194,9 +204,19 @@ Development trajectories can supply regression examples. They do not become meas
 and the runtime does not rescore old development protocols. A scoring-semantic change increments the
 internal protocol before another model run.
 
-The deterministic verdict remains the primary score. An optional blinded LLM adjudication may be
-published later as sensitivity analysis for alternative telemetry signals that are outside the
-frozen rubric. It cannot replace or silently override the deterministic primary result.
+Semantic adjudication is exhaustive over the frozen trigger, not selected after treatment results
+are known. The judge input omits model identity, the explicit treatment label, run order, and
+aggregate benchmark outcomes. Treatment remains inferable from tool names and query surfaces, which
+must remain visible because SQL and Graph fields are evidence provenance; this is not a
+treatment-blind review.
+`claude-sonnet-5` and `deepseek-v4-flash`, neither of which is in the formal measurement roster,
+judge each candidate independently. Both must find the cited
+results sufficient for automatic acceptance; disagreement requires a human decision under the same
+rubric. Deterministic hard-gate failures cannot be overruled. The deterministic result is the
+headline analysis. Adjudication is a separately computed sensitivity analysis and does not rewrite
+deterministic causal-locus, baseline, anomaly, or mechanism atoms. The public report publishes both
+sets of case effects and inference statistics, the number of candidates and decisions by treatment,
+and every decision basis.
 
 ## Design basis
 

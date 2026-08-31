@@ -13,11 +13,22 @@ from test_transfer_scorer import (
     _run,
 )
 
-from semantic_rca_bench.contracts import ApiTransport, Evidence, EvidenceClaimType, ToolTrace
+from semantic_rca_bench.contracts import (
+    ApiTransport,
+    DatabaseLoad,
+    Evidence,
+    EvidenceClaimType,
+    ToolTrace,
+)
+from semantic_rca_bench.transfer_adjudication import apply_semantic_adjudication
 from semantic_rca_bench.transfer_release import (
     _apply_holm,
     _median_or_none,
+    _model_reports,
+    _public_adjudicated_sensitivity,
+    _public_adjudication_resolution,
     _sign_test,
+    _validate_public_adjudication,
     sanitize_transfer_run,
     validate_public_transfer_run,
 )
@@ -183,6 +194,144 @@ def test_public_validator_recomputes_primary_efficiency_fields() -> None:
 
     with pytest.raises(ValueError, match="does not deterministically rescore"):
         _validate(tampered)
+
+
+def test_public_adjudication_replays_without_overwriting_deterministic_score() -> None:
+    case = _case(7)
+    query = _metric_query(case).replace(
+        "GROUP BY phase",
+        "AND greptime_value >= 0.5 GROUP BY phase",
+    )
+    run = _run(case, query, _metric_result(case))
+    deterministic = _evaluate(run, case)
+    assert deterministic.semantic_adjudication_required is True
+    effective = apply_semantic_adjudication(
+        run,
+        deterministic,
+        evidence_sufficient=True,
+        supporting_evidence_ordinals=[1],
+    )
+    payload = sanitize_transfer_run(run, deterministic, case)
+    candidate = "a" * 64
+    payload["adjudication"] = {
+        "candidate_sha256": candidate,
+        "evidence_sufficient": True,
+        "supporting_evidence_ordinals": [1],
+        "basis": "unanimous-judge-sufficient",
+        "judge_decisions": [
+            {
+                "candidate_sha256": candidate,
+                "judge_model": model,
+                "evidence_sufficient": True,
+                "supporting_evidence_ordinals": [1],
+                "rationale": "The cited result is sufficient.",
+                "failed_requirements": [],
+            }
+            for model in ("claude-sonnet-5", "deepseek-v4-flash")
+        ],
+        "human_decision": None,
+        "status": "accepted",
+    }
+    payload["adjudicated_sensitivity"] = _public_adjudicated_sensitivity(
+        effective,
+        payload["citations"],
+        supporting_evidence_ordinals=[1],
+    )
+
+    public_deterministic = _validate(payload, index=7)
+    _validate_public_adjudication(payload, public_deterministic)
+    assert public_deterministic["efficiency_eligible"] is False
+    assert payload["adjudicated_sensitivity"]["efficiency_eligible"] is True
+    for key in (
+        "causal_locus_evidence_match",
+        "baseline_evidence_match",
+        "anomaly_evidence_match",
+        "mechanism_evidence_match",
+        "claim_grounding",
+    ):
+        assert key not in payload["adjudicated_sensitivity"]
+
+    payload["adjudicated_sensitivity"]["rows_returned_through_required_evidence"] += 1
+    with pytest.raises(ValueError, match="does not replay"):
+        _validate_public_adjudication(payload, public_deterministic)
+
+
+def test_public_adjudication_redacts_free_text() -> None:
+    resolution = {
+        "schema_version": 1,
+        "queue_sha256": "q" * 64,
+        "resolutions": [
+            {
+                "candidate_sha256": "a" * 64,
+                "private_binding": {"cell_index": 1, "case_id": "case"},
+                "evidence_sufficient": False,
+                "supporting_evidence_ordinals": [],
+                "basis": "human-tiebreak",
+                "judge_decisions": [
+                    {
+                        "candidate_sha256": "a" * 64,
+                        "judge_model": "claude-sonnet-5",
+                        "evidence_sufficient": False,
+                        "supporting_evidence_ordinals": [],
+                        "rationale": "Raw telemetry value was 1981.",
+                        "failed_requirements": ["Raw telemetry value was 1981."],
+                    }
+                ],
+                "human_decision": {
+                    "candidate_sha256": "a" * 64,
+                    "evidence_sufficient": False,
+                    "supporting_evidence_ordinals": [],
+                    "rationale": "Raw telemetry value was 1981.",
+                },
+            }
+        ],
+    }
+
+    public = _public_adjudication_resolution(resolution)
+    encoded = str(public)
+
+    assert "1981" not in encoded
+    assert public["resolutions"][0]["judge_decisions"][0]["failed_requirements"] == []
+
+
+def test_primary_metrics_remain_deterministic_and_adjudication_is_sensitivity() -> None:
+    case = _case(7)
+    query = _metric_query(case).replace(
+        "GROUP BY phase",
+        "AND greptime_value >= 0.5 GROUP BY phase",
+    )
+    run = _run(case, query, _metric_result(case))
+    deterministic = _evaluate(run, case)
+    effective = apply_semantic_adjudication(
+        run,
+        deterministic,
+        evidence_sufficient=True,
+        supporting_evidence_ordinals=[1],
+    )
+    load = DatabaseLoad(query_count=1, rows_returned=2)
+    public = sanitize_transfer_run(run, deterministic, case, load)
+    public["adjudicated_sensitivity"] = _public_adjudicated_sensitivity(
+        effective,
+        public["citations"],
+        supporting_evidence_ordinals=[1],
+    )
+    items = [
+        {
+            "case_id": case.opaque_case_id,
+            "model": "test-model",
+            "repetition": 0,
+            "visibility": visibility,
+            "run": {**copy.deepcopy(public), "visibility": visibility},
+        }
+        for visibility in ("raw", "semantic_graph")
+    ]
+
+    report = _model_reports(items, ["test-model"], family_size=2)["test-model"]
+
+    assert report["primary_metrics"]["rows_returned"]["eligible_cases"] == 0
+    assert (
+        report["adjudicated_sensitivity"]["primary_metrics"]["rows_returned"]["eligible_cases"] == 1
+    )
 
 
 def test_case_median_does_not_treat_repetitions_as_independent_cases() -> None:

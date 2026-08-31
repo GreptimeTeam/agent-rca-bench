@@ -165,7 +165,7 @@ def test_openai_cache_breakdown_drives_usage_and_cost() -> None:
 
 
 def test_qwen_china_pricing_uses_provider_cache_breakdown() -> None:
-    pricing = MODEL_PRICING["qwen3.8-2.4t-a95b"]
+    pricing = MODEL_PRICING["qwen3.8-max"]
     uncached_run = {
         "usage": {"input_tokens": 100, "output_tokens": 20},
         "responses": [

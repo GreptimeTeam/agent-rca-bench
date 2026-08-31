@@ -149,7 +149,7 @@ uv run semantic-rca run \
   --repetitions 2
 ```
 
-The Qwen arm uses the open-weight `qwen3.8-2.4t-a95b` model, not `qwen3.8-max`. It reads
+The Qwen arm uses `qwen3.8-max` through Alibaba Cloud Model Studio. It reads
 `DASHSCOPE_API_KEY` or the `semantic-rca-bench-dashscope` Keychain service. The
 `DASHSCOPE_BASE_URL` environment variable or `semantic-rca-bench-dashscope-base-url` Keychain
 service must name the caller's China (Beijing) workspace Responses endpoint; the tenant-specific
@@ -163,7 +163,7 @@ security add-generic-password -U -a "$USER" \
   -s semantic-rca-bench-dashscope-base-url -w
 uv run semantic-rca run \
   --report .reports/smoke-<run-id>.json \
-  --model qwen3.8-2.4t-a95b \
+  --model qwen3.8-max \
   --api-transport dashscope-cn-beijing-responses \
   --reasoning-effort xhigh \
   --max-output-tokens 16384 \
@@ -210,6 +210,11 @@ Claim support is inferred from cited results rather than citation labels, evalua
 aliases, or one identity-filter spelling. A complete result may establish the target population
 through direct identity columns, and source-proven pod identities are accepted as equivalent to the
 canonical container identity. The
+scorer also accepts a full-window workload restart-counter transition with an anomalous first
+crossing, and an exact Client/Server parent-child aggregate whose Client duration changes while
+Server execution remains fast. Runs that pass diagnosis, citation, provenance, and execution hard
+gates but remain unresolved by deterministic grounding enter a two-model semantic-adjudication
+queue; the report retains deterministic-only and adjudicated results separately. The
 API runner sets its turn limit above the visible tool-call cap and records turn
 exhaustion as a failed run instead of aborting the batch. The supported
 subscription CLIs do not expose a turn-limit option; their broker enforces the
@@ -308,7 +313,7 @@ complete suite from one clean tagged benchmark commit.
 
 Benchmark 1.0 targets one canonical API runner and a small fixed public cohort
 covering discovery and Graph retrieval plus a fresh end-to-end RCA transfer
-demonstration. The first report uses the same six-model roster throughout;
+demonstration. The first report uses the same five-model roster throughout;
 model report cards remain separate by benchmark and do not create a pooled
 cross-task score. Subscription runners, catalog broad-recall, and a powered
 cross-system effect estimate remain post-1.0 work.
@@ -362,21 +367,31 @@ absence but may prove anomalous existence. A SQL limit is accepted only when the
 is strictly below it; truncated results always fail. Wrong identity, roles, parent relations,
 lineage, ambiguous periods, and hard-coded result constants fail closed.
 
-The formal transfer fixture freezes six models, Raw and Semantic Graph, two position-balanced
+The formal transfer fixture freezes five models, Raw and Semantic Graph, two position-balanced
 repetitions, and 48 executed tool calls per cell. All configurations have a 16,384-token shared
 reasoning-and-visible-output ceiling. Reasoning settings are provider-specific frozen
-configurations, not a common compute scale: OpenAI `medium`, DeepSeek and Claude `high`, GLM
-`max`, and Qwen `xhigh`. Prefix caching is enabled through each provider's supported interface.
-DeepSeek, BigModel, and DashScope connect directly and ignore process-level proxy environment
-variables. OpenAI and Anthropic retain the operator's environment routing.
+configurations, not a common compute scale: OpenAI `medium`, DeepSeek and Claude `high`, and GLM
+`max`. Prefix caching is enabled through each provider's supported interface. DeepSeek and BigModel
+connect directly and ignore process-level proxy environment variables. OpenAI and Anthropic retain
+the operator's environment routing. The development pilot also freezes Qwen `xhigh` through the
+direct DashScope Beijing transport, but Qwen is not part of the formal roster because its eight
+pilot cells took about 1.35 hours, with 8.8-minute median and 15.4-minute maximum cell latency.
 
-Before the 240-cell measurement schedule, the frozen 24-cell development pilot runs two untouched
+Before the 200-cell measurement schedule, the frozen 24-cell development pilot runs two untouched
 development cases with `gpt-5.6-sol`, `deepseek-v4-pro`, and
-`qwen3.8-2.4t-a95b`. Expansion requires at least 10 of 12 Raw/Graph pairs to be
-efficiency-eligible and at least five eligible pairs per case. Treatment-asymmetric eligibility is
+`qwen3.8-max`. The pilot diagnostic compares its result with thresholds of 6 of 12 Raw/Graph pairs
+overall and three eligible pairs per case. A failed threshold remains a reported negative result;
+it does not block measurement execution. Treatment-asymmetric eligibility is
 reported with per-claim rejection reasons; it is not a hard gate because unequal completion is part
 of the treatment outcome. The measurement report stores all 12 pair decisions and recomputes this
 gate on every resume.
+
+The final scorer-only replay of the retained pilot has 6 of 12 eligible pairs: 5 of 6 for the
+restart case and 1 of 6 for the delay case. The per-case diagnostic threshold is false. Two GPT Raw
+runs that summarized Client and Server durations are not accepted as start-gap evidence because
+those durations cannot establish `server_start - client_start`. Two diagnosis-correct Qwen Graph
+runs enter semantic adjudication. Adjudicating either Qwen Graph run cannot make its pair eligible
+because the corresponding Raw run has an incorrect diagnosis.
 
 **The following commands call paid APIs. Run them only after reviewing the current code, fixtures,
 and no-model artifacts and granting a new approval for that invocation.** A run executes pending
@@ -389,7 +404,7 @@ uv run semantic-rca transfer-run \
   --run-dir .instances/openrca2-transfer-v32-pilot-case-01 \
   --confirm-paid-api
 
-# Repeat with a new run directory for pilot case 02. After the pilot gate passes:
+# Repeat with a new run directory for pilot case 02. After binding the completed pilot diagnostic:
 uv run semantic-rca transfer-run \
   --report .reports/openrca2-transfer-v32-measurement.json \
   --pilot-report .reports/openrca2-transfer-v32-pilot.json \
@@ -401,7 +416,27 @@ Use `--max-new-runs 1` for an explicitly approved transport probe. Runner failur
 as scoreable failed cells instead of aborting the batch. Provider confirmation is never stored and
 subscription fallback is forbidden.
 
-The fixed Discovery and Graph reference cohort contributes 192 cells: eight cases, six models, two
+After a pilot or measurement report completes, generate the exhaustive private adjudication queue:
+
+```bash
+uv run semantic-rca transfer-adjudication-queue \
+  --run-report .reports/openrca2-transfer-v32-pilot.json \
+  --output .reports/openrca2-transfer-v32-adjudication-queue.json
+```
+
+The queue is a private artifact because it contains the cited raw telemetry rows. Keep it under an
+ignored report directory and do not publish it.
+
+The judge input omits model identity, the explicit treatment label, run order, and aggregate
+outcomes. Treatment remains inferable from tool names and query surfaces, which stay visible because
+they define evidence provenance; the review is not treatment-blind. The non-roster models
+`claude-sonnet-5` and `deepseek-v4-flash` review every candidate independently; both must accept it
+for automatic passage, and disagreement requires a human decision under the same rubric.
+Deterministic hard-gate failures are not eligible for adjudication. Deterministic case effects and
+primary statistics remain the headline result; adjudicated results are published separately as a
+sensitivity analysis.
+
+The fixed Discovery and Graph reference cohort contributes 160 cells: eight cases, five models, two
 treatments, and two repetitions. It must be rerun from the same v32 suite fixture because the agent
 surface and model roster are part of the protocol:
 
@@ -421,11 +456,11 @@ uv run semantic-rca formal-suite-micro-run \
   --confirm-paid-api
 ```
 
-The complete report contains 432 cells: 192 fixed-cohort micro cells and 240 fresh end-to-end
+The complete report contains 360 cells: 160 fixed-cohort micro cells and 200 fresh end-to-end
 transfer cells. Repetitions describe model variability; the ten transfer cases are the independent
 units for the transfer estimate. Primary transfer metrics are Graph-minus-Raw rows returned and
 correct-completion tool calls, reduced to a median within each case before cross-case summaries.
-The fixed Holm family contains two metrics for each of six models. Null means not estimable, a zero
+The fixed Holm family contains two metrics for each of five models. Null means not estimable, a zero
 call delta means no observed step reduction, and non-significance is not equivalence. A
 direction-consistent result that does not pass Holm is reported descriptively with its directional
 case count, eligible case count, case median, unadjusted p-value, and Holm-adjusted p-value.
@@ -439,11 +474,12 @@ uv run semantic-rca formal-suite-micro-export \
 
 uv run semantic-rca transfer-export \
   --run-report .reports/openrca2-transfer-v32-measurement.json \
-  --output artifacts/measurement/openrca2-transfer-v32-six-model.json
+  --adjudication .reports/openrca2-transfer-v32-adjudication-resolution.json \
+  --output artifacts/measurement/openrca2-transfer-v32-five-model.json
 
 uv run semantic-rca formal-suite-report \
   --micro-artifact artifacts/measurement/semantic-rca-v32-micro.json \
-  --transfer-artifact artifacts/measurement/openrca2-transfer-v32-six-model.json \
+  --transfer-artifact artifacts/measurement/openrca2-transfer-v32-five-model.json \
   --output-json artifacts/measurement/semantic-rca-v32-report.json \
   --output-html artifacts/measurement/semantic-rca-v32-report.html
 ```
@@ -452,9 +488,11 @@ The transfer artifact retains every tool input, result row count, truncation fla
 per-call database load, citation-to-call resolution, deterministic scope/facts/claim verdicts,
 per-claim rejection codes, locus projection, treatment-specific eligibility, and case-level effect.
 It excludes provider responses, reasoning text, provider and query IDs, free-form
-claims and explanations, raw telemetry rows, local paths, endpoints, and provider error text. The
-tagged source deterministically revalidates every public citation, score, primary metric, aggregate,
-and artifact hash without a provider call.
+claims and explanations, adjudicator rationales, raw telemetry rows, local paths, endpoints, and
+provider error text. The
+tagged source deterministically revalidates every public citation, hard-gate result, primary metric
+calculation, aggregate, adjudication binding, and artifact hash without rerunning an investigating
+model. Published structured judge decisions are replayed rather than regenerated.
 
 Aegis v24-v31 and the earlier one-case six-model run are historical development experiments. Their
 JSON records may remain in the repository, but current code intentionally provides no loader,

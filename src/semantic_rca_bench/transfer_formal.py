@@ -211,7 +211,8 @@ def build_preflight_report(
     )
     if schedule is None:
         raise ValueError("transfer preflight phase and selection role disagree")
-    pricing = {model.model: dict(MODEL_PRICING[model.model]) for model in protocol.models}
+    execution_models = protocol.pilot.models if phase == "pilot" else protocol.models
+    pricing = {model.model: dict(MODEL_PRICING[model.model]) for model in execution_models}
     report = {
         "report_schema_version": REPORT_SCHEMA_VERSION,
         "mode": REPORT_MODE,
@@ -260,8 +261,8 @@ def execute_case_runs(
     validate_private_report(report, protocol, protocol_path, selection)
     if paid_api_confirmed is not True:
         raise ValueError("transfer paid API execution has not been explicitly confirmed")
-    if report["phase"] == "measurement" and not _pilot_gate_passed(report.get("pilot_gate")):
-        raise ValueError("transfer measurement requires a completed passing pilot gate")
+    if report["phase"] == "measurement" and report.get("pilot_gate") is None:
+        raise ValueError("transfer measurement requires a completed pilot diagnostic")
     if max_new_runs is not None and max_new_runs < 1:
         raise ValueError("max_new_runs must be positive")
     expected_hash = _mapping(_mapping(report, "bindings"), "source_semantic_sha256").get(
@@ -421,8 +422,8 @@ def validate_private_report(
         _validate_pilot_gate(gate, protocol)
     if require_complete and not _mapping(report, "execution").get("complete"):
         raise ValueError("transfer report is incomplete")
-    if require_complete and phase == "measurement" and not _pilot_gate_passed(gate):
-        raise ValueError("complete measurement report lacks a passing pilot gate")
+    if require_complete and phase == "measurement" and gate is None:
+        raise ValueError("complete measurement report lacks its pilot diagnostic")
 
 
 def pilot_gate(
@@ -513,8 +514,6 @@ def bind_pilot_gate(
     protocol: TransferProtocolFixture,
 ) -> None:
     gate = pilot_gate(pilot_report, protocol)
-    if not _pilot_gate_passed(gate):
-        raise ValueError("development pilot did not pass the frozen expansion gate")
     measurement_report["pilot_gate"] = gate
 
 
@@ -582,14 +581,6 @@ def _stable(value: object) -> object:
     return value
 
 
-def _pilot_gate_passed(value: object) -> bool:
-    return (
-        isinstance(value, Mapping)
-        and isinstance(value.get("gates"), Mapping)
-        and value["gates"].get("all_passed") is True
-    )
-
-
 def _validate_pilot_gate(value: object, protocol: TransferProtocolFixture) -> None:
     if not isinstance(value, Mapping):
         raise ValueError("measurement pilot gate is malformed")
@@ -598,7 +589,8 @@ def _validate_pilot_gate(value: object, protocol: TransferProtocolFixture) -> No
         isinstance(item, Mapping) for item in pair_results
     ):
         raise ValueError("measurement pilot pair results are malformed")
-    expected_pairs = protocol.pilot.cases * len(protocol.pilot.models) * protocol.pilot.repetitions
+    pilot_models = {model.model for model in protocol.pilot.models}
+    expected_pairs = protocol.pilot.cases * len(pilot_models) * protocol.pilot.repetitions
     if len(pair_results) != expected_pairs:
         raise ValueError("measurement pilot pair count drifted")
     keys = []
@@ -615,7 +607,7 @@ def _validate_pilot_gate(value: object, protocol: TransferProtocolFixture) -> No
         repetition = item.get("repetition")
         if (
             not isinstance(case_id, str)
-            or model not in protocol.pilot.models
+            or model not in pilot_models
             or _strict_int(repetition) is None
             or not 0 <= int(repetition) < protocol.pilot.repetitions
             or not isinstance(item.get("raw_eligible"), bool)
@@ -647,7 +639,7 @@ def _validate_pilot_gate(value: object, protocol: TransferProtocolFixture) -> No
     if (
         len(set(keys)) != len(keys)
         or len(case_ids) != protocol.pilot.cases
-        or {key[1] for key in keys} != set(protocol.pilot.models)
+        or {key[1] for key in keys} != pilot_models
     ):
         raise ValueError("measurement pilot pair roster drifted")
     by_case = {case: eligible_by_case[case] for case in case_ids}

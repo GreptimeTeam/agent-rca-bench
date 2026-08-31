@@ -12,7 +12,7 @@ from semantic_rca_bench.formal_suite_protocol import load_formal_suite_protocol,
 from semantic_rca_bench.formal_suite_release import validate_micro_measurement_artifact
 from semantic_rca_bench.transfer_release import validate_measurement_artifact
 
-FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION = 2
+FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION = 3
 
 
 def build_formal_measurement_report_from_files(
@@ -69,7 +69,7 @@ def build_formal_measurement_report(
         raise ValueError("formal measurement artifacts are incomplete")
     payload = {
         "report_schema_version": FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION,
-        "report_type": "semantic-rca-six-model-measurement-report",
+        "report_type": "semantic-rca-measurement-report",
         "publication_status": "release-candidate measurement report",
         "research_question": (
             "Does the complete GreptimeDB Semantic Graph interface reduce RCA investigation "
@@ -115,6 +115,11 @@ def build_formal_measurement_report(
                 "non-significant test does not establish equivalence."
             ),
             "Provider reasoning settings are frozen configurations, not a common compute scale.",
+            (
+                "Semantic adjudication is a sensitivity analysis. Its non-roster judges do not "
+                "receive the explicit treatment label, but can infer treatment from evidence "
+                "provenance."
+            ),
             "Costs retain provider currencies; currencies are not converted.",
         ],
     }
@@ -130,7 +135,7 @@ def build_formal_measurement_report(
 def validate_formal_measurement_report(report: dict[str, object]) -> None:
     if (
         report.get("report_schema_version") != FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION
-        or report.get("report_type") != "semantic-rca-six-model-measurement-report"
+        or report.get("report_type") != "semantic-rca-measurement-report"
     ):
         raise ValueError("unsupported formal measurement report")
     execution = _mapping(report, "execution")
@@ -211,9 +216,18 @@ def _semantic_findings(reports):
             model: _mapping(_mapping(value, "transfer"), "primary_metrics")
             for model, value in reports.items()
         },
+        "end_to_end_transfer_adjudicated_sensitivity": {
+            model: _mapping(
+                _mapping(_mapping(value, "transfer"), "adjudicated_sensitivity"),
+                "primary_metrics",
+            )
+            for model, value in reports.items()
+        },
         "interpretation_contract": (
-            "Negative deltas favor Semantic Graph. Null is not estimable; zero is no observed "
-            "reduction; non-significance is insufficient evidence, not equivalence."
+            "The deterministic analysis is the headline result; adjudicated results are "
+            "sensitivity analysis. Negative deltas favor Semantic Graph. Null is not estimable; "
+            "zero is no observed reduction; non-significance is insufficient evidence, not "
+            "equivalence."
         ),
     }
 
@@ -288,6 +302,10 @@ Raw versus Semantic Graph.</p><div class="stat-grid">
 median across eligible repetitions within each model and case.</p>
 {_transfer_table(report)}</section>
 <section><h2>End-to-end eligibility audit</h2>{_eligibility_table(report)}</section>
+<section><h2>Adjudicated sensitivity analysis</h2><p class="small">The deterministic analysis
+above is the headline result. This table applies only the separately reported semantic
+adjudications.</p>{_transfer_table(report, sensitivity=True)}
+{_eligibility_table(report, sensitivity=True)}</section>
 <section class="split"><div><h2>Execution audit</h2><dl>
 {_definition("Micro no-model gates", audit.get("micro_no_model_gates_passed"))}
 {_definition("Transfer no-model gates", audit.get("transfer_no_model_gates_passed"))}
@@ -340,11 +358,12 @@ def _micro_table(report):
     )
 
 
-def _transfer_table(report):
+def _transfer_table(report, *, sensitivity: bool = False):
     rows = []
     for model in report["model_order"]:
         transfer = _mapping(_mapping(_mapping(report, "model_reports"), model), "transfer")
-        for effect in _mapping_list(transfer, "case_effects"):
+        analysis = _mapping(transfer, "adjudicated_sensitivity") if sensitivity else transfer
+        for effect in _mapping_list(analysis, "case_effects"):
             rows.append(
                 (
                     model,
@@ -360,11 +379,12 @@ def _transfer_table(report):
     )
 
 
-def _eligibility_table(report):
+def _eligibility_table(report, *, sensitivity: bool = False):
     rows = []
     for model in report["model_order"]:
         transfer = _mapping(_mapping(_mapping(report, "model_reports"), model), "transfer")
-        eligibility = _mapping(transfer, "efficiency_eligibility")
+        analysis = _mapping(transfer, "adjudicated_sensitivity") if sensitivity else transfer
+        eligibility = _mapping(analysis, "efficiency_eligibility")
         by_treatment = _mapping(eligibility, "by_treatment")
         disposition = _mapping(eligibility, "paired_disposition")
         rejections = _mapping(eligibility, "claim_rejection_codes")

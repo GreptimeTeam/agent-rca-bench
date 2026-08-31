@@ -164,7 +164,7 @@ def test_formal_suite_separates_micro_preflight_from_paid_execution() -> None:
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.protocol) == ("fixtures/reference/semantic-rca-v32-six-model-suite.json")
+    assert str(preflight.protocol) == ("fixtures/reference/semantic-rca-v32-five-model-suite.json")
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
     paid = _parser().parse_args([*execution, "--max-new-runs", "1", "--confirm-paid-api"])
@@ -187,7 +187,7 @@ def test_formal_suite_report_uses_current_public_fixtures() -> None:
         ]
     )
 
-    assert str(args.suite_protocol) == ("fixtures/reference/semantic-rca-v32-six-model-suite.json")
+    assert str(args.suite_protocol) == ("fixtures/reference/semantic-rca-v32-five-model-suite.json")
     assert str(args.transfer_protocol) == ("fixtures/reference/openrca2-transfer-v32-protocol.json")
 
 

@@ -6,6 +6,7 @@ import pytest
 from semantic_rca_bench.contracts import DatabaseLoad
 from semantic_rca_bench.transfer_formal import (
     PreparedTransferEnvironment,
+    bind_pilot_gate,
     build_preflight_report,
     execute_case_runs,
     pilot_gate,
@@ -94,6 +95,27 @@ def test_pilot_gate_reports_but_does_not_reject_treatment_asymmetry() -> None:
     assert len(gate["asymmetric_pairs"]) == 1
     assert gate["eligibility_failures_by_treatment"]["raw"] == {"fault mechanism lacks evidence": 1}
     assert gate["gates"]["all_passed"] is True
+
+
+def test_failed_pilot_threshold_is_recorded_without_blocking_measurement() -> None:
+    protocol, _, pilot = load_transfer_protocol()
+    report = {
+        "phase": "pilot",
+        "runs": [
+            {
+                **cell,
+                "evaluation": {"efficiency_eligible": False, "failure_reasons": ["incorrect"]},
+                "run": {"error": None, "tool_budget_exhausted": False},
+            }
+            for cell in pilot_schedule(protocol, pilot)
+        ],
+        "execution": {"complete": True},
+    }
+    measurement: dict[str, object] = {}
+
+    bind_pilot_gate(measurement, report, protocol)
+
+    assert measurement["pilot_gate"]["gates"]["all_passed"] is False
 
 
 def test_measurement_report_rejects_tampered_pilot_gate() -> None:

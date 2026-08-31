@@ -83,7 +83,12 @@ treatment；需要归因内部能力时，应使用单独的 ablation protocol�
 - 跨 provider 的 reasoning effort 名称不是共同算力标尺。模型 report card 使用相同外部资源上限，并显式冻结各 provider 对所选模型公布的默认 reasoning 档位；报告比较的是完整冻结配置，不能把结果表述成脱离配置的模型能力排名。
 - Latency 只有在 treatment execution position 平衡、服务器负载可比时才能跨 treatment 解释。
 - Dataset taxonomy 不同的 correctness 结果分 corpus 报告，除非存在经过论证的共同 scoring contract。
-- 优先使用 deterministic scorer。不得为了得到目标结论引入 LLM judge。
+- Execution、provenance、identity、诊断结构和明确可判定的 claim 由 deterministic scorer
+  负责。只有 diagnosis 正确、citation 全部 execution-valid、执行可靠，但 deterministic
+  verifier 无法完整判定 evidence sufficiency 的 run 才进入冻结的语义裁决流程。所有符合
+  trigger 的 run 必须统一送审，不能按 treatment 或结果挑选；两个不同模型家族独立判断，
+  分歧按同一 rubric 人工裁决。Deterministic 结果是主要口径；adjudicated 结果只作为并列
+  sensitivity analysis。两套口径必须分别发布 case effect 和推断统计。
 - Scorer 判断 causal claim 是否由 cited result 支持，不要求 agent 复刻 canonical SQL、隐藏
   injection timestamp 或精确 source count。查询必须保留 claim 所依赖的 source identity、
   operation、role、status、parent、time 和 result lineage；硬编码、谓词中和、row multiplication、
@@ -134,13 +139,13 @@ scorer 和实验装置的迭代，不是公开发布版本。冻结前的运行�
 第一个公开版本是可执行、可审计的 benchmark 产品，不以证明跨系统普遍效果为
 完成条件。1.0 至少需要交付：
 
-1. 冻结且版本化的 benchmark specification、paired treatments、canonical API runner contract、deterministic scorer 和 case-level 统计方法。
+1. 冻结且版本化的 benchmark specification、paired treatments、canonical API runner contract、deterministic hard gates、语义裁决契约和 case-level 统计方法。
 2. 第三方可执行的数据获取、ingestion、no-model audit、agent run、public audit artifact export 和 report generation workflow。
 3. 一个小型、固定且可合法公开复现的 reference cohort，覆盖 Semantic Graph positive 和 negative applicability roles；不要求用 case 数量证明总体效果。
 4. 从 retrieval micro-benchmark 到完整 RCA 的 correctness-preserving transfer demonstration，并公开每个 case 的 effect size、负结果和 applicability boundary。
 5. Machine-readable public summary、sanitized audit-artifact hashes、reproduction commands、英文与中文报告，以及已知限制。
 
-首个公开报告包含六个冻结模型配置，但模型之间不做 pooled score，模型数量也不构成
+首个公开报告包含五个冻结模型配置，但模型之间不做 pooled score，模型数量也不构成
 统计样本量。跨多个独立 system families 的 powered effect estimate、
 correctness-efficiency Pareto frontier 和 catalog broad-recall study 是后续研究交付。
 要发布宽泛的 semantic-layer effect claim，必须先冻结 practical
@@ -165,11 +170,12 @@ confirmatory study。
 - `src/semantic_rca_bench/evidence.py`：runner 和 scorer 共用的 execution-valid citation 契约。
 - `src/semantic_rca_bench/report.py`、`assets/report.html`：combined report、case-level inference、token/cost accounting 和 report card UI。
 - `src/semantic_rca_bench/measurement_summary.py`：从 ignored formal reports 生成 case-level aggregate 和 report hashes。
-- `fixtures/reference/semantic-rca-v32-six-model-suite.json`：当前 432-cell suite 的 case、模型、GreptimeDB revision、release build profile、协议和文件哈希绑定。
-- `src/semantic_rca_bench/formal_suite_protocol.py`、`formal_suite.py`：192 个 Discovery/Graph cells 的 schedule、独占实例 no-model preflight、exact-prefix resume 和确定性重评分。
+- `fixtures/reference/semantic-rca-v32-five-model-suite.json`：当前 360-cell suite 的 case、模型、GreptimeDB revision、release build profile、协议和文件哈希绑定。
+- `src/semantic_rca_bench/formal_suite_protocol.py`、`formal_suite.py`：160 个 Discovery/Graph cells 的 schedule、独占实例 no-model preflight、exact-prefix resume 和确定性重评分。
 - `src/semantic_rca_bench/formal_suite_release.py`：micro measurement artifact 的脱敏、公开重评分和按模型/benchmark 的 case-level aggregate；不得在这里创建跨任务或跨模型总分。
 - `src/semantic_rca_bench/datasets/openrca2_transfer.py`、`edge_audit.py`：十个 fresh transfer cases 的冻结 loader、source-faithful replay、独立 raw-span edge reconstruction 和完整 Graph equality gate。
-- `src/semantic_rca_bench/transfer_scorer.py`、`transfer_protocol.py`、`transfer_formal.py`、`transfer_release.py`：transfer claim grounding、24-cell development pilot、240-cell measurement schedule、resume、脱敏和公开确定性重评分。
+- `src/semantic_rca_bench/transfer_scorer.py`、`transfer_protocol.py`、`transfer_formal.py`、`transfer_release.py`：transfer claim grounding、24-cell development pilot、200-cell measurement schedule、resume、脱敏和公开确定性重评分。
+- `src/semantic_rca_bench/transfer_adjudication.py`：对 deterministic grounding 未决、但硬门均通过的 run 生成去模型/去 treatment 标签的语义裁决输入，并验证双模型裁决与人工分歧处理。
 - `src/semantic_rca_bench/formal_report.py`、`assets/formal-measurement-report.html`：从两份脱敏 measurement artifact 生成综合 JSON 和自包含 HTML；只能做分 benchmark、分模型汇总，不得创建 pooled score。
 - `src/semantic_rca_bench/selection.py`：离线构造和审计 selection manifest 的 deterministic ranking primitive；运行时 CLI 不重新选 case。
 - `src/semantic_rca_bench/datasets/`：dataset adapters 和 source audits。
