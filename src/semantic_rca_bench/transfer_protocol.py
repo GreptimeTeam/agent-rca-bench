@@ -16,7 +16,7 @@ from semantic_rca_bench.datasets.openrca2_transfer import (
 from semantic_rca_bench.protocol import benchmark_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "openrca2-transfer-five-model-v11"
+PROTOCOL_REVISION = "openrca2-transfer-five-model-v12"
 DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/openrca2-transfer-v32-protocol.json")
 
 

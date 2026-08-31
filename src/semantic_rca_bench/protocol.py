@@ -42,7 +42,7 @@ def benchmark_protocol() -> dict[str, object]:
                 "coverage-snapshot",
             ],
         },
-        "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-entity-roles-v3",
+        "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-declared-service-identity-v4",  # noqa: E501
         "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
         "semantic_graph": "half-open-window-key-deduplicated-diagnostics-query-tool-v7",
         "semantic_context": "benchmark-preflight-v1",

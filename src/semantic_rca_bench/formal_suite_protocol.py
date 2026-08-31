@@ -21,7 +21,7 @@ from semantic_rca_bench.transfer_protocol import (
     load_transfer_protocol,
 )
 
-SUITE_PROTOCOL_REVISION = "semantic-rca-five-model-suite-v11"
+SUITE_PROTOCOL_REVISION = "semantic-rca-five-model-suite-v12"
 DEFAULT_SUITE_PROTOCOL_FIXTURE = Path("fixtures/reference/semantic-rca-v32-five-model-suite.json")
 
 

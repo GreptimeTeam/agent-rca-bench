@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "protocol_revision": "openrca2-transfer-five-model-v11",
+  "protocol_revision": "openrca2-transfer-five-model-v12",
   "benchmark_protocol_version": 32,
   "case_role": "measurement",
   "selection_fixture": "fixtures/reference/openrca2-transfer-v32-selection.json",
   "selection_fixture_sha256": "959eda8f5bece8f528b08552ec8bb8c5d91e33467cabe0f3a80f0613e591f105",
-  "greptimedb_revision": "e67af3fad8f698d964398843d78df782f20847bb",
+  "greptimedb_revision": "ac7e9f516859aa8170f69e3c9ace7f8b5b6fbfc7",
   "greptimedb_build_profile": "release",
   "runner": "api",
   "models": [
