@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Callable
@@ -20,7 +21,12 @@ from semantic_rca_bench.contracts import (
     QueryResult,
     ToolTrace,
 )
-from semantic_rca_bench.datasets.openrca2_transfer import TransferCaseSpec
+from semantic_rca_bench.datasets.openrca2_transfer import (
+    AlternativeMetricSignal,
+    DirectLogMechanismEvidence,
+    SourceMechanismEvidence,
+    TransferCaseSpec,
+)
 from semantic_rca_bench.evaluation import component_matches
 from semantic_rca_bench.evidence import is_valid_evidence_trace
 
@@ -57,6 +63,7 @@ class TransferEvaluation(BaseModel):
     mechanism_evidence_query_ids: list[str]
     claim_grounding: dict[str, ClaimGrounding]
     failure_reasons: list[str]
+    evidence_audit_failure_reasons: list[str]
     semantic_adjudication_required: bool
     semantic_adjudication_reason_codes: list[str]
     correct_completion_tool_calls: int | None = None
@@ -92,6 +99,7 @@ class ClaimVerdict(BaseModel):
     facts: PeriodEvidence | None = None
     baseline_clear: bool = False
     anomaly_present: bool = False
+    direct_mechanism: bool = False
     baseline_rejection_codes: tuple[str, ...] = ()
     anomaly_rejection_codes: tuple[str, ...] = ()
     rejection_codes: tuple[str, ...] = ()
@@ -137,7 +145,10 @@ def evaluate_transfer_run(
             and component_matches(diagnosis.edge_destination, case.edge_destination)
         )
     fault_category_match = diagnosis is not None and diagnosis.fault_category is case.fault_category
-    mechanism_code_match = diagnosis is not None and diagnosis.mechanism_code is case.mechanism_code
+    accepted_mechanism_codes = _accepted_mechanism_codes(case)
+    mechanism_code_match = (
+        diagnosis is not None and diagnosis.mechanism_code in accepted_mechanism_codes
+    )
     allowed_operations = set(case.mechanism_evidence.allowed_operations)
     causal_operation_match = (
         None
@@ -184,9 +195,12 @@ def evaluate_transfer_run(
         )
     baseline_ids = [query_id for query_id, _, verdict in verdicts if verdict.baseline_clear]
     anomaly_ids = [query_id for query_id, _, verdict in verdicts if verdict.anomaly_present]
-    mechanism_evidence_match = bool(baseline_ids) and bool(anomaly_ids)
+    direct_ids = [query_id for query_id, _, verdict in verdicts if verdict.direct_mechanism]
+    mechanism_evidence_match = bool(direct_ids) or (bool(baseline_ids) and bool(anomaly_ids))
     mechanism_ids = (
-        list(dict.fromkeys([*baseline_ids, *anomaly_ids])) if mechanism_evidence_match else []
+        list(dict.fromkeys([*direct_ids, *baseline_ids, *anomaly_ids]))
+        if mechanism_evidence_match
+        else []
     )
     locus_ids = list(dict.fromkeys(anomaly_ids))
     causal_locus_evidence_match = bool(locus_ids)
@@ -237,7 +251,10 @@ def evaluate_transfer_run(
         and execution_reliability
         and not required_evidence_covered
     )
-    efficiency_eligible = diagnosis_correct and required_evidence_covered and execution_reliability
+    has_execution_valid_citation = valid_evidence_count > 0
+    efficiency_eligible = (
+        diagnosis_correct and has_execution_valid_citation and execution_reliability
+    )
     auditable_completion = efficiency_eligible and citations_execution_valid
     support_indexes = [
         trace_indexes[id(trace)]
@@ -252,19 +269,22 @@ def evaluate_transfer_run(
         if calls is not None and all(trace.database_load is not None for trace in calls)
         else None
     )
-    checks = {
+    headline_checks = {
         "runner contract mismatch": runner_contract_match,
         "causal scope mismatch": causal_scope_match,
         "causal locus mismatch": causal_locus_match,
         "fault category mismatch": fault_category_match,
         "mechanism code mismatch": mechanism_code_match,
+        "no execution-valid citation": has_execution_valid_citation,
+        "execution reliability failed": execution_reliability,
+    }
+    evidence_checks = {
         "causal locus lacks incident-local evidence": causal_locus_evidence_match,
-        "baseline-clear evidence is missing": bool(baseline_ids),
-        "anomalous mechanism evidence is missing": bool(anomaly_ids),
+        "baseline-clear evidence is missing": bool(baseline_ids) or bool(direct_ids),
+        "anomalous mechanism evidence is missing": bool(anomaly_ids) or bool(direct_ids),
         "fault mechanism lacks complete transition evidence": mechanism_evidence_match,
         "required evidence claims are missing": typed_evidence,
         "citation integrity failed": citations_execution_valid,
-        "execution reliability failed": execution_reliability,
     }
     return TransferEvaluation(
         diagnosis_correct=diagnosis_correct,
@@ -291,7 +311,10 @@ def evaluate_transfer_run(
         anomaly_evidence_query_ids=anomaly_ids,
         mechanism_evidence_query_ids=mechanism_ids,
         claim_grounding=claim_grounding,
-        failure_reasons=[reason for reason, passed in checks.items() if not passed],
+        failure_reasons=[reason for reason, passed in headline_checks.items() if not passed],
+        evidence_audit_failure_reasons=[
+            reason for reason, passed in evidence_checks.items() if not passed
+        ],
         semantic_adjudication_required=semantic_adjudication_required,
         semantic_adjudication_reason_codes=(
             adjudication_reason_codes if semantic_adjudication_required else []
@@ -302,6 +325,13 @@ def evaluate_transfer_run(
         ),
         rows_returned_through_required_evidence=rows,
     )
+
+
+def _accepted_mechanism_codes(case: TransferCaseSpec) -> set[MechanismCode]:
+    return {
+        case.mechanism_code,
+        *(item.mechanism_code for item in case.direct_log_mechanism_evidence),
+    }
 
 
 def _mechanism_verdict_from_trace(
@@ -327,7 +357,89 @@ def _mechanism_verdict_from_trace(
         return _rejected_verdict("query_unparseable")
     if case.mechanism_code is MechanismCode.CALL_PATH_DELAY:
         return _delay_verdict(statement, result, case)
-    return _metric_verdict(statement, result, case)
+    metric_verdict = _metric_verdict(statement, result, case)
+    if metric_verdict.baseline_clear or metric_verdict.anomaly_present:
+        return metric_verdict
+    for evidence in case.direct_log_mechanism_evidence:
+        direct_verdict = _direct_log_verdict(statement, result, case, evidence)
+        if direct_verdict.direct_mechanism:
+            return direct_verdict
+    return metric_verdict
+
+
+def _direct_log_verdict(
+    statement: exp.Expression,
+    result: QueryResult,
+    case: TransferCaseSpec,
+    evidence: DirectLogMechanismEvidence,
+) -> ClaimVerdict:
+    if not _uses_only_source_tables(statement, {"logs"}):
+        return _rejected_verdict("wrong_source")
+    scopes = _table_select_scopes(statement, "logs")
+    if len(scopes) != 1:
+        return _rejected_verdict("lineage_unproven")
+    scope = scopes[0]
+    timestamp_alias = _projection_alias(scope, "greptime_timestamp")
+    message_alias = _projection_alias(scope, "line")
+    columns = [column.lower() for column in result.columns]
+    if (
+        timestamp_alias is None
+        or message_alias is None
+        or columns.count(timestamp_alias) != 1
+        or columns.count(message_alias) != 1
+    ):
+        return _rejected_verdict("lineage_unproven")
+    timestamp_index = columns.index(timestamp_alias)
+    message_index = columns.index(message_alias)
+    matches = 0
+    for row in result.rows:
+        if not _row_covers(row, timestamp_index, message_index):
+            return _rejected_verdict("lineage_unproven")
+        timestamp = _timestamp_ns(row[timestamp_index])
+        message = row[message_index]
+        if (
+            timestamp is not None
+            and _timestamp_period(timestamp, case) == "abnormal"
+            and isinstance(message, str)
+            and _configuration_error_event_matches(message, evidence)
+        ):
+            matches += 1
+    if matches < 1:
+        return _rejected_verdict("insufficient_anomalous_observations")
+    return ClaimVerdict(
+        scope=EvidenceScope(
+            source_table="logs",
+            identity_bound=True,
+            periods=("abnormal",),
+            complete_periods=(),
+            value_independent=True,
+            result_complete=True,
+            lineage_valid_periods=("abnormal",),
+        ),
+        facts=PeriodEvidence(abnormal_count=matches, abnormal_high_count=matches),
+        baseline_clear=False,
+        anomaly_present=True,
+        direct_mechanism=True,
+    )
+
+
+def _configuration_error_event_matches(
+    message: str,
+    evidence: DirectLogMechanismEvidence,
+) -> bool:
+    try:
+        event = json.loads(message).get("object")
+    except (AttributeError, json.JSONDecodeError):
+        return False
+    if not isinstance(event, dict):
+        return False
+    regarding = event.get("regarding")
+    return (
+        isinstance(regarding, dict)
+        and event.get("reason") == evidence.event_reason
+        and evidence.message_fragment in str(event.get("note") or "")
+        and regarding.get("fieldPath") == f"spec.containers{{{evidence.container_identity}}}"
+    )
 
 
 def _metric_verdict(
@@ -335,9 +447,26 @@ def _metric_verdict(
     result: QueryResult,
     case: TransferCaseSpec,
 ) -> ClaimVerdict:
+    primary = case.mechanism_evidence
+    signals: tuple[SourceMechanismEvidence | AlternativeMetricSignal, ...] = (
+        primary,
+        *primary.alternative_metric_signals,
+    )
+    table_names = {table.name.lower() for table in statement.find_all(exp.Table)}
+    matching = [signal for signal in signals if signal.source_table.lower() in table_names]
+    if len(matching) != 1:
+        return _rejected_verdict("wrong_source")
+    return _metric_signal_verdict(statement, result, case, matching[0])
+
+
+def _metric_signal_verdict(
+    statement: exp.Expression,
+    result: QueryResult,
+    case: TransferCaseSpec,
+    evidence: SourceMechanismEvidence | AlternativeMetricSignal,
+) -> ClaimVerdict:
     if isinstance(statement, exp.Union):
-        return _metric_union_verdict(statement, result, case)
-    evidence = case.mechanism_evidence
+        return _metric_union_verdict(statement, result, case, evidence)
     identity_column = evidence.identity_column
     identity_value = evidence.identity_value
     if not identity_column or not identity_value:
@@ -354,8 +483,8 @@ def _metric_verdict(
     ):
         return _rejected_verdict("row_multiplication_possible")
     where = source_scope.args.get("where")
-    if where is None or any(where.find_all(exp.Not)):
-        return _rejected_verdict("identity_missing")
+    if where is not None and any(where.find_all(exp.Not)):
+        return _rejected_verdict("identity_not_scope_preserving")
     scope_predicates = {
         predicate.column.lower(): predicate.value
         for predicate in evidence.scope_preserving_predicates
@@ -376,19 +505,25 @@ def _metric_verdict(
         *scope_predicates,
         *equivalent_predicates,
     }
-    filtered_columns = {column.name.lower() for column in where.find_all(exp.Column)}
+    filtered_columns = (
+        {column.name.lower() for column in where.find_all(exp.Column)}
+        if where is not None
+        else set()
+    )
     if any(column not in allowed_columns for column in filtered_columns):
         return _rejected_verdict("identity_not_scope_preserving")
-    identity_bound = _identity_filter_binds_target(
+    identity_bound = where is not None and _identity_filter_binds_target(
         where.this,
         identity_column.lower(),
         identity_value,
         equivalent_predicates,
+        evidence.identity_domains,
     )
-    if not _identity_filters_preserve_target(where.this, filter_values):
-        return _rejected_verdict("identity_not_scope_preserving")
-    if not _time_filters_supported(where, "greptime_timestamp"):
-        return _rejected_verdict("time_coverage_invalid")
+    if where is not None:
+        if not _identity_filters_preserve_target(where.this, filter_values):
+            return _rejected_verdict("identity_not_scope_preserving")
+        if not _time_filters_supported(where, "greptime_timestamp"):
+            return _rejected_verdict("time_coverage_invalid")
     coverage = _time_coverage(statement, "greptime_timestamp", case)
     periods = set(coverage.periods) if coverage is not None else {"normal", "abnormal"}
     branch_result = _source_branch_result(result, statement, result_scope)
@@ -413,19 +548,17 @@ def _metric_verdict(
         result_scope,
         periods,
         case,
+        evidence,
         value_scale=value_scale,
     )
     lineage_valid_periods = tuple(sorted(periods)) if facts is not None else ()
-    if coverage is None and facts is not None:
-        coverage = _raw_result_time_coverage(statement, "greptime_timestamp", case)
-    if coverage is None:
-        return _rejected_verdict("time_coverage_invalid")
     if facts is None:
         aggregate = _aggregate_result(
             scoped_result,
             result_scope,
             periods,
             case,
+            evidence,
             value_scale=value_scale,
         )
         if aggregate is not None:
@@ -435,31 +568,42 @@ def _metric_verdict(
             scoped_result,
             result_scope,
             case,
+            evidence,
             value_scale=value_scale,
         )
         if aggregate is not None:
             facts, lineage_valid_periods = aggregate
+    if coverage is None and facts is not None:
+        coverage = _raw_result_time_coverage(statement, "greptime_timestamp", case)
+    if coverage is None:
+        return _rejected_verdict("time_coverage_invalid")
     evidence_scope = EvidenceScope(
         source_table=evidence.source_table,
         identity_bound=True,
         periods=coverage.periods,
         complete_periods=coverage.complete_periods,
-        value_independent=not _scope_filters_use_columns(
-            source_scope, {evidence.value_column.lower()}
+        value_independent=(
+            not _scope_filters_use_columns(source_scope, {evidence.value_column.lower()})
+            and not _consumer_scope_filters_source(statement, source_scope)
         ),
         result_complete=(
             _result_scope_complete(statement, result)
-            and _metric_having_preserves_complete_facts(source_scope, case)
+            and _metric_having_preserves_complete_facts(source_scope, case, evidence)
         ),
         lineage_valid_periods=lineage_valid_periods,
     )
-    return _claim_verdict(evidence_scope, facts, case)
+    return _claim_verdict(
+        evidence_scope,
+        facts,
+        minimum_anomalous_observations=case.mechanism_evidence.minimum_anomalous_observations,
+    )
 
 
 def _metric_union_verdict(
     statement: exp.Union,
     result: QueryResult,
     case: TransferCaseSpec,
+    evidence: SourceMechanismEvidence | AlternativeMetricSignal,
 ) -> ClaimVerdict:
     branches = _union_selects(statement)
     discriminator = _union_discriminator(branches, result)
@@ -476,7 +620,7 @@ def _metric_union_verdict(
     covered_periods: set[str] = set()
     for branch, value in zip(branches, branch_values, strict=True):
         normalized_branch = _union_branch_with_output_names(branch, result.columns)
-        if not _uses_only_source_tables(normalized_branch, {case.mechanism_evidence.source_table}):
+        if not _uses_only_source_tables(normalized_branch, {evidence.source_table}):
             continue
         branch_result = result.model_copy(
             update={
@@ -487,7 +631,7 @@ def _metric_union_verdict(
                 ]
             }
         )
-        verdict = _metric_verdict(normalized_branch, branch_result, case)
+        verdict = _metric_signal_verdict(normalized_branch, branch_result, case, evidence)
         periods = set(verdict.scope.periods) if verdict.scope is not None else set()
         if covered_periods & periods:
             return _rejected_verdict("row_multiplication_possible")
@@ -499,6 +643,7 @@ def _metric_union_verdict(
         verdicts,
         result_complete=_result_scope_complete(statement, result),
         case=case,
+        evidence=evidence,
     )
 
 
@@ -569,6 +714,7 @@ def _delay_verdict(
             scope,
             periods,
             case,
+            case.mechanism_evidence,
             value_scale=lambda node: _delay_value_scale(node, client_alias, server_alias),
             period_time_column="timestamp",
             period_table_alias=client_alias,
@@ -580,11 +726,18 @@ def _delay_verdict(
         identity_bound=True,
         periods=coverage.periods,
         complete_periods=coverage.complete_periods,
-        value_independent=not _delay_value_filtered(scope, client_alias, server_alias),
+        value_independent=(
+            not _delay_value_filtered(scope, client_alias, server_alias)
+            and not _consumer_scope_filters_source(statement, scope)
+        ),
         result_complete=_result_scope_complete(statement, result),
         lineage_valid_periods=lineage_valid_periods,
     )
-    return _claim_verdict(evidence_scope, facts, case)
+    return _claim_verdict(
+        evidence_scope,
+        facts,
+        minimum_anomalous_observations=case.mechanism_evidence.minimum_anomalous_observations,
+    )
 
 
 def _rejected_verdict(code: str) -> ClaimVerdict:
@@ -598,7 +751,8 @@ def _rejected_verdict(code: str) -> ClaimVerdict:
 def _claim_verdict(
     scope: EvidenceScope,
     facts: PeriodEvidence | None,
-    case: TransferCaseSpec,
+    *,
+    minimum_anomalous_observations: int,
 ) -> ClaimVerdict:
     baseline_rejections = []
     if "normal" not in scope.periods:
@@ -621,7 +775,7 @@ def _claim_verdict(
         anomaly_rejections.append("period_not_covered")
     if "abnormal" not in scope.lineage_valid_periods or facts is None:
         anomaly_rejections.append("lineage_unproven")
-    elif facts.abnormal_high_count < case.mechanism_evidence.minimum_anomalous_observations:
+    elif facts.abnormal_high_count < minimum_anomalous_observations:
         anomaly_rejections.append("insufficient_anomalous_observations")
 
     baseline_clear = not baseline_rejections
@@ -647,17 +801,21 @@ def _identity_filter_binds_target(
     identity_column: str,
     identity_value: str,
     equivalent: dict[str, str],
+    domains: dict[str, tuple[str, ...]],
 ) -> bool:
     bindings = {identity_column: identity_value, **equivalent}
-    return any(_identity_term_binds_target(term, bindings) for term in _conjunction_terms(where))
+    return any(
+        _identity_term_binds_target(term, bindings, domains) for term in _conjunction_terms(where)
+    )
 
 
 def _identity_term_binds_target(
     term: exp.Expression,
     bindings: dict[str, str],
+    domains: dict[str, tuple[str, ...]],
 ) -> bool:
     if isinstance(term, exp.Paren):
-        return _identity_term_binds_target(term.this, bindings)
+        return _identity_term_binds_target(term.this, bindings, domains)
     if isinstance(term, exp.EQ):
         return any(
             isinstance(column, exp.Column)
@@ -693,12 +851,20 @@ def _identity_term_binds_target(
                 continue
             expected = str(literal.this)
             value = bindings.get(column.name.lower())
-            if value is not None and "%" not in expected and "_" not in expected:
-                return (
-                    value.lower() == expected.lower()
-                    if isinstance(term, exp.ILike)
-                    else value == expected
-                )
+            if value is None:
+                continue
+            flags = re.IGNORECASE if isinstance(term, exp.ILike) else 0
+            pattern = "".join(
+                ".*" if character == "%" else "." if character == "_" else re.escape(character)
+                for character in expected
+            )
+            matches = [
+                candidate
+                for candidate in domains.get(column.name.lower(), ())
+                if re.fullmatch(pattern, candidate, flags=flags) is not None
+            ]
+            if matches == [value]:
+                return True
     return False
 
 
@@ -892,6 +1058,7 @@ def _combine_union_verdicts(
     *,
     result_complete: bool,
     case: TransferCaseSpec,
+    evidence: SourceMechanismEvidence | AlternativeMetricSignal,
 ) -> ClaimVerdict:
     scopes = [verdict.scope for verdict in verdicts if verdict.scope is not None]
     facts = [verdict.facts for verdict in verdicts if verdict.facts is not None]
@@ -901,7 +1068,7 @@ def _combine_union_verdicts(
         )
         return _rejected_verdict(codes[0] if codes else "lineage_unproven")
     combined_scope = EvidenceScope(
-        source_table=case.mechanism_evidence.source_table,
+        source_table=evidence.source_table,
         identity_bound=all(scope.identity_bound for scope in scopes),
         periods=tuple(sorted({period for scope in scopes for period in scope.periods})),
         complete_periods=tuple(
@@ -919,13 +1086,50 @@ def _combine_union_verdicts(
         abnormal_count=sum(item.abnormal_count for item in facts),
         abnormal_high_count=sum(item.abnormal_high_count for item in facts),
     )
-    return _claim_verdict(combined_scope, combined_facts, case)
+    return _claim_verdict(
+        combined_scope,
+        combined_facts,
+        minimum_anomalous_observations=case.mechanism_evidence.minimum_anomalous_observations,
+    )
 
 
 def _scope_filters_use_columns(scope: exp.Select, columns: set[str]) -> bool:
     return any(
         clause is not None and _expression_uses_columns(clause, columns)
         for clause in (scope.args.get("where"), scope.args.get("having"))
+    )
+
+
+def _consumer_scope_filters_source(
+    statement: exp.Expression,
+    source_scope: exp.Select,
+) -> bool:
+    root = build_scope(statement)
+    if root is None:
+        return True
+    scopes = list(root.traverse())
+    source_scopes = [scope for scope in scopes if scope.expression is source_scope]
+    if len(source_scopes) != 1:
+        return True
+    consumers = {id(source_scopes[0])}
+    changed = True
+    while changed:
+        changed = False
+        for scope in scopes:
+            if id(scope) in consumers:
+                continue
+            if any(id(source) in consumers for source in scope.sources.values()):
+                consumers.add(id(scope))
+                changed = True
+    return any(
+        id(scope) in consumers
+        and scope.expression is not source_scope
+        and isinstance(scope.expression, exp.Select)
+        and (
+            scope.expression.args.get("where") is not None
+            or scope.expression.args.get("having") is not None
+        )
+        for scope in scopes
     )
 
 
@@ -968,13 +1172,13 @@ def _result_scope_complete(statement: exp.Expression, result: QueryResult) -> bo
 def _metric_having_preserves_complete_facts(
     scope: exp.Select,
     case: TransferCaseSpec,
+    evidence: SourceMechanismEvidence | AlternativeMetricSignal,
 ) -> bool:
     if scope.args.get("having") is None:
         return True
     group = scope.args.get("group")
     if group is None:
         return True
-    evidence = case.mechanism_evidence
     allowed_identity_columns = {
         column.lower()
         for column in (
@@ -1040,13 +1244,14 @@ def _raw_metric_result(
     scope: exp.Select,
     periods: set[str],
     case: TransferCaseSpec,
+    evidence: SourceMechanismEvidence | AlternativeMetricSignal,
     *,
     value_scale: Callable[[exp.Expression], float | None],
 ) -> PeriodEvidence | None:
     time_column = _projection_alias(scope, "greptime_timestamp")
     value_projection = _scaled_projection(scope, value_scale)
     if value_projection is None:
-        value_column = _projection_alias(scope, case.mechanism_evidence.value_column)
+        value_column = _projection_alias(scope, evidence.value_column)
         if value_column is not None:
             value_projection = (value_column, 1.0)
     if value_projection is None:
@@ -1056,6 +1261,7 @@ def _raw_metric_result(
         result,
         periods,
         case,
+        evidence.threshold,
         time_column,
         value_column,
         canonical_scale,
@@ -1090,7 +1296,12 @@ def _raw_delay_result(
             if left is None or right is None:
                 return None
             values.append((left, right - left))
-        return _period_evidence_from_rows(values, periods, case)
+        return _period_evidence_from_rows(
+            values,
+            periods,
+            case,
+            case.mechanism_evidence.threshold,
+        )
     gap_projections = [
         (projection.alias_or_name.lower(), scale)
         for projection in scope.expressions
@@ -1113,6 +1324,7 @@ def _raw_delay_result(
         result,
         periods,
         case,
+        case.mechanism_evidence.threshold,
         client_time,
         gap_alias,
         canonical_scale,
@@ -1123,6 +1335,7 @@ def _raw_values_result(
     result: QueryResult,
     periods: set[str],
     case: TransferCaseSpec,
+    threshold: float,
     time_column: str | None,
     value_column: str | None,
     canonical_scale: float,
@@ -1145,13 +1358,14 @@ def _raw_values_result(
         if value is None:
             return None
         rows.append((row[time_index], value * canonical_scale))
-    return _period_evidence_from_rows(rows, periods, case)
+    return _period_evidence_from_rows(rows, periods, case, threshold)
 
 
 def _period_evidence_from_rows(
     rows: list[tuple[object, object]],
     periods: set[str],
     case: TransferCaseSpec,
+    threshold: float,
 ) -> PeriodEvidence | None:
     values: dict[str, list[float]] = {period: [] for period in periods}
     for raw_time, raw_value in rows:
@@ -1165,7 +1379,6 @@ def _period_evidence_from_rows(
         values[period].append(value)
     if not any(values.values()):
         return None
-    threshold = case.mechanism_evidence.threshold
     return _period_part(
         {
             period: (len(items), sum(value >= threshold for value in items))
@@ -1179,6 +1392,7 @@ def _aggregate_result(
     scope: exp.Select,
     periods: set[str],
     case: TransferCaseSpec,
+    evidence: SourceMechanismEvidence | AlternativeMetricSignal,
     *,
     value_scale: Callable[[exp.Expression], float | None],
     period_time_column: str = "greptime_timestamp",
@@ -1209,23 +1423,25 @@ def _aggregate_result(
     minimum_alias = minimum_projection[0] if minimum_projection is not None else None
     maximum_alias = maximum_projection[0] if maximum_projection is not None else None
     average_alias = average_projection[0] if average_projection is not None else None
-    high_projection = _high_count_alias(scope, value_scale, case.mechanism_evidence.threshold)
+    high_projection = _high_count_alias(scope, value_scale, evidence.threshold)
     high_alias = high_projection[0] if high_projection is not None else None
     if count_alias is None or all(
         alias is None for alias in (minimum_alias, maximum_alias, average_alias, high_alias)
     ):
         return None
     period_alias = None
+    period_values: dict[str, str] = {}
     if len(periods) == 2:
-        period_alias = _period_projection_alias(
+        period_projection = _period_projection(
             scope,
             periods,
             case,
             time_column=period_time_column,
             table_alias=period_table_alias,
         )
-        if period_alias is None:
+        if period_projection is None:
             return None
+        period_alias, period_values = period_projection
     columns = [column.lower() for column in result.columns]
     required = [count_alias]
     required.extend(
@@ -1238,7 +1454,7 @@ def _aggregate_result(
     indexes = {alias: columns.index(alias) for alias in required}
     observed: dict[str, tuple[int, int]] = {}
     valid_periods = set(periods)
-    threshold = case.mechanism_evidence.threshold
+    threshold = evidence.threshold
     for row in result.rows:
         if not _row_covers(row, *indexes.values()):
             return None
@@ -1247,7 +1463,7 @@ def _aggregate_result(
             raw_period = row[indexes[period_alias]]
             if not isinstance(raw_period, str):
                 return None
-            period = _canonical_period(raw_period)
+            period = period_values.get(raw_period)
         count = _strict_int(row[indexes[count_alias]])
         if period not in periods or count is None or count <= 0:
             return None
@@ -1323,6 +1539,7 @@ def _conditional_aggregate_result(
     result: QueryResult,
     scope: exp.Select,
     case: TransferCaseSpec,
+    evidence: SourceMechanismEvidence | AlternativeMetricSignal,
     *,
     value_scale: Callable[[exp.Expression], float | None],
 ) -> tuple[PeriodEvidence, tuple[str, ...]] | None:
@@ -1344,7 +1561,7 @@ def _conditional_aggregate_result(
     columns = [column.lower() for column in result.columns]
     if any(columns.count(alias) != 1 for alias, _ in aliases.values()):
         return None
-    threshold = case.mechanism_evidence.threshold
+    threshold = evidence.threshold
     observed: dict[str, tuple[int, int]] = {}
     valid_periods = set()
     for period in ("normal", "abnormal"):
@@ -1380,8 +1597,15 @@ def _conditional_aggregate_result(
                 observation_floor += row_floor
                 high_floor += row_floor
             elif maximum >= threshold:
-                observation_floor += 1
-                high_floor += 1
+                restart_floor = (
+                    math.floor(maximum / threshold)
+                    if isinstance(evidence, SourceMechanismEvidence)
+                    and evidence.predicate == "workload_restart_transition"
+                    and threshold > 0
+                    else 1
+                )
+                observation_floor += restart_floor
+                high_floor += restart_floor
         if observation_floor:
             observed[period] = (observation_floor, high_floor)
             valid_periods.add(period)
@@ -1400,10 +1624,6 @@ def _conditional_period(expression: exp.Expression, case: TransferCaseSpec) -> s
     if operator in {"gte", "gt"} and case.abnormal_window[0] <= epoch < case.abnormal_window[1]:
         return "abnormal"
     return None
-
-
-def _canonical_period(value: str) -> str:
-    return {"baseline": "normal", "anomalous": "abnormal"}.get(value.lower(), value.lower())
 
 
 def _period_part(values: dict[str, tuple[int, int]]) -> PeriodEvidence:
@@ -1823,28 +2043,27 @@ def _case_counts_threshold(
     return baseline_valid, anomaly_valid
 
 
-def _period_projection_alias(
+def _period_projection(
     scope: exp.Select,
     periods: set[str],
     case: TransferCaseSpec,
     *,
     time_column: str,
     table_alias: str | None,
-) -> str | None:
+) -> tuple[str, dict[str, str]] | None:
     matches = []
     for projection in scope.expressions:
         if not projection.alias_or_name:
             continue
         node = projection.this if isinstance(projection, exp.Alias) else projection
         branch = node if isinstance(node, exp.Case) else node.find(exp.Case)
-        if branch is not None and _period_case_matches(
-            branch,
-            periods,
-            case,
-            time_column=time_column,
-            table_alias=table_alias,
-        ):
-            matches.append(projection.alias_or_name.lower())
+        if branch is None:
+            continue
+        mapping = _period_case_mapping(
+            branch, periods, case, time_column=time_column, table_alias=table_alias
+        )
+        if mapping is not None:
+            matches.append((projection.alias_or_name.lower(), mapping))
     return matches[0] if len(matches) == 1 else None
 
 
@@ -1856,8 +2075,28 @@ def _period_case_matches(
     time_column: str,
     table_alias: str | None,
 ) -> bool:
+    return (
+        _period_case_mapping(
+            case_expression,
+            periods,
+            case,
+            time_column=time_column,
+            table_alias=table_alias,
+        )
+        is not None
+    )
+
+
+def _period_case_mapping(
+    case_expression: exp.Case,
+    periods: set[str],
+    case: TransferCaseSpec,
+    *,
+    time_column: str,
+    table_alias: str | None,
+) -> dict[str, str] | None:
     if periods != {"normal", "abnormal"}:
-        return False
+        return None
     expected = {
         "normal": {("gte", case.normal_window[0]), ("lt", case.normal_window[1])},
         "abnormal": {("gte", case.abnormal_window[0]), ("lt", case.abnormal_window[1])},
@@ -1866,34 +2105,45 @@ def _period_case_matches(
     for branch in case_expression.args.get("ifs") or []:
         value = branch.args.get("true")
         if isinstance(value, exp.Literal) and value.is_string:
-            observed[_canonical_period(str(value.this))] = _time_bounds(
+            observed[str(value.this)] = _time_bounds(
                 branch.this,
                 time_column,
                 table_alias=table_alias,
                 filters_only=False,
             )
-    if all(observed.get(period) == bounds for period, bounds in expected.items()):
-        return True
+    explicit_mapping = {
+        label: period
+        for label, bounds in observed.items()
+        for period, expected_bounds in expected.items()
+        if bounds == expected_bounds
+    }
+    if set(explicit_mapping.values()) == periods and len(explicit_mapping) == len(observed):
+        return explicit_mapping
     default = case_expression.args.get("default")
     if not isinstance(default, exp.Literal) or not default.is_string or len(observed) != 1:
-        return False
-    period, bounds = next(iter(observed.items()))
-    default_period = _canonical_period(str(default.this))
+        return None
+    label, bounds = next(iter(observed.items()))
+    default_label = str(default.this)
+    if label == default_label:
+        return None
+    matching_periods = [
+        period for period, expected_bounds in expected.items() if bounds == expected_bounds
+    ]
+    if len(matching_periods) == 1:
+        period = matching_periods[0]
+        other_period = next(candidate for candidate in periods if candidate != period)
+        return {label: period, default_label: other_period}
     if len(bounds) != 1:
-        return False
+        return None
     boundary = next(iter(bounds))[1]
     boundary_is_observed_onset = case.normal_window[1] <= boundary < case.abnormal_window[1]
-    return (
-        boundary_is_observed_onset
-        and period == "normal"
-        and default_period == "abnormal"
-        and bounds == {("lt", boundary)}
-    ) or (
-        boundary_is_observed_onset
-        and period == "abnormal"
-        and default_period == "normal"
-        and bounds == {("gte", boundary)}
-    )
+    if not boundary_is_observed_onset:
+        return None
+    if bounds == {("lt", boundary)}:
+        return {label: "normal", default_label: "abnormal"}
+    if bounds == {("gte", boundary)}:
+        return {label: "abnormal", default_label: "normal"}
+    return None
 
 
 def _service_alias(scope: exp.Select, service: str) -> str | None:
@@ -2042,6 +2292,21 @@ def _base_delay_value_scale(
     client_alias: str,
     server_alias: str,
 ) -> float | None:
+    direct = _timestamp_difference_scale(node, client_alias, server_alias)
+    if direct is not None:
+        return direct
+    if isinstance(node, exp.Extract):
+        unit = node.this
+        difference = node.expression
+        if isinstance(difference, exp.Paren):
+            difference = difference.this
+        if (
+            str(getattr(unit, "this", unit)).lower() == "epoch"
+            and isinstance(difference, exp.Sub)
+            and _qualified_column(difference.this, server_alias, "timestamp")
+            and _qualified_column(difference.expression, client_alias, "timestamp")
+        ):
+            return 1_000_000_000.0
     if (
         isinstance(node, exp.Sub)
         and _timestamp_bigint_cast(node.this, server_alias)
@@ -2068,19 +2333,41 @@ def _base_delay_value_scale(
             and _qualified_column(difference.expression, client_alias, "timestamp")
         ):
             return 1_000_000_000 / factor
-    if isinstance(node, exp.Extract):
-        unit = node.this
-        difference = node.expression
-        if isinstance(difference, exp.Paren):
-            difference = difference.this
-        if (
-            str(getattr(unit, "this", unit)).lower() == "epoch"
-            and isinstance(difference, exp.Sub)
-            and _qualified_column(difference.this, server_alias, "timestamp")
-            and _qualified_column(difference.expression, client_alias, "timestamp")
-        ):
-            return 1_000_000_000.0
     return None
+
+
+def _timestamp_difference_scale(
+    node: exp.Expression,
+    client_alias: str,
+    server_alias: str,
+) -> float | None:
+    if isinstance(node, exp.Paren):
+        return _timestamp_difference_scale(node.this, client_alias, server_alias)
+    if isinstance(node, exp.Cast) and str(node.to).upper() == "BIGINT":
+        return _timestamp_difference_scale(node.this, client_alias, server_alias)
+    if not isinstance(node, exp.Sub):
+        return None
+    if _qualified_column(node.this, server_alias, "timestamp") and _qualified_column(
+        node.expression, client_alias, "timestamp"
+    ):
+        return 1.0
+    if _epoch_timestamp(node.this, server_alias) and _epoch_timestamp(
+        node.expression, client_alias
+    ):
+        return 1_000_000_000.0
+    return None
+
+
+def _epoch_timestamp(node: exp.Expression, table_alias: str) -> bool:
+    if isinstance(node, exp.Anonymous) and node.name.lower() == "to_unixtime":
+        return len(node.expressions) == 1 and _qualified_column(
+            node.expressions[0], table_alias, "timestamp"
+        )
+    return (
+        isinstance(node, exp.Extract)
+        and str(getattr(node.this, "this", node.this)).lower() == "epoch"
+        and _qualified_column(node.expression, table_alias, "timestamp")
+    )
 
 
 def _timestamp_bigint_cast(node: exp.Expression, table_alias: str) -> bool:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -61,6 +62,21 @@ def _diagnosis(case: TransferCaseSpec, query_id: str = "q1") -> Diagnosis:
             )
         ],
         explanation="The baseline and anomalous windows separate the mechanism.",
+    )
+
+
+def _configuration_event(case: TransferCaseSpec, *, container: str | None = None) -> str:
+    evidence = case.direct_log_mechanism_evidence[0]
+    return json.dumps(
+        {
+            "object": {
+                "reason": evidence.event_reason,
+                "note": f"OCI runtime create failed: {evidence.message_fragment}",
+                "regarding": {
+                    "fieldPath": f"spec.containers{{{container or evidence.container_identity}}}"
+                },
+            }
+        }
     )
 
 
@@ -395,6 +411,33 @@ def test_metric_scorer_accepts_transparent_cte_aggregation() -> None:
     assert _evaluate(_run(case, query, result), case).mechanism_evidence_match
 
 
+@pytest.mark.parametrize(
+    "query_template",
+    [
+        "SELECT * FROM ({source}) scoped WHERE phase = 'abnormal' OR high_value < {threshold}",
+        "WITH scoped AS ({source}) "
+        "SELECT * FROM scoped WHERE phase = 'abnormal' OR high_value < {threshold}",
+        "WITH scoped AS ({source}), filtered AS ("
+        "SELECT * FROM scoped WHERE phase = 'abnormal' OR high_value < {threshold}) "
+        "SELECT * FROM filtered",
+    ],
+)
+def test_metric_scorer_rejects_consumer_filter_that_can_hide_baseline_violations(
+    query_template: str,
+) -> None:
+    case = _case(7)
+    evidence = case.mechanism_evidence
+    query = query_template.format(
+        source=_metric_query(case),
+        threshold=evidence.threshold,
+    )
+
+    evaluation = _evaluate(_run(case, query, _metric_result(case)), case)
+
+    assert evaluation.baseline_evidence_match is False
+    assert evaluation.mechanism_evidence_match is False
+
+
 def test_metric_scorer_combines_split_time_bucket_aggregates() -> None:
     case = _case(0)
     evidence = case.mechanism_evidence
@@ -645,6 +688,128 @@ def test_metric_scorer_accepts_source_proven_equivalent_pod_identity() -> None:
     assert _evaluate(_run(case, query, _metric_result(case)), case).mechanism_evidence_match
 
 
+def test_metric_scorer_accepts_source_proven_alternative_metric_and_service_identity() -> None:
+    case = _case(7)
+    signal = case.mechanism_evidence.alternative_metric_signals[0]
+    service = next(
+        predicate
+        for predicate in signal.identity_equivalent_predicates
+        if predicate.column == "service_name"
+    )
+    query = f"""
+        SELECT CASE WHEN greptime_timestamp < '{_time(case.abnormal_window[0])}'
+                    THEN 'normal' ELSE 'abnormal' END AS phase,
+               COUNT(*) AS observations,
+               MIN(greptime_value) AS low_value,
+               MAX(greptime_value) AS high_value
+        FROM {signal.source_table}
+        WHERE {service.column} = '{service.value}'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+        GROUP BY phase
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["phase", "observations", "low_value", "high_value"],
+        rows=[["normal", 3, 0.01, 0.01], ["abnormal", 3, 1.0, 1.1]],
+        elapsed_seconds=0,
+    )
+
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match
+
+
+def test_metric_scorer_accepts_conditional_aggregate_on_alternative_metric() -> None:
+    case = _case(7)
+    signal = case.mechanism_evidence.alternative_metric_signals[0]
+    query = f"""
+        SELECT MIN(CASE WHEN greptime_timestamp < '{_time(case.abnormal_window[0])}'
+                        THEN greptime_value END) AS normal_min,
+               MAX(CASE WHEN greptime_timestamp < '{_time(case.abnormal_window[0])}'
+                        THEN greptime_value END) AS normal_max,
+               MIN(CASE WHEN greptime_timestamp >= '{_time(case.abnormal_window[0])}'
+                        THEN greptime_value END) AS abnormal_min,
+               MAX(CASE WHEN greptime_timestamp >= '{_time(case.abnormal_window[0])}'
+                        THEN greptime_value END) AS abnormal_max
+        FROM {signal.source_table}
+        WHERE {signal.identity_column} = '{signal.identity_value}'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["normal_min", "normal_max", "abnormal_min", "abnormal_max"],
+        rows=[[0.01, 0.01, 1.0, 1.1]],
+        elapsed_seconds=0,
+    )
+
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match
+
+
+def test_configuration_error_accepts_direct_source_event_without_fabricating_baseline() -> None:
+    case = _case(0)
+    result = QueryResult(
+        query_id="q1",
+        columns=["greptime_timestamp", "line"],
+        rows=[
+            [
+                case.abnormal_window[0] * 1_000_000_000,
+                _configuration_event(case),
+            ]
+        ],
+        elapsed_seconds=0,
+    )
+    run = _run(case, "SELECT greptime_timestamp, line FROM logs", result)
+    run.diagnosis = run.diagnosis.model_copy(
+        update={"mechanism_code": case.direct_log_mechanism_evidence[0].mechanism_code}
+    )
+
+    evaluation = _evaluate(run, case)
+
+    assert evaluation.diagnosis_correct
+    assert evaluation.baseline_evidence_match is False
+    assert evaluation.anomaly_evidence_match
+    assert evaluation.mechanism_evidence_match
+    assert evaluation.efficiency_eligible
+
+
+@pytest.mark.parametrize(
+    ("timestamp_period", "container"),
+    [("normal", None), ("abnormal", "unrelated-container")],
+)
+def test_configuration_error_rejects_non_causal_event(
+    timestamp_period: str,
+    container: str | None,
+) -> None:
+    case = _case(0)
+    epoch = case.normal_window[0] if timestamp_period == "normal" else case.abnormal_window[0]
+    result = QueryResult(
+        query_id="q1",
+        columns=["greptime_timestamp", "line"],
+        rows=[[epoch * 1_000_000_000, _configuration_event(case, container=container)]],
+        elapsed_seconds=0,
+    )
+    run = _run(case, "SELECT greptime_timestamp, line FROM logs", result)
+    run.diagnosis = run.diagnosis.model_copy(
+        update={"mechanism_code": case.direct_log_mechanism_evidence[0].mechanism_code}
+    )
+
+    assert not _evaluate(run, case).mechanism_evidence_match
+
+
+def test_configuration_error_is_not_accepted_without_source_frozen_evidence() -> None:
+    case = _case(3)
+    result = QueryResult(
+        query_id="q1",
+        columns=["greptime_timestamp", "line"],
+        rows=[[case.abnormal_window[0] * 1_000_000_000, "executable file not found in $PATH"]],
+        elapsed_seconds=0,
+    )
+    run = _run(case, "SELECT greptime_timestamp, line FROM logs", result)
+    run.diagnosis = run.diagnosis.model_copy(update={"mechanism_code": "configuration_error"})
+
+    assert not _evaluate(run, case).diagnosis_correct
+
+
 @pytest.mark.parametrize("operator", ["=", "IN"])
 def test_metric_scorer_accepts_parenthesized_exact_identity(operator: str) -> None:
     case = _case(7)
@@ -660,6 +825,35 @@ def test_metric_scorer_accepts_parenthesized_exact_identity(operator: str) -> No
     )
 
     assert _evaluate(_run(case, query, _metric_result(case)), case).mechanism_evidence_match
+
+
+def test_metric_scorer_accepts_source_unique_identity_prefix() -> None:
+    case = _case(1)
+    evidence = case.mechanism_evidence
+    pod = next(
+        item for item in evidence.identity_equivalent_predicates if item.column == "k8s_pod_name"
+    )
+    prefix = pod.value.split("-", 1)[0]
+    query = _metric_query(case).replace(
+        f"{evidence.identity_column} = '{evidence.identity_value}'",
+        f"{pod.column} LIKE '{prefix}-%'",
+    )
+
+    assert _evaluate(_run(case, query, _metric_result(case)), case).mechanism_evidence_match
+
+
+def test_metric_scorer_rejects_identity_prefix_matching_multiple_source_identities() -> None:
+    case = _case(1)
+    evidence = case.mechanism_evidence
+    pod = next(
+        item for item in evidence.identity_equivalent_predicates if item.column == "k8s_pod_name"
+    )
+    query = _metric_query(case).replace(
+        f"{evidence.identity_column} = '{evidence.identity_value}'",
+        f"{pod.column} LIKE '%'",
+    )
+
+    assert not _evaluate(_run(case, query, _metric_result(case)), case).mechanism_evidence_match
 
 
 def test_metric_scorer_accepts_broader_population_with_projected_identity() -> None:
@@ -866,6 +1060,119 @@ def test_metric_scorer_accepts_conditional_extremes_with_observed_onset() -> Non
             "anomalous_max",
         ],
         rows=[[equivalent.value, 0.01, 0.01, 1.0, 1.1]],
+        elapsed_seconds=0,
+    )
+
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match
+
+
+def test_metric_scorer_uses_case_expression_semantics_instead_of_period_labels() -> None:
+    case = _case(3)
+    query = (
+        _metric_query(case)
+        .replace("'normal'", "'before_shutdown'")
+        .replace("'abnormal'", "'post_shutdown'")
+    )
+    result = _metric_result(case).model_copy(
+        update={
+            "rows": [
+                ["before_shutdown", 3, 0.0, 0.0, 0],
+                ["post_shutdown", 3, 1.0, 1.0, 3],
+            ]
+        }
+    )
+
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match
+
+
+def test_metric_scorer_accepts_complete_baseline_case_with_anomalous_default() -> None:
+    case = _case(7)
+    query = _metric_query(case).replace(
+        f"greptime_timestamp < '{_time(case.abnormal_window[0])}'",
+        f"greptime_timestamp >= '{_time(case.normal_window[0])}' "
+        f"AND greptime_timestamp < '{_time(case.normal_window[1])}'",
+        1,
+    )
+
+    assert _evaluate(_run(case, query, _metric_result(case)), case).mechanism_evidence_match
+
+
+def test_metric_scorer_accepts_unbounded_conditional_extremes() -> None:
+    case = _case(7)
+    evidence = case.mechanism_evidence
+    onset = _time(case.abnormal_window[0] + 1)
+    query = f"""
+        SELECT MIN(CASE WHEN greptime_timestamp < '{onset}'
+                        THEN greptime_value END) AS baseline_min,
+               MAX(CASE WHEN greptime_timestamp < '{onset}'
+                        THEN greptime_value END) AS baseline_max,
+               MIN(CASE WHEN greptime_timestamp >= '{onset}'
+                        THEN greptime_value END) AS anomalous_min,
+               MAX(CASE WHEN greptime_timestamp >= '{onset}'
+                        THEN greptime_value END) AS anomalous_max
+        FROM {evidence.source_table}
+        WHERE {evidence.identity_column} = '{evidence.identity_value}'
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["baseline_min", "baseline_max", "anomalous_min", "anomalous_max"],
+        rows=[[0.01, 0.01, 1.0, 1.1]],
+        elapsed_seconds=0,
+    )
+
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match
+
+
+def test_metric_scorer_accepts_complete_wider_population_grouped_by_identity() -> None:
+    case = _case(2)
+    evidence = case.mechanism_evidence
+    boundary = _time(case.abnormal_window[0])
+    query = f"""
+        SELECT {evidence.identity_column},
+               MAX(CASE WHEN greptime_timestamp < '{boundary}'
+                        THEN greptime_value END) AS baseline_max,
+               MIN(CASE WHEN greptime_timestamp >= '{boundary}'
+                        THEN greptime_value END) AS anomalous_min,
+               MAX(CASE WHEN greptime_timestamp >= '{boundary}'
+                        THEN greptime_value END) AS anomalous_max
+        FROM {evidence.source_table}
+        GROUP BY {evidence.identity_column}
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=[
+            evidence.identity_column,
+            "baseline_max",
+            "anomalous_min",
+            "anomalous_max",
+        ],
+        rows=[
+            ["unrelated", 0.0, 0.0, 0.0],
+            [evidence.identity_value, 0.0, 5.0, 6.0],
+        ],
+        elapsed_seconds=0,
+    )
+
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match
+
+
+def test_restart_counter_maximum_proves_multiple_restart_events() -> None:
+    case = _case(2)
+    evidence = case.mechanism_evidence
+    boundary = _time(case.abnormal_window[0])
+    query = f"""
+        SELECT {evidence.identity_column},
+               MAX(CASE WHEN greptime_timestamp < '{boundary}'
+                        THEN greptime_value END) AS baseline_max,
+               MAX(CASE WHEN greptime_timestamp >= '{boundary}'
+                        THEN greptime_value END) AS anomalous_max
+        FROM {evidence.source_table}
+        GROUP BY {evidence.identity_column}
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=[evidence.identity_column, "baseline_max", "anomalous_max"],
+        rows=[[evidence.identity_value, 0.0, 6.0]],
         elapsed_seconds=0,
     )
 
@@ -1156,6 +1463,29 @@ def test_delay_scorer_accepts_source_faithful_client_server_rows() -> None:
     assert evaluation.efficiency_eligible is True
 
 
+def test_delay_scorer_rejects_consumer_filter_that_can_hide_baseline_gaps() -> None:
+    case = _case(6)
+    evidence = case.mechanism_evidence
+    gap = "date_part('epoch', s.timestamp - c.timestamp) * 1000000000"
+    inner = _delay_query(case).replace(
+        "c.timestamp AS caller_time,\n               s.timestamp AS callee_time",
+        "c.timestamp AS caller_time,\n"
+        "               s.timestamp AS callee_time,\n"
+        f"               {gap} AS gap_nanos,\n"
+        "               CASE WHEN c.timestamp < '"
+        f"{_time(case.abnormal_window[0])}' THEN 'normal' ELSE 'abnormal' END AS phase",
+    )
+    query = (
+        f"SELECT caller_time, callee_time FROM ({inner}) paired "
+        f"WHERE phase = 'abnormal' OR gap_nanos < {evidence.threshold}"
+    )
+
+    evaluation = _evaluate(_run(case, query, _delay_result(case)), case)
+
+    assert evaluation.baseline_evidence_match is False
+    assert evaluation.mechanism_evidence_match is False
+
+
 def test_delay_scorer_rejects_union_with_foreign_source_rows() -> None:
     case = _case(6)
     query = _delay_query(case) + " UNION ALL SELECT observed_at, value FROM unrelated_metric"
@@ -1238,6 +1568,10 @@ def test_delay_scorer_rejects_client_duration_as_start_gap_evidence() -> None:
             0.001,
             1.0,
         ),
+        ("EXTRACT(EPOCH FROM (s.timestamp - c.timestamp))", 0.5, 0.001, 1.0),
+        ("CAST((s.timestamp - c.timestamp) AS BIGINT)", 500_000_000, 1_000_000, 1_000_000_000),
+        ("s.timestamp - c.timestamp", 500_000_000, 1_000_000, 1_000_000_000),
+        ("to_unixtime(s.timestamp) - to_unixtime(c.timestamp)", 0.5, 0.001, 1.0),
     ],
 )
 def test_delay_scorer_normalizes_equivalent_time_units(
@@ -1363,7 +1697,8 @@ def test_delay_scorer_rejects_wrong_parent_relation() -> None:
     )
 
     assert evaluation.mechanism_evidence_match is False
-    assert evaluation.efficiency_eligible is False
+    assert evaluation.required_evidence_covered is False
+    assert evaluation.efficiency_eligible is True
 
 
 @pytest.mark.parametrize(

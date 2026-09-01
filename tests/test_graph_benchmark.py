@@ -258,6 +258,37 @@ def test_graph_destination_type_can_be_proven_by_the_exact_result_set() -> None:
     assert evaluation.success
 
 
+def test_graph_source_type_can_be_proven_by_the_exact_result_set() -> None:
+    trace = _graph_trace()
+    trace = trace.model_copy(
+        update={"input": {key: value for key, value in trace.input.items() if key != "src_type"}}
+    )
+
+    evaluation = evaluate_graph_run(
+        _run(Visibility.SEMANTIC_GRAPH, trace),
+        RCA100,
+        _canonical_result(),
+    )
+
+    assert evaluation.success
+
+
+def test_graph_evidence_without_caller_scope_is_rejected() -> None:
+    trace = _graph_trace()
+    trace = trace.model_copy(
+        update={"input": {key: value for key, value in trace.input.items() if key != "src_id"}}
+    )
+
+    evaluation = evaluate_graph_run(
+        _run(Visibility.SEMANTIC_GRAPH, trace),
+        RCA100,
+        _canonical_result(),
+    )
+
+    assert not evaluation.success
+    assert not evaluation.evidence_scope_valid
+
+
 def test_valid_trace_self_join_matches_complete_canonical_edge_set() -> None:
     evaluation = evaluate_graph_run(
         _run(Visibility.RAW, _sql_trace()),
@@ -268,6 +299,112 @@ def test_valid_trace_self_join_matches_complete_canonical_edge_set() -> None:
 
     assert evaluation.success
     assert evaluation.evidence_scope_valid
+
+
+def test_valid_trace_scope_accepts_destination_grouped_by_projection_ordinal() -> None:
+    query = canonical_trace_query(RCA100).replace(
+        "GROUP BY s.service_name", "GROUP BY 1, 2, 3, 4, 5, 6"
+    )
+
+    evaluation = evaluate_graph_run(
+        _run(Visibility.RAW, _sql_trace(query)),
+        RCA100,
+        _canonical_result(),
+    )
+
+    assert evaluation.success
+    assert evaluation.evidence_scope_valid
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        """
+        SELECT 'service' AS src_type, c.service_name AS src_id,
+               'service' AS dst_type, s.service_name AS dst_id,
+               'calls' AS rel_type, 'trace' AS provenance,
+               COUNT(*) AS request_count,
+               SUM(CASE WHEN s.span_status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END)
+                   AS error_count
+        FROM (
+          SELECT trace_id, span_id, service_name
+          FROM case_04.traces
+          WHERE span_kind = 'SPAN_KIND_CLIENT'
+            AND service_name = 'frontend'
+            AND timestamp >= '2026-04-23 03:00:00'
+            AND timestamp < '2026-04-23 03:10:00'
+        ) c
+        JOIN (
+          SELECT trace_id, parent_span_id, service_name, span_status_code
+          FROM case_04.traces
+          WHERE span_kind = 'SPAN_KIND_SERVER'
+        ) s ON s.trace_id = c.trace_id AND s.parent_span_id = c.span_id
+        GROUP BY 1, 2, 3, 4, 5, 6
+        """,
+        """
+        WITH client_spans AS (
+          SELECT trace_id, span_id, timestamp
+          FROM case_04.traces
+          WHERE service_name = 'frontend'
+            AND span_kind = 'SPAN_KIND_CLIENT'
+            AND timestamp >= '2026-04-23T03:00:00+00:00'::timestamp
+            AND timestamp < '2026-04-23T03:10:00+00:00'::timestamp
+        ), paired AS (
+          SELECT c.trace_id, s.service_name AS dst_service, s.span_status_code
+          FROM client_spans c
+          JOIN case_04.traces s
+            ON s.trace_id = c.trace_id
+           AND s.parent_span_id = c.span_id
+           AND s.span_kind = 'SPAN_KIND_SERVER'
+        )
+        SELECT 'service' AS src_type, 'frontend' AS src_id,
+               'service' AS dst_type, dst_service AS dst_id,
+               'calls' AS rel_type, 'trace' AS provenance,
+               COUNT(*) AS request_count,
+               COUNT(*) FILTER (WHERE span_status_code = 'STATUS_CODE_ERROR') AS error_count
+        FROM paired
+        GROUP BY dst_service
+        """,
+    ],
+)
+def test_valid_trace_scope_accepts_derived_tables(query: str) -> None:
+    evaluation = evaluate_graph_run(
+        _run(Visibility.RAW, _sql_trace(query)),
+        RCA100,
+        _canonical_result(),
+        database="case_04",
+    )
+
+    assert evaluation.success
+    assert evaluation.evidence_scope_valid
+
+    hardcoded = query.replace("s.service_name AS dst_id", "'cart' AS dst_id").replace(
+        "dst_service AS dst_id", "'cart' AS dst_id"
+    )
+    hardcoded = hardcoded.replace("COUNT(*) AS request_count", "9423 AS request_count")
+    self_trace_join = query.replace("s.trace_id = c.trace_id", "c.trace_id = c.trace_id")
+    self_parent_join = query.replace("s.parent_span_id = c.span_id", "s.parent_span_id = s.span_id")
+    constant_error_count = query.replace(
+        "SUM(CASE WHEN s.span_status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END)",
+        "0",
+    ).replace(
+        "COUNT(*) FILTER (WHERE span_status_code = 'STATUS_CODE_ERROR')",
+        "0",
+    )
+    for invalid in (
+        hardcoded,
+        self_trace_join,
+        self_parent_join,
+        constant_error_count,
+    ):
+        invalid_evaluation = evaluate_graph_run(
+            _run(Visibility.RAW, _sql_trace(invalid)),
+            RCA100,
+            _canonical_result(),
+            database="case_04",
+        )
+        assert not invalid_evaluation.success
+        assert not invalid_evaluation.evidence_scope_valid
 
 
 def test_graph_assignment_keeps_valid_raw_verification_in_intention_to_treat() -> None:

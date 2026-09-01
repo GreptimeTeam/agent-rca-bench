@@ -8,13 +8,11 @@ from semantic_rca_bench.datasets.openrca2_transfer import (
     MECHANISM_QUOTAS,
     SYSTEM_QUOTAS,
     deterministic_rank,
-    load_pilot_fixture,
     load_selection_fixture,
     rank_manifest_candidates,
 )
 
 SELECTION = Path("fixtures/reference/openrca2-transfer-v32-selection.json")
-PILOT = Path("fixtures/reference/openrca2-transfer-v32-pilot.json")
 
 
 def test_transfer_selection_is_fresh_opaque_and_source_bound() -> None:
@@ -50,19 +48,37 @@ def test_transfer_selection_is_fresh_opaque_and_source_bound() -> None:
             predicate = case.mechanism_evidence.scope_preserving_predicates[0]
             assert predicate.column == "k8s_namespace_name"
             assert predicate.value
-            assert len(case.mechanism_evidence.identity_equivalent_predicates) == 1
-            equivalent = case.mechanism_evidence.identity_equivalent_predicates[0]
-            assert equivalent.column == "k8s_pod_name"
-            assert equivalent.value
+            equivalents = {
+                predicate.column: predicate.value
+                for predicate in case.mechanism_evidence.identity_equivalent_predicates
+            }
+            assert equivalents["k8s_pod_name"]
+            if case.mechanism_code in {
+                MechanismCode.CPU_SATURATION,
+                MechanismCode.MEMORY_PRESSURE,
+            }:
+                assert equivalents["service_name"] == case.causal_component
+                assert equivalents["k8s_deployment_name"] == case.causal_component
+            for signal in case.mechanism_evidence.alternative_metric_signals:
+                assert signal.normal["high_count"] == 0
+                assert signal.abnormal["high_count"] >= 2
+        if index <= 3:
+            assert len(case.direct_log_mechanism_evidence) == 1
+            direct = case.direct_log_mechanism_evidence[0]
+            assert direct.mechanism_code is MechanismCode.CONFIGURATION_ERROR
+            assert direct.normal_count == 0
+            assert direct.abnormal_count >= 1
+        else:
+            assert not case.direct_log_mechanism_evidence
 
 
-def test_transfer_pilot_cases_are_explicit_measurement_exclusions() -> None:
+def test_development_trajectories_are_explicit_measurement_exclusions() -> None:
     selection = load_selection_fixture(SELECTION)
-    pilot = load_pilot_fixture(PILOT)
 
-    assert {case.source_case for case in pilot.selected_cases} <= set(
-        selection.trajectory_exclusions
-    )
+    assert {
+        "hs4-geo-pod-failure-pdt289",
+        "otel-demo3-shipping-delay-m6fhpx",
+    } <= set(selection.trajectory_exclusions)
 
 
 def test_transfer_ranking_rejects_unknown_trajectory_exclusion(tmp_path: Path) -> None:

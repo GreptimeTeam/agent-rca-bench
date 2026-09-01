@@ -12,10 +12,8 @@ single `success` field may summarize auditable completion for machine control, b
 substitute for the dimension results.
 
 Execution validity, provenance, source identity, diagnosis structure, and directly decidable claim
-grounding use deterministic checks. A run enters semantic adjudication only when its diagnosis is
-correct, every citation is execution-valid, execution is reliable, and deterministic claim
-grounding remains incomplete. Dataset labels and reference causal graphs remain hidden from the
-investigating agent.
+grounding use deterministic checks. Dataset labels and reference causal graphs remain hidden from
+the investigating agent.
 
 ## Score the causal answer at its declared granularity
 
@@ -126,16 +124,17 @@ The transfer scorer reports:
 - `citation_integrity`: every submitted citation is execution-valid and unique.
 - `execution_reliability`: the runner contract, tool budget, and execution completed without an
   invalid call or runner failure.
-- `auditable_completion`: diagnosis, required grounding, citation integrity, and execution
-  reliability all pass.
-- `efficiency_eligible`: diagnosis, required grounding, and execution reliability pass. An
-  unrelated extra invalid citation does not discard the completed investigation trajectory.
+- `efficiency_eligible`: diagnosis is correct, at least one citation resolves to a successful,
+  non-truncated query result, and execution reliability passes.
+- `auditable_completion`: efficiency eligibility passes and every submitted citation is
+  execution-valid and unique.
 
-Correctness rates use all runs. Efficiency deltas compare paired treatments only when both runs
-reach the same required grounded endpoint. If one treatment reaches the endpoint and the other
-does not, the result contributes to completion-rate differences rather than a conditional
-efficiency delta. Rows, calls, tokens, cost, and latency from noneligible runs may be reported only
-as descriptive trajectory data.
+Correctness rates use all runs. Headline efficiency deltas compare paired treatments only when both
+runs have a correct diagnosis, at least one execution-valid citation, and reliable execution.
+`required_evidence_covered`, per-claim verdicts, and rejection codes form a separate deterministic
+evidence-sufficiency audit. They describe how much of the cited causal proof the current verifier
+can establish; they do not select the headline efficiency sample. Rows, calls, tokens, cost, and
+latency from noneligible runs may be reported only as descriptive trajectory data.
 
 ## Current OpenRCA2 evidence rubric
 
@@ -163,6 +162,11 @@ the asserted value or can remove a subset of target-period buckets. It remains v
 aggregate whose grouping keys contain only the frozen identity and an unambiguous period. An
 explicitly discriminated `UNION` may contribute an isolated source branch; undiscriminated rows or
 overlapping source periods fail closed.
+
+A downstream `WHERE` or `HAVING` on a CTE or subquery derived from the source population cannot
+prove the universal baseline because it may remove a violating source row or aggregate group.
+Transparent consumer scopes that only project or aggregate the complete source population remain
+valid.
 
 Metric values and call-path gaps are compared in their frozen source units. Exact positive linear
 unit conversions in projections, aggregates, and threshold predicates are normalized before the
@@ -203,20 +207,6 @@ eligibility failures.
 Development trajectories can supply regression examples. They do not become measurement evidence,
 and the runtime does not rescore old development protocols. A scoring-semantic change increments the
 internal protocol before another model run.
-
-Semantic adjudication is exhaustive over the frozen trigger, not selected after treatment results
-are known. The judge input omits model identity, the explicit treatment label, run order, and
-aggregate benchmark outcomes. Treatment remains inferable from tool names and query surfaces, which
-must remain visible because SQL and Graph fields are evidence provenance; this is not a
-treatment-blind review.
-`claude-sonnet-5` and `deepseek-v4-flash`, neither of which is in the formal measurement roster,
-judge each candidate independently. Both must find the cited
-results sufficient for automatic acceptance; disagreement requires a human decision under the same
-rubric. Deterministic hard-gate failures cannot be overruled. The deterministic result is the
-headline analysis. Adjudication is a separately computed sensitivity analysis and does not rewrite
-deterministic causal-locus, baseline, anomaly, or mechanism atoms. The public report publishes both
-sets of case effects and inference statistics, the number of candidates and decisions by treatment,
-and every decision basis.
 
 ## Design basis
 

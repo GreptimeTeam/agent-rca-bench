@@ -154,9 +154,6 @@ from semantic_rca_bench.transfer_formal import (
     TransferEnvironmentConfig as OpenRCA2TransferEnvironmentConfig,
 )
 from semantic_rca_bench.transfer_formal import (
-    bind_pilot_gate as bind_openrca2_pilot_gate,
-)
-from semantic_rca_bench.transfer_formal import (
     build_preflight_report as build_openrca2_transfer_preflight,
 )
 from semantic_rca_bench.transfer_formal import (
@@ -174,7 +171,7 @@ from semantic_rca_bench.transfer_release import (
     build_measurement_artifact as build_openrca2_transfer_artifact,
 )
 
-DEFAULT_GREPTIMEDB_REPO = Path("/Users/dennis/programming/rust/greptimedb")
+DEFAULT_GREPTIMEDB_REPO = Path("greptimedb")
 
 
 def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
@@ -315,7 +312,6 @@ def _parser() -> argparse.ArgumentParser:
     transfer_selection.add_argument("--output", type=Path, required=True)
 
     transfer_preflight = subparsers.add_parser("transfer-preflight")
-    transfer_preflight.add_argument("--phase", choices=["pilot", "measurement"], required=True)
     transfer_preflight.add_argument("--cache-dir", type=Path, default=Path(".data/openrca2"))
     transfer_preflight.add_argument(
         "--manifest", type=Path, default=Path(".data/openrca2/manifest.jsonl")
@@ -329,7 +325,6 @@ def _parser() -> argparse.ArgumentParser:
 
     transfer_run = subparsers.add_parser("transfer-run")
     transfer_run.add_argument("--report", type=Path, required=True)
-    transfer_run.add_argument("--pilot-report", type=Path)
     transfer_run.add_argument("--cache-dir", type=Path, default=Path(".data/openrca2"))
     transfer_run.add_argument(
         "--manifest", type=Path, default=Path(".data/openrca2/manifest.jsonl")
@@ -625,7 +620,7 @@ def formal_suite_report(args: argparse.Namespace) -> int:
 def transfer_selection_audit(args: argparse.Namespace) -> int:
     if args.output.exists():
         raise ValueError(f"refusing to overwrite transfer selection audit: {args.output}")
-    _, frozen, _ = load_transfer_protocol(args.protocol)
+    _, frozen = load_transfer_protocol(args.protocol)
     rebuilt = build_openrca2_transfer_selection(
         args.cache_dir,
         args.manifest,
@@ -649,8 +644,7 @@ def transfer_preflight(args: argparse.Namespace) -> int:
         raise ValueError(f"refusing to overwrite transfer preflight: {args.output}")
     if args.run_root.exists():
         raise ValueError(f"transfer preflight run root already exists: {args.run_root}")
-    protocol, measurement, pilot = load_transfer_protocol(args.protocol)
-    selection = pilot if args.phase == "pilot" else measurement
+    protocol, selection = load_transfer_protocol(args.protocol)
     source_audits = []
     for spec in selection.selected_cases:
         source_report = None
@@ -671,7 +665,6 @@ def transfer_preflight(args: argparse.Namespace) -> int:
         args.protocol,
         selection,
         source_audits,
-        phase=args.phase,
     )
     write_json(args.output, report)
     print(args.output)
@@ -683,26 +676,9 @@ def transfer_run(args: argparse.Namespace) -> int:
         raise ValueError("transfer run requires explicit paid API confirmation")
     if not args.report.is_file():
         raise ValueError("transfer run requires an existing preflight report")
-    protocol, measurement, pilot = load_transfer_protocol(args.protocol)
+    protocol, selection = load_transfer_protocol(args.protocol)
     report = _read_json_object(args.report)
-    phase = report.get("phase")
-    selection = pilot if phase == "pilot" else measurement if phase == "measurement" else None
-    if selection is None:
-        raise ValueError("transfer report has an unsupported phase")
     validate_private_report(report, protocol, args.protocol, selection)
-    if phase == "measurement" and report.get("pilot_gate") is None:
-        if args.pilot_report is None:
-            raise ValueError("measurement execution requires --pilot-report")
-        pilot_report = _read_json_object(args.pilot_report)
-        validate_private_report(
-            pilot_report,
-            protocol,
-            args.protocol,
-            pilot,
-            require_complete=True,
-        )
-        bind_openrca2_pilot_gate(report, pilot_report, protocol)
-        write_json(args.report, report)
     execution = report.get("execution")
     if not isinstance(execution, dict) or execution.get("complete") is True:
         print(args.report)
@@ -756,16 +732,7 @@ def transfer_adjudication_queue(args: argparse.Namespace) -> int:
     if args.output.exists():
         raise ValueError(f"refusing to overwrite adjudication queue: {args.output}")
     report = _read_json_object(args.run_report)
-    protocol, measurement, pilot = load_transfer_protocol(args.protocol)
-    selection = (
-        pilot
-        if report.get("phase") == "pilot"
-        else measurement
-        if report.get("phase") == "measurement"
-        else None
-    )
-    if selection is None:
-        raise ValueError("adjudication report has an unsupported phase")
+    protocol, selection = load_transfer_protocol(args.protocol)
     queue = build_semantic_adjudication_queue(report, protocol, selection)
     write_json(args.output, queue)
     print(args.output)

@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "protocol_revision": "openrca2-transfer-five-model-v12",
+  "protocol_revision": "openrca2-transfer-five-model-v14",
   "benchmark_protocol_version": 32,
   "case_role": "measurement",
   "selection_fixture": "fixtures/reference/openrca2-transfer-v32-selection.json",
-  "selection_fixture_sha256": "959eda8f5bece8f528b08552ec8bb8c5d91e33467cabe0f3a80f0613e591f105",
+  "selection_fixture_sha256": "bf91a0a576fb8b4a9c80616e7a2ade37edb879d28cc8ca1a07759c2188d0e565",
   "greptimedb_revision": "ac7e9f516859aa8170f69e3c9ace7f8b5b6fbfc7",
   "greptimedb_build_profile": "release",
   "runner": "api",
@@ -66,45 +66,7 @@
     "explicit_user_approval_required_per_batch": true,
     "subscription_fallback_allowed": false,
     "no_model_gates_required": true,
-    "pilot_required": true,
     "pricing_snapshot_required_at_execution": true
-  },
-  "pilot": {
-    "cases": 2,
-    "selection_fixture": "fixtures/reference/openrca2-transfer-v32-pilot.json",
-    "selection_fixture_sha256": "cb9a587097d1dcea9914f644b6487c7097a3a33bf35d42ddfd53db5b200a7c33",
-    "models": [
-      {
-        "model": "gpt-5.6-sol",
-        "provider": "openai",
-        "api_transport": "openai-responses",
-        "prompt_cache": "implicit-prefix-30m",
-        "max_output_tokens": 16384,
-        "reasoning_effort": "medium"
-      },
-      {
-        "model": "deepseek-v4-pro",
-        "provider": "deepseek",
-        "api_transport": "anthropic-compatible-messages",
-        "prompt_cache": "provider-automatic-prefix",
-        "max_output_tokens": 16384,
-        "reasoning_effort": "high"
-      },
-      {
-        "model": "qwen3.8-max",
-        "provider": "alibaba-cloud-model-studio",
-        "api_transport": "dashscope-cn-beijing-responses",
-        "prompt_cache": "session-cache-header",
-        "max_output_tokens": 16384,
-        "reasoning_effort": "xhigh"
-      }
-    ],
-    "repetitions": 2,
-    "expected_cells": 24,
-    "minimum_eligible_pairs": 6,
-    "minimum_eligible_pairs_per_case": 3,
-    "threshold_status": "post-hoc-development-calibration",
-    "threshold_basis": "pilot-case-001-v5-shadow-score-4-of-6-jointly-eligible-pairs"
   },
   "inference": {
     "semantic_effect_compared_within_model_only": true,
@@ -118,10 +80,12 @@
     "holm_family_size": 10,
     "null_metric_meaning": "not estimable; no eligible paired cases",
     "tied_calls_meaning": "no observed tool-call reduction in the cohort",
-    "direction_consistent_non_significant_meaning": "descriptive evidence only; report the directional case count, eligible case count, case median, unadjusted p, and Holm-adjusted p"
+    "direction_consistent_non_significant_meaning": "descriptive evidence only; report the directional case count, eligible case count, case median, unadjusted p, and Holm-adjusted p",
+    "headline_eligibility": "diagnosis-correct-with-execution-valid-citation-and-reliable-run",
+    "evidence_sufficiency_role": "secondary-deterministic-audit-not-headline-eligibility"
   },
   "semantic_adjudication": {
-    "enabled": true,
+    "enabled": false,
     "trigger": "diagnosis-correct-execution-valid-deterministic-grounding-incomplete",
     "judge_models": [
       "claude-sonnet-5",

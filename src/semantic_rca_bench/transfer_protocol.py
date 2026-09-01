@@ -8,15 +8,13 @@ from pydantic import BaseModel, ConfigDict
 
 from semantic_rca_bench.contracts import AgentRunner, ApiTransport, Visibility
 from semantic_rca_bench.datasets.openrca2_transfer import (
-    TransferPilotFixture,
     TransferSelectionFixture,
-    load_pilot_fixture,
     load_selection_fixture,
 )
 from semantic_rca_bench.protocol import benchmark_protocol, run_orders
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "openrca2-transfer-five-model-v12"
+PROTOCOL_REVISION = "openrca2-transfer-five-model-v14"
 DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/openrca2-transfer-v32-protocol.json")
 
 
@@ -37,23 +35,7 @@ class PaidExecutionContract(BaseModel):
     explicit_user_approval_required_per_batch: bool
     subscription_fallback_allowed: bool
     no_model_gates_required: bool
-    pilot_required: bool
     pricing_snapshot_required_at_execution: bool
-
-
-class PilotContract(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    cases: int
-    selection_fixture: str
-    selection_fixture_sha256: str
-    models: tuple[ModelContract, ...]
-    repetitions: int
-    expected_cells: int
-    minimum_eligible_pairs: int
-    minimum_eligible_pairs_per_case: int
-    threshold_status: Literal["post-hoc-development-calibration"]
-    threshold_basis: str
 
 
 class InferenceContract(BaseModel):
@@ -68,6 +50,8 @@ class InferenceContract(BaseModel):
     null_metric_meaning: str
     tied_calls_meaning: str
     direction_consistent_non_significant_meaning: str
+    headline_eligibility: str
+    evidence_sufficiency_role: str
 
 
 class SemanticAdjudicationContract(BaseModel):
@@ -104,14 +88,13 @@ class TransferProtocolFixture(BaseModel):
     execution_order: str
     expected_cells: int
     paid_execution: PaidExecutionContract
-    pilot: PilotContract
     inference: InferenceContract
     semantic_adjudication: SemanticAdjudicationContract
 
 
 def load_transfer_protocol(
     path: Path = DEFAULT_PROTOCOL_FIXTURE,
-) -> tuple[TransferProtocolFixture, TransferSelectionFixture, TransferPilotFixture]:
+) -> tuple[TransferProtocolFixture, TransferSelectionFixture]:
     fixture = TransferProtocolFixture.model_validate_json(path.read_text())
     expected_models = (
         (
@@ -185,7 +168,7 @@ def load_transfer_protocol(
         != "cases in selection order; models in roster order; seeded rotating treatments"
     ):
         raise ValueError("OpenRCA2 transfer protocol contract drifted")
-    if any(model.model not in MODEL_PRICING for model in (*fixture.models, *fixture.pilot.models)):
+    if any(model.model not in MODEL_PRICING for model in fixture.models):
         raise ValueError("OpenRCA2 transfer protocol has no pricing contract for a model")
     selection_path = _bound_path(
         path,
@@ -201,67 +184,9 @@ def load_transfer_protocol(
         paid.explicit_user_approval_required_per_batch
         and not paid.subscription_fallback_allowed
         and paid.no_model_gates_required
-        and paid.pilot_required
         and paid.pricing_snapshot_required_at_execution
     ):
         raise ValueError("OpenRCA2 transfer paid-execution contract drifted")
-    pilot = fixture.pilot
-    pilot_path = _bound_path(
-        path,
-        pilot.selection_fixture,
-        pilot.selection_fixture_sha256,
-    )
-    pilot_selection = load_pilot_fixture(pilot_path)
-    if (
-        pilot.cases != 2
-        or tuple(
-            (
-                model.model,
-                model.provider,
-                model.api_transport,
-                model.prompt_cache,
-                model.max_output_tokens,
-                model.reasoning_effort,
-            )
-            for model in pilot.models
-        )
-        != (
-            (
-                "gpt-5.6-sol",
-                "openai",
-                ApiTransport.OPENAI_RESPONSES,
-                "implicit-prefix-30m",
-                16384,
-                "medium",
-            ),
-            (
-                "deepseek-v4-pro",
-                "deepseek",
-                ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
-                "provider-automatic-prefix",
-                16384,
-                "high",
-            ),
-            (
-                "qwen3.8-max",
-                "alibaba-cloud-model-studio",
-                ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES,
-                "session-cache-header",
-                16384,
-                "xhigh",
-            ),
-        )
-        or pilot.repetitions != 2
-        or pilot.expected_cells != 24
-        or pilot.minimum_eligible_pairs != 6
-        or pilot.minimum_eligible_pairs_per_case != 3
-        or pilot.threshold_status != "post-hoc-development-calibration"
-        or pilot.threshold_basis != "pilot-case-001-v5-shadow-score-4-of-6-jointly-eligible-pairs"
-    ):
-        raise ValueError("OpenRCA2 transfer pilot contract drifted")
-    pilot_cases = {case.source_case for case in pilot_selection.selected_cases}
-    if not pilot_cases <= set(selection.trajectory_exclusions):
-        raise ValueError("OpenRCA2 transfer pilot cases are not excluded from measurement")
     inference = fixture.inference
     if (
         not inference.semantic_effect_compared_within_model_only
@@ -277,11 +202,15 @@ def load_transfer_protocol(
             "descriptive evidence only; report the directional case count, eligible case count, "
             "case median, unadjusted p, and Holm-adjusted p"
         )
+        or inference.headline_eligibility
+        != "diagnosis-correct-with-execution-valid-citation-and-reliable-run"
+        or inference.evidence_sufficiency_role
+        != "secondary-deterministic-audit-not-headline-eligibility"
     ):
         raise ValueError("OpenRCA2 transfer inference contract drifted")
     adjudication = fixture.semantic_adjudication
     if (
-        not adjudication.enabled
+        adjudication.enabled
         or adjudication.trigger
         != "diagnosis-correct-execution-valid-deterministic-grounding-incomplete"
         or adjudication.judge_models != ("claude-sonnet-5", "deepseek-v4-flash")
@@ -295,7 +224,7 @@ def load_transfer_protocol(
         raise ValueError("OpenRCA2 transfer adjudication judges must be outside the formal roster")
     if any(model not in MODEL_PRICING for model in adjudication.judge_models):
         raise ValueError("OpenRCA2 transfer adjudication judge has no pricing contract")
-    return fixture, selection, pilot_selection
+    return fixture, selection
 
 
 def formal_schedule(
@@ -329,43 +258,6 @@ def formal_schedule(
                             "visibility": visibility.value,
                         }
                     )
-    return schedule
-
-
-def pilot_schedule(
-    fixture: TransferProtocolFixture,
-    selection: TransferPilotFixture,
-) -> list[dict[str, object]]:
-    models = fixture.pilot.models
-    orders = run_orders(
-        list(fixture.visibility_levels),
-        fixture.pilot.repetitions,
-        fixture.treatment_order_seed,
-    )
-    schedule = []
-    for case_index, case in enumerate(selection.selected_cases):
-        for model_index, model in enumerate(models):
-            for repetition, order in enumerate(orders):
-                for position, visibility in enumerate(order):
-                    schedule.append(
-                        {
-                            "cell_index": len(schedule),
-                            "case_index": case_index,
-                            "case_id": case.opaque_case_id,
-                            "model_index": model_index,
-                            "model": model.model,
-                            "provider": model.provider,
-                            "api_transport": model.api_transport.value,
-                            "prompt_cache": model.prompt_cache,
-                            "max_output_tokens": model.max_output_tokens,
-                            "reasoning_effort": model.reasoning_effort,
-                            "repetition": repetition,
-                            "position": position,
-                            "visibility": visibility.value,
-                        }
-                    )
-    if len(schedule) != fixture.pilot.expected_cells:
-        raise ValueError("OpenRCA2 transfer pilot cell count drifted")
     return schedule
 
 

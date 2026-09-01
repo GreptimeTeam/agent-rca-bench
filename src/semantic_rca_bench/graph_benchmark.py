@@ -8,6 +8,7 @@ from pathlib import Path
 import sqlglot
 from pydantic import BaseModel, ConfigDict, Field
 from sqlglot import exp
+from sqlglot.optimizer.scope import build_scope
 
 from semantic_rca_bench.agent import (
     _investigation_tools,
@@ -609,7 +610,7 @@ def _valid_graph_scope(
         return False
     return (
         arguments.get("view") == "relationships"
-        and arguments.get("src_type") == "service"
+        and arguments.get("src_type") in (None, "", "service")
         and arguments.get("src_id") == fixture.caller
         and arguments.get("dst_type") in (None, "", "service")
         and arguments.get("dst_id") in (None, "")
@@ -640,6 +641,8 @@ def _valid_trace_scope(query: str, fixture: GraphFixture, database: str | None) 
     if len(statements) != 1 or not isinstance(statements[0], exp.Select):
         return False
     statement = statements[0]
+    if _valid_derived_trace_scope(statement, fixture, database):
+        return True
     tables = list(statement.find_all(exp.Table))
     if len(tables) != 2 or not all(
         not table.catalog
@@ -696,12 +699,11 @@ def _valid_trace_scope(query: str, fixture: GraphFixture, database: str | None) 
         == {(client_alias, "span_id"), (server_alias, "parent_span_id")}
         for item in equalities
     )
-    group = statement.args.get("group")
-    grouped_columns = (
-        {(column.table.lower(), column.name.lower()) for column in group.find_all(exp.Column)}
-        if isinstance(group, exp.Group)
-        else set()
-    )
+    projections = {
+        projection.alias_or_name.lower(): projection for projection in statement.expressions
+    }
+    destination = projections.get("dst_id")
+    destination_columns = list(destination.find_all(exp.Column)) if destination is not None else []
     return (
         bool(list(statement.find_all(exp.Join)))
         and "STATUS_CODE_ERROR" in literals
@@ -713,8 +715,209 @@ def _valid_trace_scope(query: str, fixture: GraphFixture, database: str | None) 
         <= bounds
         and has_trace_join
         and has_parent_join
-        and ((server_alias, "service_name") in grouped_columns or ("", "dst_id") in grouped_columns)
+        and len(destination_columns) == 1
+        and destination_columns[0].table.lower() == server_alias
+        and destination_columns[0].name.lower() == "service_name"
+        and _projection_is_grouped(statement, destination, destination_columns[0])
     )
+
+
+def _valid_derived_trace_scope(
+    statement: exp.Select,
+    fixture: GraphFixture,
+    database: str | None,
+) -> bool:
+    if not (any(statement.find_all(exp.Subquery)) or any(statement.find_all(exp.CTE))):
+        return False
+    cte_names = {cte.alias_or_name.lower() for cte in statement.find_all(exp.CTE)}
+    tables = [
+        table for table in statement.find_all(exp.Table) if table.name.lower() not in cte_names
+    ]
+    if len(tables) != 2 or not all(
+        not table.catalog
+        and table.name.lower() == fixture.trace_table.lower()
+        and (not table.db or database is not None and table.db.lower() == database.lower())
+        for table in tables
+    ):
+        return False
+
+    root = build_scope(statement)
+    if root is None:
+        return False
+    scopes = list(root.traverse())
+    client_scopes = [
+        scope
+        for scope in scopes
+        if isinstance(scope.expression, exp.Select)
+        and _valid_client_scope(scope.expression, fixture)
+    ]
+    server_scopes = [
+        scope
+        for scope in scopes
+        if isinstance(scope.expression, exp.Select)
+        and _select_has_literal_filter(scope.expression, "span_kind", "SPAN_KIND_SERVER")
+    ]
+    if len(client_scopes) != 1 or len(server_scopes) != 1:
+        return False
+
+    client_scope_ids = {id(scope) for scope in client_scopes}
+    server_scope_ids = {id(scope) for scope in server_scopes}
+    bound_aliases: tuple[set[str], set[str]] | None = None
+    for scope in scopes:
+        select = scope.expression
+        if not isinstance(select, exp.Select) or not list(select.find_all(exp.Join)):
+            continue
+        client_aliases = {
+            alias.lower()
+            for alias, source in scope.sources.items()
+            if id(source) in client_scope_ids
+        }
+        server_aliases = {
+            alias.lower()
+            for alias, source in scope.sources.items()
+            if id(source) in server_scope_ids
+        }
+        server_filters = _select_literal_filter_aliases(select, "span_kind", "SPAN_KIND_SERVER")
+        server_aliases.update(
+            alias.lower()
+            for alias, source in scope.sources.items()
+            if isinstance(source, exp.Table) and alias.lower() in server_filters
+        )
+        if not client_aliases or not server_aliases:
+            continue
+        equalities = [
+            equality
+            for equality in select.find_all(exp.EQ)
+            if equality.find_ancestor(exp.Select) is select and _is_conjunctive(equality, select)
+        ]
+        has_trace_join = any(
+            _qualified_column_pair(equality)
+            == {(client_alias, "trace_id"), (server_alias, "trace_id")}
+            for equality in equalities
+            for client_alias in client_aliases
+            for server_alias in server_aliases
+        )
+        has_parent_join = any(
+            _qualified_column_pair(equality)
+            == {(client_alias, "span_id"), (server_alias, "parent_span_id")}
+            for equality in equalities
+            for client_alias in client_aliases
+            for server_alias in server_aliases
+        )
+        if has_trace_join and has_parent_join:
+            bound_aliases = client_aliases, server_aliases
+            break
+    if bound_aliases is None:
+        return False
+
+    projections = {
+        projection.alias_or_name.lower(): projection for projection in statement.expressions
+    }
+    required = {
+        "src_type",
+        "src_id",
+        "dst_type",
+        "dst_id",
+        "rel_type",
+        "provenance",
+        "request_count",
+        "error_count",
+    }
+    if not required <= set(projections):
+        return False
+    destination = projections["dst_id"]
+    destination_columns = list(destination.find_all(exp.Column))
+    if len(destination_columns) != 1 or destination_columns[0].name.lower() not in {
+        "service_name",
+        "dst_service",
+    }:
+        return False
+    request_count = projections["request_count"]
+    error_count = projections["error_count"]
+    if not list(request_count.find_all(exp.Count)):
+        return False
+    if (
+        not list(error_count.find_all(exp.Count, exp.Sum))
+        or not any(
+            column.name.lower() == "span_status_code" for column in error_count.find_all(exp.Column)
+        )
+        or "STATUS_CODE_ERROR"
+        not in {
+            str(literal.this) for literal in error_count.find_all(exp.Literal) if literal.is_string
+        }
+    ):
+        return False
+    return _projection_is_grouped(statement, destination, destination_columns[0])
+
+
+def _projection_is_grouped(
+    statement: exp.Select,
+    projection: exp.Expression,
+    source_column: exp.Column,
+) -> bool:
+    group = statement.args.get("group")
+    if not isinstance(group, exp.Group):
+        return False
+    position = statement.expressions.index(projection) + 1
+    return any(
+        (isinstance(item, exp.Literal) and not item.is_string and str(item.this) == str(position))
+        or (
+            isinstance(item, exp.Column)
+            and item.name.lower() in {projection.alias_or_name.lower(), source_column.name.lower()}
+            and (not item.table or not source_column.table or item.table == source_column.table)
+        )
+        for item in group.expressions
+    )
+
+
+def _select_has_literal_filter(select: exp.Select, column_name: str, value: str) -> bool:
+    return bool(_select_literal_filter_aliases(select, column_name, value))
+
+
+def _valid_client_scope(select: exp.Select, fixture: GraphFixture) -> bool:
+    role_aliases = _select_literal_filter_aliases(select, "span_kind", "SPAN_KIND_CLIENT")
+    caller_aliases = _select_literal_filter_aliases(select, "service_name", fixture.caller)
+    return (
+        len(role_aliases) == 1
+        and role_aliases == caller_aliases
+        and _select_has_window(select, fixture, next(iter(role_aliases)))
+    )
+
+
+def _select_literal_filter_aliases(
+    select: exp.Select,
+    column_name: str,
+    value: str,
+) -> set[str]:
+    return {
+        column.table.lower()
+        for equality in select.find_all(exp.EQ)
+        if equality.find_ancestor(exp.Select) is select and _is_conjunctive(equality, select)
+        for column, literal in (
+            (equality.this, equality.expression),
+            (equality.expression, equality.this),
+        )
+        if isinstance(column, exp.Column)
+        and column.name.lower() == column_name.lower()
+        and isinstance(literal, exp.Literal)
+        and literal.is_string
+        and str(literal.this) == value
+    }
+
+
+def _select_has_window(select: exp.Select, fixture: GraphFixture, alias: str) -> bool:
+    bounds = {
+        bound
+        for comparison_type, operator in ((exp.GTE, ">="), (exp.LT, "<"))
+        for comparison in select.find_all(comparison_type)
+        if comparison.find_ancestor(exp.Select) is select
+        and (bound := _time_bound(comparison, operator)) is not None
+        and _is_conjunctive(comparison, select)
+    }
+    return {
+        (alias, ">=", fixture.window_start),
+        (alias, "<", fixture.window_end),
+    } <= bounds
 
 
 def _qualified_column_pair(equality: exp.EQ) -> set[tuple[str, str]]:
@@ -759,7 +962,7 @@ def _is_conjunctive(expression: exp.Expression, scope: exp.Select) -> bool:
 def _time_bound(comparison: exp.Expression, operator: str) -> tuple[str, str, int] | None:
     left = comparison.this
     right = comparison.expression
-    if not isinstance(left, exp.Column) or left.name.lower() != "timestamp" or not left.table:
+    if not isinstance(left, exp.Column) or left.name.lower() != "timestamp":
         return None
     if isinstance(right, exp.Cast):
         right = right.this

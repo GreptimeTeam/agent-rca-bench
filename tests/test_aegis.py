@@ -11,7 +11,6 @@ import pytest
 
 from semantic_rca_bench.datasets import aegis
 from semantic_rca_bench.datasets.aegis import AegisAuditError, AegisRepository, audit_cohort
-from semantic_rca_bench.selection import deterministic_rank
 
 _NORMAL_START = 1_700_000_000
 _ABNORMAL_START = _NORMAL_START + 300
@@ -348,27 +347,6 @@ def test_aegis_audit_rejects_timezone_dependent_injection_time(tmp_path: Path) -
 
     with pytest.raises(AegisAuditError, match="explicit timezone"):
         audit_cohort(cases_dir, meta_dir)
-
-
-def test_fresh_selection_manifest_binds_consumed_parents_before_trajectory() -> None:
-    root = Path("fixtures/reference")
-    manifest = json.loads((root / "aegis-transfer-v31-selection.json").read_text())
-
-    assert manifest["selection_phase"] == "before_agent_trajectory"
-    assert manifest["selection_strategy"] == "fresh-source-observable-service-mechanism-v3"
-    assert manifest["case_role"] == "measurement"
-    assert manifest["agent_case_id"] not in {
-        "aegis-transfer-001",
-        "aegis-transfer-002",
-        "aegis-transfer-003",
-    }
-    for parent in manifest["consumed_parent_manifests"]:
-        assert hashlib.sha256((root / parent["name"]).read_bytes()).hexdigest() == parent["sha256"]
-    assert (
-        deterministic_rank(manifest["eligible_unconsumed_candidates"], manifest["selection_seed"])
-        == manifest["ranked_unconsumed_candidates"]
-    )
-    assert manifest["selected_case"]["source_case"] == manifest["ranked_unconsumed_candidates"][0]
 
 
 @pytest.mark.parametrize(

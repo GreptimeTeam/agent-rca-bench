@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "protocol_revision": "semantic-rca-five-model-suite-v12",
+  "protocol_revision": "semantic-rca-five-model-suite-v15",
   "benchmark_protocol_version": 32,
   "greptimedb_revision": "ac7e9f516859aa8170f69e3c9ace7f8b5b6fbfc7",
   "greptimedb_build_profile": "release",
   "runner": "api",
   "transfer_protocol_fixture": "fixtures/reference/openrca2-transfer-v32-protocol.json",
-  "transfer_protocol_fixture_sha256": "ee2aa7e17421dab6cdcbed1528c4338bee7ed8ef7a4767dd317c4a79332f006e",
+  "transfer_protocol_fixture_sha256": "3d6eb7bae0e9cc5a5ad0fd729fbdc4110422968c6962b8a4000fd062d845e15f",
   "discovery_selection_fixture": "fixtures/measurement/discovery-selection.json",
   "discovery_selection_fixture_sha256": "68da5ba70d2856eb97bca1ca159aa4ca0d9208d2ad95b548d5187953a7946258",
   "graph_selection_fixture": "fixtures/measurement/graph-v3-selection.json",
@@ -29,13 +29,13 @@
     "fixture_binding": "source-case-matched-external-fixture-v1"
   },
   "graph_protocol": {
-    "version": 5,
+    "version": 6,
     "treatments": [
       "raw",
       "semantic_graph"
     ],
     "task": "direct-callee-max-error-red-evidence-v1",
-    "scorer": "intention-to-treat-canonical-edge-set-v3",
+    "scorer": "intention-to-treat-canonical-edge-set-v4",
     "prompt": "dual-surface-canonical-edge-evidence-v2",
     "window": "minute-aligned-half-open-v1",
     "tool_budget": 12,

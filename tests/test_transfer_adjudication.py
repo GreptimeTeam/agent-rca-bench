@@ -24,9 +24,9 @@ from semantic_rca_bench.transfer_scorer import evaluate_transfer_run
 
 
 def test_adjudication_queue_preserves_evidence_but_blinds_run_identity() -> None:
-    protocol, _, pilot = load_transfer_protocol()
-    case = pilot.selected_cases[0]
-    model = protocol.pilot.models[0]
+    protocol, selection = load_transfer_protocol()
+    case = selection.selected_cases[0]
+    model = protocol.models[0]
     result = QueryResult(
         query_id="q1",
         columns=["phase", "maximum"],
@@ -86,7 +86,7 @@ def test_adjudication_queue_preserves_evidence_but_blinds_run_identity() -> None
         ]
     }
 
-    queue = build_semantic_adjudication_queue(report, protocol, pilot)
+    queue = build_semantic_adjudication_queue(report, protocol, selection)
 
     assert queue["publication_status"] == (
         "private adjudication queue; contains raw telemetry rows"
@@ -106,9 +106,9 @@ def test_adjudication_queue_preserves_evidence_but_blinds_run_identity() -> None
 
 
 def test_adjudication_queue_excludes_incorrect_diagnosis() -> None:
-    protocol, _, pilot = load_transfer_protocol()
-    case = pilot.selected_cases[0]
-    model = protocol.pilot.models[0]
+    protocol, selection = load_transfer_protocol()
+    case = selection.selected_cases[0]
+    model = protocol.models[0]
     run = AgentRun(
         run_id="wrong-diagnosis",
         visibility=Visibility.RAW,
@@ -135,7 +135,7 @@ def test_adjudication_queue_excludes_incorrect_diagnosis() -> None:
         ]
     }
 
-    assert build_semantic_adjudication_queue(report, protocol, pilot)["candidates"] == []
+    assert build_semantic_adjudication_queue(report, protocol, selection)["candidates"] == []
 
 
 def test_adjudication_requires_two_judges_and_human_tiebreak() -> None:
@@ -232,9 +232,9 @@ def test_adjudication_rejects_unknown_human_before_resolving_candidates() -> Non
 
 
 def test_accepted_adjudication_changes_only_semantic_grounding() -> None:
-    protocol, _, pilot = load_transfer_protocol()
-    case = pilot.selected_cases[0]
-    model = protocol.pilot.models[0]
+    protocol, selection = load_transfer_protocol()
+    case = selection.selected_cases[0]
+    model = protocol.models[0]
     result = QueryResult(
         query_id="q1",
         columns=["phase", "maximum"],
@@ -298,12 +298,14 @@ def test_accepted_adjudication_changes_only_semantic_grounding() -> None:
     )
 
     assert deterministic.semantic_adjudication_required is True
-    assert deterministic.efficiency_eligible is False
+    assert deterministic.efficiency_eligible is True
+    assert deterministic.required_evidence_covered is False
     assert accepted.diagnosis_correct is True
     assert accepted.citations_execution_valid is True
     assert accepted.execution_reliability is True
     assert accepted.required_evidence_covered is True
     assert accepted.efficiency_eligible is True
+    assert accepted.required_evidence_covered is True
     assert accepted.correct_completion_tool_calls == 1
     assert accepted.causal_locus_evidence_match is deterministic.causal_locus_evidence_match
     assert accepted.baseline_evidence_match is deterministic.baseline_evidence_match

@@ -133,6 +133,19 @@
       "edge_destination": null,
       "fault_category": "other",
       "mechanism_code": "workload_restart",
+      "direct_log_mechanism_evidence": [
+        {
+          "mechanism_code": "configuration_error",
+          "source_table": "logs",
+          "timestamp_column": "greptime_timestamp",
+          "message_column": "line",
+          "container_identity": "hotel-reserv-user",
+          "event_reason": "Failed",
+          "message_fragment": "executable file not found in $PATH",
+          "normal_count": 0,
+          "abnormal_count": 6
+        }
+      ],
       "source_fault_type": "PodFailure",
       "normal_window": [
         1777717210,
@@ -163,6 +176,59 @@
             "value": "user-57588758fd-t9qgg"
           }
         ],
+        "identity_domains": {
+          "k8s_container_name": [
+            "consul",
+            "hotel-reserv-attractions",
+            "hotel-reserv-attractions-mongo",
+            "hotel-reserv-frontend",
+            "hotel-reserv-geo",
+            "hotel-reserv-geo-mongo",
+            "hotel-reserv-profile",
+            "hotel-reserv-profile-mmc",
+            "hotel-reserv-profile-mongo",
+            "hotel-reserv-rate",
+            "hotel-reserv-rate-mmc",
+            "hotel-reserv-rate-mongo",
+            "hotel-reserv-recommendation",
+            "hotel-reserv-recommendation-mongo",
+            "hotel-reserv-reservation",
+            "hotel-reserv-reservation-mmc",
+            "hotel-reserv-reservation-mongo",
+            "hotel-reserv-search",
+            "hotel-reserv-user",
+            "hotel-reserv-user-mongo",
+            "load-generator",
+            "otel-collector"
+          ],
+          "k8s_pod_name": [
+            "attractions-7c66cb7c79-hc687",
+            "consul-79cccf97dc-rcfm4",
+            "frontend-7d6f8fdfbf-gjnd6",
+            "geo-664547769-gdnfd",
+            "load-generator-85cf7947cd-qbbnn",
+            "memcached-profile-1-7b5756d6c-6qhd5",
+            "memcached-rate-1-78856c54bf-sm4zd",
+            "memcached-reserve-1-68dc559889-pgdg8",
+            "mongodb-attractions-f4bd75b79-g5qn7",
+            "mongodb-geo-65d448d6b7-sww48",
+            "mongodb-profile-57dc694f8c-fs29k",
+            "mongodb-rate-7684c7874c-d76bk",
+            "mongodb-recommendation-84bb669f7f-bdtx7",
+            "mongodb-reservation-5c8fbd69f5-wtpm8",
+            "mongodb-user-5d8477fb9f-v9m2l",
+            "otel-collector-79b655f66d-j2pg6",
+            "profile-c767d64c5-pq25v",
+            "rate-7b686ccd9d-q6kc2",
+            "recommendation-68978c84d5-sn6sg",
+            "reservation-6fd5567c49-gkc54",
+            "search-5984b8cb96-r2rm4",
+            "user-57588758fd-t9qgg"
+          ],
+          "service_name": [],
+          "k8s_deployment_name": []
+        },
+        "alternative_metric_signals": [],
         "normal": {
           "count": 13,
           "min": 0.0,
@@ -203,6 +269,19 @@
       "edge_destination": null,
       "fault_category": "other",
       "mechanism_code": "workload_restart",
+      "direct_log_mechanism_evidence": [
+        {
+          "mechanism_code": "configuration_error",
+          "source_table": "logs",
+          "timestamp_column": "greptime_timestamp",
+          "message_column": "line",
+          "container_identity": "hotel-reserv-reservation",
+          "event_reason": "Failed",
+          "message_fragment": "executable file not found in $PATH",
+          "normal_count": 0,
+          "abnormal_count": 3
+        }
+      ],
       "source_fault_type": "PodFailure",
       "normal_window": [
         1777702519,
@@ -233,6 +312,57 @@
             "value": "reservation-7c6c958b77-fgxl5"
           }
         ],
+        "identity_domains": {
+          "k8s_container_name": [
+            "consul",
+            "hotel-reserv-attractions",
+            "hotel-reserv-attractions-mongo",
+            "hotel-reserv-frontend",
+            "hotel-reserv-geo",
+            "hotel-reserv-geo-mongo",
+            "hotel-reserv-profile",
+            "hotel-reserv-profile-mmc",
+            "hotel-reserv-profile-mongo",
+            "hotel-reserv-rate",
+            "hotel-reserv-rate-mmc",
+            "hotel-reserv-rate-mongo",
+            "hotel-reserv-recommendation",
+            "hotel-reserv-recommendation-mongo",
+            "hotel-reserv-reservation",
+            "hotel-reserv-reservation-mmc",
+            "hotel-reserv-reservation-mongo",
+            "hotel-reserv-search",
+            "hotel-reserv-user",
+            "hotel-reserv-user-mongo",
+            "load-generator"
+          ],
+          "k8s_pod_name": [
+            "attractions-8686667c55-22q76",
+            "consul-7749b57bbd-rbtlj",
+            "frontend-6d85c8845f-76xf4",
+            "geo-77d8759769-wqx7h",
+            "load-generator-85cf7947cd-p8khv",
+            "memcached-profile-1-867c6cd446-rzkpg",
+            "memcached-rate-1-56485f57c8-w2mcm",
+            "memcached-reserve-1-84c78767fb-5nwzp",
+            "mongodb-attractions-6c5c5f5b44-tstm5",
+            "mongodb-geo-654b84c5d4-tzbx6",
+            "mongodb-profile-665b5cd976-wndbl",
+            "mongodb-rate-77755c7c78-26g46",
+            "mongodb-recommendation-6b9cc6689d-zsjnn",
+            "mongodb-reservation-9c4dd7c44-kpgcg",
+            "mongodb-user-65bb4f9cf4-tlz5j",
+            "profile-6b7bb7c7f9-jnl8q",
+            "rate-6844b9d6d8-ddztq",
+            "recommendation-66b6c56cdc-2rbg8",
+            "reservation-7c6c958b77-fgxl5",
+            "search-769f8b94b6-bmsc9",
+            "user-b7d4bb648-rx9wm"
+          ],
+          "service_name": [],
+          "k8s_deployment_name": []
+        },
+        "alternative_metric_signals": [],
         "normal": {
           "count": 13,
           "min": 0.0,
@@ -273,6 +403,19 @@
       "edge_destination": null,
       "fault_category": "other",
       "mechanism_code": "workload_restart",
+      "direct_log_mechanism_evidence": [
+        {
+          "mechanism_code": "configuration_error",
+          "source_table": "logs",
+          "timestamp_column": "greptime_timestamp",
+          "message_column": "line",
+          "container_identity": "hotel-reserv-user",
+          "event_reason": "Failed",
+          "message_fragment": "executable file not found in $PATH",
+          "normal_count": 0,
+          "abnormal_count": 6
+        }
+      ],
       "source_fault_type": "PodFailure",
       "normal_window": [
         1777683324,
@@ -303,6 +446,57 @@
             "value": "user-fdcd946f6-6d5w4"
           }
         ],
+        "identity_domains": {
+          "k8s_container_name": [
+            "consul",
+            "hotel-reserv-attractions",
+            "hotel-reserv-attractions-mongo",
+            "hotel-reserv-frontend",
+            "hotel-reserv-geo",
+            "hotel-reserv-geo-mongo",
+            "hotel-reserv-profile",
+            "hotel-reserv-profile-mmc",
+            "hotel-reserv-profile-mongo",
+            "hotel-reserv-rate",
+            "hotel-reserv-rate-mmc",
+            "hotel-reserv-rate-mongo",
+            "hotel-reserv-recommendation",
+            "hotel-reserv-recommendation-mongo",
+            "hotel-reserv-reservation",
+            "hotel-reserv-reservation-mmc",
+            "hotel-reserv-reservation-mongo",
+            "hotel-reserv-search",
+            "hotel-reserv-user",
+            "hotel-reserv-user-mongo",
+            "load-generator"
+          ],
+          "k8s_pod_name": [
+            "attractions-5fc644db6c-j45mq",
+            "consul-b7cb8cbfd-mgp5g",
+            "frontend-666b657c6c-qk86f",
+            "geo-76565f76b9-xdzh7",
+            "load-generator-85cf7947cd-qg66v",
+            "memcached-profile-1-5c48bc996-jzj5x",
+            "memcached-rate-1-6c87479888-2k4jp",
+            "memcached-reserve-1-5bb7585874-mhcdd",
+            "mongodb-attractions-56d9c745b6-tnxcr",
+            "mongodb-geo-84d547df9d-5mpzn",
+            "mongodb-profile-796d569b78-vft5v",
+            "mongodb-rate-78675996fb-v97rm",
+            "mongodb-recommendation-7b475696d4-24zh8",
+            "mongodb-reservation-847f7c85b6-9rvvj",
+            "mongodb-user-645d4ddb64-kg7jp",
+            "profile-599ff5546c-mkzmh",
+            "rate-55cf877648-6rk6t",
+            "recommendation-7567547d55-hnjfd",
+            "reservation-57d77c7445-rglcs",
+            "search-857cd5dd94-ndkz8",
+            "user-fdcd946f6-6d5w4"
+          ],
+          "service_name": [],
+          "k8s_deployment_name": []
+        },
+        "alternative_metric_signals": [],
         "normal": {
           "count": 13,
           "min": 0.0,
@@ -343,6 +537,7 @@
       "edge_destination": null,
       "fault_category": "other",
       "mechanism_code": "workload_restart",
+      "direct_log_mechanism_evidence": [],
       "source_fault_type": "PodFailure",
       "normal_window": [
         1777699019,
@@ -373,6 +568,58 @@
             "value": "product-catalog-798f5d7bdb-j4tjg"
           }
         ],
+        "identity_domains": {
+          "k8s_container_name": [
+            "accounting",
+            "ad",
+            "cart",
+            "checkout",
+            "currency",
+            "email",
+            "flagd",
+            "flagd-ui",
+            "fraud-detection",
+            "frontend",
+            "frontend-proxy",
+            "image-provider",
+            "kafka",
+            "load-generator",
+            "opentelemetry-collector",
+            "payment",
+            "postgresql",
+            "product-catalog",
+            "quote",
+            "recommendation",
+            "shipping",
+            "valkey-cart"
+          ],
+          "k8s_pod_name": [
+            "accounting-789c64d567-wvw6r",
+            "ad-79bf6c8bb8-4fltx",
+            "cart-75d4fc4b49-gh76v",
+            "checkout-6f5b456c57-b67ns",
+            "currency-55fc544f59-hd7lm",
+            "email-6f9447b4f4-4wjh4",
+            "flagd-7479cd9b7c-pbwms",
+            "fraud-detection-554486fbcc-x7nw7",
+            "frontend-8546485cb7-mmcx2",
+            "frontend-proxy-5c4bdfc79b-h9vl8",
+            "image-provider-66b5dbb4c7-lrqvr",
+            "kafka-f4bdffd77-4wrbr",
+            "load-generator-6785954889-vhrm4",
+            "otel-collector-59687df5cb-k7lw7",
+            "payment-6588b6f4bf-zcfmp",
+            "postgresql-568d648bb7-jhmvt",
+            "product-catalog-798f5d7bdb-j4tjg",
+            "quote-79cb97cc5d-9llrj",
+            "recommendation-5b4dfcd768-89kj5",
+            "shipping-5fb88795b7-f6sw7",
+            "valkey-cart-6965c96989-p4jzq"
+          ],
+          "service_name": [],
+          "k8s_deployment_name": []
+        },
+        "alternative_metric_signals": [],
         "normal": {
           "count": 15,
           "min": 0.0,
@@ -413,6 +660,7 @@
       "edge_destination": "rate",
       "fault_category": "delay",
       "mechanism_code": "call_path_delay",
+      "direct_log_mechanism_evidence": [],
       "source_fault_type": "NetworkDelay",
       "normal_window": [
         1777683319,
@@ -435,6 +683,8 @@
         ],
         "scope_preserving_predicates": [],
         "identity_equivalent_predicates": [],
+        "identity_domains": {},
+        "alternative_metric_signals": [],
         "normal": {
           "count": 1359,
           "min": 82776,
@@ -475,6 +725,7 @@
       "edge_destination": "rate",
       "fault_category": "delay",
       "mechanism_code": "call_path_delay",
+      "direct_log_mechanism_evidence": [],
       "source_fault_type": "NetworkDelay",
       "normal_window": [
         1777725901,
@@ -497,6 +748,8 @@
         ],
         "scope_preserving_predicates": [],
         "identity_equivalent_predicates": [],
+        "identity_domains": {},
+        "alternative_metric_signals": [],
         "normal": {
           "count": 627,
           "min": -74164,
@@ -537,6 +790,7 @@
       "edge_destination": "quote",
       "fault_category": "delay",
       "mechanism_code": "call_path_delay",
+      "direct_log_mechanism_evidence": [],
       "source_fault_type": "NetworkDelay",
       "normal_window": [
         1777726745,
@@ -560,6 +814,8 @@
         ],
         "scope_preserving_predicates": [],
         "identity_equivalent_predicates": [],
+        "identity_domains": {},
+        "alternative_metric_signals": [],
         "normal": {
           "count": 15,
           "min": 878000,
@@ -600,6 +856,7 @@
       "edge_destination": null,
       "fault_category": "cpu",
       "mechanism_code": "cpu_saturation",
+      "direct_log_mechanism_evidence": [],
       "source_fault_type": "CPUStress",
       "normal_window": [
         1777671009,
@@ -628,6 +885,217 @@
           {
             "column": "k8s_pod_name",
             "value": "search-867c487b88-8dvsj"
+          },
+          {
+            "column": "service_name",
+            "value": "search"
+          },
+          {
+            "column": "k8s_deployment_name",
+            "value": "search"
+          }
+        ],
+        "identity_domains": {
+          "k8s_container_name": [
+            "consul",
+            "hotel-reserv-attractions",
+            "hotel-reserv-attractions-mongo",
+            "hotel-reserv-frontend",
+            "hotel-reserv-geo",
+            "hotel-reserv-geo-mongo",
+            "hotel-reserv-profile",
+            "hotel-reserv-profile-mmc",
+            "hotel-reserv-profile-mongo",
+            "hotel-reserv-rate",
+            "hotel-reserv-rate-mmc",
+            "hotel-reserv-rate-mongo",
+            "hotel-reserv-recommendation",
+            "hotel-reserv-recommendation-mongo",
+            "hotel-reserv-reservation",
+            "hotel-reserv-reservation-mmc",
+            "hotel-reserv-reservation-mongo",
+            "hotel-reserv-search",
+            "hotel-reserv-user",
+            "hotel-reserv-user-mongo",
+            "load-generator"
+          ],
+          "k8s_pod_name": [
+            "attractions-555fff8d8f-cf52b",
+            "consul-dd849bfd8-2t2zp",
+            "frontend-6dd8cfc689-2bq2p",
+            "geo-57df756fcc-c9jdx",
+            "load-generator-85cf7947cd-pxjk5",
+            "memcached-profile-1-6bd64fb488-jpk4c",
+            "memcached-rate-1-6cb4b55478-lxrdc",
+            "memcached-reserve-1-865454b948-bxnhn",
+            "mongodb-attractions-8544b8748b-qdqq4",
+            "mongodb-geo-67fb9b6bd4-x7wgc",
+            "mongodb-profile-94f85596d-txknz",
+            "mongodb-rate-5d45566fcb-n2gbk",
+            "mongodb-recommendation-6448465458-mqrzx",
+            "mongodb-reservation-6cbb64c946-vlggd",
+            "mongodb-user-746c4f5cdb-zcmvc",
+            "profile-65788968f5-qz8wl",
+            "rate-66f986cc46-t5rqx",
+            "recommendation-6b77f8445f-4d9pk",
+            "reservation-5cc898bc79-8jdrp",
+            "search-867c487b88-8dvsj",
+            "user-544b8d4448-5xwdz"
+          ],
+          "service_name": [
+            "attractions",
+            "consul",
+            "frontend",
+            "geo",
+            "load-generator",
+            "memcached-profile-1",
+            "memcached-rate-1",
+            "memcached-reserve-1",
+            "mongodb-attractions",
+            "mongodb-geo",
+            "mongodb-profile",
+            "mongodb-rate",
+            "mongodb-recommendation",
+            "mongodb-reservation",
+            "mongodb-user",
+            "profile",
+            "rate",
+            "recommendation",
+            "reservation",
+            "search",
+            "user"
+          ],
+          "k8s_deployment_name": [
+            "attractions",
+            "consul",
+            "frontend",
+            "geo",
+            "load-generator",
+            "memcached-profile-1",
+            "memcached-rate-1",
+            "memcached-reserve-1",
+            "mongodb-attractions",
+            "mongodb-geo",
+            "mongodb-profile",
+            "mongodb-rate",
+            "mongodb-recommendation",
+            "mongodb-reservation",
+            "mongodb-user",
+            "profile",
+            "rate",
+            "recommendation",
+            "reservation",
+            "search",
+            "user"
+          ]
+        },
+        "alternative_metric_signals": [
+          {
+            "source_table": "k8s_pod_cpu_usage",
+            "value_column": "greptime_value",
+            "identity_column": "k8s_pod_name",
+            "identity_value": "search-867c487b88-8dvsj",
+            "threshold": 0.5,
+            "scope_preserving_predicates": [
+              {
+                "column": "k8s_namespace_name",
+                "value": "hs10"
+              }
+            ],
+            "identity_equivalent_predicates": [
+              {
+                "column": "service_name",
+                "value": "search"
+              },
+              {
+                "column": "k8s_deployment_name",
+                "value": "search"
+              }
+            ],
+            "identity_domains": {
+              "k8s_container_name": [],
+              "k8s_pod_name": [
+                "attractions-555fff8d8f-cf52b",
+                "consul-dd849bfd8-2t2zp",
+                "frontend-6dd8cfc689-2bq2p",
+                "geo-57df756fcc-c9jdx",
+                "load-generator-85cf7947cd-pxjk5",
+                "memcached-profile-1-6bd64fb488-jpk4c",
+                "memcached-rate-1-6cb4b55478-lxrdc",
+                "memcached-reserve-1-865454b948-bxnhn",
+                "mongodb-attractions-8544b8748b-qdqq4",
+                "mongodb-geo-67fb9b6bd4-x7wgc",
+                "mongodb-profile-94f85596d-txknz",
+                "mongodb-rate-5d45566fcb-n2gbk",
+                "mongodb-recommendation-6448465458-mqrzx",
+                "mongodb-reservation-6cbb64c946-vlggd",
+                "mongodb-user-746c4f5cdb-zcmvc",
+                "profile-65788968f5-qz8wl",
+                "rate-66f986cc46-t5rqx",
+                "recommendation-6b77f8445f-4d9pk",
+                "reservation-5cc898bc79-8jdrp",
+                "search-867c487b88-8dvsj",
+                "user-544b8d4448-5xwdz"
+              ],
+              "service_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ],
+              "k8s_deployment_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ]
+            },
+            "normal": {
+              "count": 22,
+              "min": 0.0048071,
+              "max": 0.007304298,
+              "high_count": 0
+            },
+            "abnormal": {
+              "count": 45,
+              "min": 0.006154451,
+              "max": 2.858238118,
+              "high_count": 44
+            }
           }
         ],
         "normal": {
@@ -670,6 +1138,7 @@
       "edge_destination": null,
       "fault_category": "cpu",
       "mechanism_code": "cpu_saturation",
+      "direct_log_mechanism_evidence": [],
       "source_fault_type": "CPUStress",
       "normal_window": [
         1777777822,
@@ -698,6 +1167,224 @@
           {
             "column": "k8s_pod_name",
             "value": "reservation-5cc898bc79-s66vg"
+          },
+          {
+            "column": "service_name",
+            "value": "reservation"
+          },
+          {
+            "column": "k8s_deployment_name",
+            "value": "reservation"
+          }
+        ],
+        "identity_domains": {
+          "k8s_container_name": [
+            "consul",
+            "hotel-reserv-attractions",
+            "hotel-reserv-attractions-mongo",
+            "hotel-reserv-frontend",
+            "hotel-reserv-geo",
+            "hotel-reserv-geo-mongo",
+            "hotel-reserv-profile",
+            "hotel-reserv-profile-mmc",
+            "hotel-reserv-profile-mongo",
+            "hotel-reserv-rate",
+            "hotel-reserv-rate-mmc",
+            "hotel-reserv-rate-mongo",
+            "hotel-reserv-recommendation",
+            "hotel-reserv-recommendation-mongo",
+            "hotel-reserv-reservation",
+            "hotel-reserv-reservation-mmc",
+            "hotel-reserv-reservation-mongo",
+            "hotel-reserv-search",
+            "hotel-reserv-user",
+            "hotel-reserv-user-mongo",
+            "load-generator",
+            "otel-collector"
+          ],
+          "k8s_pod_name": [
+            "attractions-555fff8d8f-q6cmn",
+            "consul-dd849bfd8-8gzxd",
+            "frontend-6dd8cfc689-lg2h7",
+            "geo-57df756fcc-zpssd",
+            "load-generator-85cf7947cd-d2t45",
+            "memcached-profile-1-6bd64fb488-vg2tm",
+            "memcached-rate-1-6cb4b55478-9k5q8",
+            "memcached-reserve-1-865454b948-sm2kq",
+            "mongodb-attractions-8544b8748b-s4475",
+            "mongodb-geo-67fb9b6bd4-j5wz9",
+            "mongodb-profile-94f85596d-tl5s9",
+            "mongodb-rate-5d45566fcb-hbglt",
+            "mongodb-recommendation-6448465458-t749m",
+            "mongodb-reservation-6cbb64c946-z25zr",
+            "mongodb-user-746c4f5cdb-9brdr",
+            "otel-collector-7b95768ddd-mhkhp",
+            "profile-65788968f5-d2s4h",
+            "rate-66f986cc46-cwwzc",
+            "recommendation-6b77f8445f-x79bh",
+            "reservation-5cc898bc79-s66vg",
+            "search-867c487b88-697qs",
+            "user-544b8d4448-bscbl"
+          ],
+          "service_name": [
+            "attractions",
+            "consul",
+            "frontend",
+            "geo",
+            "load-generator",
+            "memcached-profile-1",
+            "memcached-rate-1",
+            "memcached-reserve-1",
+            "mongodb-attractions",
+            "mongodb-geo",
+            "mongodb-profile",
+            "mongodb-rate",
+            "mongodb-recommendation",
+            "mongodb-reservation",
+            "mongodb-user",
+            "otel-collector",
+            "profile",
+            "rate",
+            "recommendation",
+            "reservation",
+            "search",
+            "user"
+          ],
+          "k8s_deployment_name": [
+            "attractions",
+            "consul",
+            "frontend",
+            "geo",
+            "load-generator",
+            "memcached-profile-1",
+            "memcached-rate-1",
+            "memcached-reserve-1",
+            "mongodb-attractions",
+            "mongodb-geo",
+            "mongodb-profile",
+            "mongodb-rate",
+            "mongodb-recommendation",
+            "mongodb-reservation",
+            "mongodb-user",
+            "otel-collector",
+            "profile",
+            "rate",
+            "recommendation",
+            "reservation",
+            "search",
+            "user"
+          ]
+        },
+        "alternative_metric_signals": [
+          {
+            "source_table": "k8s_pod_cpu_usage",
+            "value_column": "greptime_value",
+            "identity_column": "k8s_pod_name",
+            "identity_value": "reservation-5cc898bc79-s66vg",
+            "threshold": 0.5,
+            "scope_preserving_predicates": [
+              {
+                "column": "k8s_namespace_name",
+                "value": "hs10"
+              }
+            ],
+            "identity_equivalent_predicates": [
+              {
+                "column": "service_name",
+                "value": "reservation"
+              },
+              {
+                "column": "k8s_deployment_name",
+                "value": "reservation"
+              }
+            ],
+            "identity_domains": {
+              "k8s_container_name": [],
+              "k8s_pod_name": [
+                "attractions-555fff8d8f-q6cmn",
+                "consul-dd849bfd8-8gzxd",
+                "frontend-6dd8cfc689-lg2h7",
+                "geo-57df756fcc-zpssd",
+                "load-generator-85cf7947cd-d2t45",
+                "memcached-profile-1-6bd64fb488-vg2tm",
+                "memcached-rate-1-6cb4b55478-9k5q8",
+                "memcached-reserve-1-865454b948-sm2kq",
+                "mongodb-attractions-8544b8748b-s4475",
+                "mongodb-geo-67fb9b6bd4-j5wz9",
+                "mongodb-profile-94f85596d-tl5s9",
+                "mongodb-rate-5d45566fcb-hbglt",
+                "mongodb-recommendation-6448465458-t749m",
+                "mongodb-reservation-6cbb64c946-z25zr",
+                "mongodb-user-746c4f5cdb-9brdr",
+                "otel-collector-7b95768ddd-mhkhp",
+                "profile-65788968f5-d2s4h",
+                "rate-66f986cc46-cwwzc",
+                "recommendation-6b77f8445f-x79bh",
+                "reservation-5cc898bc79-s66vg",
+                "search-867c487b88-697qs",
+                "user-544b8d4448-bscbl"
+              ],
+              "service_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ],
+              "k8s_deployment_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ]
+            },
+            "normal": {
+              "count": 27,
+              "min": 0.005951114,
+              "max": 0.009897672,
+              "high_count": 0
+            },
+            "abnormal": {
+              "count": 29,
+              "min": 0.107368355,
+              "max": 3.771327409,
+              "high_count": 28
+            }
           }
         ],
         "normal": {
@@ -740,6 +1427,7 @@
       "edge_destination": null,
       "fault_category": "memory",
       "mechanism_code": "memory_pressure",
+      "direct_log_mechanism_evidence": [],
       "source_fault_type": "MemoryStress",
       "normal_window": [
         1777776338,
@@ -768,6 +1456,718 @@
           {
             "column": "k8s_pod_name",
             "value": "geo-57df756fcc-zpssd"
+          },
+          {
+            "column": "service_name",
+            "value": "geo"
+          },
+          {
+            "column": "k8s_deployment_name",
+            "value": "geo"
+          }
+        ],
+        "identity_domains": {
+          "k8s_container_name": [
+            "consul",
+            "hotel-reserv-attractions",
+            "hotel-reserv-attractions-mongo",
+            "hotel-reserv-frontend",
+            "hotel-reserv-geo",
+            "hotel-reserv-geo-mongo",
+            "hotel-reserv-profile",
+            "hotel-reserv-profile-mmc",
+            "hotel-reserv-profile-mongo",
+            "hotel-reserv-rate",
+            "hotel-reserv-rate-mmc",
+            "hotel-reserv-rate-mongo",
+            "hotel-reserv-recommendation",
+            "hotel-reserv-recommendation-mongo",
+            "hotel-reserv-reservation",
+            "hotel-reserv-reservation-mmc",
+            "hotel-reserv-reservation-mongo",
+            "hotel-reserv-search",
+            "hotel-reserv-user",
+            "hotel-reserv-user-mongo",
+            "load-generator",
+            "otel-collector"
+          ],
+          "k8s_pod_name": [
+            "attractions-555fff8d8f-q6cmn",
+            "consul-dd849bfd8-8gzxd",
+            "frontend-6dd8cfc689-lg2h7",
+            "geo-57df756fcc-zpssd",
+            "load-generator-85cf7947cd-d2t45",
+            "memcached-profile-1-6bd64fb488-vg2tm",
+            "memcached-rate-1-6cb4b55478-9k5q8",
+            "memcached-reserve-1-865454b948-sm2kq",
+            "mongodb-attractions-8544b8748b-s4475",
+            "mongodb-geo-67fb9b6bd4-j5wz9",
+            "mongodb-profile-94f85596d-tl5s9",
+            "mongodb-rate-5d45566fcb-hbglt",
+            "mongodb-recommendation-6448465458-t749m",
+            "mongodb-reservation-6cbb64c946-z25zr",
+            "mongodb-user-746c4f5cdb-9brdr",
+            "otel-collector-7b95768ddd-mhkhp",
+            "profile-65788968f5-d2s4h",
+            "rate-66f986cc46-cwwzc",
+            "recommendation-6b77f8445f-x79bh",
+            "reservation-5cc898bc79-s66vg",
+            "search-867c487b88-697qs",
+            "user-544b8d4448-bscbl"
+          ],
+          "service_name": [
+            "attractions",
+            "consul",
+            "frontend",
+            "geo",
+            "load-generator",
+            "memcached-profile-1",
+            "memcached-rate-1",
+            "memcached-reserve-1",
+            "mongodb-attractions",
+            "mongodb-geo",
+            "mongodb-profile",
+            "mongodb-rate",
+            "mongodb-recommendation",
+            "mongodb-reservation",
+            "mongodb-user",
+            "otel-collector",
+            "profile",
+            "rate",
+            "recommendation",
+            "reservation",
+            "search",
+            "user"
+          ],
+          "k8s_deployment_name": [
+            "attractions",
+            "consul",
+            "frontend",
+            "geo",
+            "load-generator",
+            "memcached-profile-1",
+            "memcached-rate-1",
+            "memcached-reserve-1",
+            "mongodb-attractions",
+            "mongodb-geo",
+            "mongodb-profile",
+            "mongodb-rate",
+            "mongodb-recommendation",
+            "mongodb-reservation",
+            "mongodb-user",
+            "otel-collector",
+            "profile",
+            "rate",
+            "recommendation",
+            "reservation",
+            "search",
+            "user"
+          ]
+        },
+        "alternative_metric_signals": [
+          {
+            "source_table": "container_memory_usage",
+            "value_column": "greptime_value",
+            "identity_column": "k8s_container_name",
+            "identity_value": "hotel-reserv-geo",
+            "threshold": 536870912.0,
+            "scope_preserving_predicates": [
+              {
+                "column": "k8s_namespace_name",
+                "value": "hs10"
+              }
+            ],
+            "identity_equivalent_predicates": [
+              {
+                "column": "k8s_pod_name",
+                "value": "geo-57df756fcc-zpssd"
+              },
+              {
+                "column": "service_name",
+                "value": "geo"
+              },
+              {
+                "column": "k8s_deployment_name",
+                "value": "geo"
+              }
+            ],
+            "identity_domains": {
+              "k8s_container_name": [
+                "consul",
+                "hotel-reserv-attractions",
+                "hotel-reserv-attractions-mongo",
+                "hotel-reserv-frontend",
+                "hotel-reserv-geo",
+                "hotel-reserv-geo-mongo",
+                "hotel-reserv-profile",
+                "hotel-reserv-profile-mmc",
+                "hotel-reserv-profile-mongo",
+                "hotel-reserv-rate",
+                "hotel-reserv-rate-mmc",
+                "hotel-reserv-rate-mongo",
+                "hotel-reserv-recommendation",
+                "hotel-reserv-recommendation-mongo",
+                "hotel-reserv-reservation",
+                "hotel-reserv-reservation-mmc",
+                "hotel-reserv-reservation-mongo",
+                "hotel-reserv-search",
+                "hotel-reserv-user",
+                "hotel-reserv-user-mongo",
+                "load-generator",
+                "otel-collector"
+              ],
+              "k8s_pod_name": [
+                "attractions-555fff8d8f-q6cmn",
+                "consul-dd849bfd8-8gzxd",
+                "frontend-6dd8cfc689-lg2h7",
+                "geo-57df756fcc-zpssd",
+                "load-generator-85cf7947cd-d2t45",
+                "memcached-profile-1-6bd64fb488-vg2tm",
+                "memcached-rate-1-6cb4b55478-9k5q8",
+                "memcached-reserve-1-865454b948-sm2kq",
+                "mongodb-attractions-8544b8748b-s4475",
+                "mongodb-geo-67fb9b6bd4-j5wz9",
+                "mongodb-profile-94f85596d-tl5s9",
+                "mongodb-rate-5d45566fcb-hbglt",
+                "mongodb-recommendation-6448465458-t749m",
+                "mongodb-reservation-6cbb64c946-z25zr",
+                "mongodb-user-746c4f5cdb-9brdr",
+                "otel-collector-7b95768ddd-mhkhp",
+                "profile-65788968f5-d2s4h",
+                "rate-66f986cc46-cwwzc",
+                "recommendation-6b77f8445f-x79bh",
+                "reservation-5cc898bc79-s66vg",
+                "search-867c487b88-697qs",
+                "user-544b8d4448-bscbl"
+              ],
+              "service_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ],
+              "k8s_deployment_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ]
+            },
+            "normal": {
+              "count": 42,
+              "min": 13692928.0,
+              "max": 17100800.0,
+              "high_count": 0
+            },
+            "abnormal": {
+              "count": 43,
+              "min": 16941056.0,
+              "max": 1003249664.0,
+              "high_count": 42
+            }
+          },
+          {
+            "source_table": "container_memory_rss",
+            "value_column": "greptime_value",
+            "identity_column": "k8s_container_name",
+            "identity_value": "hotel-reserv-geo",
+            "threshold": 536870912.0,
+            "scope_preserving_predicates": [
+              {
+                "column": "k8s_namespace_name",
+                "value": "hs10"
+              }
+            ],
+            "identity_equivalent_predicates": [
+              {
+                "column": "k8s_pod_name",
+                "value": "geo-57df756fcc-zpssd"
+              },
+              {
+                "column": "service_name",
+                "value": "geo"
+              },
+              {
+                "column": "k8s_deployment_name",
+                "value": "geo"
+              }
+            ],
+            "identity_domains": {
+              "k8s_container_name": [
+                "consul",
+                "hotel-reserv-attractions",
+                "hotel-reserv-attractions-mongo",
+                "hotel-reserv-frontend",
+                "hotel-reserv-geo",
+                "hotel-reserv-geo-mongo",
+                "hotel-reserv-profile",
+                "hotel-reserv-profile-mmc",
+                "hotel-reserv-profile-mongo",
+                "hotel-reserv-rate",
+                "hotel-reserv-rate-mmc",
+                "hotel-reserv-rate-mongo",
+                "hotel-reserv-recommendation",
+                "hotel-reserv-recommendation-mongo",
+                "hotel-reserv-reservation",
+                "hotel-reserv-reservation-mmc",
+                "hotel-reserv-reservation-mongo",
+                "hotel-reserv-search",
+                "hotel-reserv-user",
+                "hotel-reserv-user-mongo",
+                "load-generator",
+                "otel-collector"
+              ],
+              "k8s_pod_name": [
+                "attractions-555fff8d8f-q6cmn",
+                "consul-dd849bfd8-8gzxd",
+                "frontend-6dd8cfc689-lg2h7",
+                "geo-57df756fcc-zpssd",
+                "load-generator-85cf7947cd-d2t45",
+                "memcached-profile-1-6bd64fb488-vg2tm",
+                "memcached-rate-1-6cb4b55478-9k5q8",
+                "memcached-reserve-1-865454b948-sm2kq",
+                "mongodb-attractions-8544b8748b-s4475",
+                "mongodb-geo-67fb9b6bd4-j5wz9",
+                "mongodb-profile-94f85596d-tl5s9",
+                "mongodb-rate-5d45566fcb-hbglt",
+                "mongodb-recommendation-6448465458-t749m",
+                "mongodb-reservation-6cbb64c946-z25zr",
+                "mongodb-user-746c4f5cdb-9brdr",
+                "otel-collector-7b95768ddd-mhkhp",
+                "profile-65788968f5-d2s4h",
+                "rate-66f986cc46-cwwzc",
+                "recommendation-6b77f8445f-x79bh",
+                "reservation-5cc898bc79-s66vg",
+                "search-867c487b88-697qs",
+                "user-544b8d4448-bscbl"
+              ],
+              "service_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ],
+              "k8s_deployment_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ]
+            },
+            "normal": {
+              "count": 42,
+              "min": 11571200.0,
+              "max": 14438400.0,
+              "high_count": 0
+            },
+            "abnormal": {
+              "count": 43,
+              "min": 13639680.0,
+              "max": 997126144.0,
+              "high_count": 42
+            }
+          },
+          {
+            "source_table": "k8s_pod_memory_working_set",
+            "value_column": "greptime_value",
+            "identity_column": "k8s_pod_name",
+            "identity_value": "geo-57df756fcc-zpssd",
+            "threshold": 536870912.0,
+            "scope_preserving_predicates": [
+              {
+                "column": "k8s_namespace_name",
+                "value": "hs10"
+              }
+            ],
+            "identity_equivalent_predicates": [
+              {
+                "column": "service_name",
+                "value": "geo"
+              },
+              {
+                "column": "k8s_deployment_name",
+                "value": "geo"
+              }
+            ],
+            "identity_domains": {
+              "k8s_container_name": [],
+              "k8s_pod_name": [
+                "attractions-555fff8d8f-q6cmn",
+                "consul-dd849bfd8-8gzxd",
+                "frontend-6dd8cfc689-lg2h7",
+                "geo-57df756fcc-zpssd",
+                "load-generator-85cf7947cd-d2t45",
+                "memcached-profile-1-6bd64fb488-vg2tm",
+                "memcached-rate-1-6cb4b55478-9k5q8",
+                "memcached-reserve-1-865454b948-sm2kq",
+                "mongodb-attractions-8544b8748b-s4475",
+                "mongodb-geo-67fb9b6bd4-j5wz9",
+                "mongodb-profile-94f85596d-tl5s9",
+                "mongodb-rate-5d45566fcb-hbglt",
+                "mongodb-recommendation-6448465458-t749m",
+                "mongodb-reservation-6cbb64c946-z25zr",
+                "mongodb-user-746c4f5cdb-9brdr",
+                "otel-collector-7b95768ddd-mhkhp",
+                "profile-65788968f5-d2s4h",
+                "rate-66f986cc46-cwwzc",
+                "recommendation-6b77f8445f-x79bh",
+                "reservation-5cc898bc79-s66vg",
+                "search-867c487b88-697qs",
+                "user-544b8d4448-bscbl"
+              ],
+              "service_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ],
+              "k8s_deployment_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ]
+            },
+            "normal": {
+              "count": 42,
+              "min": 14123008.0,
+              "max": 17629184.0,
+              "high_count": 0
+            },
+            "abnormal": {
+              "count": 43,
+              "min": 132292608.0,
+              "max": 1003941888.0,
+              "high_count": 41
+            }
+          },
+          {
+            "source_table": "k8s_pod_memory_usage",
+            "value_column": "greptime_value",
+            "identity_column": "k8s_pod_name",
+            "identity_value": "geo-57df756fcc-zpssd",
+            "threshold": 536870912.0,
+            "scope_preserving_predicates": [
+              {
+                "column": "k8s_namespace_name",
+                "value": "hs10"
+              }
+            ],
+            "identity_equivalent_predicates": [
+              {
+                "column": "service_name",
+                "value": "geo"
+              },
+              {
+                "column": "k8s_deployment_name",
+                "value": "geo"
+              }
+            ],
+            "identity_domains": {
+              "k8s_container_name": [],
+              "k8s_pod_name": [
+                "attractions-555fff8d8f-q6cmn",
+                "consul-dd849bfd8-8gzxd",
+                "frontend-6dd8cfc689-lg2h7",
+                "geo-57df756fcc-zpssd",
+                "load-generator-85cf7947cd-d2t45",
+                "memcached-profile-1-6bd64fb488-vg2tm",
+                "memcached-rate-1-6cb4b55478-9k5q8",
+                "memcached-reserve-1-865454b948-sm2kq",
+                "mongodb-attractions-8544b8748b-s4475",
+                "mongodb-geo-67fb9b6bd4-j5wz9",
+                "mongodb-profile-94f85596d-tl5s9",
+                "mongodb-rate-5d45566fcb-hbglt",
+                "mongodb-recommendation-6448465458-t749m",
+                "mongodb-reservation-6cbb64c946-z25zr",
+                "mongodb-user-746c4f5cdb-9brdr",
+                "otel-collector-7b95768ddd-mhkhp",
+                "profile-65788968f5-d2s4h",
+                "rate-66f986cc46-cwwzc",
+                "recommendation-6b77f8445f-x79bh",
+                "reservation-5cc898bc79-s66vg",
+                "search-867c487b88-697qs",
+                "user-544b8d4448-bscbl"
+              ],
+              "service_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ],
+              "k8s_deployment_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ]
+            },
+            "normal": {
+              "count": 42,
+              "min": 14123008.0,
+              "max": 17629184.0,
+              "high_count": 0
+            },
+            "abnormal": {
+              "count": 43,
+              "min": 132292608.0,
+              "max": 1003941888.0,
+              "high_count": 41
+            }
+          },
+          {
+            "source_table": "k8s_pod_memory_rss",
+            "value_column": "greptime_value",
+            "identity_column": "k8s_pod_name",
+            "identity_value": "geo-57df756fcc-zpssd",
+            "threshold": 536870912.0,
+            "scope_preserving_predicates": [
+              {
+                "column": "k8s_namespace_name",
+                "value": "hs10"
+              }
+            ],
+            "identity_equivalent_predicates": [
+              {
+                "column": "service_name",
+                "value": "geo"
+              },
+              {
+                "column": "k8s_deployment_name",
+                "value": "geo"
+              }
+            ],
+            "identity_domains": {
+              "k8s_container_name": [],
+              "k8s_pod_name": [
+                "attractions-555fff8d8f-q6cmn",
+                "consul-dd849bfd8-8gzxd",
+                "frontend-6dd8cfc689-lg2h7",
+                "geo-57df756fcc-zpssd",
+                "load-generator-85cf7947cd-d2t45",
+                "memcached-profile-1-6bd64fb488-vg2tm",
+                "memcached-rate-1-6cb4b55478-9k5q8",
+                "memcached-reserve-1-865454b948-sm2kq",
+                "mongodb-attractions-8544b8748b-s4475",
+                "mongodb-geo-67fb9b6bd4-j5wz9",
+                "mongodb-profile-94f85596d-tl5s9",
+                "mongodb-rate-5d45566fcb-hbglt",
+                "mongodb-recommendation-6448465458-t749m",
+                "mongodb-reservation-6cbb64c946-z25zr",
+                "mongodb-user-746c4f5cdb-9brdr",
+                "otel-collector-7b95768ddd-mhkhp",
+                "profile-65788968f5-d2s4h",
+                "rate-66f986cc46-cwwzc",
+                "recommendation-6b77f8445f-x79bh",
+                "reservation-5cc898bc79-s66vg",
+                "search-867c487b88-697qs",
+                "user-544b8d4448-bscbl"
+              ],
+              "service_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ],
+              "k8s_deployment_name": [
+                "attractions",
+                "consul",
+                "frontend",
+                "geo",
+                "load-generator",
+                "memcached-profile-1",
+                "memcached-rate-1",
+                "memcached-reserve-1",
+                "mongodb-attractions",
+                "mongodb-geo",
+                "mongodb-profile",
+                "mongodb-rate",
+                "mongodb-recommendation",
+                "mongodb-reservation",
+                "mongodb-user",
+                "otel-collector",
+                "profile",
+                "rate",
+                "recommendation",
+                "reservation",
+                "search",
+                "user"
+              ]
+            },
+            "normal": {
+              "count": 42,
+              "min": 11616256.0,
+              "max": 14176256.0,
+              "high_count": 0
+            },
+            "abnormal": {
+              "count": 43,
+              "min": 122982400.0,
+              "max": 997126144.0,
+              "high_count": 41
+            }
           }
         ],
         "normal": {

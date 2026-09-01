@@ -1,10 +1,12 @@
 .venv/
+.local/
+.claude/
 .cache/
 .data/
 .instances/
 .runs/
 .reports/
-artifacts/measurement/aegis-transfer-v25-three-model.json
+dist/
 __pycache__/
 .pytest_cache/
 .ruff_cache/

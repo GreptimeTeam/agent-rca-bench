@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 import pyarrow.parquet as pq
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from semantic_rca_bench.contracts import (
     CausalScope,
@@ -37,7 +37,6 @@ from semantic_rca_bench.greptimedb.client import GreptimeClient
 
 SELECTION_REVISION = "openrca2-fresh-end-to-end-v1"
 SELECTION_SEED = "semantic-rca-v1-openrca2-transfer-10"
-PILOT_REVISION = "openrca2-development-pilot-v1"
 MECHANISM_QUOTAS = {
     MechanismCode.WORKLOAD_RESTART: 4,
     MechanismCode.CALL_PATH_DELAY: 3,
@@ -60,12 +59,59 @@ _FAULT_MECHANISMS = {
     "MemoryStress": (FaultCategory.MEMORY, MechanismCode.MEMORY_PRESSURE),
 }
 
+_ALTERNATIVE_METRICS = {
+    MechanismCode.CPU_SATURATION: ("k8s.pod.cpu.usage",),
+    MechanismCode.MEMORY_PRESSURE: (
+        "container.memory.usage",
+        "container.memory.rss",
+        "k8s.pod.memory.working_set",
+        "k8s.pod.memory.usage",
+        "k8s.pod.memory.rss",
+    ),
+}
+
+_METRIC_IDENTITY_SOURCE_COLUMNS = {
+    "k8s_container_name": "attr.k8s.container.name",
+    "k8s_pod_name": "attr.k8s.pod.name",
+    "service_name": "service_name",
+    "k8s_deployment_name": "attr.k8s.deployment.name",
+}
+
 
 class ScopePreservingPredicate(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     column: str
     value: str
+
+
+class AlternativeMetricSignal(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_table: str
+    value_column: str
+    identity_column: str
+    identity_value: str
+    threshold: float
+    scope_preserving_predicates: tuple[ScopePreservingPredicate, ...] = ()
+    identity_equivalent_predicates: tuple[ScopePreservingPredicate, ...] = ()
+    identity_domains: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    normal: dict[str, int | float]
+    abnormal: dict[str, int | float]
+
+
+class DirectLogMechanismEvidence(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    mechanism_code: Literal[MechanismCode.CONFIGURATION_ERROR]
+    source_table: Literal["logs"]
+    timestamp_column: Literal["greptime_timestamp"]
+    message_column: Literal["line"]
+    container_identity: str
+    event_reason: Literal["Failed"]
+    message_fragment: str
+    normal_count: int
+    abnormal_count: int
 
 
 class SourceMechanismEvidence(BaseModel):
@@ -86,6 +132,8 @@ class SourceMechanismEvidence(BaseModel):
     allowed_operations: tuple[str, ...] = ()
     scope_preserving_predicates: tuple[ScopePreservingPredicate, ...] = ()
     identity_equivalent_predicates: tuple[ScopePreservingPredicate, ...] = ()
+    identity_domains: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    alternative_metric_signals: tuple[AlternativeMetricSignal, ...] = ()
     normal: dict[str, int | float]
     abnormal: dict[str, int | float]
 
@@ -103,6 +151,7 @@ class TransferCaseSpec(BaseModel):
     edge_destination: str | None = None
     fault_category: FaultCategory
     mechanism_code: MechanismCode
+    direct_log_mechanism_evidence: tuple[DirectLogMechanismEvidence, ...] = ()
     source_fault_type: str
     normal_window: tuple[int, int]
     abnormal_window: tuple[int, int]
@@ -124,17 +173,6 @@ class TransferSelectionFixture(BaseModel):
     trajectory_exclusions: tuple[str, ...]
     ranked_candidates: dict[MechanismCode, tuple[str, ...]]
     rejected_candidates: dict[str, tuple[str, ...]]
-    selected_cases: tuple[TransferCaseSpec, ...]
-
-
-class TransferPilotFixture(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    version: int
-    pilot_revision: str
-    dataset_revision: str
-    source_revision: str
-    case_role: Literal["development"]
     selected_cases: tuple[TransferCaseSpec, ...]
 
 
@@ -169,25 +207,6 @@ def load_selection_fixture(path: Path) -> TransferSelectionFixture:
         raise ValueError("OpenRCA2 transfer selection contains duplicate source cases")
     if set(fixture.trajectory_exclusions) & {case.source_case for case in fixture.selected_cases}:
         raise ValueError("OpenRCA2 transfer selection reused an agent-visible case")
-    return fixture
-
-
-def load_pilot_fixture(path: Path) -> TransferPilotFixture:
-    fixture = TransferPilotFixture.model_validate_json(path.read_text())
-    if (
-        fixture.version != 1
-        or fixture.pilot_revision != PILOT_REVISION
-        or fixture.dataset_revision != DATASET_REVISION
-        or fixture.source_revision != SOURCE_REVISION
-        or fixture.case_role != "development"
-        or len(fixture.selected_cases) != 2
-        or tuple(case.opaque_case_id for case in fixture.selected_cases)
-        != ("semantic-rca-pilot-001", "semantic-rca-pilot-002")
-        or tuple(case.mechanism_code for case in fixture.selected_cases)
-        != (MechanismCode.WORKLOAD_RESTART, MechanismCode.CALL_PATH_DELAY)
-        or any(case.case_role != "development" for case in fixture.selected_cases)
-    ):
-        raise ValueError("unsupported OpenRCA2 transfer pilot fixture")
     return fixture
 
 
@@ -260,6 +279,11 @@ def audit_source_case(
         causal_scope = CausalScope.COMPONENT
         causal_component = services[0]
         evidence = _metric_evidence(case, mechanism_code, config, truth)
+    direct_log_evidence = (
+        _configuration_error_evidence(case, evidence.identity_value)
+        if mechanism_code is MechanismCode.WORKLOAD_RESTART
+        else ()
+    )
     return TransferCaseSpec(
         opaque_case_id=opaque_case_id,
         source_case=case.source_case,
@@ -271,11 +295,62 @@ def audit_source_case(
         edge_destination=edge_destination,
         fault_category=fault_category,
         mechanism_code=mechanism_code,
+        direct_log_mechanism_evidence=direct_log_evidence,
         source_fault_type=fault_type,
         normal_window=normal_window,
         abnormal_window=abnormal_window,
         mechanism_evidence=evidence,
         source_files_sha256=_source_file_hashes(case),
+    )
+
+
+def _configuration_error_evidence(
+    case: OpenRCA2Case,
+    container_identity: str | None,
+) -> tuple[DirectLogMechanismEvidence, ...]:
+    if not container_identity:
+        return ()
+    fragment = "executable file not found in $PATH"
+
+    def count(path: Path) -> int:
+        matches = 0
+        for row in _iter_rows((path,)):
+            message = row.get("message")
+            if not isinstance(message, str):
+                continue
+            try:
+                event = json.loads(message).get("object")
+            except (AttributeError, json.JSONDecodeError):
+                continue
+            if not isinstance(event, Mapping):
+                continue
+            regarding = event.get("regarding")
+            if not isinstance(regarding, Mapping):
+                continue
+            if (
+                event.get("reason") == "Failed"
+                and fragment in str(event.get("note") or "")
+                and regarding.get("fieldPath") == f"spec.containers{{{container_identity}}}"
+            ):
+                matches += 1
+        return matches
+
+    normal_count = count(case.logs_paths[0])
+    abnormal_count = count(case.logs_paths[1])
+    if normal_count != 0 or abnormal_count < 1:
+        return ()
+    return (
+        DirectLogMechanismEvidence(
+            mechanism_code=MechanismCode.CONFIGURATION_ERROR,
+            source_table="logs",
+            timestamp_column="greptime_timestamp",
+            message_column="line",
+            container_identity=container_identity,
+            event_reason="Failed",
+            message_fragment=fragment,
+            normal_count=normal_count,
+            abnormal_count=abnormal_count,
+        ),
     )
 
 
@@ -842,7 +917,14 @@ def _metric_evidence(
     }
     predicate, metric, threshold = definitions[mechanism]
     periods = [
-        _metric_period(case.gauge_paths[index], metric, identity, threshold) for index in range(2)
+        _metric_period(
+            case.gauge_paths[index],
+            metric,
+            "k8s_container_name",
+            identity,
+            threshold,
+        )
+        for index in range(2)
     ]
     normal, abnormal = periods
     if normal["count"] < 1 or abnormal["count"] < 2:
@@ -859,7 +941,17 @@ def _metric_evidence(
         minimum_anomalous_observations=2,
         scope_preserving_predicates=_metric_scope_preserving_predicates(case, metric, identity),
         identity_equivalent_predicates=_metric_identity_equivalent_predicates(
-            case, metric, identity
+            case,
+            metric,
+            "k8s_container_name",
+            identity,
+        ),
+        identity_domains=_metric_identity_domains(case, metric),
+        alternative_metric_signals=_alternative_metric_signals(
+            case,
+            mechanism,
+            identity,
+            threshold,
         ),
         normal=normal,
         abnormal=abnormal,
@@ -870,12 +962,15 @@ def _metric_scope_preserving_predicates(
     case: OpenRCA2Case,
     metric: str,
     identity: str,
+    *,
+    identity_column: str = "k8s_container_name",
 ) -> tuple[ScopePreservingPredicate, ...]:
+    source_column = _METRIC_IDENTITY_SOURCE_COLUMNS[identity_column]
     namespaces = {
         str(row["attr.k8s.namespace.name"])
         for row in _iter_rows(case.gauge_paths)
         if row.get("metric") == metric
-        and row.get("attr.k8s.container.name") == identity
+        and row.get(source_column) == identity
         and row.get("attr.k8s.namespace.name") not in (None, "")
     }
     if len(namespaces) != 1:
@@ -893,41 +988,136 @@ def _metric_scope_preserving_predicates(
 def _metric_identity_equivalent_predicates(
     case: OpenRCA2Case,
     metric: str,
+    identity_column: str,
     identity: str,
 ) -> tuple[ScopePreservingPredicate, ...]:
+    identity_source_column = _METRIC_IDENTITY_SOURCE_COLUMNS[identity_column]
     rows = [row for row in _iter_rows(case.gauge_paths) if row.get("metric") == metric]
-    identity_rows = [row for row in rows if row.get("attr.k8s.container.name") == identity]
-    pods = {
-        str(row["attr.k8s.pod.name"])
-        for row in identity_rows
-        if row.get("attr.k8s.pod.name") not in (None, "")
-    }
+    identity_rows = [row for row in rows if row.get(identity_source_column) == identity]
+    equivalents = []
+    for column in ("k8s_pod_name", "service_name", "k8s_deployment_name", "k8s_container_name"):
+        if column == identity_column:
+            continue
+        source_column = _METRIC_IDENTITY_SOURCE_COLUMNS[column]
+        values = {
+            str(row[source_column])
+            for row in identity_rows
+            if row.get(source_column) not in (None, "")
+        }
+        if len(values) != 1:
+            continue
+        value = next(iter(values))
+        reverse_identities = {
+            str(row[identity_source_column])
+            for row in rows
+            if row.get(source_column) == value and row.get(identity_source_column) not in (None, "")
+        }
+        if reverse_identities == {identity} and len(identity_rows) == sum(
+            row.get(source_column) == value for row in identity_rows
+        ):
+            equivalents.append(ScopePreservingPredicate(column=column, value=value))
+    return tuple(equivalents)
+
+
+def _alternative_metric_signals(
+    case: OpenRCA2Case,
+    mechanism: MechanismCode,
+    container_identity: str,
+    threshold: float,
+) -> tuple[AlternativeMetricSignal, ...]:
+    metrics = _ALTERNATIVE_METRICS.get(mechanism, ())
+    if not metrics:
+        return ()
+    primary_rows = [
+        row
+        for row in _iter_rows(case.gauge_paths)
+        if row.get("attr.k8s.container.name") == container_identity
+        and row.get("attr.k8s.pod.name") not in (None, "")
+    ]
+    pods = {str(row["attr.k8s.pod.name"]) for row in primary_rows}
     if len(pods) != 1:
-        return ()
-    pod = next(iter(pods))
-    pod_containers = {
-        str(row["attr.k8s.container.name"])
-        for row in rows
-        if row.get("attr.k8s.pod.name") == pod
-        and row.get("attr.k8s.container.name") not in (None, "")
+        raise OpenRCA2Error("mechanism container is not bound to exactly one source pod")
+    pod_identity = next(iter(pods))
+    signals = []
+    for metric in metrics:
+        identity_column = "k8s_pod_name" if metric.startswith("k8s.pod.") else "k8s_container_name"
+        identity = pod_identity if identity_column == "k8s_pod_name" else container_identity
+        periods = [
+            _metric_period(
+                case.gauge_paths[index],
+                metric,
+                identity_column,
+                identity,
+                threshold,
+            )
+            for index in range(2)
+        ]
+        normal, abnormal = periods
+        if (
+            normal["count"] < 1
+            or abnormal["count"] < 2
+            or normal["high_count"] != 0
+            or abnormal["high_count"] < 2
+        ):
+            continue
+        signals.append(
+            AlternativeMetricSignal(
+                source_table=metric.replace(".", "_"),
+                value_column="greptime_value",
+                identity_column=identity_column,
+                identity_value=identity,
+                threshold=threshold,
+                scope_preserving_predicates=_metric_scope_preserving_predicates(
+                    case,
+                    metric,
+                    identity,
+                    identity_column=identity_column,
+                ),
+                identity_equivalent_predicates=_metric_identity_equivalent_predicates(
+                    case,
+                    metric,
+                    identity_column,
+                    identity,
+                ),
+                identity_domains=_metric_identity_domains(case, metric),
+                normal=normal,
+                abnormal=abnormal,
+            )
+        )
+    return tuple(signals)
+
+
+def _metric_identity_domains(
+    case: OpenRCA2Case,
+    metric: str,
+) -> dict[str, tuple[str, ...]]:
+    rows = [row for row in _iter_rows(case.gauge_paths) if row.get("metric") == metric]
+    return {
+        column: tuple(
+            sorted(
+                {
+                    str(row[source_column])
+                    for row in rows
+                    if row.get(source_column) not in (None, "")
+                }
+            )
+        )
+        for column, source_column in _METRIC_IDENTITY_SOURCE_COLUMNS.items()
     }
-    if pod_containers != {identity} or len(identity_rows) != sum(
-        row.get("attr.k8s.pod.name") == pod for row in identity_rows
-    ):
-        return ()
-    return (ScopePreservingPredicate(column="k8s_pod_name", value=pod),)
 
 
 def _metric_period(
     path: Path,
     metric: str,
+    identity_column: str,
     identity: str,
     threshold: float,
 ) -> dict[str, int | float]:
+    source_column = _METRIC_IDENTITY_SOURCE_COLUMNS[identity_column]
     values = [
         float(row["value"])
         for row in _iter_rows((path,))
-        if row.get("metric") == metric and row.get("attr.k8s.container.name") == identity
+        if row.get("metric") == metric and row.get(source_column) == identity
     ]
     if not values:
         return {"count": 0, "min": 0.0, "max": 0.0, "high_count": 0}

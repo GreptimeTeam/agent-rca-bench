@@ -70,6 +70,26 @@ def test_sanitized_run_deterministically_rescores_without_raw_rows() -> None:
     assert "query_id" not in str(payload)
 
 
+def test_sanitizer_does_not_treat_table_metadata_as_query_rows() -> None:
+    case = _case(6)
+    run = _run(case, _delay_query(case), _delay_result(case))
+    metadata = ToolTrace(
+        tool_name="describe_table",
+        input={"table": "traces"},
+        output={"table": "traces", "columns": [{"name": "trace_id"}]},
+    )
+    run = run.model_copy(
+        update={
+            "tool_calls": [metadata, *run.tool_calls],
+            "tool_calls_requested": 2,
+        }
+    )
+    payload = sanitize_transfer_run(run, _evaluate(run, case), case)
+
+    assert payload["tool_calls"][0]["result"] is None
+    _validate(payload)
+
+
 def test_sanitizer_preserves_rejected_citation_without_invalidating_efficiency() -> None:
     case = _case(6)
     run = _run(case, _delay_query(case), _delay_result(case))
@@ -240,7 +260,8 @@ def test_public_adjudication_replays_without_overwriting_deterministic_score() -
 
     public_deterministic = _validate(payload, index=7)
     _validate_public_adjudication(payload, public_deterministic)
-    assert public_deterministic["efficiency_eligible"] is False
+    assert public_deterministic["efficiency_eligible"] is True
+    assert public_deterministic["required_evidence_covered"] is False
     assert payload["adjudicated_sensitivity"]["efficiency_eligible"] is True
     for key in (
         "causal_locus_evidence_match",
@@ -294,7 +315,7 @@ def test_public_adjudication_redacts_free_text() -> None:
     assert public["resolutions"][0]["judge_decisions"][0]["failed_requirements"] == []
 
 
-def test_primary_metrics_remain_deterministic_and_adjudication_is_sensitivity() -> None:
+def test_primary_metrics_do_not_depend_on_evidence_adjudication() -> None:
     case = _case(7)
     query = _metric_query(case).replace(
         "GROUP BY phase",
@@ -328,10 +349,8 @@ def test_primary_metrics_remain_deterministic_and_adjudication_is_sensitivity() 
 
     report = _model_reports(items, ["test-model"], family_size=2)["test-model"]
 
-    assert report["primary_metrics"]["rows_returned"]["eligible_cases"] == 0
-    assert (
-        report["adjudicated_sensitivity"]["primary_metrics"]["rows_returned"]["eligible_cases"] == 1
-    )
+    assert report["primary_metrics"]["rows_returned"]["eligible_cases"] == 1
+    assert report["evidence_quality"]["paired_disposition"]["neither"] == 1
 
 
 def test_case_median_does_not_treat_repetitions_as_independent_cases() -> None:

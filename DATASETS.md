@@ -1,574 +1,184 @@
-# Dataset Audit
+# Dataset provenance and selection
 
-This audit records why each corpus is included or rejected. The benchmark does
-not repair timestamps, labels, topology, or root-cause records. A protocol
-adapter may convert declared units and identifiers into a wire representation,
-but it must record every lossy or synthetic protocol field.
+Semantic RCA Bench downloads upstream telemetry for local execution and does not
+redistribute source rows, labels, causal graphs, or archives. Public artifacts
+contain sanitized trajectories, derived facts, and source hashes.
 
-## Portfolio
+## Release cohort
 
-| Corpus | System family | Role | Status | Semantic Graph evidence |
-| --- | --- | --- | --- | --- |
-| RCAEval | Online Boutique | Established control for code-level failures | Included | Case-dependent; treated as graph-negative unless source identity supports edges |
-| RCA100 v1.1 | OpenTelemetry Demo Store | Native OpenTelemetry and reference topology | Included | Positive: witnessed service calls are available |
-| OpenRCA 1.0 Bank | OpenRCA Bank | Wide enterprise metric schema and legacy multimodal telemetry | Included | Not applicable: no standard entity identity or span roles |
-| OpenRCA 1.0 Market | OpenRCA Market | Multi-level node, pod, and service failures over wide legacy telemetry | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
-| OpenRCA 1.0 Telecom | OpenRCA Telecom | Independent telecom/database system with metrics and traces but no logs | Included; protocol v17 development case | Not applicable: parent links exist, but client/server span roles and standard identity do not |
-| Aegis FSE 2026 reviewer cohort | Train Ticket | Public reviewer subset with native span identity and roles | Historical v24-v31 development evidence | Positive: raw Client-to-Server parent-child spans produce independently auditable service-call edges |
-| OpenRCA 2.0 ops-lite | Hotel Reservation and OpenTelemetry Demo | Native OTel and source-observable mechanisms | Current ten-case fresh v32 measurement cohort; no provider cells run | Positive when standard client/server spans witness service calls |
-| Amazon PetShop | Amazon PetShop | Component-level causal RCA over service metrics | Rejected | Metric-only; no incident-local mechanism label or continuous baseline |
-| AnoMod TrainTicket | TrainTicket | Independent multimodal microservice corpus | Rejected | Rejection is based on incident evidence quality, not graph coverage |
-| Eadro / Nezha | Mixed microservice benchmarks | Earlier multimodal RCA corpora | Not audited | No rejection claim until source artifacts are audited |
+The published measurement contains 18 incidents from two source families:
 
-## Public reference eligibility
+| Benchmark | Source | Cases | Role |
+| --- | --- | ---: | --- |
+| Discovery | OpenRCA 1.0 Bank, Market, and Telecom | 6 | Schema and signal discovery |
+| Graph retrieval | OpenRCA2 ops-lite | 2 | Service-dependency retrieval |
+| End-to-end RCA | OpenRCA2 ops-lite | 10 | Component or edge localization, mechanism diagnosis, and evidence |
 
-Dataset availability is not the same as permission to redistribute the evidence
-needed to audit a benchmark result.
+The six Discovery cases and two Graph cases form a fixed reference cohort. The
+ten end-to-end cases were selected by a frozen source-only ranking before their
+formal model trajectories were observed.
 
-| Corpus | Confirmed terms | 1.0 public-reference role |
+The public agent IDs do not expose source case names or injection labels.
+Source case names and mechanisms appear only in the report and scorer inputs.
+
+## License boundary
+
+| Dataset | Upstream statement | Benchmark policy |
 | --- | --- | --- |
-| RCAEval | Dataset repository declares MIT | Eligible for a downloader-backed Table or Graph-negative role; individual cases still require the normal fidelity gates |
-| RCA100 v1.1 | No dataset license found; answer key asks users to contact the publisher before redistribution | Internal only until written terms or permission cover the required telemetry and labels |
-| OpenRCA 1.0 Bank / Market / Telecom | Paper appendix declares telemetry CC BY-NC 4.0 | Optional noncommercial, downloader-backed evaluation; not the unrestricted reference corpus, and raw telemetry must not be copied into release artifacts |
-| Aegis FSE 2026 reviewer cohort | The source dataset record declares CC BY 4.0. The reviewer artifact's root `LICENSE` applies Apache-2.0 to packaging and support code, but does not explicitly apply it to `reproduction/data`. | Use the pinned source download without redistributing telemetry. Obtain clearer permission before bundling any source data in a release. |
-| OpenRCA 2.0 ops-lite | Dataset card says Apache-2.0, paper says CC-BY-SA 4.0, and the artifact is not the promised archival release | Internal protocol-formal evidence until provenance and terms are reconciled |
+| OpenRCA 1.0 | The paper appendix declares telemetry CC BY-NC 4.0 | Download for local evaluation; do not redistribute telemetry |
+| OpenRCA2 ops-lite | The dataset card says Apache-2.0; the paper says CC-BY-SA 4.0 | Publish derived sanitized facts and hashes; do not redistribute telemetry |
+| Aegis FSE 2026 reviewer cohort | The dataset record says CC BY 4.0; the reviewer artifact's Apache-2.0 file does not explicitly cover `reproduction/data` | Keep downloader-backed; do not bundle source data |
+| RCA100 v1.1 | No dataset license was found; the answer key asks users to contact the publisher | Internal adapter validation only |
+| RCAEval RE2-OB | The pinned Hugging Face dataset card declares MIT | Local adapter and semantic-coverage validation |
+| OpenRCA 1.0 Market and Telecom | Same CC BY-NC 4.0 declaration as OpenRCA Bank | Local evaluation only |
 
-The Aegis reviewer cohort supplied the downloader-backed Graph-positive transfer path during
-development. The benchmark does not redistribute its telemetry or label files. The current
-OpenRCA2 transfer evidence is also downloader-backed and does not resolve the mismatch between the
-dataset card and paper license statements. A public release must keep benchmark code, derived
-artifact, and upstream dataset terms separate.
+The repository's Apache-2.0 license covers benchmark code, artifact schemas,
+and derived reports. It does not relicense upstream data.
 
-## Fresh micro-benchmark measurement audit
+## OpenRCA 1.0 micro cohort
 
-Discovery v2 uses the OpenRCA source revision and pinned public mirror recorded
-below. The eligible-set counts, SHA-256 digests, prior-trajectory exclusions,
-consumed hash ranks, and rejection reasons are stored in
-`fixtures/measurement/discovery-selection.json`. Every formal case was ingested
-into a fresh neutral database and passed exact protocol row-count validation,
-an independent two-window canonical query, and the catalog top-five gate before
-its agent cells ran.
+- Official repository: <https://github.com/microsoft/OpenRCA>
+- Adapter revision: `c1bd4af7f635171a1c31cdd567c07d698dff6abc`
+- Public mirror revision: `07714872ea2cec77c13f9dec17a688e9df9621d1`
+- Telemetry terms: CC BY-NC 4.0 as declared by the paper appendix
 
-| Formal Discovery case | Hidden target | Catalog rank | Baseline count / mean / max | Incident count / mean / max |
-| --- | --- | ---: | --- | --- |
-| Bank `task_5@2021-03-04T20:00` | `OSLinux_CPU_CPU_CPUUserTime` | 1/41 | 14 / 0.19297 / 0.2206 | 16 / 16.91008 / 88.0287 |
-| Bank `task_6@2021-03-25T09:00` | `OSLinux_OSLinux_LOCALDISK_LOCALDISK_sda_DSKRead` | 1/58 | 2 / 0 / 0 | 13 / 2.29744 / 17.6 |
-| Market cloudbed-1 `2022-03-20T09:30` | `container_fs_reads_MB__dev_vda` | 4/97 | 14 / 0 / 0 | 6 / 9696.74414 / 16790 |
-| Market cloudbed-2 `2022-03-20T14:30` | `container_fs_writes_MB__dev_vda` | 5/64 | 2 / 0 / 0 | 27 / 1543.59910 / 15242.07227 |
-| Telecom `2020-05-29T03:30` | `container_cpu_used` | 1/18 | 6 / 9.33333 / 23 | 18 / 42.94444 / 83 |
-| Telecom `2020-05-23T04:30` | `container_cpu_used` | 1/18 | 17 / 0.05882 / 1 | 12 / 14.25 / 45 |
+The six Discovery cases cover Bank, Market, and Telecom telemetry. Each fixture
+binds one component, signal, table, baseline window, incident window, comparison
+field, and minimum effect. The no-model audit requires:
 
-The initial Bank CPU case passed its source ratio gate but ranked 14th in
-catalog search and was rejected before any model run. The initial cloudbed-2
-memory case failed the 2× source ratio; its successor had no unique physical
-component binding. A later cloudbed-2 node-write case passed both gates, but its
-agent report predates the mixed-case identifier prompt correction and remains
-exploratory. The next untouched hash-ranked case supplies the formal replacement.
+- exact source case and fixture identity;
+- successful isolated ingestion;
+- a matching frozen evidence predicate;
+- the target table in the semantic catalog's top five results;
+- an empty exclusive GreptimeDB instance before ingestion.
 
-Graph v3 selection is recorded in
-`fixtures/measurement/graph-v3-selection.json`. Six Hotel candidates, all 12
-remaining OTel Demo candidates, and the only Train Ticket candidate failed the
-pre-model observable-alert or manifest/injection-root contract. The two passing
-Hotel cases each expose six direct callees of `frontend`; raw span reconstruction
-and Graph rows match exactly. Their unique `search` winners have 504/1,043 and
-1,504/2,772 errors/requests respectively. Candidate exhaustion is part of the
-result and limits Graph v3 to one system family.
+The source formats do not always carry OpenTelemetry identity, span-kind,
+operation, status, or duration semantics. Adapters preserve those absences. They
+do not synthesize Graph entities or relationships from component names.
 
-The current five-model suite reuses these six Discovery and two Graph cases as a fixed reference
-cohort. They are not new holdouts: their earlier trajectories influenced the mature micro-task
-interfaces, and the new run measures those interfaces across the current model roster. The suite
-manifest binds every task fixture, selection manifest, protocol, GreptimeDB revision, and release build profile by
-file hash. Each of the eight live preflights uses an exclusive instance and repeats source
-ingestion plus the canonical task gate before model execution.
+OpenRCA metric duplicates and conflicting timestamp identities are preserved at
+the protocol boundary. The public artifact records source, accepted, stored,
+duplicate, conflict, and identifier-remapping counts for each case.
 
-Public artifacts contain the frozen task fixture, canonical aggregate evidence, result digests,
-query inputs, and derived counts, but not source telemetry rows. OpenRCA 1.0 remains subject to CC
-BY-NC 4.0. OpenRCA 2.0 remains provisional because its dataset card and paper state different
-licenses; reproduction downloads the pinned source under its own terms. The benchmark's
-Apache-2.0 license covers the harness and artifact schema, not the upstream telemetry.
+## OpenRCA2 source
 
-## RCA100 v1.1
+- Repository: <https://huggingface.co/datasets/anon-ops/ops-lite>
+- Pinned ops-lite revision: `9ac09981c08ab02a0b923eab7830d778934851a8`
+- Dataset-card license: Apache-2.0
+- Paper license: CC-BY-SA 4.0
 
-- Dataset revision: `v1.1`.
-- License: no dataset license was found in the pinned public source. The answer
-  key asks users to contact the Alibaba Cloud AIOps Team before redistribution.
-  This benchmark downloads it for local evaluation and does not redistribute
-  telemetry or answer-key files.
-- Adapter source revision: `69cf36430b43024d02530c610b1a4738b5c9a7fb`.
-- `t001` contains native metrics, logs, traces, events, alerts, an official
-  fault label, and a reference topology used only for validation.
-- The source contains 26,397 duplicate metric samples and 13 conflicting
-  timestamps. The adapter preserves source order and lets Prometheus primary-key
-  semantics determine stored values. It does not add labels to disambiguate
-  conflicts.
-- The source does not publish an injection timestamp. Onset scoring is disabled
-  rather than inferred from snapshots.
-- Protocol v14 evaluation case: `t002`, selected by the hash-ranking contract
-  and seed recorded in `PLAN.md`; no fault label participated in selection.
+The license statements conflict, and the downloaded artifact is not the
+archival release described by the paper. Pinning the revision makes the bytes
+reproducible but does not resolve that conflict. The benchmark therefore keeps
+the source downloader-backed and publishes no telemetry rows.
 
-## RCAEval RE2-OB
+OpenRCA2 supplies normal and anomalous Parquet telemetry, an environment file,
+publisher attributes and labels, injection metadata, and a reference causal
+graph. The adapter uses source telemetry and injection metadata for validation
+and scoring. It never ingests `causal_graph.json`.
 
-- Dataset artifact revision: `afeacb11bcc94dadfd1c8f483ee4377b2b8b614e`.
-- License: MIT, as declared by the pinned Hugging Face dataset card.
-- Adapter source revision: `526cdd5818ea9d8c2a34e869ebd637bc6b4fa4b8`.
-- Selected case: `re2ob_checkoutservice_cpu_1`.
-- The source publishes trace start time in both microseconds and milliseconds.
-  The adapter verifies their declared relationship before converting to OTLP;
-  it does not infer or shift timestamps.
-- No-model gate result: 103,748 metric samples, 171,322 logs, and 391,997 spans
-  stored with exact protocol row-count match; 74 semantic tables; seven service
-  entities and zero relationships.
-- The source lacks span-kind semantics needed to witness client/server call
-  edges. The case is therefore entity-only rather than relational.
-- Protocol v14 evaluation case: `re2ob_currencyservice_disk_1`. The two
-  higher-ranked candidates failed telemetry-label fidelity: the socket case had
-  a much stronger competing CPU anomaly, and the loss case had no direct loss
-  signal while memory, sockets, and latency all rose. The retained disk case has
-  no baseline disk I/O and about 4.5 GB/s after injection. Public case IDs are
-  label-bearing, so this is reproducible but not a blinded holdout.
-- Its isolated no-model gate stored 105,890 metric samples, 157,693 logs, and
-  361,288 spans with exact row-count agreement. It exposes 76 semantic tables,
-  seven service entities, and no relationships.
+### End-to-end selection
 
-## OpenRCA 1.0 Bank
+The active manifest is
+`fixtures/reference/openrca2-transfer-v32-selection.json`. It freezes:
 
-- Official repository: <https://github.com/microsoft/OpenRCA>, pinned at
-  `c1bd4af7f635171a1c31cdd567c07d698dff6abc`.
-- License: the code repository is MIT. The OpenRCA paper appendix declares all
-  telemetry data CC BY-NC 4.0. The benchmark downloads pinned source files for
-  local evaluation and does not redistribute the mirror.
-- Public data mirror: `tracer-cloud/opensre`, pinned at
-  `07714872ea2cec77c13f9dec17a688e9df9621d1`.
-- OpenRCA mirror downloads honor standard proxy environment variables because
-  the Market and Telecom artifacts are large and may require configured egress.
-  GreptimeDB query and ingestion clients continue to ignore environment proxy
-  settings so local benchmark traffic cannot leave the target endpoint.
-- Selected case: `task_6@2021-03-04T18:00`; official ground truth is `Redis02`
-  with `high memory usage`, occurring at 18:09 UTC+8.
-- The official prompt declares metric and log timestamps in seconds, trace
-  timestamps in milliseconds, and task times in UTC+8. The adapter performs
-  only those declared conversions.
-- The source does not declare a trace `duration` unit. The adapter stores the
-  raw value as `openrca.duration`, emits a zero-length OTLP span, and does not
-  use the value as latency.
-- Bank `cmdb_id` identifies a pod-level component, but the source does not
-  provide an OTel resource identity convention. The adapter stores it as the
-  span attribute `openrca.cmdb_id`; it does not relabel it as `service.name` or
-  `k8s.pod.uid`.
-- The current `greptime_trace_v1` path rejects a newly created trace table when
-  `service.name` is completely absent. The adapter sends an empty
-  `service.name` protocol placeholder. It asserts no service identity and
-  produces no graph entity.
-- No span operation name, kind, or status exists in the source. The adapter
-  emits an empty name, `SPAN_KIND_UNSPECIFIED`, and `STATUS_CODE_UNSET`.
-- No-model gate result: 28,354 unique metric samples, 34,047 logs, and 324,321
-  spans stored; zero rejected spans; exact protocol row-count match; 347 semantic
-  tables; zero graph entities and relationships.
+- the pinned source revision;
+- the eligible source population;
+- trajectory exclusions from development pilots;
+- mechanism and system strata;
+- deterministic ranking and selected source cases;
+- opaque IDs `semantic-rca-transfer-001` through
+  `semantic-rca-transfer-010`;
+- source-preserving predicates that the scorer may accept.
 
-The development incident has a direct metric signal without changing the data:
-`Redis02` memory utilization rises during the official window. This makes it a
-useful Table Semantics case while preserving an explicit negative boundary for
-Semantic Graph.
+Every exclusion must name an existing source case. The selection audit rejects
+unknown exclusions, a selected development trajectory, hash drift, ordering
+drift, and a mismatch between source labels, injection metadata, and the frozen
+mechanism contract.
 
-The protocol v14 evaluation case is `task_5@2021-03-09T09:30`, selected from
-single-root task windows by the label-independent hash-ranking contract in
-`PLAN.md`. Its isolated gate stored 27,390 metric samples, 97,859 logs, and
-825,193 spans with exact row-count agreement. It exposes 363 semantic tables
-and an empty graph; the official root cause is a Tomcat component with high CPU
-usage.
+The ten cases are:
 
-## OpenRCA 1.0 Market
-
-- Authority, source revision, mirror revision, timezone, and CC BY-NC 4.0
-  telemetry license are the same as OpenRCA Bank. Market is a distinct online
-  market system rather than another Bank case.
-- Before downloading Market telemetry, the benchmark ranked 89 distinct
-  single-root half-hour windows with seed `semantic-rca-v16-openrca-market`.
-  The selected development case is
-  `Market/cloudbed-1@2022-03-21T03:30`; official ground truth is node `node-6`
-  with `node disk write I/O consumption` at 03:39:14 UTC+8.
-- The selected day contains container, mesh, node, runtime, and service metrics;
-  proxy and service logs; and traces. Metrics and logs use seconds while traces
-  use milliseconds, as declared by the official OpenRCA prompt.
-- The source defines `cmdb_id` differently by file: container metrics encode
-  `<node>.<pod>`, traces and logs use pod names, node metrics use node names,
-  service metrics add protocol suffixes, and mesh metrics encode connection
-  strings. These are not interchangeable identities. The adapter preserves
-  them and does not join by string stems.
-- Traces contain parent IDs, operation names, a source `type`, and a source
-  status code, but the source does not map `type` to OTel client/server span
-  kind or declare the duration unit. The adapter emits unspecified span kind,
-  unset OTel status, zero duration, and retains the raw fields as attributes.
-  It does not manufacture Graph calls edges.
-- The isolated no-model gate stored 167,100 metric samples, 138,150 logs, and
-  94,062 spans with exact protocol row-count agreement. It exposes 587 semantic
-  tables and an empty graph.
-- `node-6` read throughput is already about 124 MB/s throughout the pre-fault
-  baseline, so it is not the injected change. The frozen `03:30–03:38` write-I/O
-  window has eight samples, mean 15.9375, and maximum 64.5. The `03:38–03:41`
-  window has three samples, mean 224.5, and maximum 502.5. The largest sample is
-  timestamped `03:39:00`, 14 seconds before the official injection record; the
-  benchmark preserves both timestamps and uses the declared adjacent window.
-
-## OpenRCA 1.0 Telecom
-
-- Authority, source revision, mirror revision, timezone, and CC BY-NC 4.0
-  telemetry license are the same as OpenRCA Bank. Telecom is a distinct
-  telecom/database system with no log modality.
-- Before downloading Telecom telemetry, the benchmark ranked 51 single-root
-  half-hour windows with seed `semantic-rca-v16-openrca-telecom`. The selected
-  development case is `Telecom@2020-05-27T05:00`; official ground truth is pod
-  `docker_001` with `CPU fault` at 05:09:00 UTC+8.
-- The selected day contains application, container, middleware, node, and
-  service metrics plus traces. All source timestamps are milliseconds.
-- Trace `callType`, parent IDs, `cmdb_id`, database name, and service name are
-  retained. No source contract maps call types to OTel client/server roles or
-  declares `elapsedTime` units, so the adapter does not synthesize those facts.
-- The deployment spreadsheet mentioned by the official project FAQ is absent
-  from the pinned telemetry mirror. No reference topology is ingested or used
-  for validation.
-- The isolated no-model gate stored 49,558 unique metric samples and 888,252
-  spans with exact protocol row-count agreement. It exposes 130 semantic tables
-  and an empty graph. The adapter records 41 duplicate samples, nine conflicting
-  timestamps, and the protocol-required deterministic encoding of invalid OTLP
-  identifiers; it does not repair any source row.
-- In the untouched source, the frozen `docker_001` `container_cpu_used`
-  baseline from `05:00–05:09` has nine samples, mean 8.8889, and maximum 64. The
-  `05:13–05:20` incident window has seven samples, mean 77.2857, and maximum 83.
-  The trace latency change starts near the official record, while the direct CPU
-  shift is delayed by about four minutes. The benchmark records this lag and
-  does not move either timestamp.
-
-## AnoMod TrainTicket rejection
-
-The audit used the Zenodo artifact associated with DOI
-<https://doi.org/10.5281/zenodo.18342898> and source revision
-`fdece0e54d9a0a0d286ed16f9fe52b493be88277`.
-
-The corpus is not accepted for scored RCA:
-
-- The normal run and 12 fault runs have nearly identical API and trace error
-  distributions, including roughly 1,570 HTTP 403 responses per case and no
-  corresponding 5xx signal.
-- The target pod's CPU does not increase in the CPU-stress run.
-- Code-injection markers are absent from both trace data and application logs.
-- Application logs were collected with `kubectl logs --tail` without
-  timestamps; many records begin with stack continuations and cannot be placed
-  on a trustworthy incident timeline.
-- Java log times appear offset from traces, but the source does not declare a
-  timezone that would justify shifting them.
-
-Correcting the clock, relabeling faults, or filling missing evidence would turn
-the benchmark into an evaluation of an edited derivative. The corpus is
-therefore rejected rather than repaired.
-
-## Aegis FSE 2026 reviewer cohort
-
-- The official project page links the reviewer artifact at Zenodo record
-  `19522409` and the source dataset at Zenodo record `17105974`. The pinned
-  reviewer archive is `FSE_26_RCA_dataset_study_reviewer.tar.gz`, 91,418,171
-  bytes, with MD5 `16f0743b6feb20838f856d6e441e0c7b`.
-- The reviewer archive contains a publisher-prepared 10-case Train Ticket
-  subset. The audit reads the publisher's `index.parquet`,
-  `attributes.parquet`, `labels.parquet`, `injection.json`, and source trace
-  Parquet files. It does not use or ingest `causal_graph.json`.
-- Every trace window has complete, unique `(trace_id, span_id)` identity and
-  native service name, span kind, parent ID, duration, and status. Eight cases
-  pass the raw relational source gate. Two cases carry a publisher `.invalid`
-  marker and are excluded.
-- The raw edge builder pairs a `Client` parent with a `Server` child only when
-  `trace_id` matches and the child's `parent_span_id` equals the parent's
-  `span_id`. `request_count` counts paired server spans. `error_count` counts
-  only paired server spans whose source status is `Error`; an HTTP 5xx value
-  does not substitute for the source span status.
-- Three cases have two service labels, a structured directed injection
-  endpoint, and that exact edge in both source windows. The fixed seed
-  `semantic-rca-v1-aegis-transfer` ranks response-body replacement first,
-  method replacement second, and request delay third.
-- The first candidate is rejected because the source traces do not retain a
-  response body value, so no deterministic evidence-support predicate can
-  verify the declared random replacement. The second candidate,
-  `ts0-ts-security-service-request-replace-method-j6gpxx`, is selected before
-  any agent trajectory. Its source-declared edge is
-  `ts-security-service -> ts-order-other-service`. All 57 normal paired server
-  spans use `GET`; all 758 abnormal client spans use `GET`, while their paired
-  server spans use the declared replacement method `OPTIONS`.
-- The selected case exposes 38 normal and 30 abnormal raw service-call edges,
-  with 11,355 and 4,453 Client-to-Server witnesses. The complete edge sets and
-  SHA-256 digests come from `semantic-rca aegis-audit`. The frozen selection and
-  reduced audit summary are in `fixtures/reference/aegis-selection.json`.
-- The selected case now passes its isolated no-model ingestion gate. OTLP
-  metrics accepted 330,036 source points and stored 260,740 rows after the
-  source's 82,504 duplicates and 39,731 conflicting identities were left to
-  protocol primary-key semantics. Loki stored 50,789 logs. OTLP traces stored
-  all 105,867 spans with zero rejection or ID remapping.
-- One record in `normal_logs.parquet` is timestamped exactly at
-  `NORMAL_END == ABNORMAL_START`. The adapter preserves both its publisher file
-  assignment and timestamp, records the half-open boundary mismatch, and does
-  not move it into the abnormal source file. All trace spans remain strictly
-  inside their declared half-open windows.
-- The complete stored raw-span and Graph service-call sets contain 41 edges.
-  Their normalized SHA-256 is
-  `c468db671b63cfa480c4a12b6539e692aee6cdc94f953b62cbf116aa66f6724a` on
-  both sides. The audit uses the minimal whole-minute envelope containing both
-  publisher windows, verifies that every source span remains inside the
-  original half-open envelope, and applies the Graph implementation's
-  client-anchored `-5m/+1h` server scan and join bounds.
-- Stored telemetry reproduces the frozen mechanism evidence exactly: 57 normal
-  paired Server `GET` spans, 758 abnormal Client `GET` spans, and 758 abnormal
-  paired Server `OPTIONS` spans on the declared edge. The evaluator-side fixture
-  The v24 scorer froze this predicate, the
-  directed two-service answer, accepted method-replacement labels, and the
-  canonical API runner contract. The agent-facing case exposes neither the
-  source case name nor the source fault taxonomy. Raw SQL retains the publisher
-  half-open window. Agent-facing Semantic Graph queries use the exact audited
-  whole-minute envelope required by `observed_at` binning. The protocol v24
-  `deepseek-v4-flash` pilot completed all nine cells with no runner error or budget exhaustion,
-  but none met the joint diagnosis and evidence predicate. Its trajectories informed the generic
-  protocol v25 hypothesis-triage prompt, so this case is development rather than a fresh
-  measurement case under v25. DeepSeek context caching is automatic. The sanitized development
-  result is tracked at `artifacts/development/aegis-transfer-v24-deepseek.json`; it contains only
-  normalized aggregates, parsed predictions, scoring outputs, and private-input hashes.
-- Protocol v25 consumes the first and only candidate left in the original frozen
-  `unconsumed_candidates` list:
-  `ts8-ts-route-plan-service-request-delay-5dmjfm`. This is a sequential cohort extension, not a
-  replacement selected from model behavior. Its opaque agent ID is `aegis-transfer-002`; its
-  source-declared edge is `ts-route-plan-service -> ts-travel2-service`. The publisher declares a
-  3.07-second delay on `POST /api/v1/travel2service/trips/left`.
-- The fresh case's isolated production-protocol replay accepted all 271,100 metric points, 42,947
-  logs, and 80,312 spans with zero protocol rejection and zero trace/span ID remapping. GreptimeDB
-  stored 231,580 metric rows after the source's duplicate/conflicting primary-key identities,
-  42,947 logs, and all 80,312 spans.
-- The complete combined-window raw and Graph edge sets each contain 41 edges and have the same
-  normalized SHA-256
-  `a251c201c117d583c6f50e243c9626e5f9105022ae5424726b1284d809c13c33`.
-  The non-minute source window `[1753014770, 1753015249)` maps to the minimal Graph envelope
-  `[1753014720, 1753015260)`; the source audit proves that this transformation adds no source span.
-- The v25 duration predicate was not source-faithful. The publisher injects delay between the
-  client and paired server start, so the correct observable is
-  `server.timestamp - client.timestamp`, not `server.duration_nano`. Recomputed source evidence
-  has 37 normal pairs with start gaps from -1,580,610 ns to 18,958,433 ns and zero observations at
-  or above 3.07 seconds. All 25 abnormal pairs are at or above the threshold, from 3,070,537,663 ns
-  to 3,111,430,672 ns.
-- Protocol v25 completed its frozen 27-cell three-model execution without runner errors or budget
-  exhaustion. Its measurement interpretation is invalid because the scorer used the wrong
-  observable and hidden exact-output contracts. The runs are retained as development evidence;
-  their zero eligible pairs are not a model-quality or semantic-layer result.
-- The v26 calibration cycle bound the corrected source predicate to the same consumed case with
-  `case_role=development` and to the exact parent v25 manifest bytes. Its scorer froze the
-  corrected no-model oracle. It scores a structured dependency edge and global
-  `call_path_delay` mechanism, routes citations by claim type, and accepts equivalent start-gap
-  threshold proofs without requiring exact source counts or a prescribed SQL shape. SQL evidence
-  must still prove the exact operation, service identities, Client/Server roles, trace/parent
-  pairing, ordered timestamp subtraction, and complete half-open outer window.
-- The v26 calibration completed nine `deepseek-v4-flash` cells with no runner error or budget
-  exhaustion. One Semantic Graph run produced the correct structured diagnosis, but none executed
-  a complete Client/Server start-gap transition proof, so the calibration yielded no eligible
-  efficiency pair. Protocol v27 copies the current development fixtures under new bindings without
-  changing the evidence semantics.
-- `artifacts/development/aegis-transfer-v24-deepseek.json` remains a historical development record.
-  Superseded development fixtures are not part of the current runtime.
-- The fresh v27 selection preserves the trajectory-blind v26 selection and recomputes eligibility
-  before agent execution over graph-eligible cases whose source predicate is also supported end to
-  end by the transfer loader, stored oracle, and scorer. That support surface contains the
-  Client-to-Server start-gap and JVM-exception
-  predicates; source-observable restart and memory-pressure cases are not admitted without a
-  matching transfer pipeline. After excluding the exact v24 and v25 parent manifests, the only
-  eligible unconsumed case is `ts2-ts-train-service-exception-plrfk2`, exposed to the agent only as
-  `aegis-transfer-003`. Its source ground truth is the single component `ts-train-service`; the
-  adapter does not invent a dependency edge. This consumes the last candidate under the frozen v27
-  rule, so another fresh transfer measurement requires a new pinned cohort or a separately frozen
-  end-to-end mechanism expansion.
-- The v27 source predicate uses the publisher-declared `retrieveByName` injection point. Stored
-  telemetry has zero matching Error spans and zero exception logs in the normal window, then 1,981
-  of each in the abnormal window. The deterministic scorer accepts equivalent complete-window
-  aggregates, split trace/log aggregates, or complete raw rows. It rejects wrong service,
-  operation, source span status, log predicate, narrowed window, identity cherry-picking, `LIMIT`,
-  hard-coded aggregate aliases, filters neutralized by `OR` or `NOT`, predicates detached into a
-  nested query, and aggregate period labels not derived from the source timestamp. The replay keeps
-  exact source values and compares trace and log service distributions independently. Its no-model
-  gate proves that ASCII case normalization is collision free for `service_name`, `span_kind`, and
-  `span_status_code`; the scorer therefore accepts semantically equivalent `LOWER` or `UPPER`
-  predicates while still rejecting wrong literals or predicates that broaden the source set.
-- The normal/abnormal boundary is not minute-aligned. Its shared `observed_at` minute contains 7,235
-  normal and 122 abnormal Client spans, so the minute-binned Graph cannot represent the two source
-  periods separately. The audit first proves each stored period's complete raw edge set equals its
-  source edge set, then compares the complete raw and Graph edge sets over the contiguous union.
-  The union has 40 edges, and both sides have SHA-256
-  `adde43389704b978531ae025cd478907a4eb0c7be473f361b746c96606d07d45`.
-- The v28 development protocol froze 16 API cells over Raw
-  and GreptimeDB Semantic Graph for `deepseek-v4-pro`, `claude-sonnet-5`,
-  `claude-opus-4-8`, and `gpt-5.6-sol`. It reuses the trajectory-blind v27 selection while binding
-  the v28 scorer and runner surface. The two independent final source
-  audits have the same semantic hash,
-  `6ee4f3c43dfffca8e63195f2d614a70be63b75663a9a54a1c03a44c3b9d38428`. Preflight does not
-  authorize or execute any provider call.
-- The v29 development cycle reclassified case 003 as a
-  development calibration case because its v28 trajectory caused the diagnosis-contract change.
-  Component scope now binds `causal_component`; dependency-edge scope binds both directed edge
-  endpoints. SQL returns 200 rows by default, allows an explicit per-query limit up to 1,000, and
-  rejects truncated final citations for repair. V29 does not supply fresh measurement evidence.
-- The two v29 OpenAI development cells exposed a query-recipe false negative. The Raw trajectory
-  cited a complete `STATUS_CODE_ERROR` transition at the selected operation and a complete grouped
-  severe-log result containing 1,981 `NullPointerException` records. The scorer rejected both
-  because the query split at the first observed error rather than the hidden intervention time and
-  returned the exception signature instead of filtering by it. The Graph trajectory cited the
-  correct component and operation but no exception logs. Protocol v30 accepts the Raw claim and
-  continues to reject the ungrounded Graph mechanism. These shadow-score results validate scorer
-  semantics only; they do not rewrite the v29 development report.
-- The v30 internal protocol fixture bound the claim-grounding contract in `SCORING.md`; current
-  runtime code and fixtures do not retain that development cycle. The source oracle remains 0/0
-  normal to 1,981/1,981 abnormal. Agent
-  evidence may use a telemetry-derived onset and noncanonical counts. Baseline absence still
-  requires complete coverage, OTel Error status cannot be replaced by HTTP 5xx, and an exception
-  signature must derive from returned log data. Entity existence and ordinary calls edges remain
-  navigation evidence and cannot independently ground the causal locus.
-- A two-cell v30 `gpt-5.6-sol` development calibration ran one Raw/Graph pair. Both trajectories
-  diagnosed the correct component, operation, and local `NullPointerException`, with valid
-  citations and no runner, budget, or SQL failure. Their initial evaluations exposed equivalent
-  result shapes missing from the scorer: status-grouped trace counts, single-row conditional
-  period counts, multi-service aggregates with projected identities, and a missing zero-period row
-  in a complete grouped result. Scorer revision `aegis-transfer-jvm-exception-v5` accepts those
-  forms while retaining the source-status, complete-window, lineage, and non-truncation checks.
-  Deterministic rescoring makes both cells auditable completions. Because these trajectories shaped
-  the scorer, they remain development calibration rather than measurement evidence.
-- Protocol v31 expands the source-observable eligibility gate with exact service/container identity
-  for restart and memory-pressure metrics. The fresh ranked candidates are the `ts-auth-service`
-  `PodFailure` case and the `ts-order-service` memory-stress case. The frozen seed selects the former
-  as `aegis-transfer-004`; no trajectory from that source case influenced the prompt or scorer.
-- The selected source contains 24 `k8s.container.restarts` samples at zero in the normal window and
-  24 samples at one in the abnormal window under
-  `attr.k8s.container.name=ts-auth-service`. The publisher pod label and observed telemetry pod name
-  differ. The selection and stored oracle preserve that mismatch and bind the mechanism to the exact
-  source container identity instead of repairing the pod label.
-- Production-protocol replay accepts 281,432 metric points, 35,237 log records, and 55,065 trace
-  spans with zero protocol rejection and zero trace/span ID remapping. Metric primary-key semantics
-  represent 241,131 stored rows and record 41,263 duplicate source rows and 17,955 conflicting
-  source identities. Stored restart evidence exactly matches the source oracle.
-- The non-minute boundary shares one Graph minute across both source periods, with 6,630 normal and
-  178 abnormal Client spans in that bin. Period-specific Graph comparison is therefore not
-  representable. The audit independently matches each stored raw period to its source edge set,
-  then compares the contiguous raw and Graph union. Both normalized sets contain 43 distinct edges and have
-  SHA-256 `2b6ddb0349b41cb1864f817a151c6123a3dd33506b5775080db26fce3c85477c`.
-- The v31 scorer accepts complete aggregates, split normal/abnormal aggregates, and complete raw
-  metric rows. It requires source metric and identity lineage, complete time coverage, a zero
-  baseline, and at least two abnormal restart observations whose values are each at least one. It
-  rejects pod or value cherry-picking, wrong metric or workload, incomplete windows, limits,
-  truncation, and hard-coded results. The six-model Raw/Graph protocol has 24 cells. GLM uses
-  BigModel China Chat Completions;
-  Qwen uses a runtime-supplied China (Beijing) workspace Responses endpoint without publishing the
-  tenant hostname. The Claude roster is `claude-opus-5` and `claude-fable-5`. All models use the
-  same 16,384-token combined output limit and explicitly bind the provider's documented default
-  reasoning level. Provider-free source, scorer, protocol, and preflight gates pass. All 24 v31
-  provider cells completed without runner errors or budget exhaustion. All diagnoses matched the
-  frozen component and mechanism; one Graph run covered both required evidence claims, leaving no
-  jointly eligible Raw/Graph pair for an end-to-end efficiency estimate.
-
-## OpenRCA 2.0 ops-lite
-
-- Paper: <https://arxiv.org/abs/2606.27154>.
-- Public artifact: <https://huggingface.co/datasets/anon-ops/ops-lite>, pinned at
-  `9ac09981c08ab02a0b923eab7830d778934851a8`.
-- Provenance and license status: the artifact matches the paper's anonymized
-  500-case submission package, but the paper does not link this repository and
-  says an archival public release will follow acceptance. The dataset card says
-  Apache-2.0 while the paper says CC-BY-SA 4.0 for the dataset. Pinning the
-  revision makes bytes reproducible but does not resolve either issue.
-
-### Fresh v32 end-to-end cohort
-
-`fixtures/reference/openrca2-transfer-v32-selection.json` freezes ten measurement cases before
-their agent trajectories were observed. Deterministic source ranking follows mechanism and system
-quotas after excluding all cases used by earlier development work. The selected strata are four
-workload restarts, three call-path delays, two CPU-saturation cases, and one memory-pressure case.
-The agent sees only `semantic-rca-transfer-001` through `semantic-rca-transfer-010`.
-
-| Opaque ID | System | Mechanism | Source-derived causal locus |
+| Opaque ID | System | Mechanism | Causal target |
 | --- | --- | --- | --- |
-| `semantic-rca-transfer-001` | Hotel Reservation | workload restart | component `user` |
-| `semantic-rca-transfer-002` | Hotel Reservation | workload restart | component `reservation` |
-| `semantic-rca-transfer-003` | Hotel Reservation | workload restart | component `user` |
-| `semantic-rca-transfer-004` | OpenTelemetry Demo | workload restart | component `product-catalog` |
-| `semantic-rca-transfer-005` | Hotel Reservation | call-path delay | edge `search -> rate` |
-| `semantic-rca-transfer-006` | Hotel Reservation | call-path delay | edge `search -> rate` |
-| `semantic-rca-transfer-007` | OpenTelemetry Demo | call-path delay | edge `shipping -> quote` |
-| `semantic-rca-transfer-008` | Hotel Reservation | CPU saturation | component `search` |
-| `semantic-rca-transfer-009` | Hotel Reservation | CPU saturation | component `reservation` |
-| `semantic-rca-transfer-010` | Hotel Reservation | memory pressure | component `geo` |
+| `001` | Hotel Reservation | Workload restart | `user` |
+| `002` | Hotel Reservation | Workload restart | `reservation` |
+| `003` | Hotel Reservation | Workload restart | `user` |
+| `004` | OpenTelemetry Demo | Workload restart | `product-catalog` |
+| `005` | Hotel Reservation | Call-path delay | `search -> rate` |
+| `006` | Hotel Reservation | Call-path delay | `search -> rate` |
+| `007` | OpenTelemetry Demo | Call-path delay | `shipping -> quote` |
+| `008` | Hotel Reservation | CPU saturation | `search` |
+| `009` | Hotel Reservation | CPU saturation | `reservation` |
+| `010` | Hotel Reservation | Memory pressure | `geo` |
 
-The frozen manifest records every ranked candidate, trajectory exclusion, source-gate rejection,
-selected source file hash, normal and abnormal half-open window, exact source identity, mechanism
-threshold, source aggregate, and source-proven identity facts. A constant namespace is recorded as
-a scope-preserving predicate. A pod is recorded as identity-equivalent only when every selected
-container row has that pod and every row for that pod has the selected container. Every exclusion
-must name a source-manifest case; an unknown name fails selection
-audit instead of silently leaving a consumed case eligible. The loader reads metrics, logs, traces, injection metadata,
-environment metadata, manifest, and conclusion labels for audit and scoring. It never reads or
-ingests a reference causal graph. Agent input does not contain the source case name, injection
-label, conclusion, threshold, or source aggregate.
+The formal agent sees the opaque ID, incident window, schema, telemetry, and
+case-independent mechanism ontology. It does not see the source case name,
+selected mechanism, injection label, or reference causal graph.
 
-Two previously consumed development cases form the separate 24-cell pilot:
-`semantic-rca-pilot-001` is a Hotel Reservation workload restart and
-`semantic-rca-pilot-002` is an OpenTelemetry Demo call-path delay. Pilot behavior cannot change the
-ten measurement rubrics or selection. Both pilot source cases are machine-checked members of the
-measurement trajectory-exclusion set.
+### Source-faithful replay
 
-Each measurement case was replayed twice into a new exclusive GreptimeDB release instance. Both
-passes produced identical per-case source-semantic hashes. All ten runs accepted the pinned source
-and protocol row counts with zero trace/span remapping, reconstructed the complete calls edge set
-from stored Client/Server parent-child spans, matched that normalized set and counts exactly to the
-Semantic Graph, and matched the frozen mechanism aggregate on stored telemetry. These are
-provider-free gates; no v32 measurement model cell has run.
+Each formal case uses a new release-mode GreptimeDB process, loopback port, data
+directory, and database. The adapter replays:
 
-- `otel-demo3-shipping-delay-m6fhpx` is retained only as a development audit.
-  Its manifest names `shipping` as the root while `injection.json` lists both
-  `shipping` and `quote` as ground-truth services. The previous single-component
-  scorer therefore had no valid exact-label contract for it.
-- Protocol v14 selects `hs1-geo-pod-failure-drdmjj` by the Hotel Reservation
-  hash rule in `PLAN.md`. `hs10-geo-memory-exhaustion-pmtmcp` ranked first but
-  was rejected because its conclusion contains no observable alert. The accepted
-  case passed the manifest/injection root agreement gate and has contiguous
-  five-minute normal and abnormal windows.
-- The selected case contains metrics, logs, and traces in both normal and
-  abnormal windows.
-- The trace artifact contains native service names, trace/span IDs, parent IDs,
-  span kinds, status codes, HTTP attributes, and nanosecond timestamps and
-  durations. The adapter does not ingest the reference causal graph.
-- Metrics retain their source Gauge, Sum, and Histogram group. The artifact does
-  not publish Sum temporality or monotonicity, Histogram bucket boundaries, or
-  whether each `attr.*` column was originally a resource or data-point
-  attribute. The adapter records these losses, uses OTLP's unspecified
-  temporality and the required `is_monotonic=false` placeholder, represents a
-  Histogram with one exhaustive `+Inf` bucket, and keeps `attr.*` as data-point
-  attributes. This means Sum subtype metadata is not suitable for scoring.
-- The processed metrics omit dimensions needed to distinguish many points.
-  There are 98,017 source points, 52,587 unique identities under the published
-  columns, and 5,291 identities with conflicting values. The adapter adds no
-  synthetic label; GreptimeDB primary-key behavior remains part of the measured
-  ingestion result.
+- metrics through OpenTelemetry Protocol (OTLP);
+- logs through Loki;
+- traces through OTLP.
 
-The accepted Hotel Reservation case contains 46,958 metric points, 31,684 logs,
-and 36,082 spans. Protocol storage produced 39,869 metric rows after primary-key
-semantics; 1,947 published metric identities have conflicting values. In a fresh
-exclusive instance it exposes 39 semantic tables, nine service entities, and
-eight witnessed service-call edges.
-The audited OTel Demo development case remains useful evidence that native traces
-can produce service-call edges, but it is not a scored measurement case.
+Trace replay preserves trace ID, span ID, parent span ID, service identity,
+Client/Server role, source status, timestamp, duration, HTTP attributes, and
+source operation. It does not infer topology, repair identity, synthesize span
+roles, or convert HTTP 5xx into OpenTelemetry `STATUS_CODE_ERROR`.
 
-## Amazon PetShop rejection
+The audit records source, protocol, and stored row counts; rejected rows;
+duplicate and conflicting metric identities; protocol representation losses;
+and identifier remapping. Unexpected service, trace, or span identity changes
+fail the audit.
 
-Amazon Science's PetShop dataset is published with the CLeaR 2024 paper at
-<https://proceedings.mlr.press/v236/hardt24a.html>. The source was audited at
-revision `2e96f937c4c044b8b4aad03217592cd52e66db5d`.
+### Raw-span and Graph equality
 
-PetShop is authoritative for component-level causal RCA, but it does not fit
-this benchmark's incident contract:
+The provider-free preflight independently reconstructs every `calls` edge from
+stored trace rows:
 
-- each fault file has only five metric samples at five-minute intervals;
-- the normal baseline is stored in a separate run months away from the fault;
-- ground truth identifies a root node but leaves the root metric null; and
-- a fault mechanism would have to be inferred from reproduction shell commands.
+- parent kind is `SPAN_KIND_CLIENT`;
+- child kind is `SPAN_KIND_SERVER`;
+- trace IDs match;
+- `child.parent_span_id = parent.span_id`;
+- service identity comes from stored source fields;
+- request count counts paired Server spans;
+- error count counts Server spans with `STATUS_CODE_ERROR`.
 
-Using it would change the task to component ranking over sparse snapshots and
-would require a hand-authored mechanism label. It is rejected rather than
-adapted.
+It compares the complete normalized edge set with
+`greptime_private.semantic_relationships`, including source and destination
+types and IDs, relationship type, provenance, request count, and error count.
+Hash equality is recorded but never substitutes for full row equality.
+
+OpenRCA2 windows are not necessarily minute-aligned. The audit records the
+source half-open windows, minimal whole-minute Graph envelope, widened
+server-side scan, boundary-bin strategy, source boundary observations, complete
+normalized rows, and both hashes. All ten published cases passed this gate in
+two independent preflights with identical source-semantic hashes.
+
+### Frozen mechanism evidence
+
+The source and stored-telemetry audits bind one measurable transition per case:
+
+- workload restart: restart counter is below `1` in the complete baseline and
+  at least two anomalous observations are at or above `1`;
+- call-path delay: paired Server start minus Client start is below `500 ms` in
+  the complete baseline and at least two anomalous pairs cross the threshold;
+- CPU saturation: container CPU is below `0.5` in the complete baseline and at
+  least two anomalous observations cross it;
+- memory pressure: working set is below `512 MiB` in the complete baseline and
+  at least two anomalous observations cross it.
+
+The canonical query is an audit oracle, not an agent query recipe. The scorer
+accepts semantically equivalent evidence when its SQL establishes the required
+source, identity, time scope, lineage, and result completeness. See
+[SCORING.md](SCORING.md).
+
+## Other adapters
+
+RCA100, RCAEval RE2-OB, Aegis, OpenRCA Market, and OpenRCA Telecom adapters
+remain available for smoke tests and source-fidelity audits. They are not part
+of the 2026 report unless listed in the release cohort. Run
+`uv run semantic-rca --help` for their commands.

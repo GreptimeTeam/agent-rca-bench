@@ -266,8 +266,6 @@ def test_openrca2_transfer_cli_separates_no_model_and_paid_commands() -> None:
     preflight = _parser().parse_args(
         [
             "transfer-preflight",
-            "--phase",
-            "pilot",
             "--run-root",
             "runs",
             "--output",

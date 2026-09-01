@@ -48,8 +48,8 @@ def benchmark_protocol() -> dict[str, object]:
         "semantic_context": "benchmark-preflight-v1",
         "sql_contract": "greptimedb-read-only-default-200-explicit-1000-v2",
         "citation": "typed-claim-successful-nonmetadata-nontruncated-query-result-v5",
-        "evaluator": "deterministic-headline-with-nonroster-semantic-sensitivity-v26",
-        "primary_metrics": "deterministic-case-median-headline-adjudicated-sensitivity-v6",
+        "evaluator": "diagnosis-and-execution-valid-citation-headline-v28",
+        "primary_metrics": "case-median-end-to-end-resource-headline-v7",
         "repetition_schedule": "seeded-rotating-order-with-position-v2",
         "tool_budget": "shared-visible-cap-api-turn-limit-subscription-timeout-v5",
         "case_role": "explicit-development-or-measurement-v1",
@@ -93,10 +93,10 @@ def discovery_protocol() -> dict[str, object]:
 
 def graph_protocol() -> dict[str, object]:
     return {
-        "version": 5,
+        "version": 6,
         "treatments": ["raw", "semantic_graph"],
         "task": "direct-callee-max-error-red-evidence-v1",
-        "scorer": "intention-to-treat-canonical-edge-set-v3",
+        "scorer": "intention-to-treat-canonical-edge-set-v4",
         "prompt": "dual-surface-canonical-edge-evidence-v2",
         "window": "minute-aligned-half-open-v1",
         "tool_budget": 12,

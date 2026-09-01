@@ -21,7 +21,7 @@ from semantic_rca_bench.transfer_protocol import (
     load_transfer_protocol,
 )
 
-SUITE_PROTOCOL_REVISION = "semantic-rca-five-model-suite-v12"
+SUITE_PROTOCOL_REVISION = "semantic-rca-five-model-suite-v15"
 DEFAULT_SUITE_PROTOCOL_FIXTURE = Path("fixtures/reference/semantic-rca-v32-five-model-suite.json")
 
 
@@ -106,7 +106,7 @@ def load_formal_suite_protocol(
         fixture.transfer_protocol_fixture,
         fixture.transfer_protocol_fixture_sha256,
     )
-    transfer, transfer_selection, _ = load_transfer_protocol(transfer_path)
+    transfer, transfer_selection = load_transfer_protocol(transfer_path)
     if transfer.benchmark_protocol_version != fixture.benchmark_protocol_version:
         raise ValueError("formal suite and transfer benchmark protocols disagree")
     _bound_path(

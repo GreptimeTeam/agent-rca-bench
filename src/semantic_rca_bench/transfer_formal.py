@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections import Counter, defaultdict
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 from semantic_rca_bench.agent import run_agent
 from semantic_rca_bench.contracts import (
@@ -40,11 +38,9 @@ from semantic_rca_bench.inspect import (
 from semantic_rca_bench.protocol import benchmark_protocol
 from semantic_rca_bench.report import MODEL_PRICING
 from semantic_rca_bench.transfer_protocol import (
-    TransferPilotFixture,
     TransferProtocolFixture,
     TransferSelectionFixture,
     formal_schedule,
-    pilot_schedule,
     sha256_file,
 )
 from semantic_rca_bench.transfer_scorer import evaluate_transfer_run
@@ -188,10 +184,8 @@ def prepare_transfer_environment(
 def build_preflight_report(
     protocol: TransferProtocolFixture,
     protocol_path: Path,
-    selection: TransferSelectionFixture | TransferPilotFixture,
+    selection: TransferSelectionFixture,
     source_audits: Sequence[dict[str, object]],
-    *,
-    phase: Literal["pilot", "measurement"],
 ) -> dict[str, object]:
     specs = list(selection.selected_cases)
     if [audit.get("case", {}).get("opaque_case_id") for audit in source_audits] != [
@@ -202,21 +196,12 @@ def build_preflight_report(
         gates = audit.get("no_model_gates")
         if not isinstance(gates, dict) or gates.get("all_passed") is not True:
             raise ValueError("transfer preflight contains a failed no-model audit")
-    schedule = (
-        pilot_schedule(protocol, selection)
-        if phase == "pilot" and isinstance(selection, TransferPilotFixture)
-        else formal_schedule(protocol, selection)
-        if phase == "measurement" and isinstance(selection, TransferSelectionFixture)
-        else None
-    )
-    if schedule is None:
-        raise ValueError("transfer preflight phase and selection role disagree")
-    execution_models = protocol.pilot.models if phase == "pilot" else protocol.models
-    pricing = {model.model: dict(MODEL_PRICING[model.model]) for model in execution_models}
+    schedule = formal_schedule(protocol, selection)
+    pricing = {model.model: dict(MODEL_PRICING[model.model]) for model in protocol.models}
     report = {
         "report_schema_version": REPORT_SCHEMA_VERSION,
         "mode": REPORT_MODE,
-        "phase": phase,
+        "phase": "measurement",
         "publication_status": "private raw run artifact; contains provider responses",
         "benchmark_protocol": benchmark_protocol(),
         "formal_protocol": json.loads(protocol_path.read_text()),
@@ -234,7 +219,6 @@ def build_preflight_report(
         "schedule": schedule,
         "runs": [],
         "execution": _execution_summary([], len(schedule)),
-        "pilot_gate": None,
         "authorization": {
             "paid_api_required": True,
             "reusable_confirmation_stored": False,
@@ -250,7 +234,7 @@ def execute_case_runs(
     report: dict[str, object],
     protocol: TransferProtocolFixture,
     protocol_path: Path,
-    selection: TransferSelectionFixture | TransferPilotFixture,
+    selection: TransferSelectionFixture,
     prepared: PreparedTransferEnvironment,
     *,
     paid_api_confirmed: bool,
@@ -261,8 +245,6 @@ def execute_case_runs(
     validate_private_report(report, protocol, protocol_path, selection)
     if paid_api_confirmed is not True:
         raise ValueError("transfer paid API execution has not been explicitly confirmed")
-    if report["phase"] == "measurement" and report.get("pilot_gate") is None:
-        raise ValueError("transfer measurement requires a completed pilot diagnostic")
     if max_new_runs is not None and max_new_runs < 1:
         raise ValueError("max_new_runs must be positive")
     expected_hash = _mapping(_mapping(report, "bindings"), "source_semantic_sha256").get(
@@ -342,7 +324,7 @@ def validate_private_report(
     report: Mapping[str, object],
     protocol: TransferProtocolFixture,
     protocol_path: Path,
-    selection: TransferSelectionFixture | TransferPilotFixture,
+    selection: TransferSelectionFixture,
     *,
     require_complete: bool = False,
 ) -> None:
@@ -353,16 +335,9 @@ def validate_private_report(
         or report.get("formal_protocol") != json.loads(protocol_path.read_text())
     ):
         raise ValueError("unsupported or drifted transfer report")
-    phase = report.get("phase")
-    expected_schedule = (
-        pilot_schedule(protocol, selection)
-        if phase == "pilot" and isinstance(selection, TransferPilotFixture)
-        else formal_schedule(protocol, selection)
-        if phase == "measurement" and isinstance(selection, TransferSelectionFixture)
-        else None
-    )
-    if expected_schedule is None:
-        raise ValueError("transfer report phase and selection disagree")
+    if report.get("phase") != "measurement":
+        raise ValueError("transfer report phase drifted")
+    expected_schedule = formal_schedule(protocol, selection)
     if report.get("authorization") != {
         "paid_api_required": True,
         "reusable_confirmation_stored": False,
@@ -415,106 +390,8 @@ def validate_private_report(
             raise ValueError("transfer completed cell source binding drifted")
     if report.get("execution") != _execution_summary(runs, len(expected_schedule)):
         raise ValueError("transfer execution summary drifted")
-    gate = report.get("pilot_gate")
-    if phase == "pilot" and gate is not None:
-        raise ValueError("development pilot report must not contain a pilot gate")
-    if phase == "measurement" and gate is not None:
-        _validate_pilot_gate(gate, protocol)
     if require_complete and not _mapping(report, "execution").get("complete"):
         raise ValueError("transfer report is incomplete")
-    if require_complete and phase == "measurement" and gate is None:
-        raise ValueError("complete measurement report lacks its pilot diagnostic")
-
-
-def pilot_gate(
-    report: Mapping[str, object], protocol: TransferProtocolFixture
-) -> dict[str, object]:
-    execution = _mapping(report, "execution")
-    if report.get("phase") != "pilot" or execution.get("complete") is not True:
-        raise ValueError("pilot gate requires a complete pilot report")
-    runs = _mapping_list(report, "runs")
-    pairs: dict[tuple[str, str, int], dict[str, Mapping[str, object]]] = defaultdict(dict)
-    for item in runs:
-        evaluation = _mapping(item, "evaluation")
-        pairs[(str(item["case_id"]), str(item["model"]), int(item["repetition"]))][
-            str(item["visibility"])
-        ] = evaluation
-    eligible = {
-        key: values.get("raw", {}).get("efficiency_eligible") is True
-        and values.get("semantic_graph", {}).get("efficiency_eligible") is True
-        for key, values in pairs.items()
-    }
-    asymmetric = [
-        key
-        for key, values in pairs.items()
-        if (values.get("raw", {}).get("efficiency_eligible") is True)
-        != (values.get("semantic_graph", {}).get("efficiency_eligible") is True)
-    ]
-    case_ids = sorted({key[0] for key in pairs})
-    by_case_counts = Counter(case for (case, _, _), passed in eligible.items() if passed)
-    by_case = {case: by_case_counts[case] for case in case_ids}
-    gates = {
-        "complete": len(runs) == protocol.pilot.expected_cells,
-        "minimum_eligible_pairs": sum(eligible.values()) >= protocol.pilot.minimum_eligible_pairs,
-        "minimum_eligible_pairs_per_case": all(
-            by_case[case] >= protocol.pilot.minimum_eligible_pairs_per_case for case in case_ids
-        ),
-    }
-    gates["all_passed"] = all(gates.values())
-    return {
-        "pair_results": [
-            {
-                "case_id": case,
-                "model": model,
-                "repetition": repetition,
-                "raw_eligible": pairs[(case, model, repetition)]
-                .get("raw", {})
-                .get("efficiency_eligible")
-                is True,
-                "semantic_graph_eligible": pairs[(case, model, repetition)]
-                .get("semantic_graph", {})
-                .get("efficiency_eligible")
-                is True,
-                "raw_failure_reasons": list(
-                    pairs[(case, model, repetition)].get("raw", {}).get("failure_reasons", [])
-                ),
-                "semantic_graph_failure_reasons": list(
-                    pairs[(case, model, repetition)]
-                    .get("semantic_graph", {})
-                    .get("failure_reasons", [])
-                ),
-                "pair_eligible": passed,
-            }
-            for (case, model, repetition), passed in sorted(eligible.items())
-        ],
-        "eligible_pairs": sum(eligible.values()),
-        "eligible_pairs_by_case": by_case,
-        "asymmetric_pairs": [list(key) for key in sorted(asymmetric)],
-        "eligibility_failures_by_treatment": {
-            visibility: dict(
-                sorted(
-                    Counter(
-                        reason
-                        for values in pairs.values()
-                        if values.get(visibility, {}).get("efficiency_eligible") is not True
-                        for reason in values.get(visibility, {}).get("failure_reasons", [])
-                    ).items()
-                )
-            )
-            for visibility in ("raw", "semantic_graph")
-        },
-        "gates": gates,
-        "pilot_report_semantic_sha256": canonical_sha256(_stable(report)),
-    }
-
-
-def bind_pilot_gate(
-    measurement_report: dict[str, object],
-    pilot_report: Mapping[str, object],
-    protocol: TransferProtocolFixture,
-) -> None:
-    gate = pilot_gate(pilot_report, protocol)
-    measurement_report["pilot_gate"] = gate
 
 
 def source_semantic_sha256(audit: Mapping[str, object]) -> str:
@@ -581,89 +458,6 @@ def _stable(value: object) -> object:
     return value
 
 
-def _validate_pilot_gate(value: object, protocol: TransferProtocolFixture) -> None:
-    if not isinstance(value, Mapping):
-        raise ValueError("measurement pilot gate is malformed")
-    pair_results = value.get("pair_results")
-    if not isinstance(pair_results, list) or not all(
-        isinstance(item, Mapping) for item in pair_results
-    ):
-        raise ValueError("measurement pilot pair results are malformed")
-    pilot_models = {model.model for model in protocol.pilot.models}
-    expected_pairs = protocol.pilot.cases * len(pilot_models) * protocol.pilot.repetitions
-    if len(pair_results) != expected_pairs:
-        raise ValueError("measurement pilot pair count drifted")
-    keys = []
-    eligible_by_case: Counter[str] = Counter()
-    asymmetric = []
-    failures: dict[str, Counter[str]] = {
-        "raw": Counter(),
-        "semantic_graph": Counter(),
-    }
-    eligible_count = 0
-    for item in pair_results:
-        case_id = item.get("case_id")
-        model = item.get("model")
-        repetition = item.get("repetition")
-        if (
-            not isinstance(case_id, str)
-            or model not in pilot_models
-            or _strict_int(repetition) is None
-            or not 0 <= int(repetition) < protocol.pilot.repetitions
-            or not isinstance(item.get("raw_eligible"), bool)
-            or not isinstance(item.get("semantic_graph_eligible"), bool)
-            or not isinstance(item.get("pair_eligible"), bool)
-            or not isinstance(item.get("raw_failure_reasons"), list)
-            or not all(isinstance(reason, str) for reason in item["raw_failure_reasons"])
-            or not isinstance(item.get("semantic_graph_failure_reasons"), list)
-            or not all(isinstance(reason, str) for reason in item["semantic_graph_failure_reasons"])
-        ):
-            raise ValueError("measurement pilot pair result is malformed")
-        key = (case_id, str(model), int(repetition))
-        keys.append(key)
-        raw = item["raw_eligible"]
-        graph = item["semantic_graph_eligible"]
-        paired = raw and graph
-        if item["pair_eligible"] is not paired:
-            raise ValueError("measurement pilot pair eligibility drifted")
-        if raw != graph:
-            asymmetric.append(key)
-        if not raw:
-            failures["raw"].update(item["raw_failure_reasons"])
-        if not graph:
-            failures["semantic_graph"].update(item["semantic_graph_failure_reasons"])
-        if paired:
-            eligible_count += 1
-            eligible_by_case[case_id] += 1
-    case_ids = sorted({key[0] for key in keys})
-    if (
-        len(set(keys)) != len(keys)
-        or len(case_ids) != protocol.pilot.cases
-        or {key[1] for key in keys} != pilot_models
-    ):
-        raise ValueError("measurement pilot pair roster drifted")
-    by_case = {case: eligible_by_case[case] for case in case_ids}
-    expected_gates = {
-        "complete": len(pair_results) == expected_pairs,
-        "minimum_eligible_pairs": eligible_count >= protocol.pilot.minimum_eligible_pairs,
-        "minimum_eligible_pairs_per_case": all(
-            by_case[case] >= protocol.pilot.minimum_eligible_pairs_per_case for case in case_ids
-        ),
-    }
-    expected_gates["all_passed"] = all(expected_gates.values())
-    if (
-        value.get("eligible_pairs") != eligible_count
-        or value.get("eligible_pairs_by_case") != by_case
-        or value.get("asymmetric_pairs") != [list(key) for key in sorted(asymmetric)]
-        or value.get("eligibility_failures_by_treatment")
-        != {visibility: dict(sorted(counter.items())) for visibility, counter in failures.items()}
-        or value.get("gates") != expected_gates
-        or not isinstance(value.get("pilot_report_semantic_sha256"), str)
-        or len(str(value["pilot_report_semantic_sha256"])) != 64
-    ):
-        raise ValueError("measurement pilot gate does not deterministically rescore")
-
-
 def _empty_before_ingest(value: Mapping[str, object]) -> bool:
     return value.get("entity_rows") == 0 and value.get("relationship_rows") == 0
 
@@ -680,7 +474,3 @@ def _mapping_list(value: Mapping[str, object], key: str) -> list[dict[str, objec
     if not isinstance(items, list) or not all(isinstance(item, Mapping) for item in items):
         raise ValueError(f"transfer report field is not an object list: {key}")
     return [dict(item) for item in items]
-
-
-def _strict_int(value: object) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
