@@ -70,33 +70,6 @@ def test_noncurrent_protocol_cannot_start_new_agent_execution() -> None:
         require_current_protocol(30)
 
 
-def test_run_accepts_subscription_runners() -> None:
-    codex = _parser().parse_args(
-        [
-            "run",
-            "--report",
-            "source.json",
-            "--runner",
-            "codex-subscription",
-            "--model",
-            "gpt-5.6-luna",
-        ]
-    )
-    claude = _parser().parse_args(
-        [
-            "run",
-            "--report",
-            "source.json",
-            "--runner",
-            "claude-subscription",
-        ]
-    )
-
-    assert codex.runner == "codex-subscription"
-    assert codex.model == "gpt-5.6-luna"
-    assert claude.runner == "claude-subscription"
-
-
 def test_case_role_defaults_to_development_and_accepts_measurement() -> None:
     default = _parser().parse_args(["run", "--report", "source.json"])
     measurement = _parser().parse_args(
@@ -123,24 +96,6 @@ def test_openrca2_smoke_defaults_to_the_frozen_measurement_case() -> None:
 
     assert args.case == "hs1-geo-pod-failure-drdmjj"
     assert str(args.cache_dir) == ".data/openrca2"
-
-
-def test_aegis_source_commands_default_to_cohort_audit() -> None:
-    audit = _parser().parse_args(
-        [
-            "aegis-audit",
-            "--cases-dir",
-            "cases",
-            "--meta-dir",
-            "meta",
-            "--output",
-            "audit.json",
-        ]
-    )
-    fetch = _parser().parse_args(["aegis-fetch", "--output", "audit.json"])
-
-    assert audit.selection is None
-    assert fetch.selection is None
 
 
 def test_formal_suite_separates_micro_preflight_from_paid_execution() -> None:
@@ -222,24 +177,20 @@ def test_rca100_requires_a_post_audit_smoke_report() -> None:
 
 
 def test_discovery_cli_freezes_balanced_two_treatment_schedule() -> None:
-    args = _parser().parse_args(
-        ["discovery-run", "--report", "source.json", "--runner", "codex-subscription"]
-    )
+    args = _parser().parse_args(["discovery-run", "--report", "source.json"])
 
     assert args.repetitions == 2
-    assert args.runner == "codex-subscription"
+    assert args.runner == "api"
     assert discovery_protocol()["treatments"] == ["raw", "semantic_graph"]
     assert discovery_protocol()["prompt"] == "case-preserving-double-quoted-identifiers-v2"
     assert "discovery_micro_benchmark" not in benchmark_protocol()
 
 
 def test_graph_cli_freezes_balanced_two_treatment_schedule() -> None:
-    args = _parser().parse_args(
-        ["graph-run", "--report", "source.json", "--runner", "codex-subscription"]
-    )
+    args = _parser().parse_args(["graph-run", "--report", "source.json"])
 
     assert args.repetitions == 2
-    assert args.runner == "codex-subscription"
+    assert args.runner == "api"
     assert graph_protocol()["treatments"] == ["raw", "semantic_graph"]
     assert "graph_micro_benchmark" not in benchmark_protocol()
 

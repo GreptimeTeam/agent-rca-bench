@@ -139,24 +139,6 @@ TOKEN_ACCOUNTING = {
         ),
         "comparability": "paired comparisons only within the same provider and runner contract",
     },
-    "codex-subscription": {
-        "scope": "the single cumulative codex exec turn.completed usage event",
-        "input_tokens": "includes cached input; cached breakdown is not persisted",
-        "cached_input": "included in input_tokens",
-        "cached_input_included_in_input_tokens": True,
-        "context": "includes Codex runner context, MCP schemas/results, and output-schema handling",
-        "output_tokens": "includes reasoning output; reasoning breakdown is not persisted",
-        "comparability": "paired comparisons only within the same Codex CLI and runner contract",
-    },
-    "claude-subscription": {
-        "scope": "Claude result usage for one CLI run",
-        "input_tokens": "input plus cache creation plus cache reads",
-        "cached_input": "included in input_tokens after runner aggregation",
-        "cached_input_included_in_input_tokens": True,
-        "context": "includes Claude runner context, MCP schemas/results, and structured output",
-        "output_tokens": "Claude result output_tokens",
-        "comparability": "paired comparisons only within the same Claude CLI and runner contract",
-    },
 }
 
 

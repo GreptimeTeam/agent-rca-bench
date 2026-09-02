@@ -1510,7 +1510,7 @@ def test_graph_relationship_query_supplies_window_scope_and_deduplication() -> N
 def test_graph_relationship_query_can_use_an_audited_minute_envelope() -> None:
     query = _semantic_graph_query(
         CaseInput(
-            case_token="aegis-transfer-001",
+            case_token="semantic-rca-transfer-001",
             time_start=1_752_918_758,
             time_end=1_752_919_238,
             alert_time=1_752_918_998,
@@ -1652,7 +1652,7 @@ def test_graph_tool_invocation_uses_gateway_window_without_changing_case_window(
             return QueryResult(query_id="provider", columns=[], rows=[], elapsed_seconds=0)
 
     case = CaseInput(
-        case_token="aegis-transfer-001",
+        case_token="semantic-rca-transfer-001",
         time_start=1_752_918_758,
         time_end=1_752_919_238,
         alert_time=1_752_918_998,

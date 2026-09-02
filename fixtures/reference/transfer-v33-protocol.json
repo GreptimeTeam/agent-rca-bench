@@ -62,8 +62,7 @@
   "paid_execution": {
     "explicit_user_approval_required_per_batch": true,
     "no_model_gates_required": true,
-    "pricing_snapshot_required_at_execution": true,
-    "subscription_fallback_allowed": false
+    "pricing_snapshot_required_at_execution": true
   },
   "parallel_runs": 1,
   "protocol_revision": "transfer-four-model-service-edge-node-v15",

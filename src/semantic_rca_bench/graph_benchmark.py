@@ -27,7 +27,6 @@ from semantic_rca_bench.contracts import (
 )
 from semantic_rca_bench.greptimedb.client import GreptimeClient
 from semantic_rca_bench.greptimedb.visibility import QueryGateway
-from semantic_rca_bench.subscription import run_structured_subscription_agent
 
 
 class GraphFixture(BaseModel):
@@ -189,56 +188,31 @@ def run_graph_agent(
     def validate_output(value: dict[str, object]) -> dict[str, object]:
         return GraphAnswer.model_validate(value).model_dump(mode="json")
 
-    if runner is AgentRunner.API:
-        if api_transport is None:
-            raise ValueError("API graph runs require an explicit transport")
-        output_tool = {
-            "name": "submit_graph_result",
-            "description": "Submit the highest-error direct callee and cited RED evidence.",
-            "input_schema": schema,
-        }
-        result = run_structured_api_agent(
-            gateway,
-            case_input,
-            visibility,
-            model=model,
-            api_transport=api_transport,
-            reasoning_effort=reasoning_effort,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            investigation_tools=tools,
-            output_tool=output_tool,
-            validate_output=validate_output,
-            max_tool_calls=max_tool_calls,
-            max_turns=max_tool_calls + 10,
-            max_output_tokens=max_output_tokens,
-        )
-        turn_limit = max_tool_calls + 10
-        turn_limit_enforced = True
-    else:
-        allowed_tools = ", ".join(sorted(str(tool["name"]) for tool in tools))
-        subscription_prompt = (
-            user_prompt
-            + "\n\nThe only MCP server is named semantic_rca. Its allowed tools for this run are: "
-            + allowed_tools
-            + ". Do not call any other MCP server or use shell, files, web search, browser, or "
-            "other tools. Return the final JSON object required by the output schema."
-        )
-        result = run_structured_subscription_agent(
-            gateway,
-            case_input,
-            visibility,
-            runner=runner,
-            model=model,
-            system_prompt=system_prompt,
-            user_prompt=subscription_prompt,
-            investigation_tools=tools,
-            output_schema=schema,
-            validate_output=validate_output,
-            max_tool_calls=max_tool_calls,
-        )
-        turn_limit = None
-        turn_limit_enforced = False
+    if api_transport is None:
+        raise ValueError("API graph runs require an explicit transport")
+    output_tool = {
+        "name": "submit_graph_result",
+        "description": "Submit the highest-error direct callee and cited RED evidence.",
+        "input_schema": schema,
+    }
+    result = run_structured_api_agent(
+        gateway,
+        case_input,
+        visibility,
+        model=model,
+        api_transport=api_transport,
+        reasoning_effort=reasoning_effort,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        investigation_tools=tools,
+        output_tool=output_tool,
+        validate_output=validate_output,
+        max_tool_calls=max_tool_calls,
+        max_turns=max_tool_calls + 10,
+        max_output_tokens=max_output_tokens,
+    )
+    turn_limit = max_tool_calls + 10
+    turn_limit_enforced = True
     answer = GraphAnswer.model_validate(result.output) if result.output is not None else None
     return GraphAgentRun(
         run_id=uuid.uuid4().hex,

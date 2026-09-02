@@ -7,8 +7,6 @@
     "fixture_binding": "source-case-matched-external-fixture-v1",
     "prompt": "case-preserving-double-quoted-identifiers-v2",
     "scorer": "current-database-qualified-cited-query-canonical-result-v2",
-    "subscription_process_timeout_seconds": 1800,
-    "subscription_turn_limit": null,
     "task": "frozen-table-localization-and-temporal-evidence-v1",
     "tool_budget": 12,
     "treatments": [
@@ -29,8 +27,6 @@
     "prompt": "dual-surface-canonical-edge-evidence-v2",
     "scorer": "intention-to-treat-canonical-edge-set-v4",
     "selection": "manifest-ranked-prior-trajectory-excluded-v1",
-    "subscription_process_timeout_seconds": 1800,
-    "subscription_turn_limit": null,
     "task": "direct-callee-max-error-red-evidence-v1",
     "tool_budget": 12,
     "treatments": [
@@ -116,6 +112,6 @@
   "protocol_revision": "semantic-rca-four-model-suite-v16",
   "runner": "api",
   "transfer_protocol_fixture": "fixtures/reference/transfer-v33-protocol.json",
-  "transfer_protocol_fixture_sha256": "5e589e4953a64688baeb926abc0e152229663154c8142b16828f97ee41a60e70",
+  "transfer_protocol_fixture_sha256": "264d23136c290d091469ebb56830286fad57cd034c16db8b222cd9f2afee9819",
   "version": 1
 }

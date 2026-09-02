@@ -24,7 +24,6 @@ from semantic_rca_bench.contracts import (
 from semantic_rca_bench.greptimedb.client import GreptimeClient
 from semantic_rca_bench.greptimedb.profile import TableProfiler
 from semantic_rca_bench.greptimedb.visibility import QueryGateway
-from semantic_rca_bench.subscription import run_structured_subscription_agent
 
 
 class DiscoveryWindow(BaseModel):
@@ -172,60 +171,31 @@ def run_discovery_agent(
     system_prompt = discovery_system_prompt()
     user_prompt = discovery_task_prompt(case_input.database, fixture, max_tool_calls)
     schema = discovery_output_schema()
-    if runner is AgentRunner.API:
-        if api_transport is None:
-            raise ValueError("API discovery runs require an explicit transport")
-        output_tool = {
-            "name": "submit_discovery_result",
-            "description": "Submit the discovered table and cited temporal evidence query.",
-            "input_schema": schema,
-        }
-        result = run_structured_api_agent(
-            gateway,
-            case_input,
-            visibility,
-            model=model,
-            api_transport=api_transport,
-            reasoning_effort=reasoning_effort,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            investigation_tools=tools,
-            output_tool=output_tool,
-            validate_output=lambda value: DiscoveryAnswer.model_validate(value).model_dump(
-                mode="json"
-            ),
-            max_tool_calls=max_tool_calls,
-            max_turns=max_tool_calls + 10,
-            max_output_tokens=max_output_tokens,
-        )
-        turn_limit = max_tool_calls + 10
-        turn_limit_enforced = True
-    else:
-        allowed_tools = ", ".join(sorted(str(tool["name"]) for tool in tools))
-        subscription_prompt = (
-            user_prompt
-            + "\n\nThe only MCP server is named semantic_rca. Its allowed tools for this run are: "
-            + allowed_tools
-            + ". Do not call any other MCP server or use shell, files, web search, browser, or "
-            "other tools. Return the final JSON object required by the output schema."
-        )
-        result = run_structured_subscription_agent(
-            gateway,
-            case_input,
-            visibility,
-            runner=runner,
-            model=model,
-            system_prompt=system_prompt,
-            user_prompt=subscription_prompt,
-            investigation_tools=tools,
-            output_schema=schema,
-            validate_output=lambda value: DiscoveryAnswer.model_validate(value).model_dump(
-                mode="json"
-            ),
-            max_tool_calls=max_tool_calls,
-        )
-        turn_limit = None
-        turn_limit_enforced = False
+    if api_transport is None:
+        raise ValueError("API discovery runs require an explicit transport")
+    output_tool = {
+        "name": "submit_discovery_result",
+        "description": "Submit the discovered table and cited temporal evidence query.",
+        "input_schema": schema,
+    }
+    result = run_structured_api_agent(
+        gateway,
+        case_input,
+        visibility,
+        model=model,
+        api_transport=api_transport,
+        reasoning_effort=reasoning_effort,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        investigation_tools=tools,
+        output_tool=output_tool,
+        validate_output=lambda value: DiscoveryAnswer.model_validate(value).model_dump(mode="json"),
+        max_tool_calls=max_tool_calls,
+        max_turns=max_tool_calls + 10,
+        max_output_tokens=max_output_tokens,
+    )
+    turn_limit = max_tool_calls + 10
+    turn_limit_enforced = True
     answer = DiscoveryAnswer.model_validate(result.output) if result.output is not None else None
     return DiscoveryAgentRun(
         run_id=uuid.uuid4().hex,

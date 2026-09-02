@@ -381,37 +381,3 @@ def test_discovery_api_runner_uses_fixed_budget_and_turn_limit(monkeypatch) -> N
     assert MARKET.target_table not in captured["user_prompt"]
     assert run.turn_limit == 22
     assert run.turn_limit_enforced
-
-
-def test_discovery_subscription_records_unenforceable_turn_limit(monkeypatch) -> None:
-    captured = {}
-
-    def fake_run(*args, **kwargs):
-        captured.update(kwargs)
-        return StructuredAgentResult(
-            output=None,
-            error="runner unavailable",
-            tool_calls=[],
-            rejected_tool_calls=[],
-            tool_calls_requested=0,
-            tool_budget_exhausted=False,
-            usage=AgentUsage(),
-            elapsed_seconds=0.1,
-            responses=[],
-        )
-
-    monkeypatch.setattr(discovery_module, "run_structured_subscription_agent", fake_run)
-
-    run = run_discovery_agent(
-        SimpleNamespace(client=SimpleNamespace(database="case_market_01")),
-        MARKET,
-        Visibility.RAW,
-        runner=AgentRunner.CODEX_SUBSCRIPTION,
-        model="test-model",
-    )
-
-    assert captured["max_tool_calls"] == 12
-    assert "The only MCP server is named semantic_rca" in captured["user_prompt"]
-    assert run.turn_limit is None
-    assert not run.turn_limit_enforced
-    assert run.error == "runner unavailable"

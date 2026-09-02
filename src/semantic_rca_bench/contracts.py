@@ -14,8 +14,6 @@ class Visibility(StrEnum):
 
 class AgentRunner(StrEnum):
     API = "api"
-    CODEX_SUBSCRIPTION = "codex-subscription"
-    CLAUDE_SUBSCRIPTION = "claude-subscription"
 
 
 class ApiTransport(StrEnum):

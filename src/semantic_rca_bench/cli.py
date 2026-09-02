@@ -22,8 +22,6 @@ from semantic_rca_bench.contracts import (
     QueryResult,
     Visibility,
 )
-from semantic_rca_bench.datasets.aegis import AegisRepository
-from semantic_rca_bench.datasets.aegis import audit_cohort as audit_aegis_cohort
 from semantic_rca_bench.datasets.openrca import (
     DATASET_REVISION as OPENRCA_DATASET_REVISION,
 )
@@ -71,16 +69,6 @@ from semantic_rca_bench.datasets.rca100 import (
     validate_ingest,
 )
 from semantic_rca_bench.datasets.rca100 import ingest_case as ingest_rca100_case
-from semantic_rca_bench.datasets.rcaeval import (
-    DATASET_REVISION as RCAEVAL_DATASET_REVISION,
-)
-from semantic_rca_bench.datasets.rcaeval import (
-    SOURCE_REVISION as RCAEVAL_SOURCE_REVISION,
-)
-from semantic_rca_bench.datasets.rcaeval import RCAEvalRepository
-from semantic_rca_bench.datasets.rcaeval import ingest_case as ingest_rcaeval_case
-from semantic_rca_bench.datasets.rcaeval import source_audit as source_audit_rcaeval
-from semantic_rca_bench.datasets.rcaeval import validate_ingest as validate_rcaeval_ingest
 from semantic_rca_bench.discovery import (
     DISCOVERY_MAX_TOOL_CALLS,
     DiscoveryAgentRun,
@@ -151,7 +139,6 @@ from semantic_rca_bench.report import (
     case_context,
     render_reports,
 )
-from semantic_rca_bench.subscription import run_subscription_agent
 from semantic_rca_bench.transfer_adjudication import build_semantic_adjudication_queue
 from semantic_rca_bench.transfer_formal import (
     TransferEnvironmentConfig as OpenRCA2TransferEnvironmentConfig,
@@ -240,23 +227,6 @@ def _parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser("doctor")
     doctor.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
-
-    aegis_audit = subparsers.add_parser("aegis-audit")
-    aegis_audit.add_argument("--cases-dir", type=Path, required=True)
-    aegis_audit.add_argument("--meta-dir", type=Path, required=True)
-    aegis_audit.add_argument(
-        "--selection",
-        type=Path,
-    )
-    aegis_audit.add_argument("--output", type=Path, required=True)
-
-    aegis_fetch = subparsers.add_parser("aegis-fetch")
-    aegis_fetch.add_argument("--cache-dir", type=Path, default=Path(".data/aegis"))
-    aegis_fetch.add_argument(
-        "--selection",
-        type=Path,
-    )
-    aegis_fetch.add_argument("--output", type=Path, required=True)
 
     suite_preflight = subparsers.add_parser("formal-suite-micro-preflight")
     _add_formal_suite_environment_arguments(suite_preflight)
@@ -352,16 +322,6 @@ def _parser() -> argparse.ArgumentParser:
         "--protocol", type=Path, default=DEFAULT_OPENRCA2_TRANSFER_PROTOCOL
     )
     transfer_adjudication.add_argument("--output", type=Path, required=True)
-
-    smoke = subparsers.add_parser("smoke")
-    smoke.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
-    smoke.add_argument("--cache-dir", type=Path, default=Path(".cache/datasets/rcaeval"))
-    smoke.add_argument("--reports-dir", type=Path, default=Path(".reports"))
-    smoke.add_argument("--endpoint", default="http://127.0.0.1:4000")
-    smoke.add_argument("--database")
-    smoke.add_argument("--case")
-    smoke.add_argument("--dataset", default="RE2-OB")
-    smoke.add_argument("--fault", default="delay")
 
     rca100_smoke = subparsers.add_parser("smoke-rca100")
     rca100_smoke.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
@@ -461,30 +421,6 @@ def doctor(repo: Path) -> int:
         expected_branch="feat/semantic-graph-declaration-visibility",
     )
     print(json.dumps(metadata, indent=2))
-    return 0
-
-
-def aegis_audit(args: argparse.Namespace) -> int:
-    output = audit_aegis_cohort(
-        args.cases_dir,
-        args.meta_dir,
-        selection_path=args.selection,
-    )
-    write_json(args.output, output)
-    print(args.output)
-    return 0
-
-
-def aegis_fetch(args: argparse.Namespace) -> int:
-    cases_dir, meta_dir = AegisRepository(args.cache_dir).fetch()
-    output = audit_aegis_cohort(
-        cases_dir,
-        meta_dir,
-        archive_checksum_verified=True,
-        selection_path=args.selection,
-    )
-    write_json(args.output, output)
-    print(args.output)
     return 0
 
 
@@ -760,62 +696,6 @@ def _micro_environment_config(args: argparse.Namespace, case_index: int) -> Micr
         run_dir=args.run_root / f"case-{case_index + 1:02d}",
         database=f"suite_case_{case_index + 1:02d}",
     )
-
-
-def smoke(args: argparse.Namespace) -> int:
-    checkout = inspect_checkout(
-        args.greptimedb_repo,
-        expected_branch="feat/semantic-graph-declaration-visibility",
-    )
-    source_case = args.case
-    repository = RCAEvalRepository(args.cache_dir)
-    if source_case is None:
-        source_case = repository.select_case(dataset=args.dataset, fault=args.fault)
-    case = repository.fetch_case(source_case)
-
-    run_id = time.strftime("%Y%m%d-%H%M%S")
-    database = args.database or f"semantic_rca_bench_{run_id.replace('-', '_')}"
-    case = case.model_copy(update={"input": case.input.model_copy(update={"database": database})})
-    report_path = args.reports_dir / f"smoke-{run_id}.json"
-    audit = source_audit_rcaeval(case)
-    with GreptimeClient(args.endpoint, database=case.input.database) as client:
-        server_status = client.status()
-        client.create_database(database)
-        graph_isolation = assert_semantic_graph_window_empty(client, case.input)
-        counts = ingest_rcaeval_case(client, case)
-        surfaces = inspect_semantic_surfaces(client, case.input)
-        validation = validate_rcaeval_ingest(client, case, counts)
-    report = {
-        "greptimedb": checkout,
-        "server": {
-            "endpoint": args.endpoint,
-            "database": database,
-            "status": server_status,
-        },
-        "dataset_revision": RCAEVAL_DATASET_REVISION,
-        "adapter_source_revision": RCAEVAL_SOURCE_REVISION,
-        "case": {
-            "adapter": "rcaeval",
-            "source_case": case.source_case,
-            "dataset": case.dataset,
-            "system": case.system,
-            "time_start": case.input.time_start,
-            "time_end": case.input.time_end,
-            "alert_time": case.input.alert_time,
-            "alert_text": case.input.alert_text,
-            "fault_taxonomy": case.input.fault_taxonomy,
-            "alert_source": "synthetic-generic",
-        },
-        "source_audit": audit,
-        "graph_isolation": graph_isolation,
-        "ingest": counts.model_dump(mode="json"),
-        "semantic_surfaces": surfaces,
-        "validation": validation,
-        "ground_truth": case.ground_truth.model_dump(mode="json"),
-    }
-    write_json(report_path, report)
-    print(report_path)
-    return 0
 
 
 def smoke_rca100(args: argparse.Namespace) -> int:
@@ -1688,16 +1568,6 @@ def run(args: argparse.Namespace) -> int:
                             max_turns=args.max_tool_calls + 10,
                             semantic_coverage=semantic_coverage,
                         )
-                    else:
-                        agent_run = run_subscription_agent(
-                            gateway,
-                            case_input,
-                            level,
-                            runner=runner,
-                            model=args.model,
-                            max_tool_calls=args.max_tool_calls,
-                            semantic_coverage=semantic_coverage,
-                        )
                 runs.append(
                     {
                         "repetition": repetition,
@@ -1855,10 +1725,6 @@ def main() -> None:
     try:
         if args.command == "doctor":
             code = doctor(args.greptimedb_repo)
-        elif args.command == "aegis-audit":
-            code = aegis_audit(args)
-        elif args.command == "aegis-fetch":
-            code = aegis_fetch(args)
         elif args.command == "formal-suite-micro-preflight":
             code = formal_suite_micro_preflight(args)
         elif args.command == "formal-suite-micro-run":
@@ -1877,8 +1743,6 @@ def main() -> None:
             code = transfer_export(args)
         elif args.command == "transfer-adjudication-queue":
             code = transfer_adjudication_queue(args)
-        elif args.command == "smoke":
-            code = smoke(args)
         elif args.command == "smoke-rca100":
             code = smoke_rca100(args)
         elif args.command == "smoke-openrca":

@@ -1743,7 +1743,7 @@ def test_evidence_support_is_inferred_independently_of_claim_annotation() -> Non
 def test_api_runner_is_part_of_the_execution_contract() -> None:
     case = _case(6)
     run = _run(case, _delay_query(case), _delay_result(case)).model_copy(
-        update={"runner": AgentRunner.CODEX_SUBSCRIPTION}
+        update={"model": "unbound-model"}
     )
 
     assert _evaluate(run, case).execution_reliability is False

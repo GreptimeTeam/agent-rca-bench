@@ -36,7 +36,6 @@ class PaidExecutionContract(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     explicit_user_approval_required_per_batch: bool
-    subscription_fallback_allowed: bool
     no_model_gates_required: bool
     pricing_snapshot_required_at_execution: bool
 
@@ -236,7 +235,6 @@ def load_transfer_protocol(
     paid = fixture.paid_execution
     if not (
         paid.explicit_user_approval_required_per_batch
-        and not paid.subscription_fallback_allowed
         and paid.no_model_gates_required
         and paid.pricing_snapshot_required_at_execution
     ):
