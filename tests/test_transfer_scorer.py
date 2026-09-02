@@ -1892,3 +1892,33 @@ def test_metric_scorer_accepts_a_cte_that_only_passes_rows_through() -> None:
     evaluation = _evaluate(_run(case, _cte_metric_query(case, ""), _metric_result(case)), case)
 
     assert evaluation.baseline_evidence_match is True
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        # OFFSET drops rows before any row cap applies, so a row count under the
+        # cap says nothing about what was skipped. FETCH FIRST is a cap the
+        # parser does not report as a Limit.
+        "ORDER BY greptime_timestamp OFFSET 1",
+        "ORDER BY greptime_timestamp LIMIT 100 OFFSET 1",
+        "FETCH FIRST 2 ROWS ONLY",
+    ],
+)
+def test_metric_scorer_rejects_row_caps_other_than_limit(tail: str) -> None:
+    case = _case(0)
+    query = f"{_metric_query(case)} {tail}"
+
+    evaluation = _evaluate(_run(case, query, _metric_result(case)), case)
+
+    assert evaluation.baseline_evidence_match is False
+
+
+def test_metric_scorer_accepts_a_zero_offset() -> None:
+    # The guard must key on rows actually skipped, not on OFFSET appearing.
+    case = _case(0)
+    query = f"{_metric_query(case)} ORDER BY phase OFFSET 0"
+
+    evaluation = _evaluate(_run(case, query, _metric_result(case)), case)
+
+    assert evaluation.baseline_evidence_match is True

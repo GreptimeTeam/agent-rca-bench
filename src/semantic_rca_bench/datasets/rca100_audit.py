@@ -8,16 +8,23 @@ adapters prove the same properties without sharing a source schema.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 
+import pyarrow.parquet as pq
 from opentelemetry.proto.trace.v1.trace_pb2 import Span as ProtoSpan
 from opentelemetry.proto.trace.v1.trace_pb2 import Status as ProtoStatus
 
 from semantic_rca_bench.contracts import IngestCounts, RCA100Case
+from semantic_rca_bench.datasets.openrca2 import ENGINE_MANAGED_TABLES
 from semantic_rca_bench.datasets.openrca2_transfer import TransferCaseSpec
 from semantic_rca_bench.datasets.rca100 import (
     RCA100Error,
+    _iter_alerts,
+    _iter_events,
+    _iter_logs,
     _iter_traces,
+    _metric_sample_audit,
+    _metric_series,
     validate_ingest,
 )
 from semantic_rca_bench.datasets.rca100_transfer import (
@@ -31,6 +38,7 @@ from semantic_rca_bench.edge_audit import (
     virtual_peer_edge_query,
 )
 from semantic_rca_bench.greptimedb.client import GreptimeClient
+from semantic_rca_bench.protocols.loki import to_nanoseconds
 
 KIND_NAMES = {value: name for name, value in ProtoSpan.SpanKind.items()}
 STATUS_NAMES = {value: name for name, value in ProtoStatus.StatusCode.items()}
@@ -62,10 +70,25 @@ def source_telemetry_audit(case: RCA100Case, spec: TransferCaseSpec) -> dict[str
         at_seam += started == seam_ns
         at_end += started == end_ns
     identity = _trace_identity(windowed)
+    # Counted from the source, so the stored rows have something to disagree
+    # with. Comparing the database against what the writer reported writing
+    # would let a window filter that silently dropped records agree with itself.
+    metric_series = _metric_series(case.metrics_path, window=window)
+    metric_audit = _metric_sample_audit(
+        metric_series,
+        source_rows=pq.ParquetFile(case.metrics_path).metadata.num_rows,
+    )
     return {
         "dataset_revision": case.dataset,
         "declared_window": list(window),
         "trace_identity": identity,
+        "stream_rows_in_declared_window": {
+            "metric_samples": metric_audit["unique_samples"],
+            "log_records": _log_rows_in_window(_iter_logs(case.logs_path), start_ns, end_ns),
+            "event_records": _log_rows_in_window(_iter_events(case.events_path), start_ns, end_ns),
+            "alert_records": _log_rows_in_window(_iter_alerts(case.alerts_path), start_ns, end_ns),
+            "trace_spans": len(windowed),
+        },
         "trace_periods": {
             "normal": _edge_period(windowed, spec.normal_window),
             "abnormal": _edge_period(windowed, spec.abnormal_window),
@@ -117,6 +140,15 @@ def validate_transfer_ingest(
             stored_spans["count"] == source["spans_in_declared_window"]
             and stored_spans["min_epoch"] >= window[0]
             and stored_spans["max_epoch"] < window[1]
+        ),
+        # Every stream, not just spans, is compared against a source-side count
+        # restricted to the declared window. `protocol_row_counts_match` only
+        # compares the database against what the writer said it wrote, so a
+        # window filter that dropped metric, log, event, or alert records would
+        # agree with itself.
+        "source_stream_rows": dict(_mapping(source, "stream_rows_in_declared_window")),
+        "stored_streams_match_source_window": (
+            base["database_counts"] == _mapping(source, "stream_rows_in_declared_window")
         ),
         # Measured, not declared: a label that reached the database would show up
         # as a table the replay never writes and no metric declared.
@@ -213,6 +245,8 @@ def no_model_gates(
         "reference_labels_not_ingested": stored.get("reference_labels_not_ingested") is True,
         "stored_spans_match_declared_window": stored.get("stored_spans_match_declared_window")
         is True,
+        "stored_streams_match_source_window": stored.get("stored_streams_match_source_window")
+        is True,
         "exclusive_graph_source": isolated,
         "current_semantic_surface_contract": semantic_surface_contract,
         "protocol_rejections_zero": stored.get("protocol_rejections_zero") is True,
@@ -240,6 +274,10 @@ def no_model_gates(
     }
     gates["all_passed"] = all(gates.values())
     return gates
+
+
+def _log_rows_in_window(records: Iterator[object], start_ns: int, end_ns: int) -> int:
+    return sum(1 for record in records if start_ns <= to_nanoseconds(record.timestamp) < end_ns)
 
 
 def _trace_identity(spans: list[object]) -> dict[str, object]:
@@ -315,16 +353,31 @@ def _stored_span_window(client: GreptimeClient) -> dict[str, int]:
 
 
 def _unexpected_tables(client: GreptimeClient, database: str) -> set[str]:
-    """Tables the replay did not write and no metric declared."""
-    result = client.query(
-        "SELECT table_name, signal_type FROM information_schema.table_semantics "
+    """Tables the replay did not write and no metric declared.
+
+    The roster comes from `tables`, not `table_semantics`: a plain CREATE TABLE
+    carries no `greptime.semantic.*` options and never appears in the semantic
+    view, so enumerating that view would miss the exact shape a leaked answer key
+    or topology snapshot takes while the agent can still query it.
+    """
+    semantics = client.query(
+        "SELECT table_name FROM information_schema.table_semantics "
         f"WHERE table_schema = '{database}'",
         max_rows=None,
     )
+    stored = client.query(
+        f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{database}'",
+        max_rows=None,
+    )
+    if semantics.truncated or stored.truncated:
+        raise RCA100Error("stored table roster was truncated")
+    declared = {str(row[0]) for row in semantics.rows}
     return {
         str(row[0])
-        for row in result.rows
-        if str(row[0]) not in INGESTED_TABLES and str(row[1]) != "metric"
+        for row in stored.rows
+        if str(row[0]) not in INGESTED_TABLES
+        and str(row[0]) not in declared
+        and str(row[0]) not in ENGINE_MANAGED_TABLES
     }
 
 

@@ -36,6 +36,12 @@ REPOSITORY_ID = "anon-ops/ops-lite"
 SOURCE_REVISION = "9ac09981c08ab02a0b923eab7830d778934851a8"
 DATASET_REVISION = f"ops-lite@{SOURCE_REVISION}"
 DEFAULT_CASE = "hs1-geo-pod-failure-drdmjj"
+# GreptimeDB creates these itself: the metric engine's physical table and the
+# trace engine's derived operation and service tables. They carry no semantic
+# options, so the leaked-label roster has to allow them by name.
+ENGINE_MANAGED_TABLES = frozenset(
+    {"greptime_physical_table", "traces_operations", "traces_services"}
+)
 PERIODS = ("normal", "abnormal")
 CASE_FILES = tuple(
     f"{period}_{suffix}"
@@ -313,13 +319,22 @@ def validate_ingest(
     log_tables = [str(row[0]) for row in semantics.rows if row[1] == "log"]
     log_rows = sum(_table_count(client, table) for table in log_tables)
     # Measured, not declared: the reference causal graph and the answer key are
-    # labels. One that reached the database would stand out as a table outside
-    # the signal types the replay writes. Only a post-ingestion query can show
-    # this, so the source audit cannot answer it.
+    # labels, and only a post-ingestion query can show whether one reached the
+    # database. The roster comes from `tables`, not `table_semantics`: a plain
+    # CREATE TABLE carries no `greptime.semantic.*` options and never appears in
+    # the semantic view, so enumerating that view would miss the exact shape a
+    # leaked label takes while the agent can still query it.
+    stored_tables = client.query(
+        f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{database}'",
+        max_rows=None,
+    )
+    if stored_tables.truncated:
+        raise OpenRCA2Error("stored table roster was truncated")
+    semantic_tables = {str(row[0]) for row in semantics.rows}
     unexpected_tables = sorted(
         str(row[0])
-        for row in semantics.rows
-        if str(row[1]) not in {"metric", "log"} and str(row[0]) != "traces"
+        for row in stored_tables.rows
+        if str(row[0]) not in semantic_tables and str(row[0]) not in ENGINE_MANAGED_TABLES
     )
     derived_calls = _derived_service_calls(client, case.input)
     expected_fault_call = _fault_endpoint_call(case.injection_path)

@@ -299,6 +299,9 @@ class _ValidationClient:
                 ["request_duration", "metric", "opentelemetry"],
                 ["traces", "trace", "opentelemetry"],
             ]
+        elif "information_schema.tables" in statement:
+            columns = ["table_name"]
+            rows = [["greptime_otel_resource_info"], ["request_duration"], ["traces"]]
         elif "greptime_otel_resource_info" in statement:
             columns, rows = ["count"], [[7]]
         elif '"request_duration"' in statement:
@@ -334,3 +337,31 @@ def test_openrca2_validation_excludes_generated_resource_descriptor_rows(
     assert result["resource_descriptor_rows"] == 7
     assert result["protocol_row_counts_match"] is True
     assert result["fault_endpoint_call_found"] is True
+    assert result["unexpected_tables"] == []
+    assert result["reference_labels_not_ingested"] is True
+
+
+class _LeakedLabelClient(_ValidationClient):
+    """A plain CREATE TABLE carries no semantic options, so it is absent from
+    `table_semantics` while the agent can still query it."""
+
+    def query(self, statement: str, *, max_rows: int | None = 200) -> QueryResult:
+        result = super().query(statement, max_rows=max_rows)
+        if "information_schema.tables" in statement:
+            return result.model_copy(update={"rows": [*result.rows, ["leaked_answer_key"]]})
+        return result
+
+
+def test_openrca2_validation_reports_a_leaked_label_table(tmp_path: Path) -> None:
+    root = tmp_path / "cases" / "otel-demo3-shipping-delay-m6fhpx"
+    root.mkdir(parents=True)
+    case = _load_case(root, _fixture(root))
+
+    result = validate_ingest(
+        _LeakedLabelClient(),  # type: ignore[arg-type]
+        case,
+        IngestCounts(metric_protocol_rows=3, trace_spans=2),
+    )
+
+    assert result["unexpected_tables"] == ["leaked_answer_key"]
+    assert result["reference_labels_not_ingested"] is False

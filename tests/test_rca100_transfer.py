@@ -210,7 +210,27 @@ def _boundary_audit(monkeypatch, epochs: list[int]) -> dict:
         "_iter_traces",
         lambda _: iter([_span(index, epoch) for index, epoch in enumerate(epochs, 1)]),
     )
-    case = SimpleNamespace(dataset="RCA100-v1.1", traces_path=Path("traces.parquet"))
+    # The other streams are irrelevant to the boundary counts; empty them so the
+    # audit does not need a real archive.
+    monkeypatch.setattr(rca100_audit, "_metric_series", lambda *_, **__: [])
+    monkeypatch.setattr(
+        rca100_audit, "_metric_sample_audit", lambda *_, **__: {"unique_samples": 0}
+    )
+    for name in ("_iter_logs", "_iter_events", "_iter_alerts"):
+        monkeypatch.setattr(rca100_audit, name, lambda _: iter(()))
+    monkeypatch.setattr(
+        rca100_audit.pq,
+        "ParquetFile",
+        lambda _: SimpleNamespace(metadata=SimpleNamespace(num_rows=0)),
+    )
+    case = SimpleNamespace(
+        dataset="RCA100-v1.1",
+        traces_path=Path("traces.parquet"),
+        metrics_path=Path("metrics.parquet"),
+        logs_path=Path("logs.parquet"),
+        events_path=Path("events.parquet"),
+        alerts_path=Path("alerts.parquet"),
+    )
     return rca100_audit.source_telemetry_audit(case, spec)
 
 

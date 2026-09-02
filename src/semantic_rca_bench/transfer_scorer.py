@@ -499,6 +499,11 @@ def _metric_signal_verdict(
         join.find_ancestor(exp.Select) is source_scope for join in source_scope.find_all(exp.Join)
     ):
         return _rejected_verdict("row_multiplication_possible")
+    # QUALIFY keeps a subset of each window partition, so it drops source rows
+    # whichever columns it names. The column allowlist cannot bound that: ranking
+    # on the timestamp alone still discards every row after the first.
+    if source_scope.args.get("qualify") is not None:
+        return _rejected_verdict("result_incomplete")
     where = source_scope.args.get("where")
     if where is not None and any(where.find_all(exp.Not)):
         return _rejected_verdict("identity_not_scope_preserving")
@@ -522,6 +527,10 @@ def _metric_signal_verdict(
         *scope_predicates,
         *equivalent_predicates,
     }
+    # HAVING is excluded on purpose: it is evaluated after aggregation and names
+    # projection aliases rather than source columns, so the column allowlist does
+    # not apply. `_metric_having_preserves_complete_facts` resolves those aliases
+    # and checks it separately.
     filtered_columns = (
         {column.name.lower() for column in where.find_all(exp.Column)}
         if where is not None
@@ -1114,12 +1123,16 @@ def _row_selecting_clauses(scope: exp.Select) -> tuple[exp.Expression, ...]:
     """Every clause of this scope that can drop rows.
 
     A join condition and QUALIFY select rows exactly like WHERE does, so a
-    filter moved into one of them has to be read the same way. `args` is used
-    instead of `find_all` because a nested SELECT's joins belong to that scope,
-    not to this one.
+    filter moved into one of them has to be read the same way. A join carries
+    its condition as either `on` or `using`, and an inner join drops the rows
+    that fail to match under both spellings. `args` is used instead of
+    `find_all` because a nested SELECT's joins belong to that scope, not to
+    this one.
     """
     clauses = [scope.args.get(key) for key in ("where", "having", "qualify")]
-    clauses.extend(join.args.get("on") for join in scope.args.get("joins") or ())
+    for join in scope.args.get("joins") or ():
+        clauses.append(join.args.get("on"))
+        clauses.extend(join.args.get("using") or ())
     return tuple(clause for clause in clauses if clause is not None)
 
 
@@ -1189,13 +1202,23 @@ def _time_filters_supported(where: exp.Expression, column_name: str) -> bool:
 
 
 def _result_scope_complete(statement: exp.Expression, result: QueryResult) -> bool:
-    limits = list(statement.find_all(exp.Limit))
-    if not limits:
+    # OFFSET discards rows outright, so a row count under the row cap proves
+    # nothing about the rows that were skipped before the cap applied.
+    for offset in statement.find_all(exp.Offset):
+        skipped = _numeric_literal(offset.expression)
+        if skipped is None or skipped > 0:
+            return False
+    # FETCH FIRST is a row cap the parser does not report as a Limit.
+    caps: list[exp.Expression | None] = [
+        limit.expression for limit in statement.find_all(exp.Limit)
+    ]
+    caps.extend(fetch.args.get("count") for fetch in statement.find_all(exp.Fetch))
+    if not caps:
         return True
-    if len(limits) != 1:
+    if len(caps) != 1:
         return False
-    limit = _numeric_literal(limits[0].expression)
-    return limit is not None and limit >= 0 and len(result.rows) < limit
+    cap = _numeric_literal(caps[0]) if caps[0] is not None else None
+    return cap is not None and cap >= 0 and len(result.rows) < cap
 
 
 def _metric_having_preserves_complete_facts(
