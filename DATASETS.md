@@ -28,7 +28,7 @@ Source case names and mechanisms appear only in the report and scorer inputs.
 | OpenRCA 1.0 | The paper appendix declares telemetry CC BY-NC 4.0 | Download for local evaluation; do not redistribute telemetry |
 | OpenRCA2 ops-lite | The dataset card says Apache-2.0; the paper says CC-BY-SA 4.0 | Publish derived sanitized facts and hashes; do not redistribute telemetry |
 | Aegis FSE 2026 reviewer cohort | The dataset record says CC BY 4.0; the reviewer artifact's Apache-2.0 file does not explicitly cover `reproduction/data` | Keep downloader-backed; do not bundle source data |
-| RCA100 v1.1 | No dataset license was found; the answer key asks users to contact the publisher | Internal adapter validation only |
+| RCA100 v1.1 | `RCA100/LICENSE` in the pinned AgenticOpsEval revision declares CC BY-NC-SA 4.0 over the case parquet files, ground truth, summary, and manifest | Keep downloader-backed; do not redistribute telemetry; attribute the dataset paper and license when publishing derived facts |
 | RCAEval RE2-OB | The pinned Hugging Face dataset card declares MIT | Local adapter and semantic-coverage validation |
 | OpenRCA 1.0 Market and Telecom | Same CC BY-NC 4.0 declaration as OpenRCA Bank | Local evaluation only |
 
@@ -182,3 +182,8 @@ RCA100, RCAEval RE2-OB, Aegis, OpenRCA Market, and OpenRCA Telecom adapters
 remain available for smoke tests and source-fidelity audits. They are not part
 of the 2026 report unless listed in the release cohort. Run
 `uv run semantic-rca --help` for their commands.
+
+RCA100 is distributed inside AgenticOpsEval. The adapter pins dataset revision
+`v1.1` and source revision `69cf36430b43024d02530c610b1a4738b5c9a7fb`; the
+license statement above was read from `RCA100/LICENSE` at that revision.
+Attribution requires the dataset paper, [arXiv:2606.29193](https://arxiv.org/abs/2606.29193).

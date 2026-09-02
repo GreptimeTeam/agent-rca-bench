@@ -243,7 +243,7 @@ def test_graph_cli_freezes_balanced_two_treatment_schedule() -> None:
 
 
 def test_current_transfer_protocol_binds_the_extended_semantic_surface() -> None:
-    assert benchmark_protocol()["semantic_graph"].endswith("v7")
+    assert benchmark_protocol()["semantic_graph"].endswith("v8")
     assert benchmark_protocol()["table_profile"].endswith("declared-service-identity-v4")
     assert benchmark_protocol()["treatment_estimand"] == "complete-agent-facing-interface-v1"
     assert benchmark_protocol()["treatment_components"] == {

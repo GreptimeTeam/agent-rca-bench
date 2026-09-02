@@ -44,7 +44,7 @@ def benchmark_protocol() -> dict[str, object]:
         },
         "table_profile": "greptimedb-mcp-compatible-samples-opt-in-limit-1-declared-service-identity-v4",  # noqa: E501
         "table_catalog": "token-safe-punctuation-aware-semantic-metadata-search-v4",
-        "semantic_graph": "half-open-window-key-deduplicated-diagnostics-query-tool-v7",
+        "semantic_graph": "bounded-range-window-bucket-complete-column-diagnostics-query-tool-v8",
         "semantic_context": "benchmark-preflight-v1",
         "sql_contract": "greptimedb-read-only-default-200-explicit-1000-v2",
         "citation": "typed-claim-successful-nonmetadata-nontruncated-query-result-v5",

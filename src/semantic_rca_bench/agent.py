@@ -122,6 +122,12 @@ duration_sum and duration_count. attributes contains edge-specific facts. Dedupl
 (src_type, src_id, dst_type, dst_id, rel_type, provenance) across windows. Missing edges can result
 from no dependency, missing instrumentation, sampling, access filtering, or a narrow time window;
 absence alone does not prove entities are unrelated.
+
+Both graph tables join to each other and back to telemetry: semantic_entities.entity_id matches
+semantic_relationships.src_id or dst_id for the same entity_type, and source_tables names the
+telemetry tables to query next. Reach an entity two or more hops away by self-joining
+semantic_relationships on a.dst_id = b.src_id, applying the observed_at window to every instance.
+WITH RECURSIVE over these two tables is not supported and fails at plan or execution time.
 """.strip()
 
 
@@ -407,7 +413,8 @@ class InvestigationSession:
                 self.case_input,
                 arguments,
                 window=self.gateway.semantic_graph_window,
-            )
+            ),
+            max_rows=_semantic_graph_limit(arguments),
         )
         return _semantic_graph_output(result, arguments)
 
@@ -1629,14 +1636,24 @@ def _semantic_graph_tool(
 ) -> dict[str, object]:
     description = (
         "Query deduplicated Semantic Graph nodes or witnessed edges for the incident window. "
-        "The tool supplies the greptime_private schema and time filter. Relationship rows are "
-        "deduplicated per observation window before RED fields are summed. Entity identity "
-        "fields are entity_type, entity_id, entity_id_attrs, and scope. Relationship direction "
+        "Omit start_time and end_time to use the complete audited Graph window, or supply both "
+        "to query a narrower half-open observed_at range; both are RFC3339 UTC timestamps and "
+        "observed_at is the Graph observation bucket timestamp. Set bucket=window to return one "
+        "row per observation window, which is how a relationship or an entity that appears, "
+        "changes, or disappears during the incident becomes visible; without it the requested "
+        "range is reduced to one row per entity or edge. The tool supplies the greptime_private "
+        "schema. Relationship rows are deduplicated per observation window before RED fields are "
+        "summed. Entity identity "
+        "fields are entity_type, entity_id, entity_id_attrs, and scope; descriptive holds "
+        "non-identifying attributes and source_tables names the telemetry tables that witnessed "
+        "the entity, which is where to query its signals next. Relationship direction "
         "is src_type/src_id to dst_type/dst_id; rel_type and provenance describe the edge; "
         "confidence is derivation certainty; request_count, error_count, duration_sum, and "
         "duration_count are windowed observations. unmatched_count reports unpaired client spans "
         "and is not generally additive to request_count; duration_max is the longest request in "
         "the duration population. Missing rows do not prove no relationship. "
+        "This tool returns one hop; reach further entities with execute_sql by self-joining "
+        "semantic_relationships on a.dst_id = b.src_id. "
         "Identifiers from alerts or telemetry providers are not Semantic Graph entity IDs unless "
         "an entity query returns that exact ID."
     )
@@ -1669,7 +1686,34 @@ def _semantic_graph_tool(
                 "dst_type": {"type": "string"},
                 "dst_id": {"type": "string"},
                 "provenance": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100},
+                "start_time": {
+                    "type": "string",
+                    "description": (
+                        "Inclusive observed_at lower bound as an RFC3339 UTC timestamp, for "
+                        "example 2026-05-02T00:55:19+00:00."
+                    ),
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": (
+                        "Exclusive observed_at upper bound as an RFC3339 UTC timestamp, for "
+                        "example 2026-05-02T01:05:19+00:00."
+                    ),
+                },
+                "bucket": {
+                    "type": "string",
+                    "enum": ["window"],
+                    "description": (
+                        "Return each deduplicated observation window instead of one aggregate "
+                        "row per entity or edge over the requested range."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAX_QUERY_MAX_ROWS,
+                    "default": 100,
+                },
             },
             "required": ["view"],
             "additionalProperties": False,
@@ -1712,22 +1756,43 @@ def _semantic_graph_query(
     view = str(arguments.get("view") or "")
     if view not in {"entities", "relationships"}:
         raise AgentError("semantic graph view must be entities or relationships")
-    window_start, window_end = window or (case_input.time_start, case_input.time_end)
+    bucket = arguments.get("bucket")
+    if bucket not in (None, "window"):
+        raise AgentError("semantic graph bucket must be window when supplied")
+    allowed_window = window or (case_input.time_start, case_input.time_end)
+    window_start, window_end = _semantic_graph_query_window(arguments, allowed_window)
     start = datetime.fromtimestamp(window_start, UTC).strftime("%Y-%m-%d %H:%M:%S")
     end = datetime.fromtimestamp(window_end, UTC).strftime("%Y-%m-%d %H:%M:%S")
-    limit = max(1, min(int(arguments.get("limit", 100)), 200))
+    # One row beyond the reported limit, so the gateway can distinguish a complete
+    # result from one the LIMIT clipped. Citation eligibility depends on that flag.
+    limit = _semantic_graph_limit(arguments) + 1
     predicates = [f"observed_at >= '{start}'", f"observed_at < '{end}'"]
 
     if view == "entities":
         _append_graph_filters(predicates, arguments, ("entity_type", "entity_id"))
         where = " AND ".join(predicates)
+        # descriptive and source_tables are grouped rather than aggregated: MAX over a
+        # JSON column would silently return one window's value for an entity whose
+        # attributes or witnessing tables changed mid-incident.
+        identity = "entity_type, entity_id, entity_id_attrs, scope, descriptive, source_tables"
+        if bucket == "window":
+            return f"""
+                SELECT window_start, window_end, {identity},
+                       MAX(fresh_until) AS fresh_until
+                FROM greptime_private.semantic_entities
+                WHERE {where}
+                GROUP BY window_start, window_end, {identity}
+                ORDER BY window_start, window_end, entity_type, entity_id
+                LIMIT {limit}
+            """
         return f"""
-            SELECT entity_type, entity_id, entity_id_attrs, scope,
+            SELECT {identity},
+                   MIN(observed_at) AS first_observed_at,
                    MAX(observed_at) AS latest_observed_at,
                    MAX(fresh_until) AS fresh_until
             FROM greptime_private.semantic_entities
             WHERE {where}
-            GROUP BY entity_type, entity_id, entity_id_attrs, scope
+            GROUP BY {identity}
             ORDER BY entity_type, entity_id
             LIMIT {limit}
         """
@@ -1738,6 +1803,13 @@ def _semantic_graph_query(
         ("rel_type", "src_type", "src_id", "dst_type", "dst_id", "provenance"),
     )
     where = " AND ".join(predicates)
+    if bucket == "window":
+        return f"""
+            {_relationship_window_query(where, include_attributes=True)}
+            ORDER BY window_start, window_end, src_type, src_id, dst_type, dst_id,
+                     rel_type, provenance
+            LIMIT {limit}
+        """
     return f"""
         SELECT src_type, src_id, dst_type, dst_id, rel_type, provenance,
                MAX(confidence) AS confidence,
@@ -1748,24 +1820,71 @@ def _semantic_graph_query(
                SUM(duration_count) AS duration_count,
                MAX(duration_max) AS duration_max
         FROM (
-            SELECT window_start, window_end, src_type, src_id, dst_type, dst_id,
-                   rel_type, provenance,
-                   MAX(confidence) AS confidence,
-                   MAX(request_count) AS request_count,
-                   MAX(unmatched_count) AS unmatched_count,
-                   MAX(error_count) AS error_count,
-                   MAX(duration_sum) AS duration_sum,
-                   MAX(duration_count) AS duration_count,
-                   MAX(duration_max) AS duration_max
-            FROM greptime_private.semantic_relationships
-            WHERE {where}
-            GROUP BY window_start, window_end, src_type, src_id, dst_type, dst_id,
-                     rel_type, provenance
+            {_relationship_window_query(where, include_attributes=False)}
         ) distinct_windows
         GROUP BY src_type, src_id, dst_type, dst_id, rel_type, provenance
         ORDER BY src_type, src_id, dst_type, dst_id, rel_type, provenance
         LIMIT {limit}
     """
+
+
+def _relationship_window_query(where: str, *, include_attributes: bool) -> str:
+    # attributes stays out of the summed shape: an edge whose attributes changed
+    # mid-incident would split into several groups and break the RED totals.
+    attributes = ", attributes" if include_attributes else ""
+    return f"""
+        SELECT window_start, window_end, src_type, src_id, dst_type, dst_id,
+               rel_type, provenance{attributes},
+               MAX(confidence) AS confidence,
+               MAX(request_count) AS request_count,
+               MAX(unmatched_count) AS unmatched_count,
+               MAX(error_count) AS error_count,
+               MAX(duration_sum) AS duration_sum,
+               MAX(duration_count) AS duration_count,
+               MAX(duration_max) AS duration_max
+        FROM greptime_private.semantic_relationships
+        WHERE {where}
+        GROUP BY window_start, window_end, src_type, src_id, dst_type, dst_id,
+                 rel_type, provenance{attributes}
+    """
+
+
+def _semantic_graph_limit(arguments: dict[str, object]) -> int:
+    requested = arguments.get("limit", 100)
+    if isinstance(requested, bool) or not isinstance(requested, int):
+        raise AgentError("semantic graph limit must be an integer")
+    return max(1, min(requested, MAX_QUERY_MAX_ROWS))
+
+
+def _semantic_graph_query_window(
+    arguments: dict[str, object],
+    allowed_window: tuple[int, int],
+) -> tuple[int, int]:
+    requested_start = arguments.get("start_time")
+    requested_end = arguments.get("end_time")
+    if (requested_start is None) != (requested_end is None):
+        raise AgentError("semantic graph start_time and end_time must be supplied together")
+    if requested_start is None:
+        return allowed_window
+    start = _semantic_graph_bound(requested_start, "start_time")
+    end = _semantic_graph_bound(requested_end, "end_time")
+    if start >= end:
+        raise AgentError("semantic graph time range must be non-empty")
+    if start < allowed_window[0] or end > allowed_window[1]:
+        raise AgentError("semantic graph time range must stay within the audited incident window")
+    return start, end
+
+
+def _semantic_graph_bound(value: object, field: str) -> int:
+    if not isinstance(value, str):
+        raise AgentError(f"semantic graph {field} must be an RFC3339 UTC timestamp")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise AgentError(f"semantic graph {field} must be an RFC3339 UTC timestamp") from error
+    if parsed.tzinfo is None:
+        raise AgentError(f"semantic graph {field} must declare a UTC offset")
+    return int(parsed.timestamp())
 
 
 def _append_graph_filters(

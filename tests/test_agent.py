@@ -33,6 +33,7 @@ from semantic_rca_bench.contracts import (
     QueryResult,
     Visibility,
 )
+from semantic_rca_bench.greptimedb.visibility import MAX_QUERY_MAX_ROWS
 from semantic_rca_bench.inspect import summarize_semantic_surfaces
 
 
@@ -1482,7 +1483,7 @@ def test_graph_relationship_query_supplies_window_scope_and_deduplication() -> N
             "view": "relationships",
             "rel_type": "calls",
             "src_id": "checkout' OR true",
-            "limit": 500,
+            "limit": 5_000,
         },
     )
 
@@ -1496,7 +1497,8 @@ def test_graph_relationship_query_supplies_window_scope_and_deduplication() -> N
     assert "observed_at >= '2026-04-25 05:18:12'" in query
     assert "observed_at < '2026-04-25 05:28:12'" in query
     assert "src_id = 'checkout'' OR true'" in query
-    assert "LIMIT 200" in query
+    assert "attributes" not in query
+    assert "LIMIT 1001" in query
 
 
 def test_graph_relationship_query_can_use_an_audited_minute_envelope() -> None:
@@ -1515,6 +1517,122 @@ def test_graph_relationship_query_can_use_an_audited_minute_envelope() -> None:
     assert "observed_at < '2025-07-19 10:01:00'" in query
 
 
+MEASUREMENT_CASE = CaseInput(
+    case_token="case",
+    time_start=1_777_094_292,
+    time_end=1_777_094_892,
+    alert_time=1_777_094_426,
+)
+
+
+def test_graph_relationship_query_accepts_bounded_window_rows() -> None:
+    query = _semantic_graph_query(
+        MEASUREMENT_CASE,
+        {
+            "view": "relationships",
+            "start_time": "2026-04-25T05:20:00+00:00",
+            "end_time": "2026-04-25T05:25:00+00:00",
+            "bucket": "window",
+            "limit": 1_000,
+        },
+    )
+
+    assert "observed_at >= '2026-04-25 05:20:00'" in query
+    assert "observed_at < '2026-04-25 05:25:00'" in query
+    assert "SELECT window_start, window_end" in query
+    assert ") distinct_windows" not in query
+    assert "rel_type, provenance, attributes" in query
+    assert "ORDER BY window_start, window_end" in query
+    assert "LIMIT 1001" in query
+
+
+def test_graph_entity_query_returns_reachable_identity_and_presence() -> None:
+    query = _semantic_graph_query(MEASUREMENT_CASE, {"view": "entities", "limit": 20})
+
+    identity = "entity_type, entity_id, entity_id_attrs, scope, descriptive, source_tables"
+
+    assert "greptime_private.semantic_entities" in query
+    assert f"SELECT {identity}" in query
+    assert "MIN(observed_at) AS first_observed_at" in query
+    assert "MAX(observed_at) AS latest_observed_at" in query
+    assert f"GROUP BY {identity}" in query
+    assert "LIMIT 21" in query
+
+
+def test_graph_entity_query_can_return_one_row_per_observation_window() -> None:
+    query = _semantic_graph_query(
+        MEASUREMENT_CASE,
+        {"view": "entities", "bucket": "window", "entity_type": "k8s.pod"},
+    )
+
+    assert "SELECT window_start, window_end, entity_type" in query
+    assert "GROUP BY window_start, window_end, entity_type" in query
+    assert "ORDER BY window_start, window_end, entity_type, entity_id" in query
+    assert "entity_type = 'k8s.pod'" in query
+    assert "MIN(observed_at)" not in query
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        (
+            {"view": "relationships", "start_time": "2026-04-25T05:20:00+00:00"},
+            "must be supplied together",
+        ),
+        (
+            {
+                "view": "relationships",
+                "start_time": 1_777_094_400,
+                "end_time": "2026-04-25T05:25:00+00:00",
+            },
+            "start_time must be an RFC3339 UTC timestamp",
+        ),
+        (
+            {
+                "view": "relationships",
+                "start_time": "2026-04-25T05:20:00+00:00",
+                "end_time": "not a timestamp",
+            },
+            "end_time must be an RFC3339 UTC timestamp",
+        ),
+        (
+            {
+                "view": "relationships",
+                "start_time": "2026-04-25T05:20:00",
+                "end_time": "2026-04-25T05:25:00+00:00",
+            },
+            "start_time must declare a UTC offset",
+        ),
+        (
+            {
+                "view": "relationships",
+                "start_time": "2026-04-25T05:25:00+00:00",
+                "end_time": "2026-04-25T05:25:00+00:00",
+            },
+            "must be non-empty",
+        ),
+        (
+            {
+                "view": "relationships",
+                "start_time": "2026-04-25T05:10:00+00:00",
+                "end_time": "2026-04-25T05:25:00+00:00",
+            },
+            "must stay within the audited incident window",
+        ),
+        (
+            {"view": "entities", "bucket": "minute"},
+            "bucket must be window",
+        ),
+    ],
+)
+def test_graph_query_rejects_invalid_time_and_bucket_scope(
+    arguments: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(AgentError, match=message):
+        _semantic_graph_query(MEASUREMENT_CASE, arguments)
+
+
 def test_graph_tool_invocation_uses_gateway_window_without_changing_case_window() -> None:
     queries = []
 
@@ -1522,8 +1640,9 @@ def test_graph_tool_invocation_uses_gateway_window_without_changing_case_window(
         client = SimpleNamespace()
         semantic_graph_window = (1_752_918_720, 1_752_919_260)
 
-        def execute(self, query: str) -> QueryResult:
+        def execute(self, query: str, *, max_rows: int = 200) -> QueryResult:
             queries.append(query)
+            assert max_rows == 100
             return QueryResult(query_id="provider", columns=[], rows=[], elapsed_seconds=0)
 
     case = CaseInput(
@@ -1546,3 +1665,33 @@ def test_graph_tool_invocation_uses_gateway_window_without_changing_case_window(
     assert "observed_at < '2025-07-19 10:01:00'" in queries[0]
     assert case.time_start == 1_752_918_758
     assert case.time_end == 1_752_919_238
+
+
+def test_graph_tool_asks_for_one_row_beyond_the_reported_row_cap() -> None:
+    # The gateway only reports truncation when the result exceeds max_rows, so a
+    # graph query whose SQL LIMIT equalled max_rows would present a clipped result
+    # as complete and citable.
+    observed: list[tuple[str, int]] = []
+
+    class Gateway:
+        client = SimpleNamespace()
+        semantic_graph_window = None
+
+        def execute(self, query: str, *, max_rows: int = 200) -> QueryResult:
+            observed.append((query, max_rows))
+            return QueryResult(query_id="provider", columns=[], rows=[], elapsed_seconds=0)
+
+    session = agent_module.InvestigationSession(
+        Gateway(),  # type: ignore[arg-type]
+        MEASUREMENT_CASE,
+        Visibility.SEMANTIC_GRAPH,
+        max_tool_calls=2,
+        semantic_coverage={"graph": {"status": "relational"}},
+    )
+
+    session.invoke("query_semantic_graph", {"view": "entities", "limit": 7})
+    session.invoke("query_semantic_graph", {"view": "relationships", "limit": 5_000})
+
+    assert [max_rows for _, max_rows in observed] == [7, MAX_QUERY_MAX_ROWS]
+    assert "LIMIT 8" in observed[0][0]
+    assert f"LIMIT {MAX_QUERY_MAX_ROWS + 1}" in observed[1][0]
