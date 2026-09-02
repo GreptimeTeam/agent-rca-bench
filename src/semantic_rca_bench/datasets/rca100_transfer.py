@@ -135,6 +135,9 @@ class CandidateProfile(BaseModel):
     normal_max: float | None = None
     abnormal_max: float | None = None
     peer_abnormal_max: float | None = None
+    oracle_available: bool = False
+    # Set only by source-fidelity exclusions, never by whether the deterministic
+    # transition audit can run.
     rejection: str | None = None
 
 
@@ -188,7 +191,7 @@ def profile_candidate(case_root: Path, candidate: NodeCandidate) -> CandidatePro
             source_case=candidate.source_case,
             node=candidate.node,
             source_fault_type=candidate.source_fault_type,
-            rejection=None,
+            oracle_available=False,
         )
     alert_start, alert_end = _alert_window(case_root)
     metrics_path = case_root / "metrics.parquet"
@@ -197,13 +200,6 @@ def profile_candidate(case_root: Path, candidate: NodeCandidate) -> CandidatePro
     )
     abnormal = _metric_period(metrics_path, oracle, candidate.node, (alert_start, alert_end))
     peer_max = _peer_maximum(metrics_path, oracle, candidate.node, (alert_start, alert_end))
-    rejection = None
-    if normal["count"] < 1 or abnormal["count"] < MINIMUM_ANOMALOUS_OBSERVATIONS:
-        rejection = "window_coverage"
-    elif normal["high_count"] != 0:
-        rejection = "baseline_not_clear"
-    elif abnormal["high_count"] < MINIMUM_ANOMALOUS_OBSERVATIONS:
-        rejection = "anomaly_absent"
     return CandidateProfile(
         source_case=candidate.source_case,
         node=candidate.node,
@@ -211,8 +207,37 @@ def profile_candidate(case_root: Path, candidate: NodeCandidate) -> CandidatePro
         normal_max=float(normal["max"]),
         abnormal_max=float(abnormal["max"]),
         peer_abnormal_max=peer_max,
-        rejection=rejection,
+        # Whether the transition audit can run decides only whether this case
+        # carries an oracle, never whether it is in the cohort: two fault types
+        # here have no node metric at all and are still measured.
+        oracle_available=transition_proven(normal, abnormal),
     )
+
+
+def mark_duplicate_incidents(
+    profiles: list[CandidateProfile],
+    windows: Mapping[str, tuple[int, int]],
+) -> list[CandidateProfile]:
+    """Reject the later alert of a pair that observes one underlying incident.
+
+    RCA100 raises several alerts per injection, so two cases can name the same
+    root-cause node over overlapping windows. Treating both as measurement cases
+    would break the contract that cases are the independent unit.
+    """
+    kept: list[CandidateProfile] = []
+    for profile in sorted(profiles, key=lambda item: item.source_case):
+        start, end = windows[profile.source_case]
+        duplicate = any(
+            other.node == profile.node
+            and other.rejection is None
+            and start < windows[other.source_case][1]
+            and windows[other.source_case][0] < end
+            for other in kept
+        )
+        kept.append(
+            profile.model_copy(update={"rejection": "duplicate_incident"}) if duplicate else profile
+        )
+    return sorted(kept, key=lambda item: item.source_case)
 
 
 def typical_case_per_fault_type(profiles: list[CandidateProfile]) -> dict[str, str]:
@@ -220,8 +245,9 @@ def typical_case_per_fault_type(profiles: list[CandidateProfile]) -> dict[str, s
 
     Typicality is measured on the signal the fault produces: how quiet the
     baseline is, how far the anomaly goes, and how much the rest of the cluster
-    moves at the same time. Fault types the node metrics cannot express have one
-    instance each, so the eligible instance is the typical one by construction.
+    moves at the same time. Every source-eligible instance ranks, including ones
+    whose transition audit cannot run; fault types the node metrics cannot
+    express have one instance each and are typical by construction.
     """
     by_fault: dict[str, list[CandidateProfile]] = {}
     for profile in profiles:
@@ -303,6 +329,11 @@ def build_selection(
         profile_candidate(repository.cache_dir / candidate.source_case, candidate)
         for candidate in candidates
     ]
+    windows = {
+        candidate.source_case: _alert_window(repository.cache_dir / candidate.source_case)
+        for candidate in candidates
+    }
+    profiles = mark_duplicate_incidents(profiles, windows)
     typical = typical_case_per_fault_type(profiles)
     by_source = {candidate.source_case: candidate for candidate in candidates}
     ordered = [
@@ -375,19 +406,30 @@ def audit_source_case(
     )
 
 
+def transition_proven(
+    normal: Mapping[str, int | float],
+    abnormal: Mapping[str, int | float],
+) -> bool:
+    """Whether both declared periods support the deterministic transition audit."""
+    return (
+        normal["count"] >= 1
+        and abnormal["count"] >= MINIMUM_ANOMALOUS_OBSERVATIONS
+        and normal["high_count"] == 0
+        and abnormal["high_count"] >= MINIMUM_ANOMALOUS_OBSERVATIONS
+    )
+
+
 def _node_metric_evidence(
     case: RCA100Case,
     oracle: NodeOracle,
     node: str,
     normal_window: tuple[int, int],
     abnormal_window: tuple[int, int],
-) -> SourceMechanismEvidence:
+) -> SourceMechanismEvidence | None:
     normal = _metric_period(case.metrics_path, oracle, node, normal_window)
     abnormal = _metric_period(case.metrics_path, oracle, node, abnormal_window)
-    if normal["count"] < 1 or abnormal["count"] < MINIMUM_ANOMALOUS_OBSERVATIONS:
-        raise RCA100Error(f"{case.source_case} does not cover both declared windows")
-    if normal["high_count"] != 0 or abnormal["high_count"] < MINIMUM_ANOMALOUS_OBSERVATIONS:
-        raise RCA100Error(f"{case.source_case} source metric does not prove the transition")
+    if not transition_proven(normal, abnormal):
+        return None
     return SourceMechanismEvidence(
         predicate=oracle.predicate,
         source_table=oracle.metric,
@@ -534,4 +576,28 @@ def load_selection_fixture(path: Path) -> RCA100SelectionFixture:
         raise ValueError("RCA100 transfer cases must localise to a node")
     if len({case.source_case for case in fixture.selected_cases}) != len(fixture.selected_cases):
         raise ValueError("RCA100 transfer selection contains duplicate source cases")
+    # The recorded ranking is what makes the selection auditable, so replay it:
+    # a fixture whose selected cases are not the ones its own profiles rank first
+    # is a selection contract violation, not merely a stale file.
+    ranked = typical_case_per_fault_type(list(fixture.candidate_profiles))
+    if sorted(ranked.values()) != sorted(case.source_case for case in fixture.selected_cases):
+        raise ValueError("RCA100 transfer selection does not match its recorded ranking")
+    for case in fixture.selected_cases:
+        expected = FAULT_PROFILES[case.source_fault_type]
+        if case.mechanism_code is not expected.mechanism_code:
+            raise ValueError(f"RCA100 mechanism mapping drifted for {case.source_case}")
+        if (case.mechanism_evidence is not None) != _profile_of(
+            fixture.candidate_profiles, case.source_case
+        ).oracle_available:
+            raise ValueError(f"RCA100 oracle availability drifted for {case.source_case}")
     return fixture
+
+
+def _profile_of(
+    profiles: tuple[CandidateProfile, ...],
+    source_case: str,
+) -> CandidateProfile:
+    for profile in profiles:
+        if profile.source_case == source_case:
+            return profile
+    raise ValueError(f"RCA100 selected case is absent from the ranking: {source_case}")

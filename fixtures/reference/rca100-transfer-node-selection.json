@@ -4,6 +4,7 @@
       "abnormal_max": 83.44177209166365,
       "node": "cn-hongkong.10.0.1.69",
       "normal_max": 19.024289103553294,
+      "oracle_available": true,
       "peer_abnormal_max": 90.24583115232184,
       "rejection": null,
       "source_case": "t003",
@@ -13,8 +14,9 @@
       "abnormal_max": 99.98394531525892,
       "node": "cn-hongkong.10.0.1.107",
       "normal_max": 93.5107459849009,
+      "oracle_available": false,
       "peer_abnormal_max": 12.32165857525105,
-      "rejection": "baseline_not_clear",
+      "rejection": null,
       "source_case": "t005",
       "source_fault_type": "nodeCpuHigh"
     },
@@ -22,6 +24,7 @@
       "abnormal_max": 99.99876552354031,
       "node": "cn-hongkong.10.0.1.56",
       "normal_max": 3.0294967545523965,
+      "oracle_available": true,
       "peer_abnormal_max": 7.350546422710835,
       "rejection": null,
       "source_case": "t008",
@@ -31,6 +34,7 @@
       "abnormal_max": 99.99413661687274,
       "node": "cn-hongkong.10.0.1.49",
       "normal_max": 6.429453320096645,
+      "oracle_available": true,
       "peer_abnormal_max": 13.684438664931331,
       "rejection": null,
       "source_case": "t019",
@@ -40,6 +44,7 @@
       "abnormal_max": null,
       "node": "cn-hongkong.10.0.1.55",
       "normal_max": null,
+      "oracle_available": false,
       "peer_abnormal_max": null,
       "rejection": null,
       "source_case": "t022",
@@ -49,8 +54,9 @@
       "abnormal_max": 99.99876552354031,
       "node": "cn-hongkong.10.0.1.56",
       "normal_max": 3.0294967545523854,
+      "oracle_available": true,
       "peer_abnormal_max": 7.350546422710824,
-      "rejection": null,
+      "rejection": "duplicate_incident",
       "source_case": "t036",
       "source_fault_type": "nodeCpuHigh"
     },
@@ -58,6 +64,7 @@
       "abnormal_max": 99.99907412261727,
       "node": "cn-hongkong.10.0.1.56",
       "normal_max": 2.944917024325344,
+      "oracle_available": true,
       "peer_abnormal_max": 8.705194081593381,
       "rejection": null,
       "source_case": "t038",
@@ -67,6 +74,7 @@
       "abnormal_max": 99.99660530497214,
       "node": "cn-hongkong.10.0.1.56",
       "normal_max": 4.98320442262834,
+      "oracle_available": true,
       "peer_abnormal_max": 14.166914534995378,
       "rejection": null,
       "source_case": "t048",
@@ -76,6 +84,7 @@
       "abnormal_max": 94.39674064019634,
       "node": "cn-hongkong.10.0.1.107",
       "normal_max": 2.7109495279281526,
+      "oracle_available": true,
       "peer_abnormal_max": 85.14465342771447,
       "rejection": null,
       "source_case": "t060",
@@ -85,6 +94,7 @@
       "abnormal_max": 99.99567869223041,
       "node": "cn-hongkong.10.0.1.107",
       "normal_max": 7.084230584519058,
+      "oracle_available": true,
       "peer_abnormal_max": 37.953716789786085,
       "rejection": null,
       "source_case": "t069",
@@ -94,6 +104,7 @@
       "abnormal_max": null,
       "node": "cn-hongkong.10.0.1.65",
       "normal_max": null,
+      "oracle_available": false,
       "peer_abnormal_max": null,
       "rejection": null,
       "source_case": "t073",
@@ -103,8 +114,9 @@
       "abnormal_max": 99.98024136409718,
       "node": "cn-hongkong.10.0.1.107",
       "normal_max": 93.5107459849009,
+      "oracle_available": false,
       "peer_abnormal_max": 12.321658575251071,
-      "rejection": "baseline_not_clear",
+      "rejection": "duplicate_incident",
       "source_case": "t080",
       "source_fault_type": "nodeCpuHigh"
     },
@@ -112,6 +124,7 @@
       "abnormal_max": 90.25208112049118,
       "node": "cn-hongkong.10.0.1.107",
       "normal_max": 9.67743936288279,
+      "oracle_available": true,
       "peer_abnormal_max": 99.9941359653176,
       "rejection": null,
       "source_case": "t082",
@@ -121,6 +134,7 @@
       "abnormal_max": 99.99320960412584,
       "node": "cn-hongkong.10.0.1.107",
       "normal_max": 10.99531135349132,
+      "oracle_available": true,
       "peer_abnormal_max": 8.63615526619097,
       "rejection": null,
       "source_case": "t090",
@@ -130,6 +144,7 @@
       "abnormal_max": 99.99135922493467,
       "node": "cn-hongkong.10.0.1.49",
       "normal_max": 4.564632609914376,
+      "oracle_available": true,
       "peer_abnormal_max": 98.05969089634105,
       "rejection": null,
       "source_case": "t092",
@@ -148,11 +163,11 @@
   "selected_cases": [
     {
       "abnormal_window": [
-        1775908342,
-        1775908892
+        1776030597,
+        1776031150
       ],
       "case_role": "measurement",
-      "causal_component": "cn-hongkong.10.0.1.56",
+      "causal_component": "cn-hongkong.10.0.1.49",
       "causal_scope": "infrastructure_node",
       "direct_log_mechanism_evidence": [],
       "edge_destination": null,
@@ -163,21 +178,21 @@
         "abnormal": {
           "count": 19,
           "high_count": 14,
-          "max": 99.99660530497214,
-          "min": 4.7201616251764005
+          "max": 99.99413661687274,
+          "min": 4.919873777992445
         },
         "allowed_operations": [],
         "alternative_metric_signals": [],
         "identity_column": "entity_name",
         "identity_domains": {},
         "identity_equivalent_predicates": [],
-        "identity_value": "cn-hongkong.10.0.1.56",
+        "identity_value": "cn-hongkong.10.0.1.49",
         "minimum_anomalous_observations": 2,
         "normal": {
           "count": 18,
           "high_count": 0,
-          "max": 4.98320442262834,
-          "min": 3.7839277529338244
+          "max": 6.429453320096645,
+          "min": 4.838140847159966
         },
         "predicate": "node_cpu_saturation",
         "scope_preserving_predicates": [
@@ -191,20 +206,20 @@
         "value_column": "greptime_value"
       },
       "normal_window": [
-        1775907792,
-        1775908342
+        1776030044,
+        1776030597
       ],
       "opaque_case_id": "semantic-rca-transfer-011",
-      "source_case": "t048",
+      "source_case": "t019",
       "source_fault_type": "nodeCpuHigh",
       "source_files_sha256": {
-        "alerts.parquet": "351f5872cb5c5011c1ba1b758d673eff711fb52e7714336e054f1b4d5c341745",
-        "events.parquet": "75238a5d72f84df5d746ca219907e8181fff120be3c16e096b8d61a03b438bb2",
-        "logs.parquet": "2761685907db5e5b02ddeff6898a6ea5792e25eb7e653feea012eadc383cdfa6",
-        "metrics.parquet": "1ccbc0461b5d4af25f7bc1b105be18a6b9a680f0ce57eec875f77a058de6ce1d",
-        "task.json": "8b53077587295609c811469c47684b777a4d4097ab8c77e6910f707f0a9c1d3c",
-        "topology.json": "c8403ce42dacf09c59d8a1ec1fd1520eaaddcfdf898cbd0523fbd312a84f07ac",
-        "traces.parquet": "159e9a09bcb5c809ad218221c793d9f6973f2e0cf37bc5647a2059b6e0e313e5"
+        "alerts.parquet": "ec22fa40dc1c54efda4e0a55b028ec0f52b3e6ee42359adb1f60b9b29e2c6b1c",
+        "events.parquet": "86175467a5fcf019c675f7d8619745f662e966e69846d2256fc4a32670af348f",
+        "logs.parquet": "7256a21f14112099f9e6b819cc8722e4631d4bec2f351337d48ad5143e6e7dd3",
+        "metrics.parquet": "2d161591c9f9498e1c27428044728667c0ff652b38a6cb709480dfcf31b7bdee",
+        "task.json": "90a4363dea51d8114db566b35ca700480ac28b57ea83d91f77b339ff43a69814",
+        "topology.json": "37cab9fb9e65d196405e1f4107b345a2712853706e2fddf532a0a12fa1de2fbb",
+        "traces.parquet": "00a23f5cebeb33d3b62f9a834bc428e16801e75606841b693f43b15f07c33471"
       },
       "system": "OpenTelemetry Demo Store"
     },

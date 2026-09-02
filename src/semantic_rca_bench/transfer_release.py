@@ -11,6 +11,7 @@ from statistics import median
 from semantic_rca_bench.contracts import (
     AgentRun,
     ApiTransport,
+    CausalScope,
     DatabaseLoad,
     EvidenceClaimType,
     ToolTrace,
@@ -1803,13 +1804,17 @@ def _public_query_execution_valid(summary: Mapping[str, object]) -> bool:
 def _valid_public_locus_shape(value: object) -> bool:
     if not isinstance(value, Mapping):
         return False
-    if value.get("scope") == "component":
+    try:
+        scope = CausalScope(str(value.get("scope")))
+    except ValueError:
+        return False
+    # Every single-entity scope projects the same shape, so a scope added to the
+    # ontology stays publishable without another edit here.
+    if scope.uses_causal_component:
         return set(value) == {"scope", "component"} and isinstance(value.get("component"), str)
-    if value.get("scope") == "dependency_edge":
-        return set(value) == {"scope", "edge_source", "edge_destination"} and all(
-            isinstance(value.get(key), str) for key in ("edge_source", "edge_destination")
-        )
-    return False
+    return set(value) == {"scope", "edge_source", "edge_destination"} and all(
+        isinstance(value.get(key), str) for key in ("edge_source", "edge_destination")
+    )
 
 
 def _reject_private_fields(value: object) -> None:
