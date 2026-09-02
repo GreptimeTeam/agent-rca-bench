@@ -1841,3 +1841,54 @@ def test_infrastructure_node_scope_is_scored_as_its_own_layer() -> None:
     assert evaluation.causal_scope_match is False
     assert evaluation.causal_locus_match is True
     assert evaluation.diagnosis_correct is False
+
+
+def _cte_metric_query(case: TransferCaseSpec, clause: str) -> str:
+    """The metric aggregate, read from a CTE whose consumer applies `clause`."""
+    evidence = case.mechanism_evidence
+    start = _time(case.normal_window[0])
+    end = _time(case.abnormal_window[1])
+    return f"""
+        WITH t AS (
+          SELECT greptime_timestamp, {evidence.value_column}
+          FROM {evidence.source_table}
+          WHERE {evidence.identity_column} = '{evidence.identity_value}'
+            AND greptime_timestamp >= '{start}' AND greptime_timestamp < '{end}'
+        )
+        SELECT
+          CASE WHEN t.greptime_timestamp < '{_time(case.abnormal_window[0])}'
+               THEN 'normal' ELSE 'abnormal' END AS phase,
+          COUNT(*) AS observations,
+          MIN(t.{evidence.value_column}) AS low_value,
+          MAX(t.{evidence.value_column}) AS high_value,
+          SUM(CASE WHEN t.{evidence.value_column} >= {evidence.threshold}
+                   THEN 1 ELSE 0 END) AS threshold_hits
+        FROM t {clause}
+        GROUP BY phase
+    """
+
+
+def test_metric_scorer_rejects_row_selection_moved_into_a_join_condition() -> None:
+    # A join condition selects rows exactly like WHERE. Reading only
+    # where/having let a value filter hide a baseline threshold violation
+    # while the claim still asserted the baseline was clean.
+    case = _case(0)
+    evidence = case.mechanism_evidence
+    query = _cte_metric_query(
+        case,
+        f"JOIN t AS u ON u.greptime_timestamp = t.greptime_timestamp "
+        f"AND u.{evidence.value_column} < {evidence.threshold}",
+    )
+
+    evaluation = _evaluate(_run(case, query, _metric_result(case)), case)
+
+    assert evaluation.baseline_evidence_match is False
+
+
+def test_metric_scorer_accepts_a_cte_that_only_passes_rows_through() -> None:
+    # The guard above must key on row selection, not on the query having a CTE.
+    case = _case(0)
+
+    evaluation = _evaluate(_run(case, _cte_metric_query(case, ""), _metric_result(case)), case)
+
+    assert evaluation.baseline_evidence_match is True

@@ -1110,10 +1110,22 @@ def _combine_union_verdicts(
     )
 
 
+def _row_selecting_clauses(scope: exp.Select) -> tuple[exp.Expression, ...]:
+    """Every clause of this scope that can drop rows.
+
+    A join condition and QUALIFY select rows exactly like WHERE does, so a
+    filter moved into one of them has to be read the same way. `args` is used
+    instead of `find_all` because a nested SELECT's joins belong to that scope,
+    not to this one.
+    """
+    clauses = [scope.args.get(key) for key in ("where", "having", "qualify")]
+    clauses.extend(join.args.get("on") for join in scope.args.get("joins") or ())
+    return tuple(clause for clause in clauses if clause is not None)
+
+
 def _scope_filters_use_columns(scope: exp.Select, columns: set[str]) -> bool:
     return any(
-        clause is not None and _expression_uses_columns(clause, columns)
-        for clause in (scope.args.get("where"), scope.args.get("having"))
+        _expression_uses_columns(clause, columns) for clause in _row_selecting_clauses(scope)
     )
 
 
@@ -1138,14 +1150,14 @@ def _consumer_scope_filters_source(
             if any(id(source) in consumers for source in scope.sources.values()):
                 consumers.add(id(scope))
                 changed = True
+    # Any consumer filter is disqualifying, not just one naming the value
+    # column: the source scope projects the value under an alias a consumer can
+    # filter on, and a consumer restricted by time can hide a baseline gap.
     return any(
         id(scope) in consumers
         and scope.expression is not source_scope
         and isinstance(scope.expression, exp.Select)
-        and (
-            scope.expression.args.get("where") is not None
-            or scope.expression.args.get("having") is not None
-        )
+        and _row_selecting_clauses(scope.expression)
         for scope in scopes
     )
 
@@ -1233,17 +1245,14 @@ def _metric_having_preserves_complete_facts(
     return True
 
 
-def _delay_value_filtered(
-    scope: exp.Select,
+def _delay_clause_filters_value(
+    clause: exp.Expression,
     client_alias: str,
     server_alias: str,
 ) -> bool:
-    where = scope.args.get("where")
-    if where is None:
-        return False
     return any(
         _delay_value_scale(node, client_alias, server_alias) is not None
-        for predicate in where.find_all(
+        for predicate in clause.find_all(
             exp.EQ,
             exp.NEQ,
             exp.GT,
@@ -1253,6 +1262,17 @@ def _delay_value_filtered(
             exp.Between,
         )
         for node in predicate.walk()
+    )
+
+
+def _delay_value_filtered(
+    scope: exp.Select,
+    client_alias: str,
+    server_alias: str,
+) -> bool:
+    return any(
+        _delay_clause_filters_value(clause, client_alias, server_alias)
+        for clause in _row_selecting_clauses(scope)
     )
 
 
