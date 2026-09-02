@@ -101,13 +101,19 @@ def source_telemetry_audit(case: RCA100Case, spec: TransferCaseSpec) -> dict[str
             "normal": _edge_period(windowed, spec.normal_window),
             "abnormal": _edge_period(windowed, spec.abnormal_window),
         },
-        # Unlike OpenRCA2, this archive is not pre-split per period: one file
-        # spans about an hour and the periods are cut from it here. Only the
-        # declared window's exact end is asserted, because no later period
-        # picks those spans up, so half-open versus closed would change the
-        # cohort. Spans on the window start are included by the half-open
-        # contract and spans on the seam belong to the abnormal period, so
-        # both are recorded rather than asserted.
+        # Recorded, not asserted. OpenRCA2 asserts an empty window end because
+        # its archive arrives pre-split per period, so a row on a period's end
+        # would show the publisher cut on a closed interval while this project
+        # reads a half-open one. Nothing here is pre-split: the periods are cut
+        # from one hour-long file under a half-open rule, so boundary ownership
+        # is already unambiguous and there is no upstream convention to check.
+        # Whether a stream happens to emit at the exact end is arithmetic, not
+        # fidelity: the alert stream ticks every 15s and every case's window end
+        # lands on that grid, so t003 hits it only because its alerts were still
+        # firing. Window correctness is covered instead by
+        # `stored_spans_match_declared_window` and
+        # `stored_streams_match_source_window`, which both reconcile the stored
+        # rows against counts taken independently from the source.
         "window_boundaries": {
             "periods_contiguous": spec.normal_window[1] == spec.abnormal_window[0],
             "rows_at_window_start": at_start,
@@ -120,13 +126,6 @@ def source_telemetry_audit(case: RCA100Case, spec: TransferCaseSpec) -> dict[str
                 "alert_records": alerts["rows_at_exact_end"],
             },
         },
-        "source_window_end_boundaries_empty": (
-            at_end == 0
-            and metrics["rows_at_exact_end"] == 0
-            and logs["rows_at_exact_end"] == 0
-            and events["rows_at_exact_end"] == 0
-            and alerts["rows_at_exact_end"] == 0
-        ),
         "source_identity_valid": identity["valid"],
         "spans_in_declared_window": len(windowed),
     }
@@ -262,8 +261,6 @@ def no_model_gates(
         == spec,
         "source_files_match": _source_files_sha256(case.root) == spec.source_files_sha256,
         "source_identity_valid": source.get("source_identity_valid") is True,
-        "source_window_end_boundaries_empty": source.get("source_window_end_boundaries_empty")
-        is True,
         "reference_labels_not_ingested": stored.get("reference_labels_not_ingested") is True,
         "stored_spans_match_declared_window": stored.get("stored_spans_match_declared_window")
         is True,

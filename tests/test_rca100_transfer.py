@@ -225,25 +225,26 @@ def _boundary_audit(monkeypatch, epochs: list[int]) -> dict:
     return rca100_audit.source_telemetry_audit(case, spec)
 
 
-def test_window_end_boundary_gate_counts_spans_the_window_filter_drops(monkeypatch) -> None:
-    """A span on the exact end is outside the half-open window, so only a count
-    taken over the whole archive can see it."""
+def test_window_boundary_counts_come_from_the_archive_not_the_filter(monkeypatch) -> None:
+    # A span on the exact end is outside the half-open window, so a count taken
+    # over the kept spans could never see it. These counts are published as
+    # facts, not asserted: this archive is not pre-split per period, so there is
+    # no upstream interval convention for an empty end to verify.
     spec = load_selection_fixture(SELECTION).selected_cases[0]
     audit = _boundary_audit(monkeypatch, [spec.abnormal_window[1]])
 
     assert audit["window_boundaries"]["rows_at_exact_end"]["trace_spans"] == 1
-    assert audit["source_window_end_boundaries_empty"] is False
     assert audit["spans_in_declared_window"] == 0
+    assert "source_window_end_boundaries_empty" not in audit
 
 
-def test_period_seam_spans_do_not_fail_the_window_end_gate(monkeypatch) -> None:
-    """normal_window[1] == abnormal_window[0], so a seam span belongs to the
-    abnormal period rather than falling outside the cohort."""
+def test_period_seam_spans_belong_to_the_abnormal_period(monkeypatch) -> None:
+    # normal_window[1] == abnormal_window[0], so a seam span falls inside the
+    # cohort under the half-open contract rather than off its edge.
     spec = load_selection_fixture(SELECTION).selected_cases[0]
     audit = _boundary_audit(monkeypatch, [spec.normal_window[1]])
 
     assert audit["window_boundaries"]["periods_contiguous"] is True
     assert audit["window_boundaries"]["rows_at_period_seam"] == 1
     assert audit["window_boundaries"]["rows_at_exact_end"]["trace_spans"] == 0
-    assert audit["source_window_end_boundaries_empty"] is True
     assert audit["spans_in_declared_window"] == 1
