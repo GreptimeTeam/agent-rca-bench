@@ -1,5 +1,9 @@
+import ast
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from semantic_rca_bench.contracts import DatabaseLoad
 from semantic_rca_bench.transfer_formal import (
@@ -81,3 +85,88 @@ def test_runner_failure_is_persisted_as_a_scoreable_cell() -> None:
     assert report["runs"][0]["evaluation"]["success"] is False
     assert report["runs"][0]["source_semantic_sha256"] == source_semantic_sha256(audits[0])
     validate_private_report(report, protocol, DEFAULT_PROTOCOL_FIXTURE, selection)
+
+
+GATE_PRODUCERS = {
+    "source": "source_telemetry_audit",
+    "stored": "validate_transfer_ingest",
+    "equality": "exact_edge_equality_audit",
+}
+
+
+def _module_ast(dotted: str) -> ast.Module:
+    return ast.parse((Path("src/semantic_rca_bench") / f"{dotted}.py").read_text())
+
+
+def _function(tree: ast.Module, name: str) -> ast.FunctionDef:
+    return next(
+        node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+
+
+def _returned(function: ast.FunctionDef) -> tuple[dict[str, ast.AST], set[str]]:
+    """Literal keys the function returns, and the names it spreads with **."""
+    values: dict[str, ast.AST] = {}
+    spreads: set[str] = set()
+    for node in ast.walk(function):
+        if not isinstance(node, ast.Return) or not isinstance(node.value, ast.Dict):
+            continue
+        for key, value in zip(node.value.keys, node.value.values, strict=True):
+            if key is None:
+                if isinstance(value, ast.Name):
+                    spreads.add(value.id)
+            elif isinstance(key, ast.Constant):
+                values[key.value] = value
+    return values, spreads
+
+
+def _gate_reads(gates: ast.FunctionDef) -> list[tuple[str, str]]:
+    reads = []
+    for node in ast.walk(gates):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id in GATE_PRODUCERS
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+        ):
+            reads.append((node.func.value.id, node.args[0].value))
+    return reads
+
+
+@pytest.mark.parametrize(
+    ("gate_module", "base_module"),
+    [
+        ("datasets.openrca2_transfer", "datasets.openrca2"),
+        ("datasets.rca100_audit", "datasets.rca100"),
+    ],
+)
+def test_no_model_gates_assert_measured_values_only(gate_module: str, base_module: str) -> None:
+    """A gate must read a key its audit computes.
+
+    A gate reading a key the audit never produces is always False; one reading a
+    hard-coded literal is always True. Both have shipped: RCA100 asserted a
+    missing window-boundary key, and both adapters asserted a constant revision
+    string and a literal `reference_causal_graph_ingested: False`.
+    """
+    gate_tree = _module_ast(gate_module.replace(".", "/"))
+    base_tree = _module_ast(base_module.replace(".", "/"))
+    gates = _function(gate_tree, "no_model_gates")
+
+    checked = 0
+    for parameter, key in _gate_reads(gates):
+        produced, spreads = _returned(_function(gate_tree, GATE_PRODUCERS[parameter]))
+        if key not in produced and spreads:
+            # validate_transfer_ingest re-exports the base adapter's audit.
+            produced, _ = _returned(_function(base_tree, "validate_ingest"))
+        assert key in produced, f"{gate_module}: {parameter}.{key} is never produced"
+        assert not isinstance(produced[key], ast.Constant), (
+            f"{gate_module}: {parameter}.{key} asserts a hard-coded literal"
+        )
+        checked += 1
+
+    # Guards against the scan silently covering nothing if the gates stop
+    # using .get() to reach their audits.
+    assert checked >= 5

@@ -16,7 +16,6 @@ from opentelemetry.proto.trace.v1.trace_pb2 import Status as ProtoStatus
 from semantic_rca_bench.contracts import IngestCounts, RCA100Case
 from semantic_rca_bench.datasets.openrca2_transfer import TransferCaseSpec
 from semantic_rca_bench.datasets.rca100 import (
-    DATASET_REVISION,
     RCA100Error,
     _iter_traces,
     validate_ingest,
@@ -48,13 +47,20 @@ def source_telemetry_audit(case: RCA100Case, spec: TransferCaseSpec) -> dict[str
         raise RCA100Error("live RCA100 source differs from the frozen selection")
     window = (spec.normal_window[0], spec.abnormal_window[1])
     start_ns, end_ns = window[0] * 1_000_000_000, window[1] * 1_000_000_000
+    seam_ns = spec.normal_window[1] * 1_000_000_000
     # Only the declared window is kept: the archive holds about an hour around
-    # each alert and these cases run to 600k spans.
-    windowed = [
-        span
-        for span in _iter_traces(case.traces_path)
-        if start_ns <= span.start_time_unix_nano < end_ns
-    ]
+    # each alert and these cases run to 600k spans. The boundary counts come
+    # from the whole archive, not from the kept spans, so they can disagree
+    # with the filter instead of restating it.
+    windowed = []
+    at_start = at_seam = at_end = 0
+    for span in _iter_traces(case.traces_path):
+        started = span.start_time_unix_nano
+        if start_ns <= started < end_ns:
+            windowed.append(span)
+        at_start += started == start_ns
+        at_seam += started == seam_ns
+        at_end += started == end_ns
     identity = _trace_identity(windowed)
     return {
         "dataset_revision": case.dataset,
@@ -64,6 +70,20 @@ def source_telemetry_audit(case: RCA100Case, spec: TransferCaseSpec) -> dict[str
             "normal": _edge_period(windowed, spec.normal_window),
             "abnormal": _edge_period(windowed, spec.abnormal_window),
         },
+        # Unlike OpenRCA2, this archive is not pre-split per period: one file
+        # spans about an hour and the periods are cut from it here. Only the
+        # declared window's exact end is asserted, because no later period
+        # picks those spans up, so half-open versus closed would change the
+        # cohort. Spans on the window start are included by the half-open
+        # contract and spans on the seam belong to the abnormal period, so
+        # both are recorded rather than asserted.
+        "window_boundaries": {
+            "periods_contiguous": spec.normal_window[1] == spec.abnormal_window[0],
+            "rows_at_window_start": at_start,
+            "rows_at_period_seam": at_seam,
+            "rows_at_exact_end": at_end,
+        },
+        "source_window_end_boundaries_empty": at_end == 0,
         "source_identity_valid": identity["valid"],
         "spans_in_declared_window": len(windowed),
     }
@@ -184,7 +204,6 @@ def no_model_gates(
     identity = stored["source_identity"]
     input_json = case.input.model_dump_json()
     gates = {
-        "pinned_source_revision": case.dataset == f"RCA100-{DATASET_REVISION}",
         "frozen_selection_match": audit_source_case(case, spec.opaque_case_id, spec.case_role)
         == spec,
         "source_files_match": _source_files_sha256(case.root) == spec.source_files_sha256,

@@ -541,8 +541,6 @@ def source_telemetry_audit(case: OpenRCA2Case, spec: TransferCaseSpec) -> dict[s
             item["rows_at_exact_end"] == 0 for item in signal_periods.values()
         ),
         "source_identity_valid": trace_identity["valid"] is True,
-        "reference_causal_graph_read": False,
-        "reference_causal_graph_ingested": False,
         "source_data_modified": False,
     }
 
@@ -841,15 +839,13 @@ def no_model_gates(
     identity = _mapping(stored, "source_identity")
     input_json = case.input.model_dump_json()
     gates = {
-        "pinned_source_revision": case.dataset == DATASET_REVISION,
         "frozen_selection_match": audit_source_case(case, spec.opaque_case_id, spec.case_role)
         == spec,
         "source_files_match": _source_file_hashes(case) == spec.source_files_sha256,
         "source_identity_valid": source.get("source_identity_valid") is True,
         "source_windows_exact": source.get("all_signal_timestamps_in_declared_windows") is True,
         "source_end_boundaries_empty": source.get("source_window_end_boundaries_empty") is True,
-        "reference_causal_graph_excluded": source.get("reference_causal_graph_read") is False
-        and source.get("reference_causal_graph_ingested") is False,
+        "reference_labels_not_ingested": stored.get("reference_labels_not_ingested") is True,
         "exclusive_graph_source": isolated,
         "current_semantic_surface_contract": semantic_surface_contract,
         "protocol_rejections_zero": stored.get("protocol_rejections_zero") is True,

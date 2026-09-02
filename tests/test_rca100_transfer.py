@@ -1,9 +1,11 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from semantic_rca_bench.contracts import CausalScope, MechanismCode
+from semantic_rca_bench.datasets import rca100_audit
 from semantic_rca_bench.datasets.openrca2 import OpenRCA2Error
 from semantic_rca_bench.datasets.openrca2_transfer import canonical_mechanism_evidence_query
 from semantic_rca_bench.datasets.rca100_transfer import (
@@ -17,6 +19,7 @@ from semantic_rca_bench.edge_audit import (
     canonical_graph_edge_query,
     virtual_peer_edge_query,
 )
+from semantic_rca_bench.protocols.otlp import TraceSpan
 from semantic_rca_bench.transfer_formal import (
     _CASE_ADAPTERS,
     OPENRCA2_ADAPTER,
@@ -184,3 +187,52 @@ def test_case_adapters_route_node_cases_away_from_the_openrca2_loader() -> None:
     for case in load_selection_fixture(SELECTION).selected_cases:
         is_node = case.causal_scope is CausalScope.INFRASTRUCTURE_NODE
         assert _CASE_ADAPTERS[is_node] is RCA100_ADAPTER
+
+
+def _span(index: int, epoch_seconds: int) -> TraceSpan:
+    return TraceSpan(
+        trace_id=f"{index:032x}",
+        span_id=f"{index:016x}",
+        parent_span_id="",
+        name="request",
+        kind=3,
+        start_time_unix_nano=epoch_seconds * 1_000_000_000,
+        end_time_unix_nano=epoch_seconds * 1_000_000_000 + 1,
+        service_name="frontend",
+    )
+
+
+def _boundary_audit(monkeypatch, epochs: list[int]) -> dict:
+    spec = load_selection_fixture(SELECTION).selected_cases[0]
+    monkeypatch.setattr(rca100_audit, "audit_source_case", lambda *_, **__: spec)
+    monkeypatch.setattr(
+        rca100_audit,
+        "_iter_traces",
+        lambda _: iter([_span(index, epoch) for index, epoch in enumerate(epochs, 1)]),
+    )
+    case = SimpleNamespace(dataset="RCA100-v1.1", traces_path=Path("traces.parquet"))
+    return rca100_audit.source_telemetry_audit(case, spec)
+
+
+def test_window_end_boundary_gate_counts_spans_the_window_filter_drops(monkeypatch) -> None:
+    """A span on the exact end is outside the half-open window, so only a count
+    taken over the whole archive can see it."""
+    spec = load_selection_fixture(SELECTION).selected_cases[0]
+    audit = _boundary_audit(monkeypatch, [spec.abnormal_window[1]])
+
+    assert audit["window_boundaries"]["rows_at_exact_end"] == 1
+    assert audit["source_window_end_boundaries_empty"] is False
+    assert audit["spans_in_declared_window"] == 0
+
+
+def test_period_seam_spans_do_not_fail_the_window_end_gate(monkeypatch) -> None:
+    """normal_window[1] == abnormal_window[0], so a seam span belongs to the
+    abnormal period rather than falling outside the cohort."""
+    spec = load_selection_fixture(SELECTION).selected_cases[0]
+    audit = _boundary_audit(monkeypatch, [spec.normal_window[1]])
+
+    assert audit["window_boundaries"]["periods_contiguous"] is True
+    assert audit["window_boundaries"]["rows_at_period_seam"] == 1
+    assert audit["window_boundaries"]["rows_at_exact_end"] == 0
+    assert audit["source_window_end_boundaries_empty"] is True
+    assert audit["spans_in_declared_window"] == 1

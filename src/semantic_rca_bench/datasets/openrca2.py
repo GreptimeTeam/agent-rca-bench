@@ -312,6 +312,15 @@ def validate_ingest(
     trace_rows = _table_count(client, "traces")
     log_tables = [str(row[0]) for row in semantics.rows if row[1] == "log"]
     log_rows = sum(_table_count(client, table) for table in log_tables)
+    # Measured, not declared: the reference causal graph and the answer key are
+    # labels. One that reached the database would stand out as a table outside
+    # the signal types the replay writes. Only a post-ingestion query can show
+    # this, so the source audit cannot answer it.
+    unexpected_tables = sorted(
+        str(row[0])
+        for row in semantics.rows
+        if str(row[1]) not in {"metric", "log"} and str(row[0]) != "traces"
+    )
     derived_calls = _derived_service_calls(client, case.input)
     expected_fault_call = _fault_endpoint_call(case.injection_path)
     database_counts = {
@@ -345,7 +354,8 @@ def validate_ingest(
             expected_fault_call in derived_calls if expected_fault_call else None
         ),
         "derived_calls_nonempty": bool(derived_calls),
-        "reference_causal_graph_ingested": False,
+        "unexpected_tables": unexpected_tables,
+        "reference_labels_not_ingested": not unexpected_tables,
     }
 
 
