@@ -497,7 +497,7 @@ def _metric_signal_verdict(
     result_scope = statement if isinstance(statement, exp.Select) else source_scope
     if any(
         join.find_ancestor(exp.Select) is source_scope for join in source_scope.find_all(exp.Join)
-    ):
+    ) or _consumer_scope_multiplies_rows(statement, source_scope):
         return _rejected_verdict("row_multiplication_possible")
     # QUALIFY keeps a subset of each window partition, so it drops source rows
     # whichever columns it names. The column allowlist cannot bound that: ranking
@@ -1142,17 +1142,22 @@ def _scope_filters_use_columns(scope: exp.Select, columns: set[str]) -> bool:
     )
 
 
-def _consumer_scope_filters_source(
+def _consumer_scopes(
     statement: exp.Expression,
     source_scope: exp.Select,
-) -> bool:
+) -> tuple[exp.Select, ...] | None:
+    """Every scope that reads the source scope, directly or through another.
+
+    None means the consumers could not be resolved, which callers treat as
+    disqualifying.
+    """
     root = build_scope(statement)
     if root is None:
-        return True
+        return None
     scopes = list(root.traverse())
     source_scopes = [scope for scope in scopes if scope.expression is source_scope]
     if len(source_scopes) != 1:
-        return True
+        return None
     consumers = {id(source_scopes[0])}
     changed = True
     while changed:
@@ -1163,16 +1168,42 @@ def _consumer_scope_filters_source(
             if any(id(source) in consumers for source in scope.sources.values()):
                 consumers.add(id(scope))
                 changed = True
+    return tuple(
+        scope.expression
+        for scope in scopes
+        if id(scope) in consumers
+        and scope.expression is not source_scope
+        and isinstance(scope.expression, exp.Select)
+    )
+
+
+def _consumer_scope_filters_source(
+    statement: exp.Expression,
+    source_scope: exp.Select,
+) -> bool:
     # Any consumer filter is disqualifying, not just one naming the value
     # column: the source scope projects the value under an alias a consumer can
     # filter on, and a consumer restricted by time can hide a baseline gap.
-    return any(
-        id(scope) in consumers
-        and scope.expression is not source_scope
-        and isinstance(scope.expression, exp.Select)
-        and _row_selecting_clauses(scope.expression)
-        for scope in scopes
-    )
+    consumers = _consumer_scopes(statement, source_scope)
+    if consumers is None:
+        return True
+    return any(_row_selecting_clauses(scope) for scope in consumers)
+
+
+def _consumer_scope_multiplies_rows(
+    statement: exp.Expression,
+    source_scope: exp.Select,
+) -> bool:
+    """Whether a scope downstream of the source can emit a source row twice.
+
+    The source scope rejects its own joins outright, but a join added by a
+    consumer multiplies the same rows just as well, and an existence claim
+    counted off those rows would read one anomalous observation as many.
+    """
+    consumers = _consumer_scopes(statement, source_scope)
+    if consumers is None:
+        return True
+    return any(scope.args.get("joins") for scope in consumers)
 
 
 def _expression_uses_columns(expression: exp.Expression, columns: set[str]) -> bool:
@@ -1209,12 +1240,18 @@ def _result_scope_complete(statement: exp.Expression, result: QueryResult) -> bo
         if skipped is None or skipped > 0:
             return False
     # FETCH FIRST is a row cap the parser does not report as a Limit.
-    caps: list[exp.Expression | None] = [
-        limit.expression for limit in statement.find_all(exp.Limit)
-    ]
-    caps.extend(fetch.args.get("count") for fetch in statement.find_all(exp.Fetch))
-    if not caps:
+    nodes = [*statement.find_all(exp.Limit), *statement.find_all(exp.Fetch)]
+    if not nodes:
         return True
+    # `result.rows` holds what the outermost scope returned, so only a cap on
+    # that scope can be checked against it. A cap inside a CTE or subquery
+    # truncates rows the aggregate above it then collapses, and comparing the
+    # collapsed row count to the inner cap would clear a truncated baseline.
+    if any(node is not statement.args.get("limit") for node in nodes):
+        return False
+    caps: list[exp.Expression | None] = [
+        node.expression if isinstance(node, exp.Limit) else node.args.get("count") for node in nodes
+    ]
     if len(caps) != 1:
         return False
     cap = _numeric_literal(caps[0]) if caps[0] is not None else None

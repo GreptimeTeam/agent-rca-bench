@@ -212,17 +212,8 @@ def _boundary_audit(monkeypatch, epochs: list[int]) -> dict:
     )
     # The other streams are irrelevant to the boundary counts; empty them so the
     # audit does not need a real archive.
-    monkeypatch.setattr(rca100_audit, "_metric_series", lambda *_, **__: [])
-    monkeypatch.setattr(
-        rca100_audit, "_metric_sample_audit", lambda *_, **__: {"unique_samples": 0}
-    )
-    for name in ("_iter_logs", "_iter_events", "_iter_alerts"):
+    for name in ("_iter_rows", "_iter_logs", "_iter_events", "_iter_alerts"):
         monkeypatch.setattr(rca100_audit, name, lambda _: iter(()))
-    monkeypatch.setattr(
-        rca100_audit.pq,
-        "ParquetFile",
-        lambda _: SimpleNamespace(metadata=SimpleNamespace(num_rows=0)),
-    )
     case = SimpleNamespace(
         dataset="RCA100-v1.1",
         traces_path=Path("traces.parquet"),
@@ -240,7 +231,7 @@ def test_window_end_boundary_gate_counts_spans_the_window_filter_drops(monkeypat
     spec = load_selection_fixture(SELECTION).selected_cases[0]
     audit = _boundary_audit(monkeypatch, [spec.abnormal_window[1]])
 
-    assert audit["window_boundaries"]["rows_at_exact_end"] == 1
+    assert audit["window_boundaries"]["rows_at_exact_end"]["trace_spans"] == 1
     assert audit["source_window_end_boundaries_empty"] is False
     assert audit["spans_in_declared_window"] == 0
 
@@ -253,6 +244,6 @@ def test_period_seam_spans_do_not_fail_the_window_end_gate(monkeypatch) -> None:
 
     assert audit["window_boundaries"]["periods_contiguous"] is True
     assert audit["window_boundaries"]["rows_at_period_seam"] == 1
-    assert audit["window_boundaries"]["rows_at_exact_end"] == 0
+    assert audit["window_boundaries"]["rows_at_exact_end"]["trace_spans"] == 0
     assert audit["source_window_end_boundaries_empty"] is True
     assert audit["spans_in_declared_window"] == 1

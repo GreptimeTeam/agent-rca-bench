@@ -300,8 +300,17 @@ class _ValidationClient:
                 ["traces", "trace", "opentelemetry"],
             ]
         elif "information_schema.tables" in statement:
+            # what the fixture's gauge, sum, and histogram metrics produce
             columns = ["table_name"]
-            rows = [["greptime_otel_resource_info"], ["request_duration"], ["traces"]]
+            rows = [
+                ["greptime_otel_resource_info"],
+                ["system_memory_usage"],
+                ["request_duration_bucket"],
+                ["request_duration_count"],
+                ["request_duration_sum"],
+                ["traces"],
+                ["logs"],
+            ]
         elif "greptime_otel_resource_info" in statement:
             columns, rows = ["count"], [[7]]
         elif '"request_duration"' in statement:
@@ -342,11 +351,21 @@ def test_openrca2_validation_excludes_generated_resource_descriptor_rows(
 
 
 class _LeakedLabelClient(_ValidationClient):
-    """A plain CREATE TABLE carries no semantic options, so it is absent from
-    `table_semantics` while the agent can still query it."""
+    """A leaked label declares itself in `table_semantics` too.
+
+    Written through the same OTLP path the replay uses, it carries
+    `greptime.semantic.*` options, so trusting that view as the allowlist would
+    let the table clear itself.
+    """
 
     def query(self, statement: str, *, max_rows: int | None = 200) -> QueryResult:
+        if '"leaked_answer_key"' in statement:
+            return QueryResult(query_id="q", columns=["count"], rows=[[1]], elapsed_seconds=0)
         result = super().query(statement, max_rows=max_rows)
+        if "information_schema.table_semantics" in statement:
+            return result.model_copy(
+                update={"rows": [*result.rows, ["leaked_answer_key", "metric", "opentelemetry"]]}
+            )
         if "information_schema.tables" in statement:
             return result.model_copy(update={"rows": [*result.rows, ["leaked_answer_key"]]})
         return result

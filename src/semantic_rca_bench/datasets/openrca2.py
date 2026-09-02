@@ -320,21 +320,19 @@ def validate_ingest(
     log_rows = sum(_table_count(client, table) for table in log_tables)
     # Measured, not declared: the reference causal graph and the answer key are
     # labels, and only a post-ingestion query can show whether one reached the
-    # database. The roster comes from `tables`, not `table_semantics`: a plain
-    # CREATE TABLE carries no `greptime.semantic.*` options and never appears in
-    # the semantic view, so enumerating that view would miss the exact shape a
-    # leaked label takes while the agent can still query it.
+    # database. The expected roster is derived from the case's own metrics: a
+    # label written through the same OTLP or Loki path the replay uses would
+    # carry `greptime.semantic.*` options, so trusting the semantic view as the
+    # allowlist would let that table clear itself.
     stored_tables = client.query(
         f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{database}'",
         max_rows=None,
     )
     if stored_tables.truncated:
         raise OpenRCA2Error("stored table roster was truncated")
-    semantic_tables = {str(row[0]) for row in semantics.rows}
+    expected_tables = _expected_tables(case)
     unexpected_tables = sorted(
-        str(row[0])
-        for row in stored_tables.rows
-        if str(row[0]) not in semantic_tables and str(row[0]) not in ENGINE_MANAGED_TABLES
+        str(row[0]) for row in stored_tables.rows if str(row[0]) not in expected_tables
     )
     derived_calls = _derived_service_calls(client, case.input)
     expected_fault_call = _fault_endpoint_call(case.injection_path)
@@ -372,6 +370,21 @@ def validate_ingest(
         "unexpected_tables": unexpected_tables,
         "reference_labels_not_ingested": not unexpected_tables,
     }
+
+
+def _expected_tables(case: OpenRCA2Case) -> set[str]:
+    """Every table the replay is allowed to have written.
+
+    OTLP names a table after the metric with dots replaced, and expands a
+    histogram into bucket, count, and sum tables.
+    """
+    expected = {"traces", "logs", "greptime_otel_resource_info", *ENGINE_MANAGED_TABLES}
+    for point in _iter_number_metrics(case.gauge_paths + case.sum_paths):
+        expected.add(prometheus_metric_name(point.name))
+    for histogram in _iter_histograms(case.histogram_paths):
+        base = prometheus_metric_name(histogram.name)
+        expected |= {f"{base}_bucket", f"{base}_count", f"{base}_sum"}
+    return expected
 
 
 def _iter_number_metrics(paths: tuple[Path, ...]) -> Iterator[NumberMetricPoint]:

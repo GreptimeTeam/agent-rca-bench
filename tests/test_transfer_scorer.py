@@ -1922,3 +1922,63 @@ def test_metric_scorer_accepts_a_zero_offset() -> None:
     evaluation = _evaluate(_run(case, query, _metric_result(case)), case)
 
     assert evaluation.baseline_evidence_match is True
+
+
+def _cte_aggregate(case: TransferCaseSpec, cte_tail: str, outer: str) -> str:
+    evidence = case.mechanism_evidence
+    return f"""
+        WITH t AS (
+          SELECT greptime_timestamp, {evidence.value_column}
+          FROM {evidence.source_table}
+          WHERE {evidence.identity_column} = '{evidence.identity_value}'
+            AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+            AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+          {cte_tail}
+        )
+        SELECT
+          CASE WHEN t.greptime_timestamp < '{_time(case.abnormal_window[0])}'
+               THEN 'normal' ELSE 'abnormal' END AS phase,
+          COUNT(*) AS observations,
+          MIN(t.{evidence.value_column}) AS low_value,
+          MAX(t.{evidence.value_column}) AS high_value,
+          SUM(CASE WHEN t.{evidence.value_column} >= {evidence.threshold}
+                   THEN 1 ELSE 0 END) AS threshold_hits
+        FROM t {outer}
+        GROUP BY phase
+    """
+
+
+def test_metric_scorer_rejects_a_consumer_join_that_multiplies_source_rows() -> None:
+    # The source scope refuses its own joins, but a join added by a consumer
+    # duplicates the same rows. An existence claim counted off them read one
+    # anomalous observation as the two the protocol demands.
+    case = _case(0)
+    query = _cte_aggregate(case, "", "JOIN t AS u ON 1=1")
+
+    evaluation = _evaluate(_run(case, query, _metric_result(case)), case)
+
+    assert evaluation.mechanism_evidence_match is False
+    assert evaluation.baseline_evidence_match is False
+
+
+def test_metric_scorer_rejects_a_row_cap_inside_a_subquery() -> None:
+    # `result.rows` holds what the outermost scope returned. A cap inside the
+    # CTE truncates rows the aggregate then collapses, so comparing the
+    # collapsed count against the inner cap cleared a truncated baseline.
+    case = _case(0)
+    query = _cte_aggregate(case, "ORDER BY greptime_timestamp LIMIT 3", "")
+
+    evaluation = _evaluate(_run(case, query, _metric_result(case)), case)
+
+    assert evaluation.baseline_evidence_match is False
+
+
+def test_metric_scorer_accepts_a_cap_on_the_returned_scope() -> None:
+    # The guard must key on where the cap sits, not on a cap existing.
+    case = _case(0)
+    query = _cte_aggregate(case, "", "") + " LIMIT 1000"
+
+    evaluation = _evaluate(_run(case, query, _metric_result(case)), case)
+
+    assert evaluation.baseline_evidence_match is True
+    assert evaluation.mechanism_evidence_match is True

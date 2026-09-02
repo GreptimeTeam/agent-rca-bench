@@ -7,10 +7,10 @@ adapters prove the same properties without sharing a source schema.
 
 from __future__ import annotations
 
+import math
 from collections import Counter, defaultdict
 from collections.abc import Iterator, Mapping
 
-import pyarrow.parquet as pq
 from opentelemetry.proto.trace.v1.trace_pb2 import Span as ProtoSpan
 from opentelemetry.proto.trace.v1.trace_pb2 import Status as ProtoStatus
 
@@ -22,9 +22,8 @@ from semantic_rca_bench.datasets.rca100 import (
     _iter_alerts,
     _iter_events,
     _iter_logs,
+    _iter_rows,
     _iter_traces,
-    _metric_sample_audit,
-    _metric_series,
     validate_ingest,
 )
 from semantic_rca_bench.datasets.rca100_transfer import (
@@ -39,6 +38,7 @@ from semantic_rca_bench.edge_audit import (
 )
 from semantic_rca_bench.greptimedb.client import GreptimeClient
 from semantic_rca_bench.protocols.loki import to_nanoseconds
+from semantic_rca_bench.protocols.prometheus import prometheus_metric_name
 
 KIND_NAMES = {value: name for name, value in ProtoSpan.SpanKind.items()}
 STATUS_NAMES = {value: name for name, value in ProtoStatus.StatusCode.items()}
@@ -73,22 +73,30 @@ def source_telemetry_audit(case: RCA100Case, spec: TransferCaseSpec) -> dict[str
     # Counted from the source, so the stored rows have something to disagree
     # with. Comparing the database against what the writer reported writing
     # would let a window filter that silently dropped records agree with itself.
-    metric_series = _metric_series(case.metrics_path, window=window)
-    metric_audit = _metric_sample_audit(
-        metric_series,
-        source_rows=pq.ParquetFile(case.metrics_path).metadata.num_rows,
-    )
+    metrics = _metric_stream_audit(case.metrics_path, window[0], window[1])
+    logs = _log_stream_audit(_iter_logs(case.logs_path), start_ns, end_ns)
+    events = _log_stream_audit(_iter_events(case.events_path), start_ns, end_ns)
+    alerts = _log_stream_audit(_iter_alerts(case.alerts_path), start_ns, end_ns)
     return {
         "dataset_revision": case.dataset,
         "declared_window": list(window),
         "trace_identity": identity,
         "stream_rows_in_declared_window": {
-            "metric_samples": metric_audit["unique_samples"],
-            "log_records": _log_rows_in_window(_iter_logs(case.logs_path), start_ns, end_ns),
-            "event_records": _log_rows_in_window(_iter_events(case.events_path), start_ns, end_ns),
-            "alert_records": _log_rows_in_window(_iter_alerts(case.alerts_path), start_ns, end_ns),
+            "metric_samples": metrics["unique_samples"],
+            "log_records": logs["rows_in_window"],
+            "event_records": events["rows_in_window"],
+            "alert_records": alerts["rows_in_window"],
             "trace_spans": len(windowed),
         },
+        # Raw, discarded, and deduplicated counts are distinct facts. Only the
+        # deduplicated one can equal the stored rows, so publishing just that
+        # would hide how many the replay dropped on the way.
+        "metric_stream": {
+            "rows_in_window": metrics["rows_in_window"],
+            "invalid_values": metrics["invalid_values"],
+            "unique_samples": metrics["unique_samples"],
+        },
+        "expected_metric_tables": metrics["metric_tables"],
         "trace_periods": {
             "normal": _edge_period(windowed, spec.normal_window),
             "abnormal": _edge_period(windowed, spec.abnormal_window),
@@ -104,9 +112,21 @@ def source_telemetry_audit(case: RCA100Case, spec: TransferCaseSpec) -> dict[str
             "periods_contiguous": spec.normal_window[1] == spec.abnormal_window[0],
             "rows_at_window_start": at_start,
             "rows_at_period_seam": at_seam,
-            "rows_at_exact_end": at_end,
+            "rows_at_exact_end": {
+                "trace_spans": at_end,
+                "metric_samples": metrics["rows_at_exact_end"],
+                "log_records": logs["rows_at_exact_end"],
+                "event_records": events["rows_at_exact_end"],
+                "alert_records": alerts["rows_at_exact_end"],
+            },
         },
-        "source_window_end_boundaries_empty": at_end == 0,
+        "source_window_end_boundaries_empty": (
+            at_end == 0
+            and metrics["rows_at_exact_end"] == 0
+            and logs["rows_at_exact_end"] == 0
+            and events["rows_at_exact_end"] == 0
+            and alerts["rows_at_exact_end"] == 0
+        ),
         "source_identity_valid": identity["valid"],
         "spans_in_declared_window": len(windowed),
     }
@@ -126,7 +146,9 @@ def validate_transfer_ingest(
         "span_kind": _stored_group_counts(client, "span_kind"),
         "span_status_code": _stored_group_counts(client, "span_status_code"),
     }
-    unexpected = _unexpected_tables(client, case.input.database)
+    unexpected = _unexpected_tables(
+        client, case.input.database, set(_string_list(source, "expected_metric_tables"))
+    )
     window = source["declared_window"]
     stored_spans = _stored_span_window(client)
     return {
@@ -276,8 +298,62 @@ def no_model_gates(
     return gates
 
 
-def _log_rows_in_window(records: Iterator[object], start_ns: int, end_ns: int) -> int:
-    return sum(1 for record in records if start_ns <= to_nanoseconds(record.timestamp) < end_ns)
+def _log_stream_audit(records: Iterator[object], start_ns: int, end_ns: int) -> dict[str, int]:
+    rows = at_end = 0
+    for record in records:
+        stamp = to_nanoseconds(record.timestamp)
+        rows += start_ns <= stamp < end_ns
+        at_end += stamp == end_ns
+    return {"rows_in_window": rows, "rows_at_exact_end": at_end}
+
+
+def _metric_stream_audit(path, start_seconds: int, end_seconds: int) -> dict[str, object]:
+    """Count the metric stream without reusing the ingestion filter.
+
+    `_metric_series` drops null and non-finite values before it applies the
+    window, so calling it here would make the source count, the writer count,
+    and the stored count ignore the same rows together. Walking the parquet
+    directly keeps the discarded rows visible and lets the stored count
+    disagree.
+    """
+    raw = invalid = at_end = 0
+    names: set[str] = set()
+    unique: set[tuple[str, tuple[tuple[str, str], ...], int]] = set()
+    for row in _iter_rows(path):
+        seconds = int(row["time"]) // 1_000_000
+        if seconds == end_seconds:
+            at_end += 1
+        if not start_seconds <= seconds < end_seconds:
+            continue
+        raw += 1
+        value = row.get("value")
+        if value is None or not math.isfinite(float(value)):
+            invalid += 1
+            continue
+        name = prometheus_metric_name(str(row.get("metric") or ""))
+        names.add(name)
+        labels = tuple(
+            sorted(
+                (key, str(row[key]))
+                for key in (
+                    "domain",
+                    "entity_set",
+                    "entity_id",
+                    "entity_name",
+                    "metric_set_id",
+                    "service",
+                )
+                if row.get(key) not in (None, "")
+            )
+        )
+        unique.add((name, labels, int(row["time"]) // 1_000))
+    return {
+        "rows_in_window": raw,
+        "invalid_values": invalid,
+        "unique_samples": len(unique),
+        "rows_at_exact_end": at_end,
+        "metric_tables": sorted(names),
+    }
 
 
 def _trace_identity(spans: list[object]) -> dict[str, object]:
@@ -352,33 +428,33 @@ def _stored_span_window(client: GreptimeClient) -> dict[str, int]:
     }
 
 
-def _unexpected_tables(client: GreptimeClient, database: str) -> set[str]:
-    """Tables the replay did not write and no metric declared.
+def _unexpected_tables(
+    client: GreptimeClient,
+    database: str,
+    expected_metric_tables: set[str],
+) -> set[str]:
+    """Tables the replay did not write.
 
-    The roster comes from `tables`, not `table_semantics`: a plain CREATE TABLE
-    carries no `greptime.semantic.*` options and never appears in the semantic
-    view, so enumerating that view would miss the exact shape a leaked answer key
-    or topology snapshot takes while the agent can still query it.
+    The expected roster is derived from the source archive, not from the
+    database's own `table_semantics`. That view lists whatever carries
+    `greptime.semantic.*` options, so a label written through the same OTLP or
+    Loki path the replay uses would appear there and clear itself.
     """
-    semantics = client.query(
-        "SELECT table_name FROM information_schema.table_semantics "
-        f"WHERE table_schema = '{database}'",
-        max_rows=None,
-    )
     stored = client.query(
         f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{database}'",
         max_rows=None,
     )
-    if semantics.truncated or stored.truncated:
+    if stored.truncated:
         raise RCA100Error("stored table roster was truncated")
-    declared = {str(row[0]) for row in semantics.rows}
-    return {
-        str(row[0])
-        for row in stored.rows
-        if str(row[0]) not in INGESTED_TABLES
-        and str(row[0]) not in declared
-        and str(row[0]) not in ENGINE_MANAGED_TABLES
-    }
+    expected = INGESTED_TABLES | ENGINE_MANAGED_TABLES | expected_metric_tables
+    return {str(row[0]) for row in stored.rows if str(row[0]) not in expected}
+
+
+def _string_list(source: Mapping[str, object], key: str) -> list[str]:
+    value = source.get(key)
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise RCA100Error(f"source audit field is not a string list: {key}")
+    return value
 
 
 def _stored_group_counts(client: GreptimeClient, column: str) -> dict[str, int]:
