@@ -62,17 +62,44 @@ GROUP BY c.service_name, s.service_name
 ORDER BY src_id, dst_id"""
 
 
-def canonical_graph_edge_query(window_start: int, window_end: int) -> str:
+def canonical_graph_edge_query(
+    window_start: int,
+    window_end: int,
+    *,
+    paired_only: bool = False,
+) -> str:
+    """The graph's service call edges over a half-open observed_at range.
+
+    paired_only keeps the edges a client/server span pairing produces. A virtual
+    edge to an uninstrumented peer carries confidence below 1.0 and has no
+    server span, so raw SQL cannot derive it and an equality audit that included
+    it would be comparing two different claims.
+    """
     start = _time_literal(window_start)
     end = _time_literal(window_end)
+    paired = "\n  AND confidence = 1.0" if paired_only else ""
     return f"""SELECT src_type, src_id, dst_type, dst_id, rel_type, provenance,
        SUM(request_count) AS request_count,
        SUM(error_count) AS error_count
 FROM greptime_private.semantic_relationships
 WHERE observed_at >= {start} AND observed_at < {end}
   AND src_type = 'service' AND dst_type = 'service'
-  AND rel_type = 'calls' AND provenance = 'trace'
+  AND rel_type = 'calls' AND provenance = 'trace'{paired}
 GROUP BY src_type, src_id, dst_type, dst_id, rel_type, provenance
+ORDER BY src_id, dst_id"""
+
+
+def virtual_peer_edge_query(window_start: int, window_end: int) -> str:
+    """The call edges the graph surfaces for peers that emit no spans."""
+    start = _time_literal(window_start)
+    end = _time_literal(window_end)
+    return f"""SELECT src_id, dst_id, MAX(confidence) AS confidence,
+       SUM(request_count) AS request_count,
+       SUM(unmatched_count) AS unmatched_count
+FROM greptime_private.semantic_relationships
+WHERE observed_at >= {start} AND observed_at < {end}
+  AND rel_type = 'calls' AND provenance = 'trace' AND confidence < 1.0
+GROUP BY src_id, dst_id
 ORDER BY src_id, dst_id"""
 
 

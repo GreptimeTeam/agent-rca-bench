@@ -13,6 +13,15 @@ from semantic_rca_bench.datasets.rca100_transfer import (
     mark_duplicate_incidents,
     typical_case_per_fault_type,
 )
+from semantic_rca_bench.edge_audit import (
+    canonical_graph_edge_query,
+    virtual_peer_edge_query,
+)
+from semantic_rca_bench.transfer_formal import (
+    _CASE_ADAPTERS,
+    OPENRCA2_ADAPTER,
+    RCA100_ADAPTER,
+)
 from semantic_rca_bench.transfer_release import _valid_public_locus_shape
 
 SELECTION = Path("fixtures/reference/rca100-transfer-node-selection.json")
@@ -155,3 +164,23 @@ def test_public_artifacts_accept_a_node_locus_projection() -> None:
         {"scope": "infrastructure_node", "edge_source": "a", "edge_destination": "b"}
     )
     assert not _valid_public_locus_shape({"scope": "rack", "component": "r1"})
+
+
+def test_paired_graph_edges_exclude_uninstrumented_peers() -> None:
+    # A virtual edge names a peer that emits no spans, so the client/server
+    # pairing raw SQL performs cannot derive it. Asserting equality against the
+    # unfiltered graph edge set would compare two different claims.
+    paired = canonical_graph_edge_query(100, 200, paired_only=True)
+    unfiltered = canonical_graph_edge_query(100, 200)
+
+    assert "confidence = 1.0" in paired
+    assert "confidence" not in unfiltered
+    assert "confidence < 1.0" in virtual_peer_edge_query(100, 200)
+
+
+def test_case_adapters_route_node_cases_away_from_the_openrca2_loader() -> None:
+    assert OPENRCA2_ADAPTER.name == "openrca2"
+    assert RCA100_ADAPTER.name == "rca100"
+    for case in load_selection_fixture(SELECTION).selected_cases:
+        is_node = case.causal_scope is CausalScope.INFRASTRUCTURE_NODE
+        assert _CASE_ADAPTERS[is_node] is RCA100_ADAPTER

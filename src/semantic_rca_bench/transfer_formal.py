@@ -27,6 +27,19 @@ from semantic_rca_bench.datasets.openrca2_transfer import (
     source_telemetry_audit,
     validate_transfer_ingest,
 )
+from semantic_rca_bench.datasets.rca100 import RCA100Repository
+from semantic_rca_bench.datasets.rca100 import ingest_case as ingest_rca100_case
+from semantic_rca_bench.datasets.rca100_audit import (
+    exact_edge_equality_audit as node_exact_edge_equality_audit,
+)
+from semantic_rca_bench.datasets.rca100_audit import no_model_gates as node_no_model_gates
+from semantic_rca_bench.datasets.rca100_audit import (
+    source_telemetry_audit as node_source_telemetry_audit,
+)
+from semantic_rca_bench.datasets.rca100_audit import (
+    validate_transfer_ingest as node_validate_transfer_ingest,
+)
+from semantic_rca_bench.datasets.rca100_transfer import load_selected_case as load_node_case
 from semantic_rca_bench.greptimedb.client import GreptimeClient
 from semantic_rca_bench.greptimedb.server import ManagedGreptime, inspect_checkout
 from semantic_rca_bench.greptimedb.visibility import QueryGateway
@@ -60,6 +73,70 @@ class TransferEnvironmentConfig:
     greptimedb_repo: Path
     run_dir: Path
     database: str
+    node_cache_dir: Path = Path(".data/rca100")
+
+
+@dataclass(frozen=True)
+class CaseAdapter:
+    """The source-specific half of preparing one measurement case."""
+
+    name: str
+    load_case: Callable[[TransferEnvironmentConfig, TransferCaseSpec], object]
+    ingest: Callable[..., object]
+    source_audit: Callable[..., dict[str, object]]
+    validate_ingest: Callable[..., dict[str, object]]
+    edge_equality: Callable[..., dict[str, object]]
+    gates: Callable[..., dict[str, bool]]
+
+
+def _load_openrca2_case(config: TransferEnvironmentConfig, spec: TransferCaseSpec) -> object:
+    return load_selected_case(
+        config.cache_dir,
+        config.manifest_path,
+        spec,
+        database=config.database,
+    )
+
+
+def _load_rca100_case(config: TransferEnvironmentConfig, spec: TransferCaseSpec) -> object:
+    return load_node_case(
+        RCA100Repository(config.node_cache_dir),
+        spec,
+        database=config.database,
+    )
+
+
+def _ingest_rca100_case(client: GreptimeClient, case: object, spec: TransferCaseSpec) -> object:
+    # The archives carry about an hour around each alert, so the database is
+    # held to the same extent as the window the agent is given.
+    return ingest_rca100_case(
+        client,
+        case,
+        window=(spec.normal_window[0], spec.abnormal_window[1]),
+    )
+
+
+OPENRCA2_ADAPTER = CaseAdapter(
+    name="openrca2",
+    load_case=_load_openrca2_case,
+    ingest=lambda client, case, spec: ingest_case(client, case),
+    source_audit=source_telemetry_audit,
+    validate_ingest=validate_transfer_ingest,
+    edge_equality=exact_edge_equality_audit,
+    gates=no_model_gates,
+)
+
+RCA100_ADAPTER = CaseAdapter(
+    name="rca100",
+    load_case=_load_rca100_case,
+    ingest=_ingest_rca100_case,
+    source_audit=node_source_telemetry_audit,
+    validate_ingest=node_validate_transfer_ingest,
+    edge_equality=node_exact_edge_equality_audit,
+    gates=node_no_model_gates,
+)
+
+_CASE_ADAPTERS = {False: OPENRCA2_ADAPTER, True: RCA100_ADAPTER}
 
 
 @dataclass
@@ -85,27 +162,18 @@ def prepare_transfer_environment(
         raise ValueError(
             f"transfer database must be the opaque case ID with underscores: {expected_database}"
         )
-    if spec.causal_scope is CausalScope.INFRASTRUCTURE_NODE:
-        # The node cases come from a different source archive with its own
-        # loader, window restriction, and fidelity audits. Refuse rather than
-        # replay them through the OpenRCA2 path, which would silently ingest
-        # the wrong extent and audit the wrong contract.
-        raise NotImplementedError(
-            f"{spec.opaque_case_id} is an RCA100 node case; its environment preparation "
-            "is not implemented yet"
-        )
+    # The node cases come from a different source archive, so their loader,
+    # window restriction, and fidelity audits are the RCA100 ones. Replaying
+    # them through the OpenRCA2 path would ingest the wrong extent and audit
+    # the wrong contract.
+    adapter = _CASE_ADAPTERS[spec.causal_scope is CausalScope.INFRASTRUCTURE_NODE]
     checkout = inspect_checkout(
         config.greptimedb_repo,
         build_profile=protocol.greptimedb_build_profile,
     )
     if checkout["head"] != protocol.greptimedb_revision:
         raise ValueError("GreptimeDB HEAD does not match the transfer protocol")
-    case = load_selected_case(
-        config.cache_dir,
-        config.manifest_path,
-        spec,
-        database=config.database,
-    )
+    case = adapter.load_case(config, spec)
     managed = ManagedGreptime(Path(str(checkout["binary"])), config.run_dir)
     report: dict[str, object] | None = None
     try:
@@ -115,17 +183,17 @@ def prepare_transfer_environment(
             client.create_database(config.database)
             assert_semantic_graph_isolated(client, config.database)
             empty = assert_semantic_graph_window_empty(client, case.input)
-            source = source_telemetry_audit(case, spec)
-            counts = ingest_case(client, case)
-            stored = validate_transfer_ingest(client, case, counts, source)
+            source = adapter.source_audit(case, spec)
+            counts = adapter.ingest(client, case, spec)
+            stored = adapter.validate_ingest(client, case, counts, source)
             surfaces = inspect_semantic_surfaces(client, case.input)
             coverage = surfaces.get("coverage")
             if not isinstance(coverage, dict):
                 coverage = summarize_semantic_surfaces(surfaces)
-            equality = exact_edge_equality_audit(client, spec, source)
+            equality = adapter.edge_equality(client, spec, source)
             mechanism = mechanism_evidence_audit(client, spec)
             surface_contract = _mapping(coverage, "surface_contract").get("current") is True
-            gates = no_model_gates(
+            gates = adapter.gates(
                 case,
                 spec,
                 source,
@@ -137,7 +205,7 @@ def prepare_transfer_environment(
             )
             report = {
                 "audit_schema_version": 1,
-                "mode": "semantic-rca-openrca2-transfer-no-model-audit",
+                "mode": f"semantic-rca-{adapter.name}-transfer-no-model-audit",
                 "dataset_revision": case.dataset,
                 "case": spec.model_dump(mode="json"),
                 "agent_facing_case": case.input.model_dump(mode="json"),

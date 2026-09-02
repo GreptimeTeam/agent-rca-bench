@@ -376,7 +376,10 @@ def audit_source_case(
     if profile is None:
         raise RCA100Error(f"{case.source_case} declares an unmodelled node fault: {fault_type}")
     node = case.ground_truth.causal_component
-    alert_start, alert_end = case.input.time_start, case.input.time_end
+    # Read the alert window from the archive rather than from case.input: a
+    # loaded case carries the widened telemetry window, so deriving the spec
+    # from it would not reproduce the frozen one.
+    alert_start, alert_end = _alert_window(case.root)
     span = alert_end - alert_start
     if span <= 0:
         raise RCA100Error(f"{case.source_case} has an empty alert window")
