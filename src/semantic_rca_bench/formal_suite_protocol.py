@@ -16,6 +16,7 @@ from semantic_rca_bench.protocol import (
     run_orders,
 )
 from semantic_rca_bench.transfer_protocol import (
+    TransferCohort,
     TransferProtocolFixture,
     formal_schedule,
     load_transfer_protocol,
@@ -153,6 +154,16 @@ def load_formal_suite_protocol(
     ):
         raise ValueError("formal suite cell count drifted")
     return fixture, transfer
+
+
+def load_transfer_cohort(fixture: FormalSuiteProtocolFixture, suite_path: Path) -> TransferCohort:
+    """The bound transfer cohort, which records the source of every measurement case."""
+    transfer_path = _bound_path(
+        _repository_root(suite_path),
+        fixture.transfer_protocol_fixture,
+        fixture.transfer_protocol_fixture_sha256,
+    )
+    return load_transfer_protocol(transfer_path)[1]
 
 
 def micro_schedule(

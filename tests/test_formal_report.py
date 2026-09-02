@@ -13,6 +13,24 @@ from semantic_rca_bench.formal_suite_protocol import (
     load_formal_suite_protocol,
 )
 
+# Causal scope and mechanism of each v33 measurement case, in cohort order.
+_COHORT = (
+    ("component", "workload_restart"),
+    ("component", "workload_restart"),
+    ("component", "workload_restart"),
+    ("component", "workload_restart"),
+    ("dependency_edge", "call_path_delay"),
+    ("dependency_edge", "call_path_delay"),
+    ("dependency_edge", "call_path_delay"),
+    ("component", "cpu_saturation"),
+    ("component", "cpu_saturation"),
+    ("component", "memory_pressure"),
+    ("infrastructure_node", "cpu_saturation"),
+    ("infrastructure_node", "memory_pressure"),
+    ("infrastructure_node", "disk_io_degradation"),
+    ("infrastructure_node", "host_unavailable"),
+)
+
 
 def _model_report(case_ids: list[str]) -> dict[str, object]:
     metric = {
@@ -90,7 +108,7 @@ def _model_report(case_ids: list[str]) -> dict[str, object]:
     }
 
 
-def _report() -> dict[str, object]:
+def _report(*, transfer_graph_run_cost: float = 0.08) -> dict[str, object]:
     suite, protocol = load_formal_suite_protocol()
     names = [model.model for model in protocol.models]
     case_ids = [f"semantic-rca-transfer-{index:03d}" for index in range(1, 15)]
@@ -133,10 +151,12 @@ def _report() -> dict[str, object]:
                             "rows_returned_through_evidence": {
                                 "eligible_cases": 4,
                                 "median_delta": -12,
+                                "improvements": 3,
                             },
                             "tool_calls_through_evidence": {
                                 "eligible_cases": 4,
                                 "median_delta": -1,
+                                "improvements": 4,
                             },
                         },
                     }
@@ -170,25 +190,21 @@ def _report() -> dict[str, object]:
         "bindings": {
             "protocol_fixture_sha256": suite.transfer_protocol_fixture_sha256,
         },
-        "inference": {"independent_unit": "case"},
+        "inference": {"independent_unit": "case", "holm_family_size": len(case_ids)},
         "sources": [
             {
                 "opaque_case_id": case_id,
                 "source_case": f"source-{index}",
                 "system": "test-system",
-                "mechanism_code": (
-                    "workload_restart"
-                    if index <= 4
-                    else "call_path_delay"
-                    if index <= 7
-                    else "cpu_saturation"
-                    if index <= 9
-                    else "memory_pressure"
+                "mechanism_code": _COHORT[index - 1][1],
+                "causal_scope": _COHORT[index - 1][0],
+                "causal_component": (
+                    None if _COHORT[index - 1][0] == "dependency_edge" else "target-service"
                 ),
-                "causal_scope": "component",
-                "causal_component": "target-service",
-                "edge_source": None,
-                "edge_destination": None,
+                "edge_source": ("caller" if _COHORT[index - 1][0] == "dependency_edge" else None),
+                "edge_destination": (
+                    "callee" if _COHORT[index - 1][0] == "dependency_edge" else None
+                ),
                 "mechanism_evidence": {
                     "predicate": "threshold_transition",
                     "source_table": "test_metric",
@@ -240,7 +256,7 @@ def _report() -> dict[str, object]:
                         "provider_visible_input_tokens": 100 if visibility == "raw" else 90,
                         "output_tokens": 20 if visibility == "raw" else 15,
                         "reasoning_output_tokens": 3 if visibility == "raw" else 2,
-                        "estimated_cost": 0.1 if visibility == "raw" else 0.08,
+                        "estimated_cost": (0.1 if visibility == "raw" else transfer_graph_run_cost),
                         "cost_currency": "USD",
                     },
                 },
@@ -280,6 +296,25 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
         "treatments": ["raw", "semantic_graph"],
         "repetitions_per_model_case": 2,
     }
+    assert report["cohort_provenance"] == {
+        "micro": [
+            {"benchmark": "discovery", "dataset": "openrca", "cases": 6},
+            {"benchmark": "graph", "dataset": "openrca2", "cases": 2},
+        ],
+        "transfer": [
+            {"dataset": "openrca2", "cases": 10},
+            {"dataset": "rca100", "cases": 4},
+        ],
+    }
+    assert report["limitations"][0] == (
+        "The 8-case micro cohort is fixed reference data; the 14-case end-to-end cohort is a "
+        "source-ranked fresh measurement cohort."
+    )
+    assert report["limitations"][6] == (
+        "Mechanism cohorts are unevenly sized: Workload restart 4, Call-path delay 3, "
+        "CPU saturation 3, Memory pressure 2, Disk I/O degradation 1, Host unavailable 1. "
+        "Mechanism-level summaries are descriptive and unevenly supported."
+    )
     costs = report["costs"]
     assert costs["models"] == {
         model: {
@@ -337,7 +372,9 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     render_formal_measurement_report(report, output)
     document = output.read_text()
     assert "__REPORT_DATA__" not in document
-    assert "360" in document
+    assert 'href="semantic-rca-v33.json"' in document
+    assert "sanitized records for all 352 runs" in document
+    assert "仓库公开全部 352 次运行" in document
     assert "gpt-5.6-sol" in document
     assert "Focused retrieval micro-benchmarks" in document
     assert "End-to-end case effects" in document
@@ -346,10 +383,29 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     assert "这是什么" in document
     assert "Focused retrieval improves; E2E varies" in document
     assert "聚焦检索更省，端到端因场景而异" in document
-    assert "Call-path delay is the only mechanism" in document
+    assert (
+        "Models where Graph returned fewer rows, by mechanism: Workload restart 4/4, "
+        "Call-path delay 4/4, CPU saturation 4/4, Memory pressure 4/4, "
+        "Disk I/O degradation 4/4, and Host unavailable 4/4." in document
+    )
+    assert "Of 6 estimable mechanisms, 6 reduce rows for every model" in document
+    assert (
+        "Eligible micro cases where Graph returned fewer rows: Discovery 12/16 and "
+        "Graph-retrieval 12/16." in document
+    )
+    assert "the pre-registered family of 14 tests" in document
     assert "18/28 Raw · 19/28 Graph" in document
     assert "Across all 4 models: Raw 72/112; Graph 76/112." in document
-    assert "Open all 10 cases and 50 case-model combinations" in document
+    assert "Open all 14 cases and 56 case-model combinations" in document
+    assert "View all 24 model-mechanism combinations" in document
+    assert (
+        "The micro-benchmarks use 6 Discovery cases from OpenRCA 1.0 and 2 Graph-retrieval "
+        "cases from OpenRCA2 ops-lite. The end-to-end cohort uses 10 cases from OpenRCA2 "
+        "ops-lite and 4 cases from RCA100." in document
+    )
+    assert "RCA100 v1.1 declares CC BY-NC-SA 4.0" in document
+    assert "Identifies component, dependency edge, or infrastructure node scope" in document
+    assert "识别组件、依赖边、基础设施节点 scope" in document
     assert '<details class="report-details"' in document
     assert '<div class="score-leaderboard">' in document
     assert '<span class="rank">#1</span>' in document
@@ -385,6 +441,18 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     assert "Raw/Graph exact edge equality" in document
     assert "/Users/" not in document
     assert "private/tmp" not in document
+
+
+def test_formal_measurement_report_states_a_cost_result_without_improved_models(
+    tmp_path: Path,
+) -> None:
+    report = _report(transfer_graph_run_cost=0.12)
+
+    output = tmp_path / "report.html"
+    render_formal_measurement_report(report, output)
+    document = output.read_text()
+    assert "No model reduced actual end-to-end cost among 4 fully comparable models." in document
+    assert "4 个可完整比较的模型中，没有模型降低端到端实际成本。" in document
 
 
 def test_formal_measurement_report_rejects_tampered_summary() -> None:

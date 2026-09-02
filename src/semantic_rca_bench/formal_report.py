@@ -2,18 +2,58 @@ from __future__ import annotations
 
 import html
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Mapping
 from importlib.resources import files
 from pathlib import Path
 
 from semantic_rca_bench.formal_suite import canonical_sha256
-from semantic_rca_bench.formal_suite_protocol import load_formal_suite_protocol, sha256_file
+from semantic_rca_bench.formal_suite_protocol import (
+    load_formal_suite_protocol,
+    load_transfer_cohort,
+    sha256_file,
+)
 from semantic_rca_bench.formal_suite_release import validate_micro_measurement_artifact
 from semantic_rca_bench.report import MODEL_PRICING
 from semantic_rca_bench.transfer_release import validate_measurement_artifact
 
-FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION = 4
+FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION = 5
+
+# Display names, upstream links, and the license statement each source declares.
+# The published prose enumerates only the datasets the bound cohort actually uses.
+DATASET_ATTRIBUTION = {
+    "openrca": {
+        "label": "OpenRCA 1.0",
+        "url": "https://github.com/microsoft/OpenRCA",
+        "en": "OpenRCA 1.0 declares CC BY-NC 4.0.",
+        "zh": "OpenRCA 1.0 声明 CC BY-NC 4.0。",
+    },
+    "openrca2": {
+        "label": "OpenRCA2 ops-lite",
+        "url": "https://huggingface.co/datasets/anon-ops/ops-lite",
+        "en": "The OpenRCA2 dataset card says Apache-2.0 while its paper says CC-BY-SA 4.0.",
+        "zh": "OpenRCA2 的 dataset card 声明 Apache-2.0，论文声明 CC-BY-SA 4.0。",
+    },
+    "rca100": {
+        "label": "RCA100",
+        "url": "https://arxiv.org/abs/2606.29193",
+        "en": (
+            "RCA100 v1.1 declares CC BY-NC-SA 4.0 and requires attribution to its dataset paper."
+        ),
+        "zh": "RCA100 v1.1 声明 CC BY-NC-SA 4.0，并要求引用其数据集论文。",
+    },
+}
+
+MICRO_BENCHMARK_LABELS = {
+    "discovery": {"en": "Discovery", "zh": "Discovery"},
+    "graph": {"en": "Graph-retrieval", "zh": "Graph retrieval"},
+}
+
+CAUSAL_SCOPE_LABELS = {
+    "component": {"en": "component", "zh": "组件"},
+    "dependency_edge": {"en": "dependency edge", "zh": "依赖边"},
+    "infrastructure_node": {"en": "infrastructure node", "zh": "基础设施节点"},
+}
 
 
 def build_formal_measurement_report_from_files(
@@ -77,6 +117,7 @@ def build_formal_measurement_report(
     execution = _execution(suite, protocol, micro, transfer, micro_runs, transfer_runs)
     if execution["completed_cells"] != execution["expected_cells"]:
         raise ValueError("formal measurement artifacts are incomplete")
+    cohort_provenance = _cohort_provenance(suite, load_transfer_cohort(suite, suite_protocol_path))
     payload = {
         "report_schema_version": FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION,
         "report_type": "semantic-rca-measurement-report",
@@ -109,6 +150,7 @@ def build_formal_measurement_report(
             "inference": transfer.get("inference"),
         },
         "execution": execution,
+        "cohort_provenance": cohort_provenance,
         "case_catalog": list(case_context.values()),
         "source_artifacts": source_artifacts,
         "model_order": names,
@@ -136,8 +178,9 @@ def build_formal_measurement_report(
         "audit": _audit(micro, transfer),
         "limitations": [
             (
-                "The eight-case micro cohort is fixed reference data; the ten-case end-to-end "
-                "cohort is a source-ranked fresh measurement cohort."
+                f"The {execution['micro_cases']}-case micro cohort is fixed reference data; the "
+                f"{execution['transfer_cases']}-case end-to-end cohort is a source-ranked fresh "
+                "measurement cohort."
             ),
             (
                 "Case-level within-model estimates apply to these systems and mechanisms; "
@@ -158,8 +201,9 @@ def build_formal_measurement_report(
                 "coverage limits."
             ),
             (
-                "Mechanism cohorts contain four restart, three delay, two CPU, and one memory "
-                "case. Mechanism-level summaries are descriptive and unevenly supported."
+                "Mechanism cohorts are unevenly sized: "
+                f"{_mechanism_cohort_phrase(_mechanism_cohort(case_context.values()), 'en')}. "
+                "Mechanism-level summaries are descriptive and unevenly supported."
             ),
             "Costs retain provider currencies; currencies are not converted.",
         ],
@@ -230,6 +274,29 @@ def _execution(suite, protocol, micro, transfer, micro_runs, transfer_runs):
         "treatments": [item.value for item in protocol.visibility_levels],
         "repetitions_per_model_case": protocol.repetitions_per_model,
     }
+
+
+def _cohort_provenance(suite, cohort) -> dict[str, object]:
+    micro = Counter((case.benchmark, case.adapter) for case in suite.micro_cases)
+    return {
+        "micro": [
+            {"benchmark": benchmark, "dataset": adapter, "cases": count}
+            for (benchmark, adapter), count in sorted(micro.items())
+        ],
+        "transfer": [
+            {"dataset": source.adapter, "cases": len(source.case_ids)} for source in cohort.sources
+        ],
+    }
+
+
+def _mechanism_cohort(cases) -> list[tuple[str, int]]:
+    counts = Counter(str(case["mechanism_code"]) for case in cases)
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+
+
+def _mechanism_cohort_phrase(counts: list[tuple[str, int]], language: str) -> str:
+    separator = "、" if language == "zh" else ", "
+    return separator.join(f"{_mechanism_label(code, language)} {count}" for code, count in counts)
 
 
 def _combined_model_report(
@@ -591,7 +658,7 @@ CAPABILITY_SCORE_RUBRIC = {
     "causal_scope_match": {"points": 10, "label": "causal scope", "dimension": "location"},
     "causal_locus_match": {
         "points": 30,
-        "label": "causal component or edge",
+        "label": "declared causal locus",
         "dimension": "location",
     },
     "fault_category_match": {
@@ -1003,16 +1070,35 @@ def _report_body(report):
 
 def _localized_report_body(report, language):
     execution = _mapping(report, "execution")
+    scope = _mapping(report, "scope")
     cards = "".join(
         _model_card(model, _mapping(_mapping(report, "model_reports"), model), language)
         for model in report["model_order"]
     )
     audit = _mapping(report, "audit")
+    model_count = len(report["model_order"])
+    transfer_cases = int(execution["transfer_cases"])
+    repetitions = int(execution["repetitions_per_model_case"])
+    transfer_runs_per_treatment = transfer_cases * repetitions
+    transfer_runs_per_model = transfer_runs_per_treatment * len(execution["treatments"])
+    case_model_pairs = transfer_cases * model_count
+    mechanism_counts = _mechanism_cohort(_mapping_list(report, "case_catalog"))
+    report_json = f"semantic-rca-v{scope['benchmark_protocol_version']}.json"
+    attribution_text, attribution_terms, attribution_links = _attribution(report, language)
+    mechanism_cells = sum(
+        len(
+            _mapping_list(
+                _mapping(_mapping(_mapping(report, "model_reports"), model), "transfer"),
+                "mechanism_effects",
+            )
+        )
+        for model in report["model_order"]
+    )
     if language == "zh":
         eyebrow = "GreptimeDB Semantic Graph · 配对 Agent Benchmark"
         lede = "LLM agent 使用 Raw telemetry 或完整 Semantic Graph 调查真实故障的开放评测。"
         actions = (
-            '<a href="semantic-rca-v32.json" download>下载报告 JSON</a>'
+            f'<a href="{report_json}" download>下载报告 JSON</a>'
             '<a href="https://github.com/GreptimeTeam/semantic-rca-bench#reproduce-the-published-report">复现报告</a>'
             '<a href="https://github.com/GreptimeTeam/semantic-rca-bench">查看源码</a>'
         )
@@ -1029,7 +1115,8 @@ def _localized_report_body(report, language):
             "评测关注诊断正确时，Graph 能否减少调查所需的数据检索和工具调用。"
         )
         reproducibility_text = (
-            "仓库公开全部 360 次运行的脱敏记录，包括工具输入、SQL、结果投影、评分事实和哈希。"
+            f"仓库公开全部 {execution['completed_cells']} 次运行的脱敏记录，"
+            "包括工具输入、SQL、结果投影、评分事实和哈希。"
             "对应 tag 的代码无需调用模型即可重新生成所有聚合结果和本页面。"
         )
         glossary = (
@@ -1041,15 +1128,6 @@ def _localized_report_body(report, language):
             ("Holm p", "对同一检验族做多重比较校正后的 p 值。"),
         )
         attribution_title = "数据来源与致谢"
-        attribution_text = (
-            "6 个 Discovery case 来自 OpenRCA 1.0；2 个 Graph retrieval case 和 "
-            "10 个端到端 case 来自 OpenRCA2 ops-lite。感谢 OpenRCA 和 OpenRCA2/ops-lite "
-            "的作者与维护者公开数据和研究材料，使本评测能够复现。"
-        )
-        attribution_terms = (
-            "OpenRCA 1.0 声明 CC BY-NC 4.0。OpenRCA2 的 dataset card 声明 Apache-2.0，"
-            "论文声明 CC-BY-SA 4.0；本项目不替上游解决该冲突，也不重新分发原始 telemetry。"
-        )
         conclusion = "结论"
         conclusion_text = (
             "Semantic Graph 在多数聚焦任务中明显压缩检索数据，依赖导航场景最稳定；"
@@ -1063,7 +1141,8 @@ def _localized_report_body(report, language):
             "model_metrics": "端到端诊断与效率",
             "score_note": (
                 "描述性评分采用定位 40、根因 40、证据 20。"
-                "Overall 是 40 个端到端 run 的平均分；Raw 与 Graph 各 20 个 run，"
+                f"Overall 是 {transfer_runs_per_model} 个端到端 run 的平均分；"
+                f"Raw 与 Graph 各 {transfer_runs_per_treatment} 个 run，"
                 "因此等于两者的等权平均。失败 run 不从分母中删除。"
                 "该评分不是预注册主要指标，也不参与显著性检验。"
             ),
@@ -1073,7 +1152,9 @@ def _localized_report_body(report, language):
                 "是 oracle 直接使用的观测数。"
             ),
             "case_outcomes": "逐 Case 汇总",
-            "case_outcome_note": ("诊断列汇总全部模型、每模型两次重复。改善模型数不做跨模型推断。"),
+            "case_outcome_note": (
+                f"诊断列汇总全部模型、每模型 {repetitions} 次重复。改善模型数不做跨模型推断。"
+            ),
             "mechanisms": "故障机制决定收益方向",
             "mechanism_note": (
                 "每个单元格是同一模型、同一机制内的 case-median Graph − Raw。负数表示 Graph 更省。"
@@ -1081,7 +1162,7 @@ def _localized_report_body(report, language):
             "cases": "逐 case 端到端结果",
             "case_note": (
                 "先在每个模型和 case 内对合格重复取中位数。"
-                "Raw/Graph 实际成本汇总两次重复；任一 run 不可计价则显示 n/a。"
+                f"Raw/Graph 实际成本汇总 {repetitions} 次重复；任一 run 不可计价则显示 n/a。"
                 "机制和目标只在发布报告中显示，不提供给 agent。"
             ),
             "micro": "聚焦检索 Micro-benchmark",
@@ -1116,8 +1197,8 @@ def _localized_report_body(report, language):
         )
         limit_items = (
             (
-                "Micro-benchmark 使用固定的 8-case reference cohort；端到端测试使用 "
-                "source-ranked 的 10-case fresh cohort。"
+                f"Micro-benchmark 使用固定的 {execution['micro_cases']}-case reference cohort；"
+                f"端到端测试使用 source-ranked 的 {transfer_cases}-case fresh cohort。"
             ),
             (
                 "模型内、case 级估计只适用于本次覆盖的系统和故障机制，不能外推为"
@@ -1131,7 +1212,7 @@ def _localized_report_body(report, language):
                 "其中证据分仍受 verifier 覆盖能力限制。"
             ),
             (
-                "机制样本不均衡：4 个 restart、3 个 delay、2 个 CPU、1 个 memory case。"
+                f"机制样本不均衡：{_mechanism_cohort_phrase(mechanism_counts, 'zh')}。"
                 "机制级结论只作描述。"
             ),
             "成本保留 provider 原始币种，不进行汇率换算。",
@@ -1143,7 +1224,7 @@ def _localized_report_body(report, language):
             "or the complete Semantic Graph."
         )
         actions = (
-            '<a href="semantic-rca-v32.json" download>Download report JSON</a>'
+            f'<a href="{report_json}" download>Download report JSON</a>'
             '<a href="https://github.com/GreptimeTeam/semantic-rca-bench'
             '#reproduce-the-published-report">Reproduce the report</a>'
             '<a href="https://github.com/GreptimeTeam/semantic-rca-bench">View source</a>'
@@ -1162,9 +1243,10 @@ def _localized_report_body(report, language):
             "Graph reduces investigation work when the diagnosis is correct."
         )
         reproducibility_text = (
-            "The repository publishes sanitized records for all 360 runs, including tool "
-            "inputs, SQL, result projections, scoring facts, and hashes. The tagged code "
-            "regenerates every aggregate and this page without calling a model provider."
+            f"The repository publishes sanitized records for all {execution['completed_cells']} "
+            "runs, including tool inputs, SQL, result projections, scoring facts, and hashes. "
+            "The tagged code regenerates every aggregate and this page without calling a model "
+            "provider."
         )
         glossary = (
             ("Run", "One model × incident × treatment × repetition."),
@@ -1178,17 +1260,6 @@ def _localized_report_body(report, language):
             ("Holm p", "A p value adjusted for multiple comparisons in the same test family."),
         )
         attribution_title = "Datasets and acknowledgements"
-        attribution_text = (
-            "Six Discovery cases come from OpenRCA 1.0. Two Graph-retrieval cases and "
-            "ten end-to-end cases come from OpenRCA2 ops-lite. We thank the authors and "
-            "maintainers of OpenRCA and OpenRCA2/ops-lite for publishing the datasets and "
-            "research materials that make this evaluation reproducible."
-        )
-        attribution_terms = (
-            "OpenRCA 1.0 declares CC BY-NC 4.0. The OpenRCA2 dataset card says Apache-2.0 "
-            "while its paper says CC-BY-SA 4.0; this project does not resolve that conflict "
-            "and does not redistribute source telemetry."
-        )
         conclusion = "Conclusion"
         conclusion_text = (
             "Semantic Graph compresses retrieval in most focused tasks, with the most stable "
@@ -1215,7 +1286,7 @@ def _localized_report_body(report, language):
             ),
             "case_outcomes": "Case-level summary",
             "case_outcome_note": (
-                "Diagnosis counts aggregate every model with two repetitions each. "
+                f"Diagnosis counts aggregate every model with {repetitions} repetitions each. "
                 "Improved-model counts are descriptive and are not pooled inference."
             ),
             "mechanisms": "Fault mechanism changes the effect",
@@ -1226,8 +1297,8 @@ def _localized_report_body(report, language):
             "cases": "End-to-end case effects",
             "case_note": (
                 "Eligible repetitions are reduced to a median within each model and case. "
-                "Raw and Graph actual cost sum both repetitions and become n/a if either run "
-                "is not priceable. "
+                f"Raw and Graph actual cost sum all {repetitions} repetitions and become n/a if "
+                "either run is not priceable. "
                 "Mechanisms and targets are published here but were hidden from the agent."
             ),
             "micro": "Focused retrieval micro-benchmarks",
@@ -1277,13 +1348,7 @@ def _localized_report_body(report, language):
         )
         diagnosis_raw += int(diagnosis.get("raw", 0))
         diagnosis_graph += int(diagnosis.get("semantic_graph", 0))
-    execution = _mapping(report, "execution")
-    model_count = len(report["model_order"])
-    runs_per_treatment = (
-        int(execution.get("models", model_count))
-        * int(execution.get("transfer_cases", 0))
-        * int(execution.get("repetitions_per_model_case", 0))
-    )
+    runs_per_treatment = int(execution["models"]) * transfer_runs_per_treatment
     diagnosis_total = (
         f"{model_count} 个模型合计：Raw {diagnosis_raw}/{runs_per_treatment}，"
         f"Graph {diagnosis_graph}/{runs_per_treatment}。"
@@ -1302,7 +1367,7 @@ def _localized_report_body(report, language):
             if language == "zh"
             else "View the 40/40/20 rubric and exact scores"
         ),
-        f"{_capability_rubric_table(language)}{_capability_table(report, language)}",
+        f"{_capability_rubric_table(report, language)}{_capability_table(report, language)}",
     )
     benchmark_details = _details(
         "展开 benchmark 定义和 micro 结果"
@@ -1313,9 +1378,9 @@ def _localized_report_body(report, language):
         element_id=f"{language}-benchmarks",
     )
     case_details = _details(
-        "展开 10 个 case 和 50 个 case-model 组合的完整明细"
+        f"展开 {transfer_cases} 个 case 和 {case_model_pairs} 个 case-model 组合的完整明细"
         if language == "zh"
-        else "Open all 10 cases and 50 case-model combinations",
+        else f"Open all {transfer_cases} cases and {case_model_pairs} case-model combinations",
         f'<h3>{sections["catalog"]}</h3><p class="small">{sections["catalog_note"]}</p>'
         f"{_case_catalog_table(report, language)}"
         f"<h3>{sections['case_outcomes']}</h3>"
@@ -1358,18 +1423,15 @@ def _localized_report_body(report, language):
     )
     mechanism_details = _details(
         (
-            "查看全部 20 个模型-机制组合"
+            f"查看全部 {mechanism_cells} 个模型-机制组合"
             if language == "zh"
-            else "View all 20 model-mechanism combinations"
+            else f"View all {mechanism_cells} model-mechanism combinations"
         ),
         f'<p class="small">{sections["mechanism_note"]}</p>{_mechanism_table(report, language)}',
     )
     attribution = (
         f'<aside class="attribution"><h3>{attribution_title}</h3><p>{attribution_text}</p>'
-        f'<p class="small">{attribution_terms} '
-        '<a href="https://github.com/microsoft/OpenRCA">OpenRCA</a> · '
-        '<a href="https://huggingface.co/datasets/anon-ops/ops-lite">'
-        "OpenRCA2 ops-lite</a></p></aside>"
+        f'<p class="small">{attribution_terms} {attribution_links}</p></aside>'
     )
     nav = "".join(f'<a href="#{language}-{target}">{label}</a>' for target, label in navigation)
     return f"""
@@ -1398,6 +1460,86 @@ def _localized_report_body(report, language):
 <h3 class="model-metrics-title">{sections["model_metrics"]}</h3>
 <p class="diagnosis-total">{diagnosis_total}</p><div class="model-grid">{cards}</div></section>
 {benchmark_details}{case_details}{resource_details}{method_details}</main>"""
+
+
+def _join(items: list[str], language: str) -> str:
+    if language == "zh":
+        return "、".join(items)
+    if len(items) < 3:
+        return " and ".join(items)
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
+
+
+def _dataset(adapter: object) -> dict[str, str]:
+    attribution = DATASET_ATTRIBUTION.get(str(adapter))
+    if attribution is None:
+        raise ValueError(f"no publishable attribution for dataset: {adapter}")
+    return attribution
+
+
+def _attribution(report: Mapping[str, object], language: str) -> tuple[str, str, str]:
+    provenance = _mapping(report, "cohort_provenance")
+    micro = _mapping_list(provenance, "micro")
+    transfer = _mapping_list(provenance, "transfer")
+    micro_parts = []
+    for entry in micro:
+        benchmark = MICRO_BENCHMARK_LABELS.get(str(entry["benchmark"]))
+        if benchmark is None:
+            raise ValueError(f"no publishable label for benchmark: {entry['benchmark']}")
+        label = _dataset(entry["dataset"])["label"]
+        micro_parts.append(
+            f"{entry['cases']} 个来自 {label} 的 {benchmark['zh']} case"
+            if language == "zh"
+            else f"{entry['cases']} {benchmark['en']} cases from {label}"
+        )
+    transfer_parts = [
+        f"{entry['cases']} 个来自 {_dataset(entry['dataset'])['label']} 的 case"
+        if language == "zh"
+        else f"{entry['cases']} cases from {_dataset(entry['dataset'])['label']}"
+        for entry in transfer
+    ]
+    datasets = list(dict.fromkeys(str(entry["dataset"]) for entry in (*micro, *transfer)))
+    names = _join([_dataset(adapter)["label"] for adapter in datasets], language)
+    if language == "zh":
+        text = (
+            f"Micro-benchmark 使用 {_join(micro_parts, language)}；"
+            f"端到端 cohort 使用 {_join(transfer_parts, language)}。"
+            f"感谢 {names} 的作者与维护者公开数据和研究材料，使本评测能够复现。"
+        )
+        terms = (
+            "".join(_dataset(adapter)["zh"] for adapter in datasets)
+            + "本项目不替上游解决 license 冲突，也不重新分发原始 telemetry。"
+        )
+    else:
+        text = (
+            f"The micro-benchmarks use {_join(micro_parts, language)}. The end-to-end cohort "
+            f"uses {_join(transfer_parts, language)}. We thank the authors and maintainers of "
+            f"{names} for publishing the datasets and research materials that make this "
+            "evaluation reproducible."
+        )
+        terms = (
+            " ".join(_dataset(adapter)["en"] for adapter in datasets)
+            + " This project does not resolve upstream license conflicts and does not "
+            "redistribute source telemetry."
+        )
+    links = " · ".join(
+        f'<a href="{_dataset(adapter)["url"]}">{_escape(_dataset(adapter)["label"])}</a>'
+        for adapter in datasets
+    )
+    return text, terms, links
+
+
+def _causal_scope_phrase(report: Mapping[str, object], language: str) -> str:
+    scopes = []
+    for case in _mapping_list(report, "case_catalog"):
+        label = CAUSAL_SCOPE_LABELS.get(str(case["causal_scope"]))
+        if label is None:
+            raise ValueError(f"no publishable label for causal scope: {case['causal_scope']}")
+        if label[language] not in scopes:
+            scopes.append(label[language])
+    if language == "zh":
+        return "、".join(scopes)
+    return f"{', '.join(scopes[:-1])}, or {scopes[-1]}" if len(scopes) > 2 else " or ".join(scopes)
 
 
 def _details(summary: str, body: str, *, element_id: str | None = None) -> str:
@@ -1636,11 +1778,12 @@ def _capability_dimension_charts(report: Mapping[str, object], language: str) ->
     return f'<div class="dimension-grid">{"".join(charts)}</div>'
 
 
-def _capability_rubric_table(language):
+def _capability_rubric_table(report, language):
+    scopes = _causal_scope_phrase(report, language)
     if language == "zh":
         rows = (
-            ("定位", "Causal scope", 10, "识别 component 或 dependency-edge scope"),
-            ("定位", "Causal locus", 30, "命中正式声明的组件或有向依赖边"),
+            ("定位", "Causal scope", 10, f"识别{scopes} scope"),
+            ("定位", "Causal locus", 30, f"命中正式声明的{scopes}"),
             ("根因", "Fault category", 10, "命中故障大类"),
             ("根因", "Mechanism code", 30, "命中具体因果机制"),
             ("证据", "Executed citation", 5, "至少一条 citation 对应成功执行的查询"),
@@ -1649,8 +1792,8 @@ def _capability_rubric_table(language):
         headers = ("维度", "评分项", "分值", "判定")
     else:
         rows = (
-            ("Location", "Causal scope", 10, "Identifies component or dependency-edge scope"),
-            ("Location", "Causal locus", 30, "Matches the declared component or directed edge"),
+            ("Location", "Causal scope", 10, f"Identifies {scopes} scope"),
+            ("Location", "Causal locus", 30, f"Matches the declared {scopes}"),
             ("Root cause", "Fault category", 10, "Matches the fault class"),
             ("Root cause", "Mechanism code", 30, "Matches the causal mechanism"),
             (
@@ -1772,12 +1915,47 @@ def _case_outcome_table(report, language):
     return _html_table(headers, rows)
 
 
+def _micro_row_reduction(report: Mapping[str, object], language: str) -> str:
+    """Eligible micro cases where Graph returned fewer rows, per benchmark."""
+    totals: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    for model in report["model_order"]:
+        micro = _mapping(_mapping(_mapping(report, "model_reports"), model), "micro")
+        for benchmark, summary in _mapping(micro, "benchmarks").items():
+            if not isinstance(summary, Mapping):
+                raise ValueError("micro benchmark summary is not an object")
+            effect = _mapping(
+                _mapping(summary, "case_level_effect"), "rows_returned_through_evidence"
+            )
+            totals[benchmark][0] += int(effect["improvements"])
+            totals[benchmark][1] += int(effect["eligible_cases"])
+    parts = []
+    for benchmark, (improved, eligible) in sorted(totals.items()):
+        label = MICRO_BENCHMARK_LABELS.get(benchmark)
+        if label is None:
+            raise ValueError(f"no publishable label for benchmark: {benchmark}")
+        parts.append(f"{label[language]} {improved}/{eligible}")
+    return _join(parts, language)
+
+
+def _mechanism_row_direction(report: Mapping[str, object]) -> tuple[int, int, int]:
+    """Mechanisms that reduce rows, that increase rows, for every model, and the estimable total."""
+    effects = _mechanism_row_effects(report)
+    improved = 0
+    regressed = 0
+    estimable = 0
+    for values in effects.values():
+        known = [value for value in values.values() if value is not None]
+        if not known:
+            continue
+        estimable += 1
+        improved += all(value < 0 for value in known)
+        regressed += all(value > 0 for value in known)
+    return improved, regressed, estimable
+
+
 def _finding_grid(report, language):
     reports = _mapping(report, "model_reports")
     significant = []
-    delay_models = 0
-    memory_positive = 0
-    memory_estimable = 0
     comparable_cost_models = []
     lower_cost_models = []
     for model in report["model_order"]:
@@ -1789,21 +1967,6 @@ def _finding_grid(report, language):
                 and float(metric["holm_adjusted_p"]) < 0.05
             ):
                 significant.append((model, metric))
-        mechanisms = {
-            str(item["mechanism_code"]): item
-            for item in _mapping_list(transfer, "mechanism_effects")
-        }
-        delay = mechanisms.get("call_path_delay")
-        if delay is not None:
-            rows = _mapping(_mapping(delay, "metrics"), "rows_returned")
-            if rows.get("eligible_cases", 0) and float(rows.get("case_median_delta", 0)) < 0:
-                delay_models += 1
-        memory = mechanisms.get("memory_pressure")
-        if memory is not None:
-            rows = _mapping(_mapping(memory, "metrics"), "rows_returned")
-            if rows.get("eligible_cases", 0):
-                memory_estimable += 1
-                memory_positive += float(rows.get("case_median_delta", 0)) > 0
         actual_cost = _mapping(transfer, "actual_cost_by_treatment")
         raw_cost = actual_cost.get("raw")
         graph_cost = actual_cost.get("semantic_graph")
@@ -1811,53 +1974,61 @@ def _finding_grid(report, language):
             comparable_cost_models.append(model)
             if graph_cost < raw_cost:
                 lower_cost_models.append(model)
+    micro_reduction = _micro_row_reduction(report, language)
+    improved, regressed, estimable = _mechanism_row_direction(report)
+    family_size = _mapping(_mapping(report, "scope"), "inference")["holm_family_size"]
+    comparable = len(comparable_cost_models)
     if language == "zh":
+        cost_text = (
+            f"{comparable} 个可完整比较的模型中，没有模型降低端到端实际成本。"
+            if not lower_cost_models
+            else f"{comparable} 个可完整比较的模型中，"
+            f"{_join(lower_cost_models, language)} 降低了端到端实际成本。"
+        )
         findings = (
             (
-                "最稳定的收益",
-                "Graph micro 的所有合格 case 都减少 rows；Discovery 是 4/5 个模型改善，"
-                "不是所有聚焦任务都受益。",
+                "聚焦检索",
+                f"Graph 减少 rows 的合格 micro case：{micro_reduction}。",
             ),
             (
-                "最强的结构信号",
-                f"Delay 的 rows 中位数在 {delay_models}/5 个模型中都改善；唯一的 memory case 在 "
-                f"{memory_positive}/{memory_estimable} 个可估算模型中都变差。",
+                "机制差异",
+                f"{estimable} 个可估算机制中，{improved} 个在全部模型上减少 rows，"
+                f"{regressed} 个在全部模型上增加 rows。",
             ),
             (
                 "端到端结论",
-                "对 10 个预设检验做 Holm 多重比较校正后，没有主要指标达到统计显著。"
+                f"按预注册的 {family_size} 检验族做 Holm 多重比较校正后，"
+                "没有主要指标达到统计显著。"
                 "不能声称 Semantic Graph 普遍降低 RCA 的 rows 或 calls。",
             ),
-            (
-                "成本结果",
-                f"只有 {', '.join(lower_cost_models)} 在 {len(comparable_cost_models)} 个可完整"
-                "比较模型中降低端到端实际成本。Rows 压缩不能替代成本核算。",
-            ),
+            ("成本结果", f"{cost_text}Rows 压缩不能替代成本核算。"),
         )
     else:
+        cost_text = (
+            f"No model reduced actual end-to-end cost among {comparable} fully comparable models."
+            if not lower_cost_models
+            else f"{_join(lower_cost_models, language)} reduced actual end-to-end cost among "
+            f"{comparable} fully comparable models."
+        )
         findings = (
             (
-                "Most stable benefit",
-                "Every eligible Graph micro case reduced rows; Discovery improved for four of "
-                "five models, so not every focused task benefited.",
+                "Focused retrieval",
+                f"Eligible micro cases where Graph returned fewer rows: {micro_reduction}.",
             ),
             (
-                "Strongest structural signal",
-                f"The median row effect improves for delay in {delay_models}/5 models. The "
-                f"sole memory case regresses in all {memory_positive}/{memory_estimable} "
-                "estimable models.",
+                "Mechanism spread",
+                f"Of {estimable} estimable mechanisms, {improved} reduce rows for every model "
+                f"and {regressed} increase rows for every model.",
             ),
             (
                 "End-to-end result",
-                "After correcting 10 planned comparisons for multiple testing with the Holm "
-                "method, no primary endpoint is statistically significant. The data does not "
-                "support a general reduction in RCA rows or calls.",
+                f"After Holm correction over the pre-registered family of {family_size} tests, "
+                "no primary endpoint is statistically significant. The data does not support a "
+                "general reduction in RCA rows or calls.",
             ),
             (
                 "Cost result",
-                f"Only {', '.join(lower_cost_models)} reduced actual end-to-end cost among "
-                f"{len(comparable_cost_models)} fully comparable models. Row compression is "
-                "not a substitute for cost accounting.",
+                f"{cost_text} Row compression is not a substitute for cost accounting.",
             ),
         )
     if significant:
@@ -2057,48 +2228,34 @@ def _mechanism_row_effects(report: Mapping[str, object]) -> dict[str, dict[str, 
 
 def _mechanism_summary(report: Mapping[str, object], language: str) -> str:
     effects = _mechanism_row_effects(report)
-
-    def direction(mechanism: str) -> tuple[int, int]:
+    parts = []
+    for mechanism, _ in _mechanism_cohort(_mapping_list(report, "case_catalog")):
         values = [value for value in effects.get(mechanism, {}).values() if value is not None]
-        return sum(value < 0 for value in values), len(values)
-
-    restart_better, restart_total = direction("workload_restart")
-    delay_better, delay_total = direction("call_path_delay")
-    cpu_better, cpu_total = direction("cpu_saturation")
-    memory_better, memory_total = direction("memory_pressure")
-    delay_case_better = 0
-    delay_case_total = 0
+        better = sum(value < 0 for value in values)
+        parts.append(f"{_mechanism_label(mechanism, language)} {better}/{len(values)}")
+    case_better = 0
+    case_total = 0
     for case in _mapping_list(report, "case_outcomes"):
-        if case.get("mechanism_code") != "call_path_delay":
-            continue
-        delay_case_better += int(case.get("models_with_fewer_rows", 0))
-        delay_case_total += int(case.get("eligible_models", 0))
+        case_better += int(case.get("models_with_fewer_rows", 0))
+        case_total += int(case.get("eligible_models", 0))
     if language == "zh":
         return (
-            f"调用路径延迟是唯一在全部模型上都减少 rows 的机制（{delay_better}/{delay_total}）。"
-            f"逐 case 看，{delay_case_better}/{delay_case_total} 个可估算的模型-case 组合"
-            "减少 rows。"
-            f"重启为 {restart_better}/{restart_total}，CPU 为 {cpu_better}/{cpu_total}，"
-            f"内存为 {memory_better}/{memory_total}。负数表示 Graph 返回更少数据。"
+            f"按机制统计 rows 减少的模型数：{_join(parts, language)}。"
+            f"逐 case 看，{case_better}/{case_total} 个可估算的模型-case 组合减少 rows。"
+            "负数表示 Graph 返回更少数据。"
         )
     return (
-        "Call-path delay is the only mechanism that reduces rows for every model "
-        f"({delay_better}/{delay_total}); rows fall in {delay_case_better}/{delay_case_total} "
-        "estimable case-model combinations. Restart improves "
-        f"{restart_better}/{restart_total}, "
-        f"CPU improves {cpu_better}/{cpu_total}, and memory improves "
-        f"{memory_better}/{memory_total}. Negative values mean Graph returned fewer rows."
+        f"Models where Graph returned fewer rows, by mechanism: {_join(parts, language)}. "
+        f"Rows fall in {case_better}/{case_total} estimable case-model combinations. "
+        "Negative values mean Graph returned fewer rows."
     )
 
 
 def _mechanism_direction_grid(report: Mapping[str, object], language: str) -> str:
     effects = _mechanism_row_effects(report)
-    mechanisms = (
-        "workload_restart",
-        "call_path_delay",
-        "cpu_saturation",
-        "memory_pressure",
-    )
+    mechanisms = [
+        mechanism for mechanism, _ in _mechanism_cohort(_mapping_list(report, "case_catalog"))
+    ]
     headers = "".join(f"<th>{_escape(model)}</th>" for model in report["model_order"])
     rows = []
     for mechanism in mechanisms:
@@ -2550,6 +2707,8 @@ def _mechanism_label(value: object, language: str) -> str:
         "call_path_delay": ("Call-path delay", "调用路径延迟"),
         "cpu_saturation": ("CPU saturation", "CPU 饱和"),
         "memory_pressure": ("Memory pressure", "内存压力"),
+        "disk_io_degradation": ("Disk I/O degradation", "磁盘 I/O 退化"),
+        "host_unavailable": ("Host unavailable", "主机不可用"),
     }
     english, chinese = labels.get(str(value), (str(value), str(value)))
     return chinese if language == "zh" else english
