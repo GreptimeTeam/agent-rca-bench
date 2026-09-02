@@ -8,7 +8,7 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
 )
 
-from semantic_rca_bench.protocols.loki import LogRecord, _to_nanoseconds, write_logs
+from semantic_rca_bench.protocols.loki import LogRecord, to_nanoseconds, write_logs
 from semantic_rca_bench.protocols.otlp import (
     HistogramMetricPoint,
     NumberMetricPoint,
@@ -60,10 +60,10 @@ def test_remote_write_payload_is_non_empty() -> None:
 
 
 def test_loki_timestamp_units() -> None:
-    assert _to_nanoseconds(1_700_000_000) == 1_700_000_000_000_000_000
-    assert _to_nanoseconds(1_700_000_000_000) == 1_700_000_000_000_000_000
-    assert _to_nanoseconds(1_700_000_000_000_000) == 1_700_000_000_000_000_000
-    assert _to_nanoseconds(1_700_000_000_000_000_000) == 1_700_000_000_000_000_000
+    assert to_nanoseconds(1_700_000_000) == 1_700_000_000_000_000_000
+    assert to_nanoseconds(1_700_000_000_000) == 1_700_000_000_000_000_000
+    assert to_nanoseconds(1_700_000_000_000_000) == 1_700_000_000_000_000_000
+    assert to_nanoseconds(1_700_000_000_000_000_000) == 1_700_000_000_000_000_000
 
 
 def test_otlp_replay_preserves_native_graph_and_resource_fields() -> None:

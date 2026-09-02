@@ -60,8 +60,9 @@ def benchmark_protocol() -> dict[str, object]:
         "model_usage": "provider-total-input-and-reasoning-output-breakdown-v6",
         "provider_network": "openai-anthropic-environment-domestic-direct-v1",
         "tool_error_feedback": "anthropic-native-flag-openai-json-envelope-v1",
-        "diagnosis": "scope-isomorphic-locus-operation-diagnostic-v6",
-        "mechanism_ontology": "case-independent-restart-delay-cpu-memory-v3",
+        "diagnosis": "scope-isomorphic-component-edge-node-locus-operation-diagnostic-v7",
+        "mechanism_ontology": "case-independent-restart-delay-cpu-memory-host-v4",
+        "evidence_oracle": "deterministic-threshold-transition-optional-not-estimable-v1",
         "investigation_prompt": "case-invariant-symmetric-hypothesis-discrimination-v4",
     }
 

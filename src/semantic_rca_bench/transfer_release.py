@@ -11,12 +11,14 @@ from statistics import median
 from semantic_rca_bench.contracts import (
     AgentRun,
     ApiTransport,
-    CausalScope,
     DatabaseLoad,
     EvidenceClaimType,
     ToolTrace,
 )
-from semantic_rca_bench.datasets.openrca2_transfer import TransferCaseSpec
+from semantic_rca_bench.datasets.openrca2_transfer import (
+    SourceMechanismEvidence,
+    TransferCaseSpec,
+)
 from semantic_rca_bench.evaluation import component_matches
 from semantic_rca_bench.evidence import is_evidence_sql, is_valid_evidence_trace
 from semantic_rca_bench.report import _estimated_api_cost, _raw_input_breakdown
@@ -281,7 +283,7 @@ def validate_public_transfer_run(
     diagnosis = payload.get("diagnosis")
     diagnosis = diagnosis if isinstance(diagnosis, Mapping) else None
     scope_match = diagnosis is not None and diagnosis.get("causal_scope") == case.causal_scope.value
-    if case.causal_scope is CausalScope.COMPONENT:
+    if case.causal_scope.uses_causal_component:
         locus_match = (
             diagnosis is not None
             and isinstance(diagnosis.get("causal_component"), str)
@@ -305,7 +307,10 @@ def validate_public_transfer_run(
     mechanism_match = diagnosis is not None and diagnosis.get("mechanism_code") in {
         code.value for code in _accepted_mechanism_codes(case)
     }
-    allowed_operations = set(case.mechanism_evidence.allowed_operations)
+    auditable = case.mechanism_evidence is not None
+    allowed_operations = (
+        set(case.mechanism_evidence.allowed_operations) if case.mechanism_evidence else set()
+    )
     causal_operation_match = (
         None
         if not allowed_operations
@@ -324,7 +329,9 @@ def validate_public_transfer_run(
     baseline_present = any(verdict.baseline_clear for verdict in verdicts)
     anomaly_present = any(verdict.anomaly_present for verdict in verdicts)
     direct_present = any(verdict.direct_mechanism for verdict in verdicts)
-    mechanism_evidence_match = direct_present or (baseline_present and anomaly_present)
+    mechanism_evidence_match = (
+        direct_present or (baseline_present and anomaly_present) if auditable else None
+    )
     expected_baseline_ordinals = [
         int(citation["ordinal"])
         for citation in citations
@@ -365,7 +372,7 @@ def validate_public_transfer_run(
             for projection in _mapping_list(citation, "causal_locus_projections")
         )
     ]
-    locus_evidence_match = bool(expected_locus_ordinals)
+    locus_evidence_match = bool(expected_locus_ordinals) if auditable else None
     for citation in citations:
         ordinal = int(citation["ordinal"])
         if citation.get("supports_baseline_clear") is not (ordinal in expected_baseline_ordinals):
@@ -399,7 +406,11 @@ def validate_public_transfer_run(
         and len(tool_calls) == execution.get("tool_calls_executed")
     )
     diagnosis_correct = all((scope_match, locus_match, category_match, mechanism_match))
-    required_evidence_covered = typed_evidence and mechanism_evidence_match and locus_evidence_match
+    required_evidence_covered = (
+        (typed_evidence and mechanism_evidence_match and locus_evidence_match)
+        if auditable
+        else None
+    )
     citations_execution_valid = (
         bool(citations)
         and references_unique
@@ -463,14 +474,21 @@ def validate_public_transfer_run(
         "no execution-valid citation": has_execution_valid_citation,
         "execution reliability failed": execution_reliability,
     }
-    evidence_checks = {
-        "causal locus lacks incident-local evidence": locus_evidence_match,
-        "baseline-clear evidence is missing": baseline_present or direct_present,
-        "anomalous mechanism evidence is missing": anomaly_present or direct_present,
-        "fault mechanism lacks complete transition evidence": mechanism_evidence_match,
-        "required evidence claims are missing": typed_evidence,
-        "citation integrity failed": citations_execution_valid,
-    }
+    evidence_checks = (
+        {
+            "causal locus lacks incident-local evidence": locus_evidence_match,
+            "baseline-clear evidence is missing": baseline_present or direct_present,
+            "anomalous mechanism evidence is missing": anomaly_present or direct_present,
+            "fault mechanism lacks complete transition evidence": mechanism_evidence_match,
+            "required evidence claims are missing": typed_evidence,
+            "citation integrity failed": citations_execution_valid,
+        }
+        if auditable
+        else {
+            "required evidence claims are missing": typed_evidence,
+            "citation integrity failed": citations_execution_valid,
+        }
+    )
     evaluation = {
         "diagnosis_correct": diagnosis_correct,
         "causal_locus_match": locus_match,
@@ -479,8 +497,8 @@ def validate_public_transfer_run(
         "mechanism_code_match": mechanism_match,
         "causal_operation_match": causal_operation_match,
         "causal_locus_evidence_match": locus_evidence_match,
-        "baseline_evidence_match": baseline_present,
-        "anomaly_evidence_match": anomaly_present,
+        "baseline_evidence_match": baseline_present if auditable else None,
+        "anomaly_evidence_match": anomaly_present if auditable else None,
         "mechanism_evidence_match": mechanism_evidence_match,
         "required_evidence_covered": required_evidence_covered,
         "citations_execution_valid": citations_execution_valid,
@@ -1000,15 +1018,7 @@ def _public_source(audit: Mapping[str, object], case: TransferCaseSpec) -> dict[
             "evidence_match": mechanism.get("evidence_match"),
             "pass": mechanism.get("pass"),
         },
-        "oracle": {
-            "predicate": case.mechanism_evidence.predicate,
-            "source_table": case.mechanism_evidence.source_table,
-            "value_column": case.mechanism_evidence.value_column,
-            "threshold": case.mechanism_evidence.threshold,
-            "allowed_operations": list(case.mechanism_evidence.allowed_operations),
-            "normal_samples": case.mechanism_evidence.normal.get("count"),
-            "abnormal_samples": case.mechanism_evidence.abnormal.get("count"),
-        },
+        "oracle": _oracle_projection(case.mechanism_evidence),
         "semantic_coverage": audit.get("semantic_coverage"),
         "no_model_gates": audit.get("no_model_gates"),
     }
@@ -1446,8 +1456,8 @@ def _causal_locus_projection(
 ) -> dict[str, object] | None:
     verdict = _mechanism_verdict_from_trace(trace, case)
     if verdict.anomaly_present:
-        if case.causal_scope is CausalScope.COMPONENT:
-            return {"scope": "component", "component": case.causal_component}
+        if case.causal_scope.uses_causal_component:
+            return {"scope": case.causal_scope.value, "component": case.causal_component}
         return {
             "scope": "dependency_edge",
             "edge_source": case.edge_source,
@@ -1456,11 +1466,25 @@ def _causal_locus_projection(
     return None
 
 
+def _oracle_projection(evidence: SourceMechanismEvidence | None) -> dict[str, object] | None:
+    if evidence is None:
+        return None
+    return {
+        "predicate": evidence.predicate,
+        "source_table": evidence.source_table,
+        "value_column": evidence.value_column,
+        "threshold": evidence.threshold,
+        "allowed_operations": list(evidence.allowed_operations),
+        "normal_samples": evidence.normal.get("count"),
+        "abnormal_samples": evidence.abnormal.get("count"),
+    }
+
+
 def _public_locus_projection_matches(
     projection: Mapping[str, object], case: TransferCaseSpec
 ) -> bool:
-    if case.causal_scope is CausalScope.COMPONENT:
-        return projection.get("scope") == "component" and component_matches(
+    if case.causal_scope.uses_causal_component:
+        return projection.get("scope") == case.causal_scope.value and component_matches(
             str(projection.get("component")), str(case.causal_component)
         )
     return (

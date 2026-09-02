@@ -15,7 +15,6 @@ from semantic_rca_bench.contracts import (
     AgentRun,
     AgentRunner,
     ApiTransport,
-    CausalScope,
     EvidenceClaimType,
     MechanismCode,
     QueryResult,
@@ -33,7 +32,7 @@ from semantic_rca_bench.evidence import is_valid_evidence_trace
 
 class ClaimGrounding(BaseModel):
     required: bool
-    grounded: bool
+    grounded: bool | None
     supporting_query_ids: list[str]
 
 
@@ -44,11 +43,13 @@ class TransferEvaluation(BaseModel):
     fault_category_match: bool
     mechanism_code_match: bool
     causal_operation_match: bool | None
-    causal_locus_evidence_match: bool
-    baseline_evidence_match: bool
-    anomaly_evidence_match: bool
-    mechanism_evidence_match: bool
-    required_evidence_covered: bool
+    # None when the case has no deterministic mechanism oracle: the secondary
+    # evidence audit is not estimable, which is distinct from failing it.
+    causal_locus_evidence_match: bool | None
+    baseline_evidence_match: bool | None
+    anomaly_evidence_match: bool | None
+    mechanism_evidence_match: bool | None
+    required_evidence_covered: bool | None
     citations_execution_valid: bool
     execution_reliability: bool
     efficiency_eligible: bool
@@ -124,7 +125,7 @@ def evaluate_transfer_run(
 ) -> TransferEvaluation:
     diagnosis = run.diagnosis
     causal_scope_match = diagnosis is not None and diagnosis.causal_scope is case.causal_scope
-    if case.causal_scope is CausalScope.COMPONENT:
+    if case.causal_scope.uses_causal_component:
         causal_locus_match = (
             diagnosis is not None
             and diagnosis.causal_component is not None
@@ -149,7 +150,9 @@ def evaluate_transfer_run(
     mechanism_code_match = (
         diagnosis is not None and diagnosis.mechanism_code in accepted_mechanism_codes
     )
-    allowed_operations = set(case.mechanism_evidence.allowed_operations)
+    allowed_operations = (
+        set(case.mechanism_evidence.allowed_operations) if case.mechanism_evidence else set()
+    )
     causal_operation_match = (
         None
         if not allowed_operations
@@ -193,17 +196,20 @@ def evaluate_transfer_run(
         verdicts.append(
             (item.query_id, trace_indexes[id(trace)], _mechanism_verdict_from_trace(trace, case))
         )
+    auditable = case.mechanism_evidence is not None
     baseline_ids = [query_id for query_id, _, verdict in verdicts if verdict.baseline_clear]
     anomaly_ids = [query_id for query_id, _, verdict in verdicts if verdict.anomaly_present]
     direct_ids = [query_id for query_id, _, verdict in verdicts if verdict.direct_mechanism]
-    mechanism_evidence_match = bool(direct_ids) or (bool(baseline_ids) and bool(anomaly_ids))
+    mechanism_evidence_match = (
+        bool(direct_ids) or (bool(baseline_ids) and bool(anomaly_ids)) if auditable else None
+    )
     mechanism_ids = (
         list(dict.fromkeys([*direct_ids, *baseline_ids, *anomaly_ids]))
         if mechanism_evidence_match
         else []
     )
     locus_ids = list(dict.fromkeys(anomaly_ids))
-    causal_locus_evidence_match = bool(locus_ids)
+    causal_locus_evidence_match = bool(locus_ids) if auditable else None
     claim_grounding = {
         EvidenceClaimType.CAUSAL_LOCUS.value: ClaimGrounding(
             required=True,
@@ -217,7 +223,9 @@ def evaluate_transfer_run(
         ),
     }
     required_evidence_covered = (
-        typed_evidence and causal_locus_evidence_match and mechanism_evidence_match
+        (typed_evidence and causal_locus_evidence_match and mechanism_evidence_match)
+        if auditable
+        else None
     )
     supporting_ids = list(dict.fromkeys([*locus_ids, *mechanism_ids]))
     runner_contract_match = (
@@ -278,14 +286,21 @@ def evaluate_transfer_run(
         "no execution-valid citation": has_execution_valid_citation,
         "execution reliability failed": execution_reliability,
     }
-    evidence_checks = {
-        "causal locus lacks incident-local evidence": causal_locus_evidence_match,
-        "baseline-clear evidence is missing": bool(baseline_ids) or bool(direct_ids),
-        "anomalous mechanism evidence is missing": bool(anomaly_ids) or bool(direct_ids),
-        "fault mechanism lacks complete transition evidence": mechanism_evidence_match,
-        "required evidence claims are missing": typed_evidence,
-        "citation integrity failed": citations_execution_valid,
-    }
+    evidence_checks = (
+        {
+            "causal locus lacks incident-local evidence": causal_locus_evidence_match,
+            "baseline-clear evidence is missing": bool(baseline_ids) or bool(direct_ids),
+            "anomalous mechanism evidence is missing": bool(anomaly_ids) or bool(direct_ids),
+            "fault mechanism lacks complete transition evidence": mechanism_evidence_match,
+            "required evidence claims are missing": typed_evidence,
+            "citation integrity failed": citations_execution_valid,
+        }
+        if auditable
+        else {
+            "required evidence claims are missing": typed_evidence,
+            "citation integrity failed": citations_execution_valid,
+        }
+    )
     return TransferEvaluation(
         diagnosis_correct=diagnosis_correct,
         causal_locus_match=causal_locus_match,
@@ -294,8 +309,8 @@ def evaluate_transfer_run(
         mechanism_code_match=mechanism_code_match,
         causal_operation_match=causal_operation_match,
         causal_locus_evidence_match=causal_locus_evidence_match,
-        baseline_evidence_match=bool(baseline_ids),
-        anomaly_evidence_match=bool(anomaly_ids),
+        baseline_evidence_match=bool(baseline_ids) if auditable else None,
+        anomaly_evidence_match=bool(anomaly_ids) if auditable else None,
         mechanism_evidence_match=mechanism_evidence_match,
         required_evidence_covered=required_evidence_covered,
         citations_execution_valid=citations_execution_valid,
@@ -355,6 +370,8 @@ def _mechanism_verdict_from_trace(
     )
     if statement is None:
         return _rejected_verdict("query_unparseable")
+    if case.mechanism_evidence is None:
+        return _rejected_verdict("no_deterministic_oracle")
     if case.mechanism_code is MechanismCode.CALL_PATH_DELAY:
         return _delay_verdict(statement, result, case)
     metric_verdict = _metric_verdict(statement, result, case)

@@ -39,6 +39,12 @@ class FaultCategory(StrEnum):
 class CausalScope(StrEnum):
     COMPONENT = "component"
     DEPENDENCY_EDGE = "dependency_edge"
+    INFRASTRUCTURE_NODE = "infrastructure_node"
+
+    @property
+    def uses_causal_component(self) -> bool:
+        """Whether the locus is one named entity rather than a directed edge."""
+        return self is not CausalScope.DEPENDENCY_EDGE
 
 
 class MechanismCode(StrEnum):
@@ -54,6 +60,7 @@ class MechanismCode(StrEnum):
     CALL_PATH_DELAY = "call_path_delay"
     DEPENDENCY_UNAVAILABLE = "dependency_unavailable"
     DEPENDENCY_CONTRACT_FAILURE = "dependency_contract_failure"
+    HOST_UNAVAILABLE = "host_unavailable"
     APPLICATION_ERROR = "application_error"
     CONFIGURATION_ERROR = "configuration_error"
     DATA_SEMANTICS_ERROR = "data_semantics_error"
@@ -208,11 +215,11 @@ class Diagnosis(BaseModel):
 
     @model_validator(mode="after")
     def validate_causal_locus(self) -> Diagnosis:
-        if self.causal_scope is CausalScope.COMPONENT:
+        if self.causal_scope.uses_causal_component:
             if self.causal_component is None or not self.causal_component.strip():
-                raise ValueError("component diagnosis requires causal_component")
+                raise ValueError(f"{self.causal_scope.value} diagnosis requires causal_component")
             if self.edge_source is not None or self.edge_destination is not None:
-                raise ValueError("component diagnosis must not define an edge")
+                raise ValueError(f"{self.causal_scope.value} diagnosis must not define an edge")
         else:
             if self.causal_component is not None:
                 raise ValueError("dependency-edge diagnosis must not define causal_component")

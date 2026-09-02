@@ -1,0 +1,341 @@
+{
+  "candidate_profiles": [
+    {
+      "abnormal_max": 83.44177209166365,
+      "node": "cn-hongkong.10.0.1.69",
+      "normal_max": 19.024289103553294,
+      "peer_abnormal_max": 90.24583115232184,
+      "rejection": null,
+      "source_case": "t003",
+      "source_fault_type": "nodeMemoryOOM"
+    },
+    {
+      "abnormal_max": 99.98394531525892,
+      "node": "cn-hongkong.10.0.1.107",
+      "normal_max": 93.5107459849009,
+      "peer_abnormal_max": 12.32165857525105,
+      "rejection": "baseline_not_clear",
+      "source_case": "t005",
+      "source_fault_type": "nodeCpuHigh"
+    },
+    {
+      "abnormal_max": 99.99876552354031,
+      "node": "cn-hongkong.10.0.1.56",
+      "normal_max": 3.0294967545523965,
+      "peer_abnormal_max": 7.350546422710835,
+      "rejection": null,
+      "source_case": "t008",
+      "source_fault_type": "nodeCpuHigh"
+    },
+    {
+      "abnormal_max": 99.99413661687274,
+      "node": "cn-hongkong.10.0.1.49",
+      "normal_max": 6.429453320096645,
+      "peer_abnormal_max": 13.684438664931331,
+      "rejection": null,
+      "source_case": "t019",
+      "source_fault_type": "nodeCpuHigh"
+    },
+    {
+      "abnormal_max": null,
+      "node": "cn-hongkong.10.0.1.55",
+      "normal_max": null,
+      "peer_abnormal_max": null,
+      "rejection": null,
+      "source_case": "t022",
+      "source_fault_type": "diskIOHigh"
+    },
+    {
+      "abnormal_max": 99.99876552354031,
+      "node": "cn-hongkong.10.0.1.56",
+      "normal_max": 3.0294967545523854,
+      "peer_abnormal_max": 7.350546422710824,
+      "rejection": null,
+      "source_case": "t036",
+      "source_fault_type": "nodeCpuHigh"
+    },
+    {
+      "abnormal_max": 99.99907412261727,
+      "node": "cn-hongkong.10.0.1.56",
+      "normal_max": 2.944917024325344,
+      "peer_abnormal_max": 8.705194081593381,
+      "rejection": null,
+      "source_case": "t038",
+      "source_fault_type": "nodeCpuHigh"
+    },
+    {
+      "abnormal_max": 99.99660530497214,
+      "node": "cn-hongkong.10.0.1.56",
+      "normal_max": 4.98320442262834,
+      "peer_abnormal_max": 14.166914534995378,
+      "rejection": null,
+      "source_case": "t048",
+      "source_fault_type": "nodeCpuHigh"
+    },
+    {
+      "abnormal_max": 94.39674064019634,
+      "node": "cn-hongkong.10.0.1.107",
+      "normal_max": 2.7109495279281526,
+      "peer_abnormal_max": 85.14465342771447,
+      "rejection": null,
+      "source_case": "t060",
+      "source_fault_type": "nodeCpuHigh"
+    },
+    {
+      "abnormal_max": 99.99567869223041,
+      "node": "cn-hongkong.10.0.1.107",
+      "normal_max": 7.084230584519058,
+      "peer_abnormal_max": 37.953716789786085,
+      "rejection": null,
+      "source_case": "t069",
+      "source_fault_type": "nodeCpuHigh"
+    },
+    {
+      "abnormal_max": null,
+      "node": "cn-hongkong.10.0.1.65",
+      "normal_max": null,
+      "peer_abnormal_max": null,
+      "rejection": null,
+      "source_case": "t073",
+      "source_fault_type": "nodeDown"
+    },
+    {
+      "abnormal_max": 99.98024136409718,
+      "node": "cn-hongkong.10.0.1.107",
+      "normal_max": 93.5107459849009,
+      "peer_abnormal_max": 12.321658575251071,
+      "rejection": "baseline_not_clear",
+      "source_case": "t080",
+      "source_fault_type": "nodeCpuHigh"
+    },
+    {
+      "abnormal_max": 90.25208112049118,
+      "node": "cn-hongkong.10.0.1.107",
+      "normal_max": 9.67743936288279,
+      "peer_abnormal_max": 99.9941359653176,
+      "rejection": null,
+      "source_case": "t082",
+      "source_fault_type": "nodeCpuHigh"
+    },
+    {
+      "abnormal_max": 99.99320960412584,
+      "node": "cn-hongkong.10.0.1.107",
+      "normal_max": 10.99531135349132,
+      "peer_abnormal_max": 8.63615526619097,
+      "rejection": null,
+      "source_case": "t090",
+      "source_fault_type": "nodeCpuHigh"
+    },
+    {
+      "abnormal_max": 99.99135922493467,
+      "node": "cn-hongkong.10.0.1.49",
+      "normal_max": 4.564632609914376,
+      "peer_abnormal_max": 98.05969089634105,
+      "rejection": null,
+      "source_case": "t092",
+      "source_fault_type": "nodeCpuHigh"
+    }
+  ],
+  "case_role": "measurement",
+  "dataset_revision": "v1.1",
+  "quotas": {
+    "cpu_saturation": 1,
+    "disk_io_degradation": 1,
+    "host_unavailable": 1,
+    "memory_pressure": 1
+  },
+  "seed": "semantic-rca-v1-rca100-node-4",
+  "selected_cases": [
+    {
+      "abnormal_window": [
+        1775908342,
+        1775908892
+      ],
+      "case_role": "measurement",
+      "causal_component": "cn-hongkong.10.0.1.56",
+      "causal_scope": "infrastructure_node",
+      "direct_log_mechanism_evidence": [],
+      "edge_destination": null,
+      "edge_source": null,
+      "fault_category": "cpu",
+      "mechanism_code": "cpu_saturation",
+      "mechanism_evidence": {
+        "abnormal": {
+          "count": 19,
+          "high_count": 14,
+          "max": 99.99660530497214,
+          "min": 4.7201616251764005
+        },
+        "allowed_operations": [],
+        "alternative_metric_signals": [],
+        "identity_column": "entity_name",
+        "identity_domains": {},
+        "identity_equivalent_predicates": [],
+        "identity_value": "cn-hongkong.10.0.1.56",
+        "minimum_anomalous_observations": 2,
+        "normal": {
+          "count": 18,
+          "high_count": 0,
+          "max": 4.98320442262834,
+          "min": 3.7839277529338244
+        },
+        "predicate": "node_cpu_saturation",
+        "scope_preserving_predicates": [
+          {
+            "column": "entity_set",
+            "value": "k8s.node"
+          }
+        ],
+        "source_table": "node_cpu_usage_rate",
+        "threshold": 50.0,
+        "value_column": "greptime_value"
+      },
+      "normal_window": [
+        1775907792,
+        1775908342
+      ],
+      "opaque_case_id": "semantic-rca-transfer-011",
+      "source_case": "t048",
+      "source_fault_type": "nodeCpuHigh",
+      "source_files_sha256": {
+        "alerts.parquet": "351f5872cb5c5011c1ba1b758d673eff711fb52e7714336e054f1b4d5c341745",
+        "events.parquet": "75238a5d72f84df5d746ca219907e8181fff120be3c16e096b8d61a03b438bb2",
+        "logs.parquet": "2761685907db5e5b02ddeff6898a6ea5792e25eb7e653feea012eadc383cdfa6",
+        "metrics.parquet": "1ccbc0461b5d4af25f7bc1b105be18a6b9a680f0ce57eec875f77a058de6ce1d",
+        "task.json": "8b53077587295609c811469c47684b777a4d4097ab8c77e6910f707f0a9c1d3c",
+        "topology.json": "c8403ce42dacf09c59d8a1ec1fd1520eaaddcfdf898cbd0523fbd312a84f07ac",
+        "traces.parquet": "159e9a09bcb5c809ad218221c793d9f6973f2e0cf37bc5647a2059b6e0e313e5"
+      },
+      "system": "OpenTelemetry Demo Store"
+    },
+    {
+      "abnormal_window": [
+        1776052786,
+        1776053050
+      ],
+      "case_role": "measurement",
+      "causal_component": "cn-hongkong.10.0.1.69",
+      "causal_scope": "infrastructure_node",
+      "direct_log_mechanism_evidence": [],
+      "edge_destination": null,
+      "edge_source": null,
+      "fault_category": "memory",
+      "mechanism_code": "memory_pressure",
+      "mechanism_evidence": {
+        "abnormal": {
+          "count": 9,
+          "high_count": 7,
+          "max": 83.44177209166365,
+          "min": 16.857592979069093
+        },
+        "allowed_operations": [],
+        "alternative_metric_signals": [],
+        "identity_column": "entity_name",
+        "identity_domains": {},
+        "identity_equivalent_predicates": [],
+        "identity_value": "cn-hongkong.10.0.1.69",
+        "minimum_anomalous_observations": 2,
+        "normal": {
+          "count": 8,
+          "high_count": 0,
+          "max": 19.024289103553294,
+          "min": 18.628359040944098
+        },
+        "predicate": "node_memory_pressure",
+        "scope_preserving_predicates": [
+          {
+            "column": "entity_set",
+            "value": "k8s.node"
+          }
+        ],
+        "source_table": "node_memory_usage_rate",
+        "threshold": 50.0,
+        "value_column": "greptime_value"
+      },
+      "normal_window": [
+        1776052522,
+        1776052786
+      ],
+      "opaque_case_id": "semantic-rca-transfer-012",
+      "source_case": "t003",
+      "source_fault_type": "nodeMemoryOOM",
+      "source_files_sha256": {
+        "alerts.parquet": "462c6b675884f873725d97b51d99f1faccb6f13bb3266e17548207b943dbc0c7",
+        "events.parquet": "8ab1f5a84343449898092844ab2dcd57fac942265de9c62a9f13e3adea1ea2af",
+        "logs.parquet": "850a6ab55da224893e438d92cfbc31811f37125202000ab454cf2bffbabbfa11",
+        "metrics.parquet": "6a3eafa8fa5f14a87dd25ac7efe66115ebbb8fe3ba805a156414f6eebf7824c8",
+        "task.json": "55966311467b7237fb5d05cf5b7fe8d2b9eab6d42158d82613a4442423f4754f",
+        "topology.json": "09cf9b097288e9c2da46e9250787eb63ae8a159b168e3df19f980498b5ff0eac",
+        "traces.parquet": "4e79e5f5e9b4b56b4164958b411144a8304528053515ce49295e9f2690129303"
+      },
+      "system": "OpenTelemetry Demo Store"
+    },
+    {
+      "abnormal_window": [
+        1776032480,
+        1776032934
+      ],
+      "case_role": "measurement",
+      "causal_component": "cn-hongkong.10.0.1.55",
+      "causal_scope": "infrastructure_node",
+      "direct_log_mechanism_evidence": [],
+      "edge_destination": null,
+      "edge_source": null,
+      "fault_category": "disk",
+      "mechanism_code": "disk_io_degradation",
+      "mechanism_evidence": null,
+      "normal_window": [
+        1776032026,
+        1776032480
+      ],
+      "opaque_case_id": "semantic-rca-transfer-013",
+      "source_case": "t022",
+      "source_fault_type": "diskIOHigh",
+      "source_files_sha256": {
+        "alerts.parquet": "af6c8faf7bcad6e5260c257d8d86f0e35fb563b2da3cb9dd102c0b13b3960fda",
+        "events.parquet": "5f4d71502c3fb5bbece16f11a8050b571dd5ae0a90eb043e6b0dcb6e60889ae0",
+        "logs.parquet": "312d3a5510b6e0d19050a7ddd00a2df62da722be960b84bb7a502cf1f223fe06",
+        "metrics.parquet": "c3b14bd25e7b48723a841d457d3dff8cd3cfa6e9c6b4e2177bd33fffdfe74086",
+        "task.json": "941476888acb3695a6f5a895597e755692920ecbd04584f2347a461c336904d8",
+        "topology.json": "4d76228362658da3c6a9988c5400f07d8c4755209547a4dba4b5f415a64570af",
+        "traces.parquet": "9c2c2fc33f28fbdf34414893792692a6fed655c3545e595120d9e2b2dff76910"
+      },
+      "system": "OpenTelemetry Demo Store"
+    },
+    {
+      "abnormal_window": [
+        1776655201,
+        1776655434
+      ],
+      "case_role": "measurement",
+      "causal_component": "cn-hongkong.10.0.1.65",
+      "causal_scope": "infrastructure_node",
+      "direct_log_mechanism_evidence": [],
+      "edge_destination": null,
+      "edge_source": null,
+      "fault_category": "other",
+      "mechanism_code": "host_unavailable",
+      "mechanism_evidence": null,
+      "normal_window": [
+        1776654968,
+        1776655201
+      ],
+      "opaque_case_id": "semantic-rca-transfer-014",
+      "source_case": "t073",
+      "source_fault_type": "nodeDown",
+      "source_files_sha256": {
+        "alerts.parquet": "096c9454bcd5ceb5bc390c7bf0c4ca46f360d8d2d1891e6c54a90b49673af1f2",
+        "events.parquet": "666f3b390f3db8d0d546fff1b31daf7cfc84b33c986ca89aef0fa7fe7a3f00d6",
+        "logs.parquet": "fcc44783dca41f52404b34cd3a294af08775744b4db0404112646afbcb8cacb0",
+        "metrics.parquet": "e70334551c0c5dc43567e04c6ed0582a8be087f522919f851a9e4d24b1acf3cf",
+        "task.json": "0d630e127f12386e51e90101fff56d50445746d62f907b0ecf27a01f9113e356",
+        "topology.json": "0472ff2e4441ce389410e464cf1623c998c0f810c2fafc705f065f71001ebcb3",
+        "traces.parquet": "24b2263a0be8c3952c9fe45ec19d4b6d11e2ea480d81e079975738870a903124"
+      },
+      "system": "OpenTelemetry Demo Store"
+    }
+  ],
+  "selection_revision": "rca100-node-layer-typicality-v1",
+  "source_revision": "69cf36430b43024d02530c610b1a4738b5c9a7fb",
+  "version": 1
+}

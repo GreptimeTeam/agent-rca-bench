@@ -140,8 +140,9 @@ SUBMIT_TOOL = {
             "causal_component": {
                 "type": ["string", "null"],
                 "description": (
-                    "Exactly one component where the causal mechanism is local. Required for "
-                    "component scope and null for dependency_edge scope."
+                    "Exactly one entity where the causal mechanism is local: a component for "
+                    "component scope, the node for infrastructure_node scope. Null for "
+                    "dependency_edge scope."
                 ),
             },
             "edge_source": {
@@ -171,7 +172,10 @@ SUBMIT_TOOL = {
                 "description": (
                     "component when the mechanism is local to causal_component; "
                     "dependency_edge when it occurs on the directed path from edge_source to "
-                    "edge_destination."
+                    "edge_destination; infrastructure_node when it is local to the host or node "
+                    "the affected workloads run on, in which case causal_component names that "
+                    "node. Choose infrastructure_node only when the evidence separates the node "
+                    "from the workloads it carries."
                 ),
             },
             "causal_operation": {
@@ -1957,7 +1961,9 @@ GreptimeDB SQL notes:
 Final diagnosis contract:
 - causal_scope and its locus fields identify where the mechanism exists, independently of where
   symptoms propagate. For component scope, set exactly one causal_component and leave both edge
-  fields null. For dependency_edge scope, set exactly one directed edge_source and edge_destination
+  fields null. For infrastructure_node scope, name the node in causal_component and leave both edge
+  fields null; use it when the mechanism is local to the node rather than to any workload it
+  carries. For dependency_edge scope, set exactly one directed edge_source and edge_destination
   and leave causal_component null. Do not submit a list or alternation in any locus field.
 - impacted_component optionally names one component that exhibits propagated impact. It is not a
   substitute for the component or edge where the causal mechanism exists. Put unresolved candidates

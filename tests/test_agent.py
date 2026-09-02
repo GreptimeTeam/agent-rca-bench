@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 import semantic_rca_bench.agent as agent_module
 from semantic_rca_bench.agent import (
@@ -29,7 +30,11 @@ from semantic_rca_bench.agent import (
 from semantic_rca_bench.contracts import (
     ApiTransport,
     CaseInput,
+    CausalScope,
     DatabaseLoad,
+    Diagnosis,
+    FaultCategory,
+    MechanismCode,
     QueryResult,
     Visibility,
 )
@@ -349,6 +354,7 @@ def test_diagnosis_requires_canonical_fault_category() -> None:
     assert schema["properties"]["causal_scope"]["enum"] == [
         "component",
         "dependency_edge",
+        "infrastructure_node",
     ]
     assert "call_path_delay" in schema["properties"]["mechanism_code"]["enum"]
     evidence = schema["properties"]["evidence"]["items"]
@@ -1695,3 +1701,24 @@ def test_graph_tool_asks_for_one_row_beyond_the_reported_row_cap() -> None:
     assert [max_rows for _, max_rows in observed] == [7, MAX_QUERY_MAX_ROWS]
     assert "LIMIT 8" in observed[0][0]
     assert f"LIMIT {MAX_QUERY_MAX_ROWS + 1}" in observed[1][0]
+
+
+def test_infrastructure_node_diagnosis_names_the_node_and_no_edge() -> None:
+    node = Diagnosis(
+        causal_scope=CausalScope.INFRASTRUCTURE_NODE,
+        causal_component="cn-hongkong.10.0.1.107",
+        fault_category=FaultCategory.CPU,
+        mechanism_code=MechanismCode.CPU_SATURATION,
+        fault_type="nodeCpuHigh",
+        confidence=0.8,
+        explanation="Node CPU saturated while its workloads slowed.",
+    )
+
+    assert node.causal_component == "cn-hongkong.10.0.1.107"
+
+    with pytest.raises(ValidationError, match="infrastructure_node diagnosis requires"):
+        Diagnosis.model_validate(node.model_dump() | {"causal_component": None})
+    with pytest.raises(ValidationError, match="must not define an edge"):
+        Diagnosis.model_validate(
+            node.model_dump() | {"edge_source": "frontend", "edge_destination": "cart"}
+        )

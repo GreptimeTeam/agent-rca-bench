@@ -311,12 +311,16 @@ def _blind_packet(
             "edge_destination": case.edge_destination,
             "fault_category": case.fault_category.value,
             "mechanism_code": case.mechanism_code.value,
-            "allowed_operations": list(case.mechanism_evidence.allowed_operations),
+            "allowed_operations": (
+                list(case.mechanism_evidence.allowed_operations) if case.mechanism_evidence else []
+            ),
             "normal_window": list(case.normal_window),
             "abnormal_window": list(case.abnormal_window),
-            "threshold": case.mechanism_evidence.threshold,
+            "threshold": (case.mechanism_evidence.threshold if case.mechanism_evidence else None),
             "minimum_anomalous_observations": (
                 case.mechanism_evidence.minimum_anomalous_observations
+                if case.mechanism_evidence
+                else None
             ),
         },
         "submitted_diagnosis": {

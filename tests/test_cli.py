@@ -35,7 +35,9 @@ from semantic_rca_bench.protocol import (
 
 
 def test_run_orders_rotate_every_level_through_each_position() -> None:
-    levels = list(Visibility)
+    # The measurement contract schedules exactly these two treatments; the
+    # rotation only balances positions when repetitions is a multiple of them.
+    levels = [Visibility.RAW, Visibility.SEMANTIC_GRAPH]
 
     orders = _run_orders(levels, repetitions=2, seed=7)
 

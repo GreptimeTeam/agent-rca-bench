@@ -22,7 +22,7 @@ from semantic_rca_bench.contracts import (
     RCA100Case,
 )
 from semantic_rca_bench.greptimedb.client import GreptimeClient
-from semantic_rca_bench.protocols.loki import LogRecord, write_logs
+from semantic_rca_bench.protocols.loki import LogRecord, to_nanoseconds, write_logs
 from semantic_rca_bench.protocols.otlp import OtlpTraceWriter, TraceSpan
 from semantic_rca_bench.protocols.prometheus import (
     prometheus_metric_name,
@@ -70,6 +70,14 @@ class RCA100Repository:
         self._download(f"{SOURCE_BASE_URL}/answer_key/{task_id}.gt.json", answer_path)
         self._download(f"{SOURCE_BASE_URL}/answer_key/taxonomy.json", taxonomy_path)
         return _load_case(root, answer_path, taxonomy_path)
+
+    def fetch_answer_key(self, task_id: str) -> dict[str, Any]:
+        """Fetch one case's ground truth without its telemetry archives."""
+        if not task_id.startswith("t") or len(task_id) != 4 or not task_id[1:].isdigit():
+            raise RCA100Error(f"invalid RCA100 task id: {task_id}")
+        answer_path = self.cache_dir / "answer_key" / f"{task_id}.gt.json"
+        self._download(f"{SOURCE_BASE_URL}/answer_key/{task_id}.gt.json", answer_path)
+        return _read_json(answer_path)
 
     @staticmethod
     def _download(url: str, target: Path) -> None:
@@ -141,10 +149,22 @@ def _load_case(root: Path, answer_path: Path, taxonomy_path: Path) -> RCA100Case
     )
 
 
-def ingest_case(client: GreptimeClient, case: RCA100Case) -> IngestCounts:
+def ingest_case(
+    client: GreptimeClient,
+    case: RCA100Case,
+    *,
+    window: tuple[int, int] | None = None,
+) -> IngestCounts:
+    """Replay one case, optionally restricted to a half-open Unix-second window.
+
+    RCA100 ships roughly an hour of history around each alert. A transfer case
+    declares a much narrower telemetry window, so the window argument keeps the
+    database and the window the agent is given the same extent, the way the
+    OpenRCA2 cases already are.
+    """
     client.create_database(case.input.database)
     counts = IngestCounts()
-    metric_series = _metric_series(case.metrics_path)
+    metric_series = _metric_series(case.metrics_path, window=window)
     metric_audit = _metric_sample_audit(
         metric_series,
         source_rows=pq.ParquetFile(case.metrics_path).metadata.num_rows,
@@ -159,23 +179,23 @@ def ingest_case(client: GreptimeClient, case: RCA100Case) -> IngestCounts:
     counts.log_records = write_logs(
         client,
         case.input.database,
-        _iter_logs(case.logs_path),
+        _within_window(_iter_logs(case.logs_path), window),
     )
     counts.event_records = write_logs(
         client,
         case.input.database,
-        _iter_events(case.events_path),
+        _within_window(_iter_events(case.events_path), window),
         table="events",
     )
     counts.alert_records = write_logs(
         client,
         case.input.database,
-        _iter_alerts(case.alerts_path),
+        _within_window(_iter_alerts(case.alerts_path), window),
         table="alerts",
     )
 
     writer = OtlpTraceWriter(client, case.input.database)
-    counts.trace_spans = writer.write(_iter_traces(case.traces_path))
+    counts.trace_spans = writer.write(_spans_within_window(_iter_traces(case.traces_path), window))
     counts.rejected_trace_spans = writer.rejected_spans
     counts.remapped_trace_ids = writer.stats.remapped_trace_ids
     counts.remapped_span_ids = writer.stats.remapped_span_ids
@@ -256,8 +276,36 @@ def reference_topology_summary(path: Path) -> dict[str, object]:
     }
 
 
+def _within_window(
+    records: Iterator[LogRecord],
+    window: tuple[int, int] | None,
+) -> Iterator[LogRecord]:
+    if window is None:
+        yield from records
+        return
+    start, end = (bound * 1_000_000_000 for bound in window)
+    for record in records:
+        if start <= to_nanoseconds(record.timestamp) < end:
+            yield record
+
+
+def _spans_within_window(
+    spans: Iterator[TraceSpan],
+    window: tuple[int, int] | None,
+) -> Iterator[TraceSpan]:
+    if window is None:
+        yield from spans
+        return
+    start, end = (bound * 1_000_000_000 for bound in window)
+    for span in spans:
+        if start <= span.start_time_unix_nano < end:
+            yield span
+
+
 def _metric_series(
     path: Path,
+    *,
+    window: tuple[int, int] | None = None,
 ) -> list[tuple[str, list[tuple[int, float]], dict[str, str]]]:
     groups: dict[
         tuple[str, tuple[tuple[str, str], ...]],
@@ -274,6 +322,8 @@ def _metric_series(
             )
         value = row.get("value")
         if value is None or not math.isfinite(float(value)):
+            continue
+        if window is not None and not window[0] <= int(row["time"]) // 1_000_000 < window[1]:
             continue
         labels = {
             key: str(row[key])

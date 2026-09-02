@@ -122,6 +122,8 @@ class SourceMechanismEvidence(BaseModel):
         "call_path_start_gap_transition",
         "container_cpu_saturation",
         "container_memory_pressure",
+        "node_cpu_saturation",
+        "node_memory_pressure",
     ]
     source_table: str
     value_column: str
@@ -155,7 +157,10 @@ class TransferCaseSpec(BaseModel):
     source_fault_type: str
     normal_window: tuple[int, int]
     abnormal_window: tuple[int, int]
-    mechanism_evidence: SourceMechanismEvidence
+    # None when the source offers no signal the deterministic evidence oracle can
+    # express. The case still scores diagnosis correctness and the efficiency
+    # endpoints; only the secondary evidence audit reports as not estimable.
+    mechanism_evidence: SourceMechanismEvidence | None = None
     source_files_sha256: dict[str, str]
 
 
@@ -703,6 +708,8 @@ def mechanism_evidence_audit(
     client: GreptimeClient,
     spec: TransferCaseSpec,
 ) -> dict[str, object]:
+    if spec.mechanism_evidence is None:
+        return {"predicate": None, "evidence_match": None, "pass": None}
     query = canonical_mechanism_evidence_query(spec)
     result = client.query(query, max_rows=None)
     normalized = normalize_mechanism_evidence(result)
@@ -731,6 +738,8 @@ def mechanism_evidence_audit(
 
 def canonical_mechanism_evidence_query(spec: TransferCaseSpec) -> str:
     evidence = spec.mechanism_evidence
+    if evidence is None:
+        raise OpenRCA2Error(f"{spec.opaque_case_id} has no deterministic mechanism oracle")
     normal_start = _time_literal(spec.normal_window[0])
     normal_end = _time_literal(spec.normal_window[1])
     abnormal_end = _time_literal(spec.abnormal_window[1])

@@ -4,7 +4,7 @@ import json
 import re
 from datetime import datetime
 
-from semantic_rca_bench.contracts import AgentRun, CausalScope, Evaluation, GroundTruth, ToolTrace
+from semantic_rca_bench.contracts import AgentRun, Evaluation, GroundTruth, ToolTrace
 from semantic_rca_bench.evidence import is_valid_evidence_trace
 
 
@@ -43,7 +43,7 @@ def fault_type_matches(predicted: str, expected: str) -> bool:
 def evaluate(run: AgentRun, truth: GroundTruth) -> Evaluation:
     diagnosis = run.diagnosis
     causal_component_match = (
-        diagnosis.causal_scope is CausalScope.COMPONENT
+        diagnosis.causal_scope.uses_causal_component
         and diagnosis.causal_component is not None
         and component_matches(diagnosis.causal_component, truth.causal_component)
         if diagnosis is not None and truth.component_scoreable

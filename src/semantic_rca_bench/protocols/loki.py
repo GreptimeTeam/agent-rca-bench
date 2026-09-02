@@ -15,7 +15,7 @@ class LogRecord:
     labels: Mapping[str, str] = field(default_factory=dict)
 
 
-def _to_nanoseconds(timestamp: int) -> int:
+def to_nanoseconds(timestamp: int) -> int:
     magnitude = abs(timestamp)
     if magnitude < 100_000_000_000:
         return timestamp * 1_000_000_000
@@ -57,7 +57,7 @@ def _write_batch(
     streams: dict[tuple[tuple[str, str], ...], list[list[str]]] = defaultdict(list)
     for record in records:
         labels = tuple(sorted((str(key), str(value)) for key, value in record.labels.items()))
-        streams[labels].append([str(_to_nanoseconds(record.timestamp)), record.message])
+        streams[labels].append([str(to_nanoseconds(record.timestamp)), record.message])
     payload = {
         "streams": [
             {

@@ -11,6 +11,7 @@ from semantic_rca_bench.contracts import (
     AgentRunner,
     AgentUsage,
     ApiTransport,
+    CausalScope,
     DatabaseLoad,
     Diagnosis,
     Evidence,
@@ -1813,3 +1814,30 @@ def test_causal_operation_is_reported_but_not_a_diagnosis_guardrail() -> None:
 
     assert evaluation.causal_operation_match is False
     assert evaluation.diagnosis_correct is True
+
+
+def test_infrastructure_node_scope_is_scored_as_its_own_layer() -> None:
+    # A node-scope case names its locus in causal_component like a component case,
+    # so a scorer that only branches on COMPONENT would route it to the edge shape
+    # and reject the correct answer.
+    component_case = _case(0)
+    case = component_case.model_copy(update={"causal_scope": CausalScope.INFRASTRUCTURE_NODE})
+    query = _metric_query(component_case)
+    result = _metric_result(component_case)
+
+    correct = _evaluate(_run(case, query, result), case)
+    assert correct.causal_scope_match is True
+    assert correct.causal_locus_match is True
+
+    run = _run(case, query, result)
+    assert run.diagnosis is not None
+    same_locus_wrong_layer = run.model_copy(
+        update={
+            "diagnosis": run.diagnosis.model_copy(update={"causal_scope": CausalScope.COMPONENT})
+        }
+    )
+    evaluation = _evaluate(same_locus_wrong_layer, case)
+
+    assert evaluation.causal_scope_match is False
+    assert evaluation.causal_locus_match is True
+    assert evaluation.diagnosis_correct is False
