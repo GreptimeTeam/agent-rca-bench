@@ -56,6 +56,9 @@ from semantic_rca_bench.datasets.openrca2 import validate_ingest as validate_ope
 from semantic_rca_bench.datasets.openrca2_transfer import (
     build_selection_fixture as build_openrca2_transfer_selection,
 )
+from semantic_rca_bench.datasets.openrca2_transfer import (
+    load_selection_fixture as load_openrca2_selection_fixture,
+)
 from semantic_rca_bench.datasets.rca100 import (
     DATASET_REVISION as RCA100_DATASET_REVISION,
 )
@@ -620,7 +623,10 @@ def formal_suite_report(args: argparse.Namespace) -> int:
 def transfer_selection_audit(args: argparse.Namespace) -> int:
     if args.output.exists():
         raise ValueError(f"refusing to overwrite transfer selection audit: {args.output}")
-    _, frozen = load_transfer_protocol(args.protocol)
+    # The cohort merges two sources; this command replays the OpenRCA2 half,
+    # which is the one with a rebuildable deterministic ranking.
+    protocol, _ = load_transfer_protocol(args.protocol)
+    frozen = load_openrca2_selection_fixture(Path(protocol.selection_fixture))
     rebuilt = build_openrca2_transfer_selection(
         args.cache_dir,
         args.manifest,

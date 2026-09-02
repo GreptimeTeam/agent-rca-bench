@@ -310,7 +310,9 @@ def _case_target(source: Mapping[str, object]) -> str:
 
 
 def _case_context(source: Mapping[str, object]) -> dict[str, object]:
-    oracle = _mapping(source, "oracle")
+    # None when the source offers no signal the deterministic oracle can express.
+    raw_oracle = source.get("oracle")
+    oracle = _mapping(source, "oracle") if raw_oracle is not None else None
     return {
         "case_id": source["opaque_case_id"],
         "source_case": source["source_case"],
@@ -1671,12 +1673,19 @@ def _capability_rubric_table(language):
 def _case_catalog_table(report, language):
     rows = []
     for case in _mapping_list(report, "case_catalog"):
-        oracle = _mapping(case, "oracle")
-        operation = oracle.get("allowed_operations")
-        operation_text = ", ".join(operation) if isinstance(operation, list) else ""
-        signal = f"{oracle.get('source_table')}.{oracle.get('value_column')}"
-        if operation_text:
-            signal = f"{signal} · {operation_text}"
+        oracle = case.get("oracle")
+        if isinstance(oracle, Mapping):
+            operation = oracle.get("allowed_operations")
+            operation_text = ", ".join(operation) if isinstance(operation, list) else ""
+            signal = f"{oracle.get('source_table')}.{oracle.get('value_column')}"
+            if operation_text:
+                signal = f"{signal} · {operation_text}"
+            threshold = _format_number(oracle.get("threshold"))
+            samples = f"{oracle.get('normal_samples')} / {oracle.get('abnormal_samples')}"
+        else:
+            # No node metric expresses this mechanism as a threshold crossing, so
+            # the secondary evidence audit reports not estimable for the case.
+            signal = threshold = samples = "not estimable"
         rows.append(
             (
                 case.get("case_id"),
@@ -1685,8 +1694,8 @@ def _case_catalog_table(report, language):
                 _mechanism_label(case.get("mechanism_code"), language),
                 case.get("target"),
                 signal,
-                _format_number(oracle.get("threshold")),
-                f"{oracle.get('normal_samples')} / {oracle.get('abnormal_samples')}",
+                threshold,
+                samples,
             )
         )
     headers = (

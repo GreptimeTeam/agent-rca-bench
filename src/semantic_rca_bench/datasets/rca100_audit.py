@@ -35,9 +35,10 @@ from semantic_rca_bench.greptimedb.client import GreptimeClient
 
 KIND_NAMES = {value: name for name, value in ProtoSpan.SpanKind.items()}
 STATUS_NAMES = {value: name for name, value in ProtoStatus.StatusCode.items()}
-# The answer key and the vendor topology snapshot are labels for selection and
-# scoring. Neither may reach the database or the agent.
-REFERENCE_ARTIFACTS = ("topology.json",)
+# The tables the replay writes. The answer key and the vendor topology snapshot
+# are labels: the audits read them, but nothing may put them in the database the
+# agent queries, so the gate compares the table set instead of asserting intent.
+INGESTED_TABLES = frozenset({"logs", "events", "alerts", "traces"})
 
 
 def source_telemetry_audit(case: RCA100Case, spec: TransferCaseSpec) -> dict[str, object]:
@@ -46,31 +47,25 @@ def source_telemetry_audit(case: RCA100Case, spec: TransferCaseSpec) -> dict[str
     if observed != spec:
         raise RCA100Error("live RCA100 source differs from the frozen selection")
     window = (spec.normal_window[0], spec.abnormal_window[1])
-    spans = [span for span in _iter_traces(case.traces_path)]
+    start_ns, end_ns = window[0] * 1_000_000_000, window[1] * 1_000_000_000
+    # Only the declared window is kept: the archive holds about an hour around
+    # each alert and these cases run to 600k spans.
     windowed = [
         span
-        for span in spans
-        if window[0] * 1_000_000_000 <= span.start_time_unix_nano < window[1] * 1_000_000_000
+        for span in _iter_traces(case.traces_path)
+        if start_ns <= span.start_time_unix_nano < end_ns
     ]
     identity = _trace_identity(windowed)
-    periods = {
-        "normal": _edge_period(windowed, spec.normal_window),
-        "abnormal": _edge_period(windowed, spec.abnormal_window),
-    }
     return {
         "dataset_revision": case.dataset,
         "declared_window": list(window),
         "trace_identity": identity,
-        "trace_periods": periods,
+        "trace_periods": {
+            "normal": _edge_period(windowed, spec.normal_window),
+            "abnormal": _edge_period(windowed, spec.abnormal_window),
+        },
         "source_identity_valid": identity["valid"],
         "spans_in_declared_window": len(windowed),
-        "spans_outside_declared_window": len(spans) - len(windowed),
-        "source_window_end_boundaries_empty": not any(
-            span.start_time_unix_nano == window[1] * 1_000_000_000 for span in spans
-        ),
-        "reference_artifacts_read": False,
-        "reference_artifacts_ingested": False,
-        "reference_artifacts": list(REFERENCE_ARTIFACTS),
     }
 
 
@@ -84,12 +79,29 @@ def validate_transfer_ingest(
     base = validate_ingest(client, case, counts)
     identity = source["trace_identity"]
     stored = {
-        "service_name": _stored_group_counts(client, case.input.database, "service_name"),
-        "span_kind": _stored_group_counts(client, case.input.database, "span_kind"),
-        "span_status_code": _stored_group_counts(client, case.input.database, "span_status_code"),
+        "service_name": _stored_group_counts(client, "service_name"),
+        "span_kind": _stored_group_counts(client, "span_kind"),
+        "span_status_code": _stored_group_counts(client, "span_status_code"),
     }
+    unexpected = _unexpected_tables(client, case.input.database)
+    window = source["declared_window"]
+    stored_spans = _stored_span_window(client)
     return {
         **base,
+        # Compared against the source restricted to the declared window, not
+        # against what the writer reported writing: a filter that dropped one
+        # span and admitted another outside the window would otherwise agree
+        # with itself on every count.
+        "stored_span_window": stored_spans,
+        "stored_spans_match_declared_window": (
+            stored_spans["count"] == source["spans_in_declared_window"]
+            and stored_spans["min_epoch"] >= window[0]
+            and stored_spans["max_epoch"] < window[1]
+        ),
+        # Measured, not declared: a label that reached the database would show up
+        # as a table the replay never writes and no metric declared.
+        "unexpected_tables": sorted(unexpected),
+        "reference_labels_not_ingested": not unexpected,
         "protocol_rejections_zero": counts.rejected_metric_points == 0
         and counts.rejected_trace_spans == 0,
         "id_remapping": {
@@ -179,8 +191,9 @@ def no_model_gates(
         "source_identity_valid": source.get("source_identity_valid") is True,
         "source_window_end_boundaries_empty": source.get("source_window_end_boundaries_empty")
         is True,
-        "reference_artifacts_excluded": source.get("reference_artifacts_read") is False
-        and source.get("reference_artifacts_ingested") is False,
+        "reference_labels_not_ingested": stored.get("reference_labels_not_ingested") is True,
+        "stored_spans_match_declared_window": stored.get("stored_spans_match_declared_window")
+        is True,
         "exclusive_graph_source": isolated,
         "current_semantic_surface_contract": semantic_surface_contract,
         "protocol_rejections_zero": stored.get("protocol_rejections_zero") is True,
@@ -196,7 +209,6 @@ def no_model_gates(
         ),
         "stored_period_raw_edges_match_source": equality.get("period_raw_replay_exact") is True,
         "raw_graph_exact_edge_set_equality": equality.get("exact_edge_set_equality") is True,
-        "node_entity_present": source.get("node_entity_present") is not False,
         # A case with no deterministic oracle reports None, which is not a
         # failure: the secondary audit is not estimable, not violated.
         "mechanism_evidence": mechanism.get("pass") is not False,
@@ -270,7 +282,34 @@ def _edge_period(spans: list[object], window: tuple[int, int]) -> dict[str, obje
     }
 
 
-def _stored_group_counts(client: GreptimeClient, database: str, column: str) -> dict[str, int]:
+def _stored_span_window(client: GreptimeClient) -> dict[str, int]:
+    result = client.query(
+        "SELECT COUNT(*) AS total, MIN(timestamp) AS first, MAX(timestamp) AS last FROM traces",
+        max_rows=None,
+    )
+    total, first, last = result.rows[0]
+    return {
+        "count": int(total),
+        "min_epoch": int(first) // 1_000_000_000,
+        "max_epoch": int(last) // 1_000_000_000,
+    }
+
+
+def _unexpected_tables(client: GreptimeClient, database: str) -> set[str]:
+    """Tables the replay did not write and no metric declared."""
+    result = client.query(
+        "SELECT table_name, signal_type FROM information_schema.table_semantics "
+        f"WHERE table_schema = '{database}'",
+        max_rows=None,
+    )
+    return {
+        str(row[0])
+        for row in result.rows
+        if str(row[0]) not in INGESTED_TABLES and str(row[1]) != "metric"
+    }
+
+
+def _stored_group_counts(client: GreptimeClient, column: str) -> dict[str, int]:
     result = client.query(
         f"SELECT {column} AS value, COUNT(*) AS total FROM traces GROUP BY {column}",
         max_rows=None,
