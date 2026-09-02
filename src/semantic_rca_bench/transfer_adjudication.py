@@ -8,11 +8,13 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from semantic_rca_bench.contracts import AgentRun
 from semantic_rca_bench.datasets.openrca2_transfer import (
     TransferCaseSpec,
-    TransferSelectionFixture,
 )
 from semantic_rca_bench.evidence import is_valid_evidence_trace
 from semantic_rca_bench.transfer_formal import canonical_sha256
-from semantic_rca_bench.transfer_protocol import TransferProtocolFixture
+from semantic_rca_bench.transfer_protocol import (
+    TransferCohort,
+    TransferProtocolFixture,
+)
 from semantic_rca_bench.transfer_scorer import (
     TransferEvaluation,
     evaluate_transfer_run,
@@ -60,7 +62,7 @@ class HumanAdjudicationDecision(BaseModel):
 def build_semantic_adjudication_queue(
     report: Mapping[str, object],
     protocol: TransferProtocolFixture,
-    selection: TransferSelectionFixture,
+    selection: TransferCohort,
 ) -> dict[str, object]:
     cases = {case.opaque_case_id: case for case in selection.selected_cases}
     models = {model.model: model for model in protocol.models}

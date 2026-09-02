@@ -1,0 +1,92 @@
+{
+  "benchmark_protocol_version": 33,
+  "case_role": "measurement",
+  "execution_order": "cases in selection order; models in roster order; seeded rotating treatments",
+  "expected_cells": 224,
+  "greptimedb_build_profile": "release",
+  "greptimedb_revision": "63c501cfb5a3e28d960d00cb38b195c1365825a7",
+  "inference": {
+    "case_is_independent_unit": true,
+    "correctness_pooled_across_models": false,
+    "direction_consistent_non_significant_meaning": "descriptive evidence only; report the directional case count, eligible case count, case median, unadjusted p, and Holm-adjusted p",
+    "evidence_sufficiency_role": "secondary-deterministic-audit-not-headline-eligibility",
+    "headline_eligibility": "diagnosis-correct-with-execution-valid-citation-and-reliable-run",
+    "holm_family_size": 14,
+    "null_metric_meaning": "not estimable; no eligible paired cases",
+    "primary_metrics": [
+      "rows_returned",
+      "correct_completion_tool_calls"
+    ],
+    "repetitions_are_descriptive": true,
+    "semantic_effect_compared_within_model_only": true,
+    "tied_calls_meaning": "no observed tool-call reduction in the cohort"
+  },
+  "max_tool_calls": 48,
+  "max_turns": 58,
+  "models": [
+    {
+      "api_transport": "openai-responses",
+      "max_output_tokens": 16384,
+      "model": "gpt-5.6-sol",
+      "prompt_cache": "implicit-prefix-30m",
+      "provider": "openai",
+      "reasoning_effort": "medium"
+    },
+    {
+      "api_transport": "anthropic-compatible-messages",
+      "max_output_tokens": 16384,
+      "model": "deepseek-v4-pro",
+      "prompt_cache": "provider-automatic-prefix",
+      "provider": "deepseek",
+      "reasoning_effort": "high"
+    },
+    {
+      "api_transport": "anthropic-messages",
+      "max_output_tokens": 16384,
+      "model": "claude-fable-5-1",
+      "prompt_cache": "ephemeral-request-cache-control",
+      "provider": "anthropic",
+      "reasoning_effort": "high"
+    },
+    {
+      "api_transport": "bigmodel-chat-completions",
+      "max_output_tokens": 16384,
+      "model": "glm-5.3",
+      "prompt_cache": "provider-automatic-prefix",
+      "provider": "zhipu-bigmodel",
+      "reasoning_effort": "max"
+    }
+  ],
+  "node_selection_fixture": "fixtures/reference/rca100-transfer-node-selection.json",
+  "node_selection_fixture_sha256": "c0929a2d2b70cbb957fedc4d316bad895b77d1715f326953f8a017f7575fd546",
+  "paid_execution": {
+    "explicit_user_approval_required_per_batch": true,
+    "no_model_gates_required": true,
+    "pricing_snapshot_required_at_execution": true,
+    "subscription_fallback_allowed": false
+  },
+  "parallel_runs": 1,
+  "protocol_revision": "transfer-four-model-service-edge-node-v15",
+  "repetitions_per_model": 2,
+  "runner": "api",
+  "sampling": "provider-default; no seed sent",
+  "selection_fixture": "fixtures/reference/openrca2-transfer-v32-selection.json",
+  "selection_fixture_sha256": "bf91a0a576fb8b4a9c80616e7a2ade37edb879d28cc8ca1a07759c2188d0e565",
+  "semantic_adjudication": {
+    "decision_rule": "unanimous-sufficient; disagreement-human-tiebreak",
+    "deterministic_hard_gates_remain_authoritative": true,
+    "enabled": false,
+    "judge_models": [
+      "claude-sonnet-5",
+      "deepseek-v4-flash"
+    ],
+    "publish_deterministic_and_adjudicated_results": true,
+    "trigger": "diagnosis-correct-execution-valid-deterministic-grounding-incomplete"
+  },
+  "treatment_order_seed": 0,
+  "version": 1,
+  "visibility_levels": [
+    "raw",
+    "semantic_graph"
+  ]
+}

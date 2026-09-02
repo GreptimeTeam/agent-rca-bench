@@ -637,8 +637,9 @@ def _capability_scores(
             "and not used for hypothesis testing"
         ),
         "overall_formula": (
-            "sum of rubric points over all 40 end-to-end runs divided by 40; Raw and Graph "
-            "contribute 20 runs each, failed runs remain in the denominator"
+            "sum of rubric points over every end-to-end run for the model divided by that "
+            "run count; Raw and Graph contribute equally, failed runs remain in the "
+            "denominator"
         ),
         "method_basis": [
             {
@@ -1070,10 +1071,7 @@ def _localized_report_body(report, language):
                 "是 oracle 直接使用的观测数。"
             ),
             "case_outcomes": "逐 Case 汇总",
-            "case_outcome_note": (
-                "诊断列汇总五个模型、每模型两次重复，共每个 treatment 10 次。"
-                "改善模型数不做跨模型推断。"
-            ),
+            "case_outcome_note": ("诊断列汇总全部模型、每模型两次重复。改善模型数不做跨模型推断。"),
             "mechanisms": "故障机制决定收益方向",
             "mechanism_note": (
                 "每个单元格是同一模型、同一机制内的 case-median Graph − Raw。负数表示 Graph 更省。"
@@ -1203,10 +1201,10 @@ def _localized_report_body(report, language):
             "model_metrics": "End-to-end diagnosis and efficiency",
             "score_note": (
                 "The descriptive score assigns 40 points to location, 40 to root cause, and "
-                "20 to evidence. Overall is the mean across all 40 end-to-end runs. Raw and "
-                "Graph each contribute 20 runs, so Overall is their equally weighted mean; "
-                "failed runs remain in the denominator. It is not a pre-registered endpoint "
-                "and is not used for hypothesis testing."
+                "20 to evidence. Overall is the mean across every end-to-end run for the "
+                "model. Raw and Graph contribute equally, so Overall is their equally "
+                "weighted mean; failed runs remain in the denominator. It is not a "
+                "pre-registered endpoint and is not used for hypothesis testing."
             ),
             "catalog": "End-to-end case characteristics",
             "catalog_note": (
@@ -1215,9 +1213,8 @@ def _localized_report_body(report, language):
             ),
             "case_outcomes": "Case-level summary",
             "case_outcome_note": (
-                "Diagnosis counts aggregate five models with two repetitions each: ten runs "
-                "per treatment. Improved-model counts are descriptive and are not pooled "
-                "inference."
+                "Diagnosis counts aggregate every model with two repetitions each. "
+                "Improved-model counts are descriptive and are not pooled inference."
             ),
             "mechanisms": "Fault mechanism changes the effect",
             "mechanism_note": (
@@ -1278,10 +1275,19 @@ def _localized_report_body(report, language):
         )
         diagnosis_raw += int(diagnosis.get("raw", 0))
         diagnosis_graph += int(diagnosis.get("semantic_graph", 0))
+    execution = _mapping(report, "execution")
+    model_count = len(report["model_order"])
+    runs_per_treatment = (
+        int(execution.get("models", model_count))
+        * int(execution.get("transfer_cases", 0))
+        * int(execution.get("repetitions_per_model_case", 0))
+    )
     diagnosis_total = (
-        f"五个模型合计：Raw {diagnosis_raw}/100，Graph {diagnosis_graph}/100。"
+        f"{model_count} 个模型合计：Raw {diagnosis_raw}/{runs_per_treatment}，"
+        f"Graph {diagnosis_graph}/{runs_per_treatment}。"
         if language == "zh"
-        else f"Across all five models: Raw {diagnosis_raw}/100; Graph {diagnosis_graph}/100."
+        else f"Across all {model_count} models: Raw {diagnosis_raw}/{runs_per_treatment}; "
+        f"Graph {diagnosis_graph}/{runs_per_treatment}."
     )
     primary_result = (
         "聚焦检索更省，端到端因场景而异"

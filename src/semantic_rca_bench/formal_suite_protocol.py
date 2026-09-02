@@ -21,8 +21,8 @@ from semantic_rca_bench.transfer_protocol import (
     load_transfer_protocol,
 )
 
-SUITE_PROTOCOL_REVISION = "semantic-rca-five-model-suite-v15"
-DEFAULT_SUITE_PROTOCOL_FIXTURE = Path("fixtures/reference/semantic-rca-v32-five-model-suite.json")
+SUITE_PROTOCOL_REVISION = "semantic-rca-four-model-suite-v16"
+DEFAULT_SUITE_PROTOCOL_FIXTURE = Path("fixtures/reference/semantic-rca-v33-four-model-suite.json")
 
 
 class MicroCaseContract(BaseModel):

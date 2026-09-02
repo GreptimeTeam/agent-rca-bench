@@ -36,7 +36,7 @@ def test_preflight_freezes_source_audits_without_provider_calls() -> None:
     validate_private_report(report, protocol, DEFAULT_PROTOCOL_FIXTURE, selection)
     assert report["authorization"]["preflight_calls_provider"] is False
     assert report["phase"] == "measurement"
-    assert report["execution"]["expected_runs"] == 200
+    assert report["execution"]["expected_runs"] == 224
 
 
 def test_runner_failure_is_persisted_as_a_scoreable_cell() -> None:

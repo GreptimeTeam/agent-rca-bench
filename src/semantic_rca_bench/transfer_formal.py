@@ -13,6 +13,7 @@ from semantic_rca_bench.contracts import (
     AgentRunner,
     AgentUsage,
     ApiTransport,
+    CausalScope,
     DatabaseLoad,
     Visibility,
 )
@@ -38,8 +39,8 @@ from semantic_rca_bench.inspect import (
 from semantic_rca_bench.protocol import benchmark_protocol
 from semantic_rca_bench.report import MODEL_PRICING
 from semantic_rca_bench.transfer_protocol import (
+    TransferCohort,
     TransferProtocolFixture,
-    TransferSelectionFixture,
     formal_schedule,
     sha256_file,
 )
@@ -83,6 +84,15 @@ def prepare_transfer_environment(
     if config.database != expected_database:
         raise ValueError(
             f"transfer database must be the opaque case ID with underscores: {expected_database}"
+        )
+    if spec.causal_scope is CausalScope.INFRASTRUCTURE_NODE:
+        # The node cases come from a different source archive with its own
+        # loader, window restriction, and fidelity audits. Refuse rather than
+        # replay them through the OpenRCA2 path, which would silently ingest
+        # the wrong extent and audit the wrong contract.
+        raise NotImplementedError(
+            f"{spec.opaque_case_id} is an RCA100 node case; its environment preparation "
+            "is not implemented yet"
         )
     checkout = inspect_checkout(
         config.greptimedb_repo,
@@ -184,7 +194,7 @@ def prepare_transfer_environment(
 def build_preflight_report(
     protocol: TransferProtocolFixture,
     protocol_path: Path,
-    selection: TransferSelectionFixture,
+    selection: TransferCohort,
     source_audits: Sequence[dict[str, object]],
 ) -> dict[str, object]:
     specs = list(selection.selected_cases)
@@ -234,7 +244,7 @@ def execute_case_runs(
     report: dict[str, object],
     protocol: TransferProtocolFixture,
     protocol_path: Path,
-    selection: TransferSelectionFixture,
+    selection: TransferCohort,
     prepared: PreparedTransferEnvironment,
     *,
     paid_api_confirmed: bool,
@@ -324,7 +334,7 @@ def validate_private_report(
     report: Mapping[str, object],
     protocol: TransferProtocolFixture,
     protocol_path: Path,
-    selection: TransferSelectionFixture,
+    selection: TransferCohort,
     *,
     require_complete: bool = False,
 ) -> None:

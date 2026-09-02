@@ -45,6 +45,16 @@ MODEL_PRICING = {
         "checked_at": "2026-08-30",
         "source": "https://platform.claude.com/docs/en/about-claude/pricing",
     },
+    "claude-fable-5-1": {
+        "currency": "USD",
+        "input_per_million": 10.0,
+        "input_cache_write_per_million": 12.5,
+        "input_cache_hit_per_million": 0.25,
+        "output_per_million": 50.0,
+        "checked_at": "2026-09-02",
+        "note": "Cache hits are 0.025 times uncached input, not the 0.1 the other models use.",
+        "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+    },
     "claude-sonnet-5": {
         "currency": "USD",
         "input_per_million": 2.0,

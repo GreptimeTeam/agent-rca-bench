@@ -59,14 +59,14 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v32-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v33-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
 
 
 def test_noncurrent_protocol_cannot_start_new_agent_execution() -> None:
-    require_current_protocol(32)
+    require_current_protocol(33)
 
-    with pytest.raises(ValueError, match="does not match current protocol v32"):
+    with pytest.raises(ValueError, match="does not match current protocol v33"):
         require_current_protocol(30)
 
 
@@ -166,7 +166,7 @@ def test_formal_suite_separates_micro_preflight_from_paid_execution() -> None:
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.protocol) == ("fixtures/reference/semantic-rca-v32-five-model-suite.json")
+    assert str(preflight.protocol) == ("fixtures/reference/semantic-rca-v33-four-model-suite.json")
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
     paid = _parser().parse_args([*execution, "--max-new-runs", "1", "--confirm-paid-api"])
@@ -189,8 +189,8 @@ def test_formal_suite_report_uses_current_public_fixtures() -> None:
         ]
     )
 
-    assert str(args.suite_protocol) == ("fixtures/reference/semantic-rca-v32-five-model-suite.json")
-    assert str(args.transfer_protocol) == ("fixtures/reference/openrca2-transfer-v32-protocol.json")
+    assert str(args.suite_protocol) == ("fixtures/reference/semantic-rca-v33-four-model-suite.json")
+    assert str(args.transfer_protocol) == ("fixtures/reference/transfer-v33-protocol.json")
 
 
 def test_measurement_database_name_cannot_leak_ground_truth() -> None:
@@ -283,7 +283,7 @@ def test_openrca2_transfer_cli_separates_no_model_and_paid_commands() -> None:
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.protocol) == "fixtures/reference/openrca2-transfer-v32-protocol.json"
+    assert str(preflight.protocol) == "fixtures/reference/transfer-v33-protocol.json"
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
     paid = _parser().parse_args([*execution, "--confirm-paid-api"])

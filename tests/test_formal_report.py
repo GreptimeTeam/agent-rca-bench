@@ -58,7 +58,8 @@ def _model_report(case_ids: list[str]) -> dict[str, object]:
         "descriptive_metrics": {"reported_total_tokens": {**metric, "case_median_delta": -1000}},
     }
     return {
-        "runs": 40,
+        # 14 cases x 2 repetitions x 2 treatments
+        "runs": 56,
         **analysis,
         "evidence_quality": {
             "role": "secondary deterministic evidence-sufficiency audit",
@@ -92,7 +93,7 @@ def _model_report(case_ids: list[str]) -> dict[str, object]:
 def _report() -> dict[str, object]:
     suite, protocol = load_formal_suite_protocol()
     names = [model.model for model in protocol.models]
-    case_ids = [f"semantic-rca-transfer-{index:03d}" for index in range(1, 11)]
+    case_ids = [f"semantic-rca-transfer-{index:03d}" for index in range(1, 15)]
     micro = {
         "license": {"source": "source terms"},
         "sources": [
@@ -267,15 +268,15 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     validate_formal_measurement_report(report)
 
     assert report["execution"] == {
-        "expected_cells": 360,
-        "completed_cells": 360,
-        "micro_cells": 160,
-        "transfer_cells": 200,
+        "expected_cells": 352,
+        "completed_cells": 352,
+        "micro_cells": 128,
+        "transfer_cells": 224,
         "runner_errors": 0,
         "budget_exhaustions": 0,
-        "models": 5,
+        "models": 4,
         "micro_cases": 8,
-        "transfer_cases": 10,
+        "transfer_cases": 14,
         "treatments": ["raw", "semantic_graph"],
         "repetitions_per_model_case": 2,
     }
@@ -290,16 +291,16 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
         }
         for model in report["model_order"]
     }
-    assert costs["known_totals_by_currency"] == {"USD": 20.0}
+    assert costs["known_totals_by_currency"] == {"USD": 16.0}
     assert costs["models_with_unavailable_estimate"] == []
     assert costs["cross_currency_total"] is None
     assert costs["pricing_basis"]["gpt-5.6-sol"]["output_per_million"] == 20.0
     assert report["case_catalog"][0]["mechanism_code"] == "workload_restart"
-    assert report["case_outcomes"][0]["models_with_fewer_rows"] == 5
-    assert report["case_outcomes"][0]["models_with_fewer_input_tokens"] == 5
-    assert report["case_outcomes"][0]["models_with_fewer_output_tokens"] == 5
-    assert report["case_outcomes"][0]["models_with_lower_estimated_cost"] == 5
-    assert report["case_outcomes"][0]["models_with_estimable_cost"] == 5
+    assert report["case_outcomes"][0]["models_with_fewer_rows"] == 4
+    assert report["case_outcomes"][0]["models_with_fewer_input_tokens"] == 4
+    assert report["case_outcomes"][0]["models_with_fewer_output_tokens"] == 4
+    assert report["case_outcomes"][0]["models_with_lower_estimated_cost"] == 4
+    assert report["case_outcomes"][0]["models_with_estimable_cost"] == 4
     assert report["capability_scores"]["models"]["gpt-5.6-sol"]["overall"]["score"] == 100
     transfer_metrics = report["model_reports"]["gpt-5.6-sol"]["transfer"]["descriptive_metrics"]
     assert transfer_metrics["provider_visible_input_tokens"]["case_median_delta"] == -10
@@ -307,13 +308,13 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     assert transfer_metrics["estimated_cost"]["case_median_delta"] == pytest.approx(-0.02)
     transfer_report = report["model_reports"]["gpt-5.6-sol"]["transfer"]
     assert transfer_report["actual_cost_by_treatment"] == pytest.approx(
-        {"raw": 2.0, "semantic_graph": 1.6}
+        {"raw": 2.8, "semantic_graph": 2.24}
     )
     assert transfer_report["case_effects"][0]["actual_cost_raw"] == pytest.approx(0.2)
     assert transfer_report["case_effects"][0]["actual_cost_semantic_graph"] == pytest.approx(0.16)
     assert report["model_reports"]["gpt-5.6-sol"]["usage"]["combined"][
         "actual_cost_by_treatment"
-    ] == pytest.approx({"raw": 3.6, "semantic_graph": 2.88})
+    ] == pytest.approx({"raw": 4.4, "semantic_graph": 3.52})
     discovery_resources = report["model_reports"]["gpt-5.6-sol"]["micro"]["benchmarks"][
         "discovery"
     ]["resource_effects"]["summary"]
@@ -328,7 +329,7 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
         "reasoning_output_tokens": 15,
         "input_breakdown_complete": True,
         "reasoning_is_subset_of_output": True,
-        "actual_cost_by_treatment": {"raw": 3.5999999999999996, "semantic_graph": 2.88},
+        "actual_cost_by_treatment": {"raw": 4.4, "semantic_graph": 3.5199999999999996},
         "cost_currency": "USD",
     }
 
@@ -346,8 +347,8 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     assert "Focused retrieval improves; E2E varies" in document
     assert "聚焦检索更省，端到端因场景而异" in document
     assert "Call-path delay is the only mechanism" in document
-    assert "18/20 Raw · 19/20 Graph" in document
-    assert "Across all five models: Raw 90/100; Graph 95/100." in document
+    assert "18/28 Raw · 19/28 Graph" in document
+    assert "Across all 4 models: Raw 72/112; Graph 76/112." in document
     assert "Open all 10 cases and 50 case-model combinations" in document
     assert '<details class="report-details"' in document
     assert '<div class="score-leaderboard">' in document

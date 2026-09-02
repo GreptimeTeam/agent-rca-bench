@@ -25,7 +25,7 @@ def run_orders(
 
 def benchmark_protocol() -> dict[str, object]:
     return {
-        "version": 32,
+        "version": 33,
         "treatments": ["raw", "semantic_graph"],
         "treatment_estimand": "complete-agent-facing-interface-v1",
         "treatment_components": {
