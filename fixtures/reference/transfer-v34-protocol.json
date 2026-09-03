@@ -99,7 +99,7 @@
   "max_parallel_environment_preparations": 2,
   "max_parallel_runs_per_provider": 2,
   "parallel_runs": 4,
-  "protocol_revision": "transfer-four-model-three-arm-service-edge-node-v19",
+  "protocol_revision": "transfer-four-model-three-arm-service-edge-node-v20",
   "repetitions_per_model": 2,
   "runner": "api",
   "sampling": "provider-default; no seed sent",

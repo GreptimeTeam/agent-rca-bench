@@ -50,9 +50,9 @@ from semantic_rca_bench.datasets.rca100_audit import (
     validate_transfer_ingest as node_validate_transfer_ingest,
 )
 from semantic_rca_bench.datasets.rca100_transfer import load_selected_case as load_node_case
-from semantic_rca_bench.greptimedb.client import GreptimeClient
+from semantic_rca_bench.greptimedb.client import GreptimeClient, GreptimeError
 from semantic_rca_bench.greptimedb.server import ManagedGreptime, inspect_checkout
-from semantic_rca_bench.greptimedb.visibility import QueryGateway
+from semantic_rca_bench.greptimedb.visibility import QueryGateway, QueryRejected
 from semantic_rca_bench.inspect import (
     assert_semantic_graph_isolated,
     assert_semantic_graph_window_empty,
@@ -64,11 +64,12 @@ from semantic_rca_bench.report import MODEL_PRICING
 from semantic_rca_bench.split_audit import audit_split_storage
 from semantic_rca_bench.split_client import FanoutIngestClient, ProtocolHttpClient
 from semantic_rca_bench.split_ingest import (
+    MetricSeries,
     collapse_series,
     load_prometheus_metrics,
     openrca2_case_series,
 )
-from semantic_rca_bench.split_query import SplitQueryGateway
+from semantic_rca_bench.split_query import NativeQueryError, SplitQueryGateway
 from semantic_rca_bench.split_stack import ManagedSplitStack, SplitStackImages
 from semantic_rca_bench.transfer_protocol import (
     TransferCohort,
@@ -294,6 +295,11 @@ def prepare_transfer_environment(
                 split_source.metric_series,
                 split_source.metric_projection,
             )
+            greptimedb_promql = _audit_greptimedb_promql(
+                client,
+                split_source.metric_series,
+                window=(spec.normal_window[0], spec.abnormal_window[1]),
+            )
             split_storage = audit_split_storage(
                 prometheus_endpoint=split_stack.prometheus_endpoint,
                 loki_endpoint=split_stack.loki_endpoint,
@@ -326,7 +332,11 @@ def prepare_transfer_environment(
                 isolated=_empty_before_ingest(empty),
                 semantic_surface_contract=surface_contract,
             )
-            gates = {**gates, "split_storage_equivalent": split_storage["pass"] is True}
+            gates = {
+                **gates,
+                "greptimedb_prometheus_api_agent_path_works": (greptimedb_promql["pass"] is True),
+                "split_storage_equivalent": split_storage["pass"] is True,
+            }
             gates["all_passed"] = all(value for key, value in gates.items() if key != "all_passed")
             report = {
                 "audit_schema_version": 1,
@@ -358,6 +368,7 @@ def prepare_transfer_environment(
                 "semantic_coverage": coverage,
                 "edge_equality": equality,
                 "mechanism_evidence": mechanism,
+                "greptimedb_promql": greptimedb_promql,
                 "split_storage": split_storage,
                 "no_model_gates": gates,
             }
@@ -373,6 +384,7 @@ def prepare_transfer_environment(
                 raise ValueError(
                     f"transfer no-model gate failed for {spec.opaque_case_id}: "
                     f"{failed}; split storage: {detail or 'all split gates passed'}; "
+                    f"GreptimeDB PromQL: {json.dumps(greptimedb_promql)}; "
                     f"split detail: {json.dumps(_split_failure_detail(split_storage))}"
                 )
             observed_start, observed_end = _mapping(equality, "window_contract")[
@@ -432,6 +444,131 @@ def _split_failure_detail(split_storage: dict[str, object]) -> dict[str, object]
             )
         },
     }
+
+
+def _audit_greptimedb_promql(
+    client: GreptimeClient,
+    series: Sequence[MetricSeries],
+    *,
+    window: tuple[int, int],
+) -> dict[str, object]:
+    """Exercises every Prometheus API operation the raw agent can call."""
+    candidate = next(
+        (
+            (metric, timestamp_ms)
+            for metric, samples, _labels in series
+            for timestamp_ms, _value in samples
+            if window[0] * 1000 <= timestamp_ms and timestamp_ms + 1000 < window[1] * 1000
+        ),
+        None,
+    )
+    if candidate is None:
+        return {"pass": False, "error": "source has no metric sample in the case window"}
+
+    metric, timestamp_ms = candidate
+    start, end = (str(value) for value in window)
+    evaluation_timestamp_ms = timestamp_ms + 1000
+    evaluation_time = f"{evaluation_timestamp_ms / 1000:.3f}"
+    calls = {
+        "labels": {
+            "operation": "labels",
+            "match": metric,
+            "start": start,
+            "end": end,
+            "max_items": 20,
+        },
+        "label_values": {
+            "operation": "label_values",
+            "label": "__name__",
+            "match": metric,
+            "start": start,
+            "end": end,
+            "max_items": 20,
+        },
+        "series": {
+            "operation": "series",
+            "match": metric,
+            "start": start,
+            "end": end,
+            "max_items": 20,
+        },
+        "query": {
+            "operation": "query",
+            "query": metric,
+            "time": evaluation_time,
+            "max_items": 20,
+        },
+        "query_range": {
+            "operation": "query_range",
+            "query": metric,
+            "start": evaluation_time,
+            "end": evaluation_time,
+            "step": "1s",
+            "max_items": 20,
+        },
+    }
+    gateway = QueryGateway(client, Visibility.RAW)
+    operations: dict[str, object] = {}
+    for operation, arguments in calls.items():
+        try:
+            result = gateway.execute_metrics(arguments)
+        except (GreptimeError, NativeQueryError, QueryRejected) as error:
+            operations[operation] = {"pass": False, "error": str(error)}
+            continue
+        rows = result.get("rows")
+        returned = len(rows) if isinstance(rows, list) else 0
+        operations[operation] = {
+            "pass": _promql_result_matches_source(
+                operation,
+                rows,
+                metric=metric,
+                expected_timestamp_ms=evaluation_timestamp_ms,
+            ),
+            "returned_items": returned,
+        }
+    return {
+        "metric": metric,
+        "sample_timestamp_ms": timestamp_ms,
+        "operations": operations,
+        "pass": all(
+            isinstance(result, Mapping) and result.get("pass") is True
+            for result in operations.values()
+        ),
+    }
+
+
+def _promql_result_matches_source(
+    operation: str,
+    rows: object,
+    *,
+    metric: str,
+    expected_timestamp_ms: int,
+) -> bool:
+    if not isinstance(rows, list):
+        return False
+    if operation == "labels":
+        return ["__name__"] in rows
+    if operation == "label_values":
+        return [metric] in rows
+    if operation == "series":
+        return any(
+            isinstance(row, list)
+            and len(row) == 1
+            and isinstance(row[0], dict)
+            and row[0].get("__name__") == metric
+            for row in rows
+        )
+    expected_time = expected_timestamp_ms / 1000
+    for row in rows:
+        if not isinstance(row, list) or len(row) < 3 or not isinstance(row[0], dict):
+            continue
+        try:
+            returned_time = float(row[1])
+        except (TypeError, ValueError):
+            continue
+        if row[0].get("__name__") == metric and abs(returned_time - expected_time) <= 0.002:
+            return True
+    return False
 
 
 def _causal_services(spec: TransferCaseSpec) -> frozenset[str]:

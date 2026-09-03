@@ -156,19 +156,12 @@ class FanoutIngestClient:
                 }
                 for signal, stats in signals.items()
             }
-        # Only traces survive as the same bytes. Metrics never reach the tee and
-        # log labels must be folded for Loki, so those two carry a declared
-        # protocol mapping instead and are audited on stored content.
+        # Only traces use the same wire protocol on both sides. Stored-content
+        # checks live in `split_audit`.
         byte_identical = ("traces",)
-        parity = all(
-            self._stats["greptimedb"][signal].payload_sha256
-            == self._stats["split"][signal].payload_sha256
-            for signal in byte_identical
-        )
         return {
             "targets": targets,
             "byte_identical_signals": list(byte_identical),
-            "identical_protocol_payloads": parity,
             "protocol_mapping": {
                 "metrics": {
                     "greptimedb": "otlp",

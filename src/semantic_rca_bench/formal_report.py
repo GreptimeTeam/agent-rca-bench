@@ -97,6 +97,9 @@ def build_formal_measurement_report(
         raise ValueError("public artifacts do not share the frozen model roster")
     micro_runs = _mapping_list(micro, "runs")
     transfer_runs = _mapping_list(transfer, "runs")
+    execution = _execution(suite, protocol, micro, transfer, micro_runs, transfer_runs)
+    if execution["completed_cells"] != execution["expected_cells"]:
+        raise ValueError("formal measurement artifacts are incomplete")
     micro_resource_effects = _paired_resource_effects(micro_runs, transfer=False)
     transfer_families = {
         family.goal: _paired_resource_effects(
@@ -127,9 +130,6 @@ def build_formal_measurement_report(
         )
         for name in names
     }
-    execution = _execution(suite, protocol, micro, transfer, micro_runs, transfer_runs)
-    if execution["completed_cells"] != execution["expected_cells"]:
-        raise ValueError("formal measurement artifacts are incomplete")
     cohort_provenance = _cohort_provenance(suite, load_transfer_cohort(suite, suite_protocol_path))
     payload = {
         "report_schema_version": FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION,
@@ -557,10 +557,13 @@ def _paired_resource_effects(
             for case, repetitions in cases.items():
                 deltas: dict[str, list[float]] = defaultdict(list)
                 eligible_repetitions = 0
-                for pair in repetitions.values():
+                for repetition, pair in repetitions.items():
                     missing = {baseline, treatment} - set(pair)
                     if missing:
-                        raise ValueError(f"resource pair for {case} is missing {sorted(missing)}")
+                        raise ValueError(
+                            f"resource pair for model {model}, cohort {cohort}, case {case}, "
+                            f"repetition {repetition} is missing {sorted(missing)}"
+                        )
                     raw = pair[baseline]
                     graph = pair[treatment]
                     if not (
@@ -756,11 +759,11 @@ def _capability_scores(
             "and not used for hypothesis testing"
         ),
         "overall_formula": (
-            "sum of rubric points over every end-to-end run for the model divided by the "
-            "points that were estimable for those runs; every treatment contributes "
-            "equally, failed runs remain in the denominator, and a dimension the "
-            "verifier cannot decide for a treatment is excluded from both sides rather "
-            "than scored as a failure"
+            f"sum of the {_capability_rubric_maximum()}-point rubric over every end-to-end "
+            f"run for the model, divided by {_capability_rubric_maximum()} points per run "
+            "and normalized to 100; every treatment contributes equally and failed runs "
+            "remain in the denominator; deterministic evidence sufficiency is outside the "
+            "rubric because the verifier cannot decide it for every query language"
         ),
         "ranking_basis": "normalized_score",
         "method_basis": [
@@ -812,7 +815,7 @@ def _score_runs(runs: list[Mapping[str, object]]) -> dict[str, object]:
                 hits[key] += 1
                 total += points
                 dimension_points[str(contract["dimension"])] += points
-    maximum = len(runs) * sum(int(c["points"]) for c in CAPABILITY_SCORE_RUBRIC.values())
+    maximum = len(runs) * _capability_rubric_maximum()
     return {
         "runs": len(runs),
         "score": round(total / len(runs), 2) if runs else None,
@@ -844,6 +847,8 @@ def _score_ranking(
             else _mapping(_mapping(report, "by_treatment"), treatment)
         )
         score = source.get("normalized_score")
+        if not isinstance(score, (int, float)):
+            continue
         values.append((model, score))
     values.sort(key=lambda item: (-float(item[1]), item[0]))
     return [
@@ -894,10 +899,13 @@ def _case_outcomes(
             for item in model_runs:
                 pair_values[int(item["repetition"])][str(item["visibility"])] = item
             eligible_deltas = []
-            for pair in pair_values.values():
+            for repetition, pair in pair_values.items():
                 missing = {baseline, treatment} - set(pair)
                 if missing:
-                    raise ValueError(f"case pair for {case_id} is missing {sorted(missing)}")
+                    raise ValueError(
+                        f"case pair for model {model}, case {case_id}, repetition {repetition} "
+                        f"is missing {sorted(missing)}"
+                    )
                 raw = _mapping(pair[baseline], "run")
                 graph = _mapping(pair[treatment], "run")
                 raw_eval = _mapping(raw, "evaluation")
@@ -1237,8 +1245,10 @@ def _localized_report_body(report, language):
             "dimension_scores": "各维度独立排行",
             "model_metrics": "端到端诊断与效率",
             "score_note": (
-                f"描述性评分按 {capability_rubric_label()} 分配定位、根因与证据。"
-                f"Overall 是 {transfer_runs_per_model} 个端到端 run 的平均分；"
+                f"描述性评分采用 {_capability_rubric_maximum()} 分制 rubric，按 "
+                f"{capability_rubric_label()} 分配定位、"
+                "根因与证据；页面中的 Overall 和各臂得分归一到 100。"
+                f"Overall 覆盖 {transfer_runs_per_model} 个端到端 run；"
                 f"{'、'.join(str(name) for name in execution['treatments'])} "
                 f"各 {transfer_runs_per_treatment} 个 run，因此等于各臂的等权平均。"
                 "失败 run 不从分母中删除。确定性证据审计只对 SQL 证据可判定，"
@@ -1375,9 +1385,11 @@ def _localized_report_body(report, language):
             "dimension_scores": "Independent rankings by dimension",
             "model_metrics": "End-to-end diagnosis and efficiency",
             "score_note": (
-                f"The descriptive score splits {capability_rubric_label()} across location, "
-                "root cause and evidence. Overall is the mean across every end-to-end run "
-                f"for the model; {', '.join(str(name) for name in execution['treatments'])} "
+                f"The descriptive score uses a {_capability_rubric_maximum()}-point rubric split "
+                f"{capability_rubric_label()} across location, root cause, and evidence. "
+                "The page normalizes Overall and each treatment score to 100. Overall covers "
+                "every end-to-end run for the model; "
+                f"{', '.join(str(name) for name in execution['treatments'])} "
                 f"each contribute {transfer_runs_per_treatment} runs, so Overall is their "
                 "equally weighted mean and failed runs remain in the denominator. The "
                 "deterministic evidence audit is decidable only for SQL evidence, so it is "
@@ -1726,8 +1738,8 @@ def _capability_table(report, language):
         rows.append(
             (
                 model,
-                overall.get("score"),
-                *(by_treatment(model, key).get("score") for key in treatments),
+                overall.get("normalized_score"),
+                *(by_treatment(model, key).get("normalized_score") for key in treatments),
                 *(
                     f"{dimensions.get(key)} / {maxima[key]}"
                     for key in ("location", "root_cause", "evidence")
@@ -1736,12 +1748,19 @@ def _capability_table(report, language):
         )
     treatment_names = {"raw": "Raw", "semantic_graph": "Graph", "split_pillars": "Split"}
     headers = (
-        ("模型", "总分", *(treatment_names[key] for key in treatments), "定位", "根因", "证据")
+        (
+            "模型",
+            "总分 / 100",
+            *(f"{treatment_names[key]} / 100" for key in treatments),
+            "定位",
+            "根因",
+            "证据",
+        )
         if language == "zh"
         else (
             "Model",
-            "Overall",
-            *(treatment_names[key] for key in treatments),
+            "Overall / 100",
+            *(f"{treatment_names[key]} / 100" for key in treatments),
             "Location",
             "Root cause",
             "Evidence",
@@ -1754,7 +1773,7 @@ def _capability_leaderboard(report: Mapping[str, object], language: str) -> str:
     models = _mapping(_mapping(report, "capability_scores"), "models")
     ranked = sorted(
         report["model_order"],
-        key=lambda model: float(_mapping(_mapping(models, model), "overall")["score"]),
+        key=lambda model: float(_mapping(_mapping(models, model), "overall")["normalized_score"]),
         reverse=True,
     )
     labels = (
@@ -1781,9 +1800,9 @@ def _capability_leaderboard(report: Mapping[str, object], language: str) -> str:
     for rank, model in enumerate(ranked, 1):
         item = _mapping(models, model)
         scores = {
-            "overall": _mapping(item, "overall").get("score"),
+            "overall": _mapping(item, "overall").get("normalized_score"),
             **{
-                key: _mapping(_mapping(item, "by_treatment"), key).get("score")
+                key: _mapping(_mapping(item, "by_treatment"), key).get("normalized_score")
                 for key in treatments
             },
         }
@@ -1795,13 +1814,13 @@ def _capability_leaderboard(report: Mapping[str, object], language: str) -> str:
         }
         if not all(isinstance(value, (int, float)) for value in dimension_values.values()):
             raise ValueError("capability dimension score is not numeric")
-        maximum = sum(_capability_dimension_maxima().values())
+        rubric_maximum = _capability_rubric_maximum()
         stack_label = ", ".join(
             f"{labels[key]} {_format_number(value)}" for key, value in dimension_values.items()
         )
         stack = "".join(
             f'<span class="score-segment score-{key}" '
-            f'style="width: {100.0 * float(value) / maximum:g}%" '
+            f'style="width: {100.0 * float(value) / rubric_maximum:g}%" '
             f'title="{labels[key]}: {_format_number(value)}"></span>'
             for key, value in dimension_values.items()
         )
@@ -1810,12 +1829,12 @@ def _capability_leaderboard(report: Mapping[str, object], language: str) -> str:
             value = scores[key]
             if not isinstance(value, (int, float)):
                 raise ValueError("capability score is not numeric")
-            width = min(max(100.0 * float(value) / maximum, 0.0), 100.0)
+            width = min(max(float(value), 0.0), 100.0)
             display = _format_number(value)
             bars.append(
                 f'<div class="score-bar-row"><span>{labels[key]}</span>'
                 f'<div class="score-track" role="img" aria-label="{_escape(model)} '
-                f'{labels[key]} {display} / {maximum}"><span class="score-fill score-{key}" '
+                f'{labels[key]} {display} / 100"><span class="score-fill score-{key}" '
                 f'style="width: {width:g}%"></span></div><strong>{display}</strong></div>'
             )
         rows.append(
@@ -1838,6 +1857,10 @@ def capability_rubric_label() -> str:
     """The rubric's point split, e.g. `40/40/5`, derived rather than repeated."""
     maxima = _capability_dimension_maxima()
     return "/".join(str(maxima[key]) for key in ("location", "root_cause", "evidence"))
+
+
+def _capability_rubric_maximum() -> int:
+    return sum(_capability_dimension_maxima().values())
 
 
 def _capability_treatments(models: Mapping[str, object]) -> tuple[str, ...]:
@@ -1878,21 +1901,21 @@ def _capability_dimension_charts(report: Mapping[str, object], language: str) ->
         if any(key in _mapping(_mapping(models, model), "by_treatment") for model in models)
     )
     dimensions = (
-        ("overall", names["overall"], sum(total.values())),
-        *((key, treatment_labels[key], sum(total.values())) for key in treatments),
+        ("overall", names["overall"], 100),
+        *((key, treatment_labels[key], 100) for key in treatments),
         *((key, names[key], total[key]) for key in ("location", "root_cause", "evidence")),
     )
     charts = []
     for key, label, maximum in dimensions:
         if key == "overall":
             values = {
-                str(model): _mapping(_mapping(models, model), "overall").get("score")
+                str(model): _mapping(_mapping(models, model), "overall").get("normalized_score")
                 for model in report["model_order"]
             }
         elif key in treatment_labels:
             values = {
                 str(model): _mapping(_mapping(_mapping(models, model), "by_treatment"), key).get(
-                    "score"
+                    "normalized_score"
                 )
                 for model in report["model_order"]
             }

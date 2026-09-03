@@ -119,7 +119,7 @@ def benchmark_protocol() -> dict[str, object]:
         "case_context": "baseline-availability-v1",
         "database_load": "client-query-boundary-v1",
         "alert": "dataset-native-when-available-v1",
-        "agent_runner": "repairable-final-citation-validation-v13",
+        "agent_runner": "repairable-final-citation-validation-v14",
         "model_usage": "provider-total-input-and-reasoning-output-breakdown-v6",
         "provider_network": "openai-anthropic-environment-domestic-direct-v1",
         "tool_error_feedback": "anthropic-native-flag-openai-json-envelope-v1",

@@ -9,6 +9,7 @@ from semantic_rca_bench.split_query import (
     SplitQueryGateway,
     loki_rows,
     native_result,
+    prometheus_query_plan,
     prometheus_rows,
     split_investigation_tools,
 )
@@ -172,6 +173,70 @@ def test_tempo_search_converts_declared_rfc3339_times_to_epoch_seconds() -> None
 
     assert requests[0].url.params["start"] == "1777683319"
     assert requests[0].url.params["end"] == "1777683919"
+
+
+def test_tempo_get_trace_passes_the_declared_time_window() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"batches": []})
+
+    gateway = SplitQueryGateway(
+        prometheus_endpoint="http://prometheus",
+        loki_endpoint="http://loki",
+        tempo_endpoint="http://tempo",
+    )
+    gateway.http = httpx.Client(transport=httpx.MockTransport(handler))
+
+    gateway.execute_tool(
+        "query_traces",
+        {
+            "operation": "get_trace",
+            "trace_id": "ab" * 16,
+            "start": "2026-05-02T00:55:19Z",
+            "end": "2026-05-02T01:05:19+00:00",
+        },
+    )
+
+    assert requests[0].url.params["start"] == "1777683319"
+    assert requests[0].url.params["end"] == "1777683919"
+
+
+def test_prometheus_label_values_forwards_the_series_selector() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"status": "success", "data": ["cpu"]})
+
+    gateway = SplitQueryGateway(
+        prometheus_endpoint="http://prometheus",
+        loki_endpoint="http://loki",
+        tempo_endpoint="http://tempo",
+    )
+    gateway.http = httpx.Client(transport=httpx.MockTransport(handler))
+
+    gateway.execute_tool(
+        "query_metrics",
+        {
+            "operation": "label_values",
+            "label": "__name__",
+            "match": "cpu",
+            "start": "1",
+            "end": "2",
+        },
+    )
+
+    assert requests[0].url.params["match[]"] == "cpu"
+
+
+def test_prometheus_query_rejects_range_arguments_instead_of_ignoring_them() -> None:
+    with pytest.raises(
+        NativeQueryError,
+        match=r"unsupported arguments for Prometheus query: start",
+    ):
+        prometheus_query_plan({"operation": "query", "query": "cpu", "start": "1"})
 
 
 def test_split_gateway_returns_backend_error_detail_without_endpoint() -> None:

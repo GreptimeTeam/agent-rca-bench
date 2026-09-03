@@ -108,7 +108,11 @@ def _model_report(case_ids: list[str]) -> dict[str, object]:
     }
 
 
-def _report(*, transfer_graph_run_cost: float = 0.08) -> dict[str, object]:
+def _report(
+    *,
+    transfer_graph_run_cost: float = 0.08,
+    drop_last_transfer_run: bool = False,
+) -> dict[str, object]:
     suite, protocol = load_formal_suite_protocol()
     names = [model.model for model in protocol.models]
     case_ids = [f"semantic-rca-transfer-{index:03d}" for index in range(1, 15)]
@@ -278,6 +282,8 @@ def _report(*, transfer_graph_run_cost: float = 0.08) -> dict[str, object]:
         ],
         "model_reports": {name: _model_report(case_ids) for name in names},
     }
+    if drop_last_transfer_run:
+        transfer["runs"].pop()
     return build_formal_measurement_report(
         micro,
         transfer,
@@ -427,6 +433,9 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     assert '<details class="report-details"' in document
     assert '<div class="score-leaderboard">' in document
     assert '<span class="rank">#1</span>' in document
+    assert "The page normalizes Overall and each treatment score to 100." in document
+    assert "<th>Overall / 100</th>" in document
+    assert "<th>总分 / 100</th>" in document
     assert "gpt-5.6-sol: Location 40, Root cause 40, Strict evidence 5" in document
     assert '<div class="score-stack" role="img"' in document
     # A full 85-point score fills the stack instead of leaving a 15% remainder.
@@ -464,6 +473,24 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     assert "Raw/Graph exact edge equality" in document
     assert "/Users/" not in document
     assert "private/tmp" not in document
+
+
+def test_incomplete_artifacts_fail_before_pair_aggregation() -> None:
+    with pytest.raises(ValueError, match="formal measurement artifacts are incomplete"):
+        _report(drop_last_transfer_run=True)
+
+
+def test_treatment_ranking_omits_a_model_without_a_score() -> None:
+    from semantic_rca_bench.formal_report import _score_ranking
+
+    reports = {
+        "measured": {"by_treatment": {"split_pillars": {"normalized_score": 50.0}}},
+        "missing": {"by_treatment": {"split_pillars": {"normalized_score": None}}},
+    }
+
+    assert _score_ranking(reports, "split_pillars") == [
+        {"rank": 1, "model": "measured", "score": 50.0}
+    ]
 
 
 def test_formal_measurement_report_states_a_cost_result_without_improved_models(

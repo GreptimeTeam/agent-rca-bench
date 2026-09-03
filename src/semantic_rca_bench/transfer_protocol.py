@@ -21,7 +21,7 @@ from semantic_rca_bench.protocol import (
 )
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "transfer-four-model-three-arm-service-edge-node-v19"
+PROTOCOL_REVISION = "transfer-four-model-three-arm-service-edge-node-v20"
 DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/transfer-v34-protocol.json")
 
 
@@ -295,6 +295,26 @@ def load_transfer_protocol(
     ):
         raise ValueError("transfer paid-execution contract drifted")
     inference = fixture.inference
+    expected_families = (
+        (
+            "storage_shape",
+            "secondary",
+            Visibility.SPLIT_PILLARS,
+            Visibility.RAW,
+            ("provider_visible_input_tokens", "correct_completion_tool_calls"),
+        ),
+        (
+            "semantic_layer",
+            "primary",
+            Visibility.RAW,
+            Visibility.SEMANTIC_GRAPH,
+            ("rows_returned", "correct_completion_tool_calls"),
+        ),
+    )
+    observed_families = tuple(
+        (family.goal, family.status, family.baseline, family.treatment, family.metrics)
+        for family in inference.confirmatory_families
+    )
     if (
         not inference.semantic_effect_compared_within_model_only
         or inference.correctness_pooled_across_models
@@ -305,12 +325,7 @@ def load_transfer_protocol(
         # every endpoint of that family. It is not the case count, which is the
         # unit the deltas are reduced over.
         or inference.holm_family_size != len(fixture.models) * 2
-        or not inference.confirmatory_families
-        or any(
-            {family.baseline, family.treatment} - set(fixture.visibility_levels)
-            for family in inference.confirmatory_families
-        )
-        or [family.status for family in inference.confirmatory_families].count("primary") != 1
+        or observed_families != expected_families
         or inference.rows_returned_applicable_treatments
         != (Visibility.RAW, Visibility.SEMANTIC_GRAPH)
         or inference.null_metric_meaning != "not estimable; no eligible paired cases"

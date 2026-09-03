@@ -109,9 +109,9 @@
       "semantic_graph"
     ]
   },
-  "protocol_revision": "semantic-rca-four-model-three-arm-suite-v20",
+  "protocol_revision": "semantic-rca-four-model-three-arm-suite-v21",
   "runner": "api",
   "transfer_protocol_fixture": "fixtures/reference/transfer-v34-protocol.json",
-  "transfer_protocol_fixture_sha256": "f00e0f2761c9f5697cd3777760226897275d2905f2efa8c2410b738c3525fc23",
+  "transfer_protocol_fixture_sha256": "398634ac21f576bf4fdc765162a06fad5cc49e7917676e42c423c1f2efece19b",
   "version": 1
 }

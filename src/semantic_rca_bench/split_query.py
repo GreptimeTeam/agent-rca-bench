@@ -161,6 +161,7 @@ class SplitQueryGateway:
         elif operation == "get_trace":
             trace_id = quote(_required_text(arguments, "trace_id"), safe="")
             path = f"/api/traces/{trace_id}"
+            _copy_tempo_time_arguments(arguments, params)
         elif operation == "tags":
             path = "/api/v2/search/tags"
             _copy_tempo_time_arguments(arguments, params)
@@ -234,6 +235,28 @@ def prometheus_query_plan(arguments: dict[str, object]) -> tuple[str, str, dict[
     answer the identical request; only the base URL differs.
     """
     operation = str(arguments.get("operation") or "")
+    allowed_arguments = {
+        "query": {"operation", "query", "time", "max_items"},
+        "query_range": {"operation", "query", "start", "end", "step", "max_items"},
+        "metadata": {"operation", "metric", "max_items"},
+        "labels": {"operation", "match", "start", "end", "max_items"},
+        "label_values": {
+            "operation",
+            "label",
+            "match",
+            "start",
+            "end",
+            "max_items",
+        },
+        "series": {"operation", "match", "start", "end", "max_items"},
+    }
+    allowed = allowed_arguments.get(operation)
+    if allowed is None:
+        raise NativeQueryError(f"unsupported Prometheus operation: {operation}")
+    unexpected = sorted(set(arguments) - allowed)
+    if unexpected:
+        fields = ", ".join(unexpected)
+        raise NativeQueryError(f"unsupported arguments for Prometheus {operation}: {fields}")
     params: dict[str, str] = {}
     if operation in {"query", "query_range"}:
         params["query"] = _required_text(arguments, "query")
@@ -249,10 +272,12 @@ def prometheus_query_plan(arguments: dict[str, object]) -> tuple[str, str, dict[
         _copy_argument(arguments, params, "metric")
     elif operation == "labels":
         path = "/api/v1/labels"
+        _copy_prometheus_match(arguments, params)
         _copy_time_arguments(arguments, params)
     elif operation == "label_values":
         label = quote(_required_text(arguments, "label"), safe="")
         path = f"/api/v1/label/{label}/values"
+        _copy_prometheus_match(arguments, params)
         _copy_time_arguments(arguments, params)
     elif operation == "series":
         path = "/api/v1/series"
@@ -261,8 +286,6 @@ def prometheus_query_plan(arguments: dict[str, object]) -> tuple[str, str, dict[
             raise NativeQueryError("Prometheus series requires one non-empty match selector")
         params["match[]"] = match
         _copy_time_arguments(arguments, params)
-    else:
-        raise NativeQueryError(f"unsupported Prometheus operation: {operation}")
     return operation, path, params
 
 
@@ -293,18 +316,38 @@ def metrics_query_tool(
         "name": "query_metrics",
         "description": (
             f"Query {store}. Use PromQL query or query_range for values, and {discovery} for "
-            "discovery. Results are capped and explicitly marked when truncated."
+            "discovery. query uses time; query_range uses start, end, and step. series requires "
+            "match. label_values requires label and accepts match to restrict the series. "
+            "Results are capped and explicitly marked when truncated."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "operation": {"type": "string", "enum": list(operations)},
-                "query": {"type": "string"},
-                "time": {"type": "string"},
-                "step": {"type": "string"},
-                "metric": {"type": "string"},
-                "label": {"type": "string"},
-                "match": {"type": "string"},
+                "query": {
+                    "type": "string",
+                    "description": "PromQL expression for query or query_range.",
+                },
+                "time": {
+                    "type": "string",
+                    "description": "Unix seconds or RFC 3339 evaluation time for query.",
+                },
+                "step": {"type": "string", "description": "Step required by query_range."},
+                "metric": {
+                    "type": "string",
+                    "description": "Optional metric filter for metadata.",
+                },
+                "label": {
+                    "type": "string",
+                    "description": "Label name required by label_values.",
+                },
+                "match": {
+                    "type": "string",
+                    "description": (
+                        "One Prometheus series selector; required by series and available to "
+                        "restrict labels or label_values."
+                    ),
+                },
                 **_COMMON_TIME_PROPERTIES,
             },
             "required": ["operation"],
@@ -562,6 +605,12 @@ def _copy_argument(
     value = arguments.get(field)
     if value not in (None, ""):
         params[field] = str(value)
+
+
+def _copy_prometheus_match(arguments: dict[str, object], params: dict[str, str]) -> None:
+    value = arguments.get("match")
+    if value not in (None, ""):
+        params["match[]"] = _required_text(arguments, "match")
 
 
 def _copy_time_arguments(arguments: dict[str, object], params: dict[str, str]) -> None:

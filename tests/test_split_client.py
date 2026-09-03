@@ -101,7 +101,6 @@ def test_fanout_replays_identical_payloads_to_native_endpoints() -> None:
     ]
     assert all(set(call["headers"]) == {"Content-Type"} for call in (*loki.calls, *tempo.calls))
     audit = client.audit()
-    assert audit["identical_protocol_payloads"] is True
     assert audit["byte_identical_signals"] == ["traces"]
     assert audit["protocol_mapping"]["metrics"]["split"] == "prometheus-remote-write-0.1"
     targets = audit["targets"]

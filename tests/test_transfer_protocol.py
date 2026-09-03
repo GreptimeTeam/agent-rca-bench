@@ -1,8 +1,11 @@
+import json
 from collections import Counter
+from pathlib import Path
 
 import pytest
 
 from semantic_rca_bench.transfer_protocol import (
+    DEFAULT_PROTOCOL_FIXTURE,
     formal_schedule,
     load_transfer_protocol,
 )
@@ -67,6 +70,18 @@ def test_transfer_protocol_disables_semantic_adjudication_for_headline_measureme
     assert not set(protocol.semantic_adjudication.judge_models).intersection(
         model.model for model in protocol.models
     )
+
+
+def test_transfer_protocol_requires_both_confirmatory_families(tmp_path: Path) -> None:
+    payload = json.loads(DEFAULT_PROTOCOL_FIXTURE.read_text())
+    storage_family = payload["inference"]["confirmatory_families"][0]
+    storage_family["status"] = "primary"
+    payload["inference"]["confirmatory_families"] = [storage_family]
+    fixture = tmp_path / "protocol.json"
+    fixture.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="transfer inference contract drifted"):
+        load_transfer_protocol(fixture)
 
 
 def test_transfer_cohort_merges_both_selection_sources() -> None:

@@ -22,7 +22,7 @@ from semantic_rca_bench.transfer_protocol import (
     load_transfer_protocol,
 )
 
-SUITE_PROTOCOL_REVISION = "semantic-rca-four-model-three-arm-suite-v20"
+SUITE_PROTOCOL_REVISION = "semantic-rca-four-model-three-arm-suite-v21"
 DEFAULT_SUITE_PROTOCOL_FIXTURE = Path("fixtures/reference/semantic-rca-v34-four-model-suite.json")
 
 

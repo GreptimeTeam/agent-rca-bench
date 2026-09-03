@@ -71,6 +71,39 @@ def test_source_semantic_hash_ignores_runtime_ports_but_binds_images() -> None:
     assert source_semantic_sha256(audit) != source_semantic_sha256(different_image)
 
 
+def test_promql_preflight_results_must_match_the_source_metric_and_time() -> None:
+    timestamp_ms = 1_500
+    metric = "cpu"
+
+    assert transfer_formal._promql_result_matches_source(
+        "labels", [["__name__"]], metric=metric, expected_timestamp_ms=timestamp_ms
+    )
+    assert transfer_formal._promql_result_matches_source(
+        "label_values", [[metric]], metric=metric, expected_timestamp_ms=timestamp_ms
+    )
+    assert transfer_formal._promql_result_matches_source(
+        "series", [[{"__name__": metric}]], metric=metric, expected_timestamp_ms=timestamp_ms
+    )
+    assert transfer_formal._promql_result_matches_source(
+        "query",
+        [[{"__name__": metric}, 1.5, "1"]],
+        metric=metric,
+        expected_timestamp_ms=timestamp_ms,
+    )
+    assert transfer_formal._promql_result_matches_source(
+        "query_range",
+        [[{"__name__": metric}, 1.499, "1"]],
+        metric=metric,
+        expected_timestamp_ms=timestamp_ms,
+    )
+    assert not transfer_formal._promql_result_matches_source(
+        "query_range",
+        [[{"__name__": metric}, 2.5, "1"]],
+        metric=metric,
+        expected_timestamp_ms=timestamp_ms,
+    )
+
+
 def test_runner_failure_is_persisted_as_a_scoreable_cell() -> None:
     protocol, selection = load_transfer_protocol()
     audits = [_source_audit(case.opaque_case_id) for case in selection.selected_cases]

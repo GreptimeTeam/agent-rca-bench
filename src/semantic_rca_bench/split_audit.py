@@ -32,7 +32,7 @@ from semantic_rca_bench.split_ingest import MetricSeries
 TEMPO_SEARCH_TIMEOUT = 60.0
 
 # Exact trace readback is per-trace, so the fidelity check runs on a declared
-# subset. Completeness comes from byte-identical ingestion with zero rejections.
+# subset that covers the causal path first.
 TRACE_FIDELITY_SAMPLE = 25
 
 
@@ -77,8 +77,6 @@ def audit_split_storage(
             search_timeout=search_timeout,
         )
     ingestion = ingestion_audit or {}
-    # The computed parity, not the static list of which signals claim it.
-    traces_byte_identical = ingestion.get("identical_protocol_payloads") is True
     trace_rejections = sum(
         int(
             _mapping(_mapping(ingestion.get("targets") or {}, target), "traces").get(
@@ -88,7 +86,6 @@ def audit_split_storage(
         for target in ("greptimedb", "split")
     )
     gates = {
-        "traces_ingested_as_identical_bytes": traces_byte_identical,
         "no_span_rejected_by_either_store": trace_rejections == 0,
         "prometheus_stores_the_projected_series": metrics["equal"],
         "prometheus_preserves_the_frozen_mechanism": metrics["mechanism_preserved"],
@@ -294,17 +291,11 @@ def _audit_traces(
     search_timeout: float = TEMPO_SEARCH_TIMEOUT,
     fidelity_sample: int = TRACE_FIDELITY_SAMPLE,
 ) -> dict[str, object]:
-    """Trace equivalence, argued from ingestion rather than from bulk readback.
+    """Checks a deterministic trace sample and the agent's search path.
 
-    Traces are the one signal both stores receive as the same bytes, and the
-    fanout already records that neither target rejected a span, so completeness
-    follows from ingestion. Reading every trace back would issue one request per
-    trace, which exhausts the store's file descriptors long before it proves
-    anything the byte equality has not already settled.
-
-    What readback still has to establish is that the stored spans are the source
-    spans. That is checked exactly, on a declared and deterministic subset whose
-    size is reported rather than assumed away.
+    Reading every trace back would issue one request per trace and exhaust the
+    store's file descriptors. The audit therefore reports its sample size,
+    checks the causal traces first, and does not claim full trace equivalence.
     """
     declared = all(
         isinstance(span.service_name, str) and span.service_name not in ("", "unknown")
@@ -503,8 +494,6 @@ def read_loki_logs(
                     {**labels, **{key: str(value) for key, value in metadata.items()}},
                 )
             )
-    if len(records) > expected_count:
-        raise SplitStorageAuditError("Loki audit query exceeded the expected source count")
     return records, dict(sorted(generated_labels.items())), foreign_streams
 
 

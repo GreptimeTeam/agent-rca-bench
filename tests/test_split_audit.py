@@ -90,6 +90,35 @@ def test_loki_readback_selects_by_table_label_not_service_name() -> None:
     assert records == [split_audit.LogRecord(1, "boom", {"pod_name": "user-1"})]
 
 
+def test_loki_extra_records_are_reported_as_a_gate_failure() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "success",
+                "data": {
+                    "result": [
+                        {
+                            "stream": {"log_table": "events", "pod_name": "user-1"},
+                            "values": [["1000000000", "source"], ["2000000000", "extra"]],
+                        }
+                    ]
+                },
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        audit = split_audit._audit_logs(
+            client,
+            "http://loki",
+            window=(0, 3),
+            expected={"events": [split_audit.LogRecord(1, "source", {"pod_name": "user-1"})]},
+        )
+
+    assert audit["equal"] is False
+    assert audit["tables"]["events"]["extra_records"] == 1
+
+
 def test_mechanism_facts_replay_the_frozen_oracle_against_stored_samples() -> None:
     mechanism = {
         "source_table": "k8s_container_restarts",
