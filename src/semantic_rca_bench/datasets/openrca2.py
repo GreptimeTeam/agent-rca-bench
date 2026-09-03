@@ -320,10 +320,10 @@ def validate_ingest(
     log_rows = sum(_table_count(client, table) for table in log_tables)
     # Measured, not declared: the reference causal graph and the answer key are
     # labels, and only a post-ingestion query can show whether one reached the
-    # database. The expected roster is derived from the case's own metrics: a
-    # label written through the same OTLP or Loki path the replay uses would
-    # carry `greptime.semantic.*` options, so trusting the semantic view as the
-    # allowlist would let that table clear itself.
+    # database. The roster comes from `tables`, not `table_semantics`: a plain
+    # CREATE TABLE carries no `greptime.semantic.*` options and never appears in
+    # the semantic view, so enumerating that view would miss the exact shape a
+    # leaked label takes while the agent can still query it.
     stored_tables = client.query(
         f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{database}'",
         max_rows=None,
@@ -375,8 +375,12 @@ def validate_ingest(
 def _expected_tables(case: OpenRCA2Case) -> set[str]:
     """Every table the replay is allowed to have written.
 
-    OTLP names a table after the metric with dots replaced, and expands a
-    histogram into bucket, count, and sum tables.
+    Derived from the case's own metric names rather than from the database's
+    `table_semantics`: that view lists whatever carries `greptime.semantic.*`
+    options, so a label written through the same OTLP or Loki path the replay
+    uses would appear there and clear itself. OTLP names a table after the
+    metric with dots replaced, and expands a histogram into bucket, count, and
+    sum tables.
     """
     expected = {"traces", "logs", "greptime_otel_resource_info", *ENGINE_MANAGED_TABLES}
     for point in _iter_number_metrics(case.gauge_paths + case.sum_paths):

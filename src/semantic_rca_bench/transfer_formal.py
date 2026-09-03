@@ -6,8 +6,9 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 
-from semantic_rca_bench.agent import run_agent
+from semantic_rca_bench.agent import run_agent, run_split_agent
 from semantic_rca_bench.contracts import (
     AgentRun,
     AgentRunner,
@@ -17,6 +18,8 @@ from semantic_rca_bench.contracts import (
     DatabaseLoad,
     Visibility,
 )
+from semantic_rca_bench.datasets.openrca2 import _iter_logs as openrca2_logs
+from semantic_rca_bench.datasets.openrca2 import _iter_traces as openrca2_traces
 from semantic_rca_bench.datasets.openrca2 import ingest_case
 from semantic_rca_bench.datasets.openrca2_transfer import (
     TransferCaseSpec,
@@ -28,6 +31,13 @@ from semantic_rca_bench.datasets.openrca2_transfer import (
     validate_transfer_ingest,
 )
 from semantic_rca_bench.datasets.rca100 import RCA100Repository
+from semantic_rca_bench.datasets.rca100 import _iter_alerts as rca100_alerts
+from semantic_rca_bench.datasets.rca100 import _iter_events as rca100_events
+from semantic_rca_bench.datasets.rca100 import _iter_logs as rca100_logs
+from semantic_rca_bench.datasets.rca100 import _iter_traces as rca100_traces
+from semantic_rca_bench.datasets.rca100 import _metric_series as rca100_metric_series
+from semantic_rca_bench.datasets.rca100 import _spans_within_window as rca100_spans_within_window
+from semantic_rca_bench.datasets.rca100 import _within_window as rca100_within_window
 from semantic_rca_bench.datasets.rca100 import ingest_case as ingest_rca100_case
 from semantic_rca_bench.datasets.rca100_audit import (
     exact_edge_equality_audit as node_exact_edge_equality_audit,
@@ -51,6 +61,15 @@ from semantic_rca_bench.inspect import (
 )
 from semantic_rca_bench.protocol import benchmark_protocol
 from semantic_rca_bench.report import MODEL_PRICING
+from semantic_rca_bench.split_audit import audit_split_storage
+from semantic_rca_bench.split_client import FanoutIngestClient, ProtocolHttpClient
+from semantic_rca_bench.split_ingest import (
+    collapse_series,
+    load_prometheus_metrics,
+    openrca2_case_series,
+)
+from semantic_rca_bench.split_query import SplitQueryGateway
+from semantic_rca_bench.split_stack import ManagedSplitStack, SplitStackImages
 from semantic_rca_bench.transfer_protocol import (
     TransferCohort,
     TransferProtocolFixture,
@@ -62,8 +81,20 @@ from semantic_rca_bench.transfer_scorer import evaluate_transfer_run
 REPORT_SCHEMA_VERSION = 1
 REPORT_MODE = "semantic-rca-openrca2-transfer-api-run"
 
+# One agent-facing query timeout for every arm. A shorter budget on one store
+# would turn a slow query into a tool failure there and a citation elsewhere.
+AGENT_QUERY_TIMEOUT_SECONDS = 120.0
+
 ReportUpdate = Callable[[dict[str, object]], None]
 RunAgent = Callable[..., AgentRun]
+
+# Selected source files are shared by every case worker. RCA100 can materialize
+# a missing file on demand, including one shared taxonomy file, so case loading
+# must not race through the same cache. GreptimeDB startup is also serialized so
+# a port selected by one worker is bound before another worker or Docker asks
+# the kernel for its own ephemeral ports.
+_SOURCE_CACHE_LOCK = Lock()
+_ENVIRONMENT_START_LOCK = Lock()
 
 
 @dataclass(frozen=True)
@@ -87,6 +118,52 @@ class CaseAdapter:
     validate_ingest: Callable[..., dict[str, object]]
     edge_equality: Callable[..., dict[str, object]]
     gates: Callable[..., dict[str, bool]]
+    # The split stack cannot take the same protocol bytes for metrics or logs,
+    # so each adapter also hands over its source telemetry in the shape the
+    # split loader and audit need.
+    split_source: Callable[..., SplitSource]
+
+
+@dataclass(frozen=True)
+class SplitSource:
+    """One case's source telemetry, as the split stack has to receive it."""
+
+    metric_series: list[object]
+    metric_projection: dict[str, object]
+    logs_by_table: dict[str, list[object]]
+    spans: list[object]
+    trace_scope_name: str
+
+
+def _openrca2_split_source(case: object, spec: TransferCaseSpec) -> SplitSource:
+    series, projection = openrca2_case_series(case)
+    return SplitSource(
+        metric_series=series,
+        metric_projection=dict(projection),
+        logs_by_table={"logs": list(openrca2_logs(case.logs_paths))},
+        spans=list(openrca2_traces(case.traces_paths)),
+        trace_scope_name="openrca2-replay",
+    )
+
+
+def _rca100_split_source(case: object, spec: TransferCaseSpec) -> SplitSource:
+    window = (spec.normal_window[0], spec.abnormal_window[1])
+    series, projection = collapse_series(rca100_metric_series(case.metrics_path, window=window))
+    return SplitSource(
+        metric_series=series,
+        metric_projection={
+            "protocol": "prometheus-remote-write-0.1",
+            "source": "rca100 native remote-write series",
+            **projection,
+        },
+        logs_by_table={
+            "logs": list(rca100_within_window(rca100_logs(case.logs_path), window)),
+            "events": list(rca100_within_window(rca100_events(case.events_path), window)),
+            "alerts": list(rca100_within_window(rca100_alerts(case.alerts_path), window)),
+        },
+        spans=list(rca100_spans_within_window(rca100_traces(case.traces_path), window)),
+        trace_scope_name="rca100-replay",
+    )
 
 
 def _load_openrca2_case(config: TransferEnvironmentConfig, spec: TransferCaseSpec) -> object:
@@ -124,6 +201,7 @@ OPENRCA2_ADAPTER = CaseAdapter(
     validate_ingest=validate_transfer_ingest,
     edge_equality=exact_edge_equality_audit,
     gates=no_model_gates,
+    split_source=_openrca2_split_source,
 )
 
 RCA100_ADAPTER = CaseAdapter(
@@ -134,6 +212,7 @@ RCA100_ADAPTER = CaseAdapter(
     validate_ingest=node_validate_transfer_ingest,
     edge_equality=node_exact_edge_equality_audit,
     gates=node_no_model_gates,
+    split_source=_rca100_split_source,
 )
 
 _CASE_ADAPTERS = {False: OPENRCA2_ADAPTER, True: RCA100_ADAPTER}
@@ -147,6 +226,7 @@ class PreparedTransferEnvironment:
     source_audit: dict[str, object]
     semantic_coverage: dict[str, object]
     graph_window: tuple[int, int]
+    split_stack: ManagedSplitStack
 
 
 @contextmanager
@@ -173,18 +253,61 @@ def prepare_transfer_environment(
     )
     if checkout["head"] != protocol.greptimedb_revision:
         raise ValueError("GreptimeDB HEAD does not match the transfer protocol")
-    case = adapter.load_case(config, spec)
-    managed = ManagedGreptime(Path(str(checkout["binary"])), config.run_dir)
+    with _SOURCE_CACHE_LOCK:
+        case = adapter.load_case(config, spec)
+    managed: ManagedGreptime | None = None
+    split_stack = ManagedSplitStack(
+        config.run_dir / "split",
+        images=SplitStackImages(**protocol.split_stack_images.model_dump()),
+    )
     report: dict[str, object] | None = None
     try:
-        managed.start()
-        with GreptimeClient(managed.endpoint, database=config.database, timeout=120) as client:
+        with _ENVIRONMENT_START_LOCK:
+            managed = ManagedGreptime(Path(str(checkout["binary"])), config.run_dir)
+            managed.start()
+            # A split stack that will not start is an environment failure, not a
+            # model failure: it must stop the case before any provider is called.
+            split_stack.start()
+        with (
+            GreptimeClient(
+                managed.endpoint,
+                database=config.database,
+                timeout=AGENT_QUERY_TIMEOUT_SECONDS,
+            ) as client,
+            ProtocolHttpClient(split_stack.prometheus_endpoint) as prometheus,
+            ProtocolHttpClient(split_stack.loki_endpoint) as loki,
+            ProtocolHttpClient(split_stack.tempo_otlp_endpoint) as tempo,
+        ):
             server_status = client.status()
             client.create_database(config.database)
             assert_semantic_graph_isolated(client, config.database)
             empty = assert_semantic_graph_window_empty(client, case.input)
             source = adapter.source_audit(case, spec)
-            counts = adapter.ingest(client, case, spec)
+            # Logs and traces are teed as the same bytes; metrics reach
+            # Prometheus through their own projection because it rejects the
+            # source's unspecified-temporality sums and histograms.
+            fanout = FanoutIngestClient(client, prometheus=prometheus, loki=loki, tempo=tempo)
+            counts = adapter.ingest(fanout, case, spec)
+            split_source = adapter.split_source(case, spec)
+            metric_load = load_prometheus_metrics(
+                prometheus,
+                split_source.metric_series,
+                split_source.metric_projection,
+            )
+            split_storage = audit_split_storage(
+                prometheus_endpoint=split_stack.prometheus_endpoint,
+                loki_endpoint=split_stack.loki_endpoint,
+                tempo_endpoint=split_stack.tempo_endpoint,
+                window=(spec.normal_window[0], spec.abnormal_window[1]),
+                expected_metrics=split_source.metric_series,
+                expected_logs=split_source.logs_by_table,
+                expected_spans=split_source.spans,
+                trace_scope_name=split_source.trace_scope_name,
+                causal_services=_causal_services(spec),
+                causal_trace_ids=_causal_trace_ids(spec, split_source.spans),
+                mechanism=_split_mechanism(spec),
+                ingestion_audit={**fanout.audit(), "metrics": metric_load},
+            )
             stored = adapter.validate_ingest(client, case, counts, source)
             surfaces = inspect_semantic_surfaces(client, case.input)
             coverage = surfaces.get("coverage")
@@ -203,6 +326,8 @@ def prepare_transfer_environment(
                 isolated=_empty_before_ingest(empty),
                 semantic_surface_contract=surface_contract,
             )
+            gates = {**gates, "split_storage_equivalent": split_storage["pass"] is True}
+            gates["all_passed"] = all(value for key, value in gates.items() if key != "all_passed")
             report = {
                 "audit_schema_version": 1,
                 "mode": f"semantic-rca-{adapter.name}-transfer-no-model-audit",
@@ -227,16 +352,28 @@ def prepare_transfer_environment(
                     },
                     "process_stopped_by_command": False,
                 },
+                "exclusive_split_stack": split_stack.metadata(),
                 "source": source,
                 "ingestion": stored,
                 "semantic_coverage": coverage,
                 "edge_equality": equality,
                 "mechanism_evidence": mechanism,
+                "split_storage": split_storage,
                 "no_model_gates": gates,
             }
             if gates["all_passed"] is not True:
+                failed = {
+                    key: value
+                    for key, value in gates.items()
+                    if key != "all_passed" and value is not True
+                }
+                detail = {
+                    key: value for key, value in split_storage["gates"].items() if value is not True
+                }
                 raise ValueError(
-                    f"transfer no-model gate failed for {spec.opaque_case_id}: {gates}"
+                    f"transfer no-model gate failed for {spec.opaque_case_id}: "
+                    f"{failed}; split storage: {detail or 'all split gates passed'}; "
+                    f"split detail: {json.dumps(_split_failure_detail(split_storage))}"
                 )
             observed_start, observed_end = _mapping(equality, "window_contract")[
                 "graph_observed_window"
@@ -248,15 +385,110 @@ def prepare_transfer_environment(
                 source_audit=report,
                 semantic_coverage=coverage,
                 graph_window=(int(observed_start), int(observed_end)),
+                split_stack=split_stack,
             )
     finally:
-        managed.stop()
+        split_stack.stop()
+        if managed is not None:
+            managed.stop()
         if report is not None:
             exclusive = report.get("exclusive_instance")
             if isinstance(exclusive, dict):
                 exclusive["process_stopped_by_command"] = (
-                    managed.process is not None and managed.process.poll() is not None
+                    managed is not None
+                    and managed.process is not None
+                    and managed.process.poll() is not None
                 )
+
+
+def _split_failure_detail(split_storage: dict[str, object]) -> dict[str, object]:
+    """The measured numbers behind a split-storage gate failure."""
+    metrics = _mapping(split_storage, "metrics")
+    logs = _mapping(split_storage, "logs")
+    traces = _mapping(split_storage, "traces")
+    return {
+        "metrics": {
+            key: metrics.get(key)
+            for key in ("source_samples", "stored_samples", "missing_samples", "extra_samples")
+        },
+        "logs": {
+            table: {
+                key: detail.get(key)
+                for key in ("source_records", "stored_records", "missing_records", "extra_records")
+            }
+            for table, detail in _mapping(logs, "tables").items()
+            if isinstance(detail, Mapping)
+        },
+        "traces": {
+            key: traces.get(key)
+            for key in (
+                "fidelity_sample_traces",
+                "missing_sample_spans",
+                "extra_sample_spans",
+                "absent_sample_traces",
+                "returned_traces",
+                "all_trace_ids_from_source",
+                "all_trace_starts_in_source_window",
+            )
+        },
+    }
+
+
+def _causal_services(spec: TransferCaseSpec) -> frozenset[str]:
+    """The services the case is scored on."""
+    return frozenset(
+        name
+        for name in (spec.causal_component, spec.edge_source, spec.edge_destination)
+        if isinstance(name, str) and name
+    )
+
+
+def _causal_trace_ids(spec: TransferCaseSpec, spans: list[object]) -> frozenset[str]:
+    """The traces that carry the case's causal evidence.
+
+    An edge case is scored on a directed call, so a trace merely mentioning one
+    endpoint is not the evidence: the trace has to contain the Client span in
+    the source service whose child Server span is in the destination service.
+    Aiming the fidelity sample at "either service" left 2% of a delay case's
+    selected traces without the edge at all.
+    """
+    if spec.edge_source and spec.edge_destination:
+        by_trace: dict[str, list[object]] = {}
+        for span in spans:
+            by_trace.setdefault(str(span.trace_id), []).append(span)
+        causal = set()
+        for trace_id, trace_spans in by_trace.items():
+            by_id = {str(span.span_id): span for span in trace_spans}
+            for span in trace_spans:
+                parent = by_id.get(str(span.parent_span_id))
+                if (
+                    str(span.service_name) == spec.edge_destination
+                    and int(span.kind) == 2
+                    and parent is not None
+                    and str(parent.service_name) == spec.edge_source
+                    and int(parent.kind) == 3
+                ):
+                    causal.add(trace_id)
+                    break
+        return frozenset(causal)
+    services = _causal_services(spec)
+    return frozenset(str(span.trace_id) for span in spans if str(span.service_name) in services)
+
+
+def _split_mechanism(spec: TransferCaseSpec) -> dict[str, object] | None:
+    """The case's frozen metric oracle, restated for the Prometheus replay."""
+    evidence = spec.mechanism_evidence
+    if evidence is None or evidence.source_table == "traces":
+        return None
+    return {
+        "source_table": evidence.source_table,
+        "identity_column": evidence.identity_column,
+        "identity_value": evidence.identity_value,
+        "threshold": evidence.threshold,
+        "minimum_anomalous_observations": evidence.minimum_anomalous_observations,
+        "normal_window": spec.normal_window,
+        "abnormal_window": spec.abnormal_window,
+    }
 
 
 def build_preflight_report(
@@ -318,6 +550,7 @@ def execute_case_runs(
     paid_api_confirmed: bool,
     max_new_runs: int | None = None,
     run_agent_fn: RunAgent = run_agent,
+    run_split_agent_fn: RunAgent = run_split_agent,
     on_update: ReportUpdate | None = None,
 ) -> dict[str, object]:
     validate_private_report(report, protocol, protocol_path, selection)
@@ -338,56 +571,15 @@ def execute_case_runs(
     pending = [cell for cell in pending if cell["case_id"] == prepared.spec.opaque_case_id]
     if max_new_runs is not None:
         pending = pending[:max_new_runs]
-    model_contracts = {model.model: model for model in protocol.models}
     for cell in pending:
-        model = model_contracts[str(cell["model"])]
-        visibility = Visibility(str(cell["visibility"]))
-        gateway = QueryGateway(
-            prepared.client,
-            visibility,
-            semantic_graph_window=(
-                prepared.graph_window if visibility is Visibility.SEMANTIC_GRAPH else None
-            ),
+        item = execute_transfer_cell(
+            protocol,
+            prepared,
+            cell,
+            source_semantic_hash=str(expected_hash),
+            run_agent_fn=run_agent_fn,
+            run_split_agent_fn=run_split_agent_fn,
         )
-        with prepared.client.measure_query_load() as database_load:
-            try:
-                run = run_agent_fn(
-                    gateway,
-                    prepared.case.input,
-                    visibility,
-                    model=model.model,
-                    api_transport=model.api_transport,
-                    reasoning_effort=model.reasoning_effort,
-                    max_tool_calls=protocol.max_tool_calls,
-                    max_turns=protocol.max_turns,
-                    max_output_tokens=model.max_output_tokens,
-                    semantic_coverage=prepared.semantic_coverage,
-                )
-            except Exception as error:
-                run = _failed_run(
-                    visibility,
-                    model.model,
-                    model.api_transport,
-                    model.reasoning_effort,
-                    model.max_output_tokens,
-                    str(error),
-                )
-        evaluation = evaluate_transfer_run(
-            run,
-            prepared.spec,
-            expected_model=model.model,
-            expected_transport=model.api_transport,
-            expected_reasoning_effort=model.reasoning_effort,
-            expected_max_output_tokens=model.max_output_tokens,
-            max_tool_calls=protocol.max_tool_calls,
-        )
-        item = {
-            **cell,
-            "run": run.model_dump(mode="json"),
-            "evaluation": evaluation.model_dump(mode="json"),
-            "database_load": database_load.model_dump(mode="json"),
-            "source_semantic_sha256": expected_hash,
-        }
         report_runs = report.get("runs")
         if not isinstance(report_runs, list):
             raise ValueError("transfer report runs are malformed")
@@ -396,6 +588,55 @@ def execute_case_runs(
         if on_update is not None:
             on_update(report)
     return report
+
+
+def execute_transfer_cell(
+    protocol: TransferProtocolFixture,
+    prepared: PreparedTransferEnvironment,
+    cell: Mapping[str, object],
+    *,
+    source_semantic_hash: str,
+    run_agent_fn: RunAgent = run_agent,
+    run_split_agent_fn: RunAgent = run_split_agent,
+) -> dict[str, object]:
+    if cell.get("case_id") != prepared.spec.opaque_case_id:
+        raise ValueError("transfer cell and live environment case differ")
+    models = {model.model: model for model in protocol.models}
+    model = models.get(str(cell.get("model")))
+    if model is None:
+        raise ValueError("transfer cell model is outside the protocol")
+    visibility = Visibility(str(cell["visibility"]))
+    if visibility is Visibility.SPLIT_PILLARS:
+        run, database_load = _run_split_cell(
+            prepared,
+            protocol,
+            model,
+            run_split_agent_fn=run_split_agent_fn,
+        )
+    else:
+        run, database_load = _run_greptimedb_cell(
+            prepared,
+            protocol,
+            model,
+            visibility,
+            run_agent_fn=run_agent_fn,
+        )
+    evaluation = evaluate_transfer_run(
+        run,
+        prepared.spec,
+        expected_model=model.model,
+        expected_transport=model.api_transport,
+        expected_reasoning_effort=model.reasoning_effort,
+        expected_max_output_tokens=model.max_output_tokens,
+        max_tool_calls=protocol.max_tool_calls,
+    )
+    return {
+        **cell,
+        "run": run.model_dump(mode="json"),
+        "evaluation": evaluation.model_dump(mode="json"),
+        "database_load": database_load.model_dump(mode="json"),
+        "source_semantic_sha256": source_semantic_hash,
+    }
 
 
 def validate_private_report(
@@ -442,43 +683,151 @@ def validate_private_report(
     if bindings.get("source_semantic_sha256") != expected_source_hashes:
         raise ValueError("transfer source audit binding drifted")
     specs = {case.opaque_case_id: case for case in selection.selected_cases}
-    models = {model.model: model for model in protocol.models}
     runs = _mapping_list(report, "runs")
     if len(runs) > len(expected_schedule):
         raise ValueError("transfer report has more runs than scheduled")
     for index, item in enumerate(runs):
-        expected = expected_schedule[index]
-        if any(item.get(key) != value for key, value in expected.items()):
-            raise ValueError("transfer completed runs are not an exact schedule prefix")
-        run = AgentRun.model_validate(item.get("run"))
-        model = models[str(item["model"])]
-        evaluated = evaluate_transfer_run(
-            run,
-            specs[str(item["case_id"])],
-            expected_model=model.model,
-            expected_transport=model.api_transport,
-            expected_reasoning_effort=model.reasoning_effort,
-            expected_max_output_tokens=model.max_output_tokens,
-            max_tool_calls=protocol.max_tool_calls,
+        validate_transfer_run_item(
+            item,
+            expected_schedule[index],
+            protocol,
+            specs[str(item.get("case_id"))],
+            expected_source_hashes[str(item.get("case_id"))],
         )
-        if item.get("evaluation") != evaluated.model_dump(mode="json"):
-            raise ValueError("transfer stored evaluation does not rescore")
-        DatabaseLoad.model_validate(item.get("database_load"))
-        if item.get("source_semantic_sha256") != expected_source_hashes[item["case_id"]]:
-            raise ValueError("transfer completed cell source binding drifted")
     if report.get("execution") != _execution_summary(runs, len(expected_schedule)):
         raise ValueError("transfer execution summary drifted")
     if require_complete and not _mapping(report, "execution").get("complete"):
         raise ValueError("transfer report is incomplete")
 
 
+def validate_transfer_run_item(
+    item: Mapping[str, object],
+    expected: Mapping[str, object],
+    protocol: TransferProtocolFixture,
+    spec: TransferCaseSpec,
+    expected_source_hash: str,
+) -> None:
+    if any(item.get(key) != value for key, value in expected.items()):
+        raise ValueError("transfer completed run does not match its scheduled cell")
+    run = AgentRun.model_validate(item.get("run"))
+    models = {model.model: model for model in protocol.models}
+    model = models[str(item["model"])]
+    evaluated = evaluate_transfer_run(
+        run,
+        spec,
+        expected_model=model.model,
+        expected_transport=model.api_transport,
+        expected_reasoning_effort=model.reasoning_effort,
+        expected_max_output_tokens=model.max_output_tokens,
+        max_tool_calls=protocol.max_tool_calls,
+    )
+    if item.get("evaluation") != evaluated.model_dump(mode="json"):
+        raise ValueError("transfer stored evaluation does not rescore")
+    DatabaseLoad.model_validate(item.get("database_load"))
+    if item.get("source_semantic_sha256") != expected_source_hash:
+        raise ValueError("transfer completed cell source binding drifted")
+
+
 def source_semantic_sha256(audit: Mapping[str, object]) -> str:
-    return canonical_sha256(_stable(audit))
+    source_audit = dict(audit)
+    split_stack = source_audit.get("exclusive_split_stack")
+    if isinstance(split_stack, Mapping):
+        source_audit["exclusive_split_stack"] = {
+            key: value for key, value in split_stack.items() if key != "ports"
+        }
+    return canonical_sha256(_stable(source_audit))
 
 
 def canonical_sha256(value: object) -> str:
     payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _run_greptimedb_cell(
+    prepared: PreparedTransferEnvironment,
+    protocol: TransferProtocolFixture,
+    model: object,
+    visibility: Visibility,
+    *,
+    run_agent_fn: RunAgent,
+) -> tuple[AgentRun, DatabaseLoad]:
+    gateway = QueryGateway(
+        prepared.client,
+        visibility,
+        semantic_graph_window=(
+            prepared.graph_window if visibility is Visibility.SEMANTIC_GRAPH else None
+        ),
+    )
+    with prepared.client.measure_query_load() as database_load:
+        try:
+            run = run_agent_fn(
+                gateway,
+                prepared.case.input,
+                visibility,
+                model=model.model,
+                api_transport=model.api_transport,
+                reasoning_effort=model.reasoning_effort,
+                max_tool_calls=protocol.max_tool_calls,
+                max_turns=protocol.max_turns,
+                max_output_tokens=model.max_output_tokens,
+                semantic_coverage=prepared.semantic_coverage,
+            )
+        except Exception as error:
+            run = _failed_run(
+                visibility,
+                model.model,
+                model.api_transport,
+                model.reasoning_effort,
+                model.max_output_tokens,
+                str(error),
+            )
+    return run, database_load
+
+
+def _run_split_cell(
+    prepared: PreparedTransferEnvironment,
+    protocol: TransferProtocolFixture,
+    model: object,
+    *,
+    run_split_agent_fn: RunAgent,
+) -> tuple[AgentRun, DatabaseLoad]:
+    """One split-pillars cell, measured on its own gateway.
+
+    `rows_returned` stays null here: a Prometheus sample, a Loki entry and a
+    Tempo trace are not the same unit as a GreptimeDB row, so summing them into
+    the registered load endpoint would compare incommensurable counts.
+    """
+    stack = prepared.split_stack
+    with (
+        SplitQueryGateway(
+            prometheus_endpoint=stack.prometheus_endpoint,
+            loki_endpoint=stack.loki_endpoint,
+            tempo_endpoint=stack.tempo_endpoint,
+            timeout=AGENT_QUERY_TIMEOUT_SECONDS,
+        ) as gateway,
+        gateway.measure_query_load() as database_load,
+    ):
+        try:
+            run = run_split_agent_fn(
+                gateway,
+                prepared.case.input,
+                model=model.model,
+                api_transport=model.api_transport,
+                reasoning_effort=model.reasoning_effort,
+                max_tool_calls=protocol.max_tool_calls,
+                max_turns=protocol.max_turns,
+                max_output_tokens=model.max_output_tokens,
+            )
+        except Exception as error:
+            run = _failed_run(
+                Visibility.SPLIT_PILLARS,
+                model.model,
+                model.api_transport,
+                model.reasoning_effort,
+                model.max_output_tokens,
+                str(error),
+            )
+    return run, database_load
 
 
 def _failed_run(

@@ -42,6 +42,13 @@ from semantic_rca_bench.greptimedb.visibility import (
     MAX_QUERY_MAX_ROWS,
     QueryGateway,
 )
+from semantic_rca_bench.split_query import (
+    METRIC_OPERATIONS,
+    METRIC_OPERATIONS_WITHOUT_SEMANTICS,
+    SplitQueryGateway,
+    metrics_query_tool,
+    split_investigation_tools,
+)
 
 
 class AgentError(RuntimeError):
@@ -291,7 +298,7 @@ SUBMIT_TOOL = {
 class InvestigationSession:
     def __init__(
         self,
-        gateway: QueryGateway,
+        gateway: QueryGateway | SplitQueryGateway,
         case_input: CaseInput,
         visibility: Visibility,
         *,
@@ -304,7 +311,11 @@ class InvestigationSession:
         self.visibility = visibility
         self.max_tool_calls = max_tool_calls
         self.semantic_coverage = semantic_coverage
-        self.profiler = TableProfiler(gateway.client, visibility)
+        self.profiler = (
+            None
+            if isinstance(gateway, SplitQueryGateway)
+            else TableProfiler(gateway.client, visibility)
+        )
         self.tool_calls: list[ToolTrace] = []
         self.rejected_tool_calls: list[RejectedToolCall] = []
         self.tool_calls_requested = 0
@@ -390,6 +401,8 @@ class InvestigationSession:
         return max(0, self.max_tool_calls - len(self.tool_calls))
 
     def _execute(self, tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
+        if isinstance(self.gateway, SplitQueryGateway):
+            return self.gateway.execute_tool(tool_name, arguments)
         if tool_name == "execute_sql":
             requested_max_rows = arguments.get("max_rows")
             result = self.gateway.execute(
@@ -397,13 +410,19 @@ class InvestigationSession:
                 **({"max_rows": requested_max_rows} if requested_max_rows is not None else {}),
             )
             return result.model_dump(mode="json")
+        if tool_name == "query_metrics":
+            return self.gateway.execute_metrics(arguments)
         if tool_name == "describe_table":
+            if self.profiler is None:
+                raise AgentError("describe_table is unavailable in split_pillars")
             return self.profiler.describe(
                 str(arguments.get("table", "")),
                 include_samples=bool(arguments.get("include_samples", False)),
                 sample_limit=int(arguments.get("sample_limit", 1)),
             )
         if tool_name == "search_table_semantics":
+            if self.profiler is None:
+                raise AgentError("search_table_semantics is unavailable in split_pillars")
             output = self.profiler.search(
                 str(arguments.get("query", "")),
                 signal_type=(
@@ -445,7 +464,7 @@ class InvestigationSession:
         if invalid:
             query_ids = ", ".join(dict.fromkeys(invalid))
             raise ValueError(
-                "evidence citations must reference one successful, non-truncated SQL or Graph "
+                "evidence citations must reference one successful, non-truncated data query "
                 f"result; replace invalid citations: {query_ids}"
             )
 
@@ -462,7 +481,14 @@ def _database_load_delta(
     return DatabaseLoad(
         query_count=query_count,
         failed_query_count=after.failed_query_count - before.failed_query_count,
-        rows_returned=after.rows_returned - before.rows_returned,
+        # None where a returned row is not a database row, as in the split arm.
+        # Subtracting it would raise inside the tool loop, and again inside the
+        # handler that is meant to turn a tool failure into a tool error.
+        rows_returned=(
+            None
+            if after.rows_returned is None or before.rows_returned is None
+            else after.rows_returned - before.rows_returned
+        ),
         query_elapsed_seconds=after.query_elapsed_seconds - before.query_elapsed_seconds,
         max_concurrency=1 if query_count else 0,
     )
@@ -485,6 +511,7 @@ def run_agent(
         visibility,
         case_input.fault_taxonomy,
         semantic_coverage,
+        promql=True,
     )
     result = run_structured_api_agent(
         gateway,
@@ -493,8 +520,8 @@ def run_agent(
         model=model,
         api_transport=api_transport,
         reasoning_effort=reasoning_effort,
-        system_prompt=_system_prompt(),
-        user_prompt=_incident_prompt(case_input, max_tool_calls),
+        system_prompt=_system_prompt(visibility),
+        user_prompt=_incident_prompt(case_input, max_tool_calls, visibility),
         investigation_tools=tools,
         output_tool=_submit_tool(case_input.fault_taxonomy),
         validate_output=_validate_diagnosis_output,
@@ -504,6 +531,64 @@ def run_agent(
         semantic_coverage=semantic_coverage,
         prompt_cache=True,
     )
+    return _diagnosis_agent_run(
+        result,
+        visibility=visibility,
+        model=model,
+        api_transport=api_transport,
+        reasoning_effort=reasoning_effort,
+        max_output_tokens=max_output_tokens,
+    )
+
+
+def run_split_agent(
+    gateway: SplitQueryGateway,
+    case_input: CaseInput,
+    *,
+    model: str,
+    api_transport: ApiTransport,
+    reasoning_effort: str,
+    max_tool_calls: int = 48,
+    max_turns: int | None = None,
+    max_output_tokens: int = 16384,
+) -> AgentRun:
+    result = run_structured_api_agent(
+        gateway,
+        case_input,
+        Visibility.SPLIT_PILLARS,
+        model=model,
+        api_transport=api_transport,
+        reasoning_effort=reasoning_effort,
+        system_prompt=_system_prompt(Visibility.SPLIT_PILLARS),
+        user_prompt=_incident_prompt(case_input, max_tool_calls, Visibility.SPLIT_PILLARS),
+        investigation_tools=split_investigation_tools(),
+        output_tool=_submit_tool(case_input.fault_taxonomy),
+        validate_output=_validate_diagnosis_output,
+        max_tool_calls=max_tool_calls,
+        max_turns=max_turns,
+        max_output_tokens=max_output_tokens,
+        semantic_coverage=None,
+        prompt_cache=True,
+    )
+    return _diagnosis_agent_run(
+        result,
+        visibility=Visibility.SPLIT_PILLARS,
+        model=model,
+        api_transport=api_transport,
+        reasoning_effort=reasoning_effort,
+        max_output_tokens=max_output_tokens,
+    )
+
+
+def _diagnosis_agent_run(
+    result: StructuredAgentResult,
+    *,
+    visibility: Visibility,
+    model: str,
+    api_transport: ApiTransport,
+    reasoning_effort: str | None,
+    max_output_tokens: int,
+) -> AgentRun:
     diagnosis = Diagnosis.model_validate(result.output) if result.output is not None else None
     error = result.error
     if error and error.startswith("agent did not submit final output within "):
@@ -529,7 +614,7 @@ def run_agent(
 
 
 def run_structured_api_agent(
-    gateway: QueryGateway,
+    gateway: QueryGateway | SplitQueryGateway,
     case_input: CaseInput,
     visibility: Visibility,
     *,
@@ -1455,12 +1540,29 @@ def _agent_tools(
     visibility: Visibility,
     fault_taxonomy: list[str],
     semantic_coverage: dict[str, object] | None,
+    *,
+    promql: bool = False,
 ) -> list[dict[str, object]]:
     tools = [
         _execute_sql_tool(visibility, semantic_coverage),
         _describe_table_tool(visibility),
     ]
-    if visibility is not Visibility.RAW:
+    if promql:
+        # GreptimeDB answers PromQL natively, so both GreptimeDB arms of the
+        # end-to-end study expose it: leaving it out would present the product
+        # below its actual surface. The schema-discovery and graph micro
+        # benchmarks keep their frozen two-tool surface.
+        tools.append(
+            metrics_query_tool(
+                native_stack=False,
+                operations=(
+                    METRIC_OPERATIONS_WITHOUT_SEMANTICS
+                    if visibility is Visibility.RAW
+                    else METRIC_OPERATIONS
+                ),
+            )
+        )
+    if visibility is Visibility.SEMANTIC_GRAPH:
         tools.append(_search_table_semantics_tool())
     if visibility is Visibility.SEMANTIC_GRAPH and _graph_status(semantic_coverage) != "empty":
         tools.append(_semantic_graph_tool(semantic_coverage))
@@ -1472,10 +1574,12 @@ def _investigation_tools(
     visibility: Visibility,
     fault_taxonomy: list[str],
     semantic_coverage: dict[str, object] | None,
+    *,
+    promql: bool = False,
 ) -> list[dict[str, object]]:
     return [
         tool
-        for tool in _agent_tools(visibility, fault_taxonomy, semantic_coverage)
+        for tool in _agent_tools(visibility, fault_taxonomy, semantic_coverage, promql=promql)
         if tool["name"] != "submit_diagnosis"
     ]
 
@@ -1548,7 +1652,7 @@ def _execute_sql_tool(
 
 def _describe_table_tool(visibility: Visibility) -> dict[str, object]:
     description = "Get a table profile containing column schema and optional sample rows."
-    if visibility is not Visibility.RAW:
+    if visibility is Visibility.SEMANTIC_GRAPH:
         description += (
             " The profile also includes table semantic metadata: signal type, ingestion "
             "source and version, pipeline, metadata quality, semantic options, and entity "
@@ -1922,32 +2026,32 @@ def _validate_diagnosis_output(value: object) -> dict[str, object]:
     return diagnosis.model_dump(mode="json")
 
 
-def _system_prompt() -> str:
-    return """You are the on-call SRE investigating an incident from telemetry in GreptimeDB.
-Determine the single most likely root-cause locus and causal fault type. Do not report a
+_INVESTIGATION_METHOD = """You are the on-call SRE investigating a production incident from
+telemetry. Determine the single most likely root-cause locus and causal fault type. Do not report a
 surface observation as the cause unless the evidence discriminates that causal mechanism from its
 alternatives. Work from query evidence, not naming alone. Compare baseline and anomalous periods
 when the telemetry window
 contains a known baseline, and correlate metrics, logs, and traces when present. Infer the change
-point from telemetry rather than the alert time. Discover the schema before relying on column
-names, and use semantic capabilities explicitly exposed by the tools when available. Stay inside
-the named incident database.
+point from telemetry rather than the alert time. Discover what the store holds before relying on
+names, and use capabilities explicitly exposed by the tools when available.
 
 Before broad health checks, establish the change point and the failing request or operation. Treat
 observed signals as evidence, not automatically as causes. The same observation may arise from
 different mechanisms, and an observed condition may be causal or propagated. Form two or three
 hypotheses that differ in causal scope or mechanism, then use the next query to distinguish them.
+An empty discovery result does not by itself prove that no relevant signal exists; try another
+concrete concept while the hypothesis remains plausible. Interpret an empty data query only after
+checking its time range, filters, and coverage.
 If the available evidence does not discriminate, report the best-supported hypothesis, state the
 ambiguity in explanation, and lower confidence. When traces are available, compare the same
 operation before and after onset, including its parent-child path, service identity, span role, and
 relevant attributes. A recorded successful request or span does not by itself prove that the
 intended operation ran or returned semantically correct data. Run broad resource health checks only
-when an active hypothesis makes resource pressure plausible.
+when an active hypothesis makes resource pressure plausible."""
 
-When semantic catalog search is available and the alert is generic, use it to test a concrete
-resource or signal hypothesis from the allowed fault taxonomy. A zero-result catalog search is not
-evidence that no relevant metric exists: retry with another concrete concept when that hypothesis
-remains plausible.
+_GREPTIMEDB_NOTES = """Telemetry is stored in GreptimeDB, where every signal is queryable from one
+surface. execute_sql can query the metric, log, and trace tables in the named incident database.
+Stay inside that database.
 
 GreptimeDB SQL notes:
 - Compare Timestamp columns with timestamp string literals, not integer Unix epochs.
@@ -1957,8 +2061,27 @@ GreptimeDB SQL notes:
 - In UNION queries, put ORDER BY only after the combined query, or run separate queries.
 - Confirm tables and columns through discovery tools before querying them. table_schema is an
   INFORMATION_SCHEMA column, not a telemetry-table column.
+- query_metrics runs PromQL against the same metric tables, addressing each table by its name as
+  the metric name and its tag columns as labels.
+- Truncated query results are incomplete and cannot be cited. Use aggregation, narrower filters, or
+  an explicit execute_sql max_rows up to 1000 to obtain a complete result before citing it."""
 
-Final diagnosis contract:
+_SPLIT_PILLARS_NOTES = """Telemetry is split across three stores, each with its own query language:
+Prometheus for metrics through query_metrics, Loki for logs through query_logs, and Tempo for
+traces through query_traces. No store can read another's data.
+
+Native query notes:
+- Time parameters take Unix seconds or RFC 3339; range queries also need an explicit step.
+- Select series by label matchers inside braces. Label names hold no dots; a source attribute such
+  as k8s.pod.name is addressed as k8s_pod_name.
+- Loki range queries include the start and exclude the end.
+- Confirm what exists through the discovery operations (labels, label_values, series, tags,
+  tag_values) before relying on names.
+- Truncated query results are incomplete and cannot be cited. Use a narrower filter, an
+  aggregating query, or an explicit max_items up to 1000 to obtain a complete result before citing
+  it."""
+
+_DIAGNOSIS_CONTRACT = """Final diagnosis contract:
 - causal_scope and its locus fields identify where the mechanism exists, independently of where
   symptoms propagate. For component scope, set exactly one causal_component and leave both edge
   fields null. For infrastructure_node scope, name the node in causal_component and leave both edge
@@ -1986,8 +2109,6 @@ Final diagnosis contract:
   baseline telemetry is available, the evidence set must compare
   the relevant operation or signal across baseline and anomalous periods. Evidence that establishes
   only an observation does not by itself establish its cause.
-- truncated query results are incomplete and cannot be cited. Use aggregation, narrower filters, or
-  an explicit execute_sql max_rows up to 1000 to obtain a complete result before citing it.
 
 Every final evidence item must copy an exact query_id returned by an investigation tool. Do not ask
 the user questions. The incident prompt states a fixed investigation budget and each tool response
@@ -1995,23 +2116,54 @@ states the remainder. Reserve enough budget to synthesize the result; exhausting
 objective. Call submit_diagnosis once the available evidence supports the best answer."""
 
 
-def _incident_prompt(case_input: CaseInput, max_tool_calls: int) -> str:
+def _system_prompt(visibility: Visibility) -> str:
+    """The same investigation method for every arm, with per-stack operating notes.
+
+    The methodology and the diagnosis contract stay byte-identical across arms: a
+    difference there would measure the prompt rather than the stack. Only the
+    notes describing how to drive a particular store differ, and they state
+    interface facts rather than investigation strategy.
+
+    The two GreptimeDB arms therefore share one prompt. Their treatment
+    difference is the tools they are given, not the guidance they receive;
+    coaching the semantic arm on how to recover from an unhelpful search would
+    move the primary comparison by prompt rather than by interface.
+    """
+    parts = [_INVESTIGATION_METHOD]
+    parts.append(
+        _SPLIT_PILLARS_NOTES if visibility is Visibility.SPLIT_PILLARS else _GREPTIMEDB_NOTES
+    )
+    parts.append(_DIAGNOSIS_CONTRACT)
+    return "\n\n".join(parts)
+
+
+def _incident_prompt(
+    case_input: CaseInput,
+    max_tool_calls: int,
+    visibility: Visibility,
+) -> str:
     start = datetime.fromtimestamp(case_input.time_start, UTC).isoformat()
     alert_time = datetime.fromtimestamp(case_input.alert_time, UTC).isoformat()
     end = datetime.fromtimestamp(case_input.time_end, UTC).isoformat()
     alert_text = case_input.alert_text or "Generic telemetry anomaly"
+    if visibility is Visibility.SPLIT_PILLARS:
+        header = ""
+        scope = "The three telemetry stores are the only source of incident evidence."
+    else:
+        header = f"Database: {case_input.database}\n"
+        scope = (
+            f"The database is the only source of incident evidence. INFORMATION_SCHEMA row "
+            f"queries must include table_schema = '{case_input.database}' so results stay "
+            f"scoped to this incident."
+        )
     return f"""Investigate this production incident.
 
-Database: {case_input.database}
-Telemetry window: {start} through {end}
+{header}Telemetry window: {start} through {end}
 Alert: {alert_text}
 Alert fired at: {alert_time} (Unix {case_input.alert_time})
 Investigation budget: at most {max_tool_calls} tool calls. Submit the best-supported diagnosis
 before the budget reaches zero.
 
 Find the causal component or directed causal edge, propagated impact when present, fault type, and
-onset time. The
-database is the only source of
-incident evidence. Treat the alert as the observed symptom; its named entity is not necessarily the
-root cause. INFORMATION_SCHEMA row queries must include
-table_schema = '{case_input.database}' so results stay scoped to this incident."""
+onset time. {scope} Treat the alert as the observed symptom; its named entity is not necessarily
+the root cause."""

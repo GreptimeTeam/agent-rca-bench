@@ -5,7 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from semantic_rca_bench.contracts import DatabaseLoad
+import semantic_rca_bench.transfer_formal as transfer_formal
+from semantic_rca_bench.contracts import DatabaseLoad, Visibility
 from semantic_rca_bench.transfer_formal import (
     PreparedTransferEnvironment,
     build_preflight_report,
@@ -40,7 +41,34 @@ def test_preflight_freezes_source_audits_without_provider_calls() -> None:
     validate_private_report(report, protocol, DEFAULT_PROTOCOL_FIXTURE, selection)
     assert report["authorization"]["preflight_calls_provider"] is False
     assert report["phase"] == "measurement"
-    assert report["execution"]["expected_runs"] == 224
+    assert report["execution"]["expected_runs"] == 336
+
+
+def test_source_semantic_hash_ignores_runtime_ports_but_binds_images() -> None:
+    audit = {
+        "exclusive_split_stack": {
+            "loopback_only": True,
+            "images": {"tempo": "tempo@sha256:first"},
+            "ports": {"tempo_http": 41001},
+        }
+    }
+    different_ports = {
+        **audit,
+        "exclusive_split_stack": {
+            **audit["exclusive_split_stack"],
+            "ports": {"tempo_http": 42001},
+        },
+    }
+    different_image = {
+        **audit,
+        "exclusive_split_stack": {
+            **audit["exclusive_split_stack"],
+            "images": {"tempo": "tempo@sha256:second"},
+        },
+    }
+
+    assert source_semantic_sha256(audit) == source_semantic_sha256(different_ports)
+    assert source_semantic_sha256(audit) != source_semantic_sha256(different_image)
 
 
 def test_runner_failure_is_persisted_as_a_scoreable_cell() -> None:
@@ -65,6 +93,11 @@ def test_runner_failure_is_persisted_as_a_scoreable_cell() -> None:
         source_audit=audits[0],
         semantic_coverage={},
         graph_window=(0, 60),
+        split_stack=SimpleNamespace(
+            prometheus_endpoint="http://127.0.0.1:1",
+            loki_endpoint="http://127.0.0.1:2",
+            tempo_endpoint="http://127.0.0.1:3",
+        ),
     )
 
     execute_case_runs(
@@ -170,3 +203,52 @@ def test_no_model_gates_assert_measured_values_only(gate_module: str, base_modul
     # Guards against the scan silently covering nothing if the gates stop
     # using .get() to reach their audits.
     assert checked >= 5
+
+
+def test_a_split_cell_records_no_greptimedb_rows_and_survives_a_runner_failure() -> None:
+    protocol, selection = load_transfer_protocol()
+    audits = [_source_audit(case.opaque_case_id) for case in selection.selected_cases]
+
+    class Client:
+        @contextmanager
+        def measure_query_load(self):
+            yield DatabaseLoad()
+
+    prepared = PreparedTransferEnvironment(
+        client=Client(),
+        case=SimpleNamespace(input=SimpleNamespace()),
+        spec=selection.selected_cases[0],
+        source_audit=audits[0],
+        semantic_coverage={},
+        graph_window=(0, 60),
+        split_stack=SimpleNamespace(
+            prometheus_endpoint="http://127.0.0.1:1",
+            loki_endpoint="http://127.0.0.1:2",
+            tempo_endpoint="http://127.0.0.1:3",
+        ),
+    )
+
+    run, load = transfer_formal._run_split_cell(
+        prepared,
+        protocol,
+        protocol.models[0],
+        run_split_agent_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("provider unavailable")
+        ),
+    )
+
+    assert run.visibility is Visibility.SPLIT_PILLARS
+    assert run.error == "runner failed: provider unavailable"
+    # The split gateway keeps its own load, so a failed cell must not silently
+    # borrow the GreptimeDB client's counters.
+    assert load.query_count == 0
+
+
+def test_every_arm_gets_the_same_agent_facing_query_timeout() -> None:
+    source = Path("src/semantic_rca_bench/transfer_formal.py").read_text()
+
+    # A shorter budget on one store turns a slow query into a tool failure
+    # there and a citable result elsewhere, which moves headline eligibility.
+    assert "timeout=AGENT_QUERY_TIMEOUT_SECONDS," in source
+    assert source.count("timeout=AGENT_QUERY_TIMEOUT_SECONDS,") == 2
+    assert "timeout=120)" not in source

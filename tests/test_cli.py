@@ -59,15 +59,15 @@ def test_batch_output_uses_case_identity(tmp_path) -> None:
     )
 
     assert _batch_output(source, tmp_path) == (
-        tmp_path / "v33-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
+        tmp_path / "v34-api-claude-sonnet-5-re2ob-checkoutservice-cpu-1.json"
     )
 
 
 def test_noncurrent_protocol_cannot_start_new_agent_execution() -> None:
-    require_current_protocol(33)
+    require_current_protocol(34)
 
-    with pytest.raises(ValueError, match="does not match current protocol v33"):
-        require_current_protocol(30)
+    with pytest.raises(ValueError, match="does not match current protocol v34"):
+        require_current_protocol(33)
 
 
 def test_case_role_defaults_to_development_and_accepts_measurement() -> None:
@@ -121,7 +121,7 @@ def test_formal_suite_separates_micro_preflight_from_paid_execution() -> None:
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.protocol) == ("fixtures/reference/semantic-rca-v33-four-model-suite.json")
+    assert str(preflight.protocol) == ("fixtures/reference/semantic-rca-v34-four-model-suite.json")
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
     paid = _parser().parse_args([*execution, "--max-new-runs", "1", "--confirm-paid-api"])
@@ -144,8 +144,8 @@ def test_formal_suite_report_uses_current_public_fixtures() -> None:
         ]
     )
 
-    assert str(args.suite_protocol) == ("fixtures/reference/semantic-rca-v33-four-model-suite.json")
-    assert str(args.transfer_protocol) == ("fixtures/reference/transfer-v33-protocol.json")
+    assert str(args.suite_protocol) == ("fixtures/reference/semantic-rca-v34-four-model-suite.json")
+    assert str(args.transfer_protocol) == ("fixtures/reference/transfer-v34-protocol.json")
 
 
 def test_measurement_database_name_cannot_leak_ground_truth() -> None:
@@ -200,11 +200,25 @@ def test_current_transfer_protocol_binds_the_extended_semantic_surface() -> None
     assert benchmark_protocol()["table_profile"].endswith("declared-service-identity-v4")
     assert benchmark_protocol()["treatment_estimand"] == "complete-agent-facing-interface-v1"
     assert benchmark_protocol()["treatment_components"] == {
-        "raw": ["telemetry", "ordinary-schema-metadata", "read-only-sql"],
+        "split_pillars": [
+            "telemetry",
+            "prometheus-native-http-api",
+            "loki-native-http-api",
+            "tempo-native-http-api",
+        ],
+        # The raw arm answers PromQL but not metric metadata, which GreptimeDB
+        # serves from the same semantic options the semantic arm is defined by.
+        "raw": [
+            "telemetry",
+            "ordinary-schema-metadata",
+            "read-only-sql",
+            "promql-without-metric-metadata",
+        ],
         "semantic_graph": [
             "telemetry",
             "ordinary-schema-metadata",
             "read-only-sql",
+            "promql",
             "table-semantics",
             "semantic-entities",
             "semantic-relationships",
@@ -229,12 +243,12 @@ def test_openrca2_transfer_cli_separates_no_model_and_paid_commands() -> None:
         "transfer-run",
         "--report",
         "preflight.json",
-        "--run-dir",
+        "--run-root",
         "live-run",
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.protocol) == "fixtures/reference/transfer-v33-protocol.json"
+    assert str(preflight.protocol) == "fixtures/reference/transfer-v34-protocol.json"
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
     paid = _parser().parse_args([*execution, "--confirm-paid-api"])

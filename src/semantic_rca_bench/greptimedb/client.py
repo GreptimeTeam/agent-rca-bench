@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from threading import Lock
 from typing import Any
@@ -89,6 +89,45 @@ class GreptimeClient:
             elapsed_seconds=elapsed,
             truncated=max_rows is not None and len(all_rows) > max_rows,
         )
+
+    def prometheus_api(
+        self,
+        path: str,
+        params: dict[str, str],
+        *,
+        rows_in: Callable[[dict[str, Any]], int],
+    ) -> tuple[dict[str, Any], float]:
+        """One call against GreptimeDB's Prometheus-compatible HTTP API.
+
+        `rows_in` counts the observations the response carries so they land in
+        `rows_returned` alongside SQL rows. Leaving PromQL uncounted would make
+        the same investigation look free on the registered load endpoint, so the
+        caller has to supply the count rather than opt into it.
+        """
+        started = time.monotonic()
+        self._query_started()
+        try:
+            response = self.http.get(
+                f"{self.endpoint}/v1/prometheus{path}",
+                params={**params, "db": self.database},
+            )
+            if response.is_error:
+                raise GreptimeError(
+                    f"PromQL failed ({response.status_code}): {response.text[:2000]}"
+                )
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise GreptimeError("PromQL response is not an object")
+            if payload.get("status") == "error":
+                raise GreptimeError(
+                    f"PromQL failed: {payload.get('errorType')}: {payload.get('error')}"
+                )
+            rows = rows_in(payload)
+        except Exception:
+            self._query_finished(started, rows_returned=0, failed=True)
+            raise
+        elapsed = self._query_finished(started, rows_returned=rows, failed=False)
+        return payload, elapsed
 
     @contextmanager
     def measure_query_load(self) -> Iterator[DatabaseLoad]:

@@ -24,6 +24,8 @@ class QueryGateway:
         max_rows: int = DEFAULT_QUERY_MAX_ROWS,
         semantic_graph_window: tuple[int, int] | None = None,
     ) -> None:
+        if visibility is Visibility.SPLIT_PILLARS:
+            raise ValueError("split_pillars does not use the GreptimeDB SQL gateway")
         if (
             isinstance(max_rows, bool)
             or not isinstance(max_rows, int)
@@ -39,6 +41,42 @@ class QueryGateway:
         self.visibility = visibility
         self.max_rows = max_rows
         self.semantic_graph_window = semantic_graph_window
+
+    def execute_metrics(self, arguments: dict[str, object]) -> dict[str, object]:
+        """A `query_metrics` call answered by GreptimeDB's PromQL endpoint.
+
+        The same tool the split arm uses, so a metric question costs the same
+        shape of call in every arm; only the store behind it differs.
+        """
+        from semantic_rca_bench.split_query import (
+            max_items,
+            native_result,
+            prometheus_query_plan,
+            prometheus_rows,
+        )
+
+        limit = max_items(arguments)
+        operation, path, params = prometheus_query_plan(arguments)
+        if operation == "metadata" and self.visibility is Visibility.RAW:
+            # GreptimeDB serves metric metadata from `greptime.semantic.*`, the
+            # same facts the raw arm is denied in `table_semantics`. Enforced
+            # here as well as in the tool schema: the schema is advice, this is
+            # the boundary.
+            raise QueryRejected("metric metadata is unavailable")
+        parsed: list[tuple[list[str], list[list[object]]]] = []
+
+        def count(body: dict[str, object]) -> int:
+            columns, rows = prometheus_rows(operation, body)
+            parsed.append((columns, rows))
+            # The SQL path books every row the query produced, before the row
+            # cap, so PromQL has to be counted the same way.
+            return len(rows)
+
+        _, elapsed = self.client.prometheus_api(path, params, rows_in=count)
+        columns, rows = parsed[0]
+        return native_result("prometheus", operation, columns, rows, elapsed, limit).model_dump(
+            mode="json"
+        )
 
     def execute(self, sql: str, *, max_rows: int | None = None) -> QueryResult:
         row_limit = self.max_rows if max_rows is None else max_rows

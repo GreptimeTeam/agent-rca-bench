@@ -14,11 +14,15 @@ from semantic_rca_bench.datasets.openrca2_transfer import (
 from semantic_rca_bench.datasets.rca100_transfer import (
     load_selection_fixture as load_node_selection_fixture,
 )
-from semantic_rca_bench.protocol import benchmark_protocol, run_orders
+from semantic_rca_bench.protocol import (
+    benchmark_protocol,
+    counterbalanced_orders,
+    rotate_levels,
+)
 from semantic_rca_bench.report import MODEL_PRICING
 
-PROTOCOL_REVISION = "transfer-four-model-service-edge-node-v15"
-DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/transfer-v33-protocol.json")
+PROTOCOL_REVISION = "transfer-four-model-three-arm-service-edge-node-v19"
+DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/transfer-v34-protocol.json")
 
 
 class ModelContract(BaseModel):
@@ -40,6 +44,22 @@ class PaidExecutionContract(BaseModel):
     pricing_snapshot_required_at_execution: bool
 
 
+class ConfirmatoryFamily(BaseModel):
+    """One pre-declared paired comparison and the endpoints it is tested on.
+
+    Families are corrected separately: pooling them would make one goal's
+    significance depend on how many tests the other goal ran.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    goal: Literal["storage_shape", "semantic_layer"]
+    status: Literal["primary", "secondary"]
+    baseline: Visibility
+    treatment: Visibility
+    metrics: tuple[str, str]
+
+
 class InferenceContract(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -49,6 +69,9 @@ class InferenceContract(BaseModel):
     repetitions_are_descriptive: bool
     primary_metrics: tuple[str, str]
     holm_family_size: int
+    confirmatory_families: tuple[ConfirmatoryFamily, ...]
+    descriptive_comparisons: tuple[tuple[Visibility, Visibility], ...]
+    rows_returned_applicable_treatments: tuple[Visibility, ...]
     null_metric_meaning: str
     tied_calls_meaning: str
     direction_consistent_non_significant_meaning: str
@@ -65,6 +88,25 @@ class SemanticAdjudicationContract(BaseModel):
     decision_rule: str
     deterministic_hard_gates_remain_authoritative: bool
     publish_deterministic_and_adjudicated_results: bool
+
+
+class SplitStackImages(BaseModel):
+    """The container images that define the split-pillars arm.
+
+    Bound here for the same reason `greptimedb_revision` is: the arm's results
+    are only attributable to a store if the protocol says which one ran.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    prometheus: str
+    loki: str
+    tempo: str
+
+    def require_digests(self) -> None:
+        for name, image in self.model_dump().items():
+            if "@sha256:" not in image:
+                raise ValueError(f"split-stack {name} image is not pinned by digest")
 
 
 class CohortSource(BaseModel):
@@ -109,14 +151,16 @@ class TransferProtocolFixture(BaseModel):
     node_selection_fixture_sha256: str
     greptimedb_revision: str
     greptimedb_build_profile: Literal["release"]
+    split_stack_images: SplitStackImages
     runner: AgentRunner
     models: tuple[ModelContract, ...]
     visibility_levels: tuple[Visibility, ...]
     max_tool_calls: int
     max_turns: int
     repetitions_per_model: int
-    treatment_order_seed: int
     parallel_runs: int
+    max_parallel_environment_preparations: int
+    max_parallel_runs_per_provider: int
     sampling: str
     execution_order: str
     expected_cells: int
@@ -160,7 +204,7 @@ def load_transfer_protocol(
             ApiTransport.BIGMODEL_CHAT_COMPLETIONS,
             "provider-automatic-prefix",
             16384,
-            "max",
+            "high",
         ),
     )
     observed_models = tuple(
@@ -182,17 +226,22 @@ def load_transfer_protocol(
         or fixture.greptimedb_build_profile != "release"
         or fixture.runner is not AgentRunner.API
         or observed_models != expected_models
-        or fixture.visibility_levels != (Visibility.RAW, Visibility.SEMANTIC_GRAPH)
+        or fixture.visibility_levels
+        != (Visibility.SPLIT_PILLARS, Visibility.RAW, Visibility.SEMANTIC_GRAPH)
         or fixture.max_tool_calls != 48
         or fixture.max_turns != 58
         or fixture.repetitions_per_model != 2
-        or fixture.treatment_order_seed != 0
-        or fixture.parallel_runs != 1
+        or fixture.parallel_runs != 4
+        or fixture.max_parallel_environment_preparations != 2
+        or fixture.max_parallel_runs_per_provider != 2
         or fixture.sampling != "provider-default; no seed sent"
         or fixture.execution_order
-        != "cases in selection order; models in roster order; seeded rotating treatments"
+        != "case batches of up to four; at most two environment preparations at once; "
+        "all batch environments ready before model calls; model queues round-robin with case "
+        "rotation; counterbalanced treatment order preserved within each model"
     ):
         raise ValueError("transfer protocol contract drifted")
+    fixture.split_stack_images.require_digests()
     if any(model.model not in MODEL_PRICING for model in fixture.models):
         raise ValueError("transfer protocol has no pricing contract for a model")
     selection_path = _bound_path(
@@ -230,7 +279,13 @@ def load_transfer_protocol(
     if case_ids != sorted(case_ids):
         raise ValueError("transfer cohort case IDs are out of schedule order")
     schedule = formal_schedule(fixture, cohort)
-    if fixture.expected_cells != 224 or len(schedule) != fixture.expected_cells:
+    expected_cells = (
+        len(cohort.selected_cases)
+        * len(fixture.models)
+        * len(fixture.visibility_levels)
+        * fixture.repetitions_per_model
+    )
+    if fixture.expected_cells != expected_cells or len(schedule) != fixture.expected_cells:
         raise ValueError("transfer protocol cell count drifted")
     paid = fixture.paid_execution
     if not (
@@ -246,7 +301,18 @@ def load_transfer_protocol(
         or not inference.case_is_independent_unit
         or not inference.repetitions_are_descriptive
         or inference.primary_metrics != ("rows_returned", "correct_completion_tool_calls")
-        or inference.holm_family_size != len(cohort.selected_cases)
+        # `m` is the number of hypotheses in one family: every model tested on
+        # every endpoint of that family. It is not the case count, which is the
+        # unit the deltas are reduced over.
+        or inference.holm_family_size != len(fixture.models) * 2
+        or not inference.confirmatory_families
+        or any(
+            {family.baseline, family.treatment} - set(fixture.visibility_levels)
+            for family in inference.confirmatory_families
+        )
+        or [family.status for family in inference.confirmatory_families].count("primary") != 1
+        or inference.rows_returned_applicable_treatments
+        != (Visibility.RAW, Visibility.SEMANTIC_GRAPH)
         or inference.null_metric_meaning != "not estimable; no eligible paired cases"
         or inference.tied_calls_meaning != "no observed tool-call reduction in the cohort"
         or inference.direction_consistent_non_significant_meaning
@@ -283,15 +349,24 @@ def formal_schedule(
     fixture: TransferProtocolFixture,
     cohort: TransferCohort,
 ) -> list[dict[str, object]]:
-    orders = run_orders(
-        list(fixture.visibility_levels),
-        fixture.repetitions_per_model,
-        fixture.treatment_order_seed,
+    levels = list(fixture.visibility_levels)
+    repetitions = fixture.repetitions_per_model
+    # One balanced sequence covering every (case, repetition) slot, then rotated
+    # per model so a case-specific effect cannot line up with one treatment
+    # across the whole roster.
+    balanced = counterbalanced_orders(
+        levels,
+        orderings=len(cohort.selected_cases) * repetitions,
     )
     schedule = []
     for case_index, case in enumerate(cohort.selected_cases):
         for model_index, model in enumerate(fixture.models):
-            for repetition, order in enumerate(orders):
+            for repetition in range(repetitions):
+                order = rotate_levels(
+                    balanced[case_index * repetitions + repetition],
+                    levels,
+                    model_index % len(levels),
+                )
                 for position, visibility in enumerate(order):
                     schedule.append(
                         {

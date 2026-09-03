@@ -54,7 +54,24 @@ The measurement contains 360 completed agent cells:
 
 Rows returned and complete-run tool calls are the registered end-to-end
 efficiency metrics. Input, cache use, output, reasoning, latency, and cost are
-reported separately. See [SCORING.md](SCORING.md) for the scoring contract,
+reported separately.
+
+### Current protocol
+
+The published report above is benchmark protocol v32. The protocol in this tree
+is v34 and has not been run. It adds a third end-to-end treatment,
+`split_pillars`, which replays the same case into Prometheus, Loki and Tempo and
+gives the agent those stores' native query APIs. The schedule is 14 cases × 4
+models × 3 treatments × 2 repetitions = 336 end-to-end cells.
+
+v34 answers two paired questions instead of one, each corrected on its own:
+`semantic_graph - raw` for the semantic layer, and `raw - split_pillars` for the
+all-in-one interface against a native interface bundle. Model ranking is
+reported descriptively. `rows_returned` does not apply to `split_pillars` and is
+reported as N/A there; the cross-stack endpoints are provider-visible input
+tokens and complete-run tool calls.
+
+See [SCORING.md](SCORING.md) for the scoring contract,
 [DATASETS.md](DATASETS.md) for provenance and selection, [DISCOVERY.md](DISCOVERY.md)
 for schema discovery, and [GRAPH.md](GRAPH.md) for Graph retrieval and exact-edge
 validation.
@@ -85,6 +102,12 @@ uv sync --extra dev --frozen
 uv run semantic-rca doctor
 ```
 
+Reproducing the published report needs neither Docker nor a GreptimeDB build.
+Running the v34 protocol needs both: a GreptimeDB checkout at the protocol
+revision built in release mode, and Docker for the digest-pinned Prometheus,
+Loki and Tempo images that back the `split_pillars` treatment. Each case starts
+its own four stores on loopback ports and removes them afterwards.
+
 Build the wheel and source distribution with:
 
 ```bash
@@ -97,7 +120,12 @@ Report reproduction does not call a model provider or require source telemetry.
 It validates both sanitized source artifacts, recomputes the combined report,
 and renders a self-contained HTML file.
 
+Run it from the tree whose benchmark protocol matches the artifacts. The
+published artifacts are protocol v32, produced by commit `83edd73`; this tree is
+v34 and rejects them with `formal micro artifact protocol drifted`.
+
 ```bash
+git checkout 83edd73
 output_dir=$(mktemp -d)
 
 uv run semantic-rca formal-suite-report \
@@ -125,9 +153,12 @@ shasum -a 256 -c artifacts/measurement/semantic-rca-v32-SHA256SUMS
 
 ## Reproduce source and Semantic Graph audits
 
-The end-to-end source audit downloads the pinned OpenRCA2 artifact, replays one
-case at a time into an exclusive release-mode GreptimeDB process, and removes
-only the process and data directory it created.
+The end-to-end source audit reads the pinned source artifacts and replays cases
+in batches of up to four. Each case has an exclusive release-mode GreptimeDB
+process and split stack. At most two environments are prepared concurrently;
+all environments in a batch must pass their provider-free gates before that
+batch is released. The command stops only the processes and containers it
+started and retains the run directories for inspection.
 
 ```bash
 uv run semantic-rca transfer-selection-audit \
@@ -173,14 +204,25 @@ security add-generic-password -U -a "$USER" \
   -s semantic-rca-bench-openai -w
 ```
 
-Run one pending end-to-end case at a time:
+Run pending end-to-end cells with the concurrency limits frozen in the transfer
+protocol:
 
 ```bash
 uv run semantic-rca transfer-run \
   --report .reports/openrca2-transfer-measurement.json \
-  --run-dir .instances/openrca2-transfer-case-01 \
+  --run-root .instances/openrca2-transfer-measurement \
   --confirm-paid-api
 ```
+
+Each active case receives an exclusive GreptimeDB process, split stack, port
+set, and data directory under `--run-root`. Cases run in batches of up to four,
+with at most two environments prepared concurrently. Every environment in a
+batch is ready before any model call, so ingestion does not overlap measured
+queries. The runner limits each provider to two active cells, journals a cell
+before calling its provider, and records the result before merging it into the
+report. A run-root lock rejects a second runner invocation. If an invocation
+stops with an active cell and no recorded result, the next invocation refuses
+to retry that cell automatically.
 
 Run `uv run semantic-rca --help` for the micro-benchmark, export, and
 render commands. A runner failure is persisted as a failed cell. It does not

@@ -1,5 +1,7 @@
 import json
+import struct
 
+import httpx
 import snappy
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
     ExportMetricsServiceRequest,
@@ -19,6 +21,7 @@ from semantic_rca_bench.protocols.otlp import (
 from semantic_rca_bench.protocols.prometheus import (
     encode_write_request,
     prometheus_metric_name,
+    read_series,
     write_series_batch,
 )
 
@@ -241,6 +244,34 @@ def test_remote_write_batches_multiple_time_series_in_one_request() -> None:
     assert _count_length_delimited_field(snappy.decompress(client.calls[0]["body"]), 1) == 2
 
 
+def test_remote_read_decodes_labels_samples_and_omitted_zero_values() -> None:
+    labels = _field(1, _field(1, b"__name__") + _field(2, b"cpu_usage"))
+    labels += _field(1, _field(1, b"service_name") + _field(2, b"search"))
+    nonzero_sample = _field(2, b"\x09" + struct.pack("<d", 0.5) + b"\x10" + _varint(10))
+    zero_sample = _field(2, b"\x10" + _varint(20))
+    response = snappy.compress(_field(1, _field(1, labels + nonzero_sample + zero_sample)))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/read"
+        assert request.headers["content-encoding"] == "snappy"
+        assert snappy.decompress(request.content)
+        return httpx.Response(
+            200,
+            content=response,
+            headers={"Content-Encoding": "snappy"},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        series = read_series(
+            http,
+            "http://prometheus",
+            start_timestamp_ms=1,
+            end_timestamp_ms=100,
+        )
+
+    assert series == [("cpu_usage", [(10, 0.5), (20, 0.0)], {"service_name": "search"})]
+
+
 def test_loki_replay_preserves_record_labels() -> None:
     client = _Client()
 
@@ -287,3 +318,16 @@ def _read_varint(payload: bytes, offset: int) -> tuple[int, int]:
         if byte < 0x80:
             return value, offset
         shift += 7
+
+
+def _varint(value: int) -> bytes:
+    encoded = bytearray()
+    while value > 0x7F:
+        encoded.append((value & 0x7F) | 0x80)
+        value >>= 7
+    encoded.append(value)
+    return bytes(encoded)
+
+
+def _field(number: int, value: bytes) -> bytes:
+    return _varint((number << 3) | 2) + _varint(len(value)) + value

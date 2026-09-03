@@ -140,17 +140,12 @@ from semantic_rca_bench.report import (
     render_reports,
 )
 from semantic_rca_bench.transfer_adjudication import build_semantic_adjudication_queue
-from semantic_rca_bench.transfer_formal import (
-    TransferEnvironmentConfig as OpenRCA2TransferEnvironmentConfig,
+from semantic_rca_bench.transfer_concurrent import (
+    collect_source_audits_concurrently,
+    execute_pending_runs_concurrently,
 )
 from semantic_rca_bench.transfer_formal import (
     build_preflight_report as build_openrca2_transfer_preflight,
-)
-from semantic_rca_bench.transfer_formal import (
-    execute_case_runs as execute_openrca2_transfer_case_runs,
-)
-from semantic_rca_bench.transfer_formal import (
-    prepare_transfer_environment as prepare_openrca2_transfer_environment,
 )
 from semantic_rca_bench.transfer_formal import validate_private_report
 from semantic_rca_bench.transfer_protocol import (
@@ -303,7 +298,7 @@ def _parser() -> argparse.ArgumentParser:
         "--manifest", type=Path, default=Path(".data/openrca2/manifest.jsonl")
     )
     transfer_run.add_argument("--greptimedb-repo", type=Path, default=DEFAULT_GREPTIMEDB_REPO)
-    transfer_run.add_argument("--run-dir", type=Path, required=True)
+    transfer_run.add_argument("--run-root", type=Path, required=True)
     transfer_run.add_argument("--protocol", type=Path, default=DEFAULT_OPENRCA2_TRANSFER_PROTOCOL)
     transfer_run.add_argument("--confirm-paid-api", action="store_true", required=True)
     transfer_run.add_argument("--max-new-runs", type=int)
@@ -587,21 +582,14 @@ def transfer_preflight(args: argparse.Namespace) -> int:
     if args.run_root.exists():
         raise ValueError(f"transfer preflight run root already exists: {args.run_root}")
     protocol, selection = load_transfer_protocol(args.protocol)
-    source_audits = []
-    for spec in selection.selected_cases:
-        source_report = None
-        config = OpenRCA2TransferEnvironmentConfig(
-            cache_dir=args.cache_dir,
-            manifest_path=args.manifest,
-            greptimedb_repo=args.greptimedb_repo,
-            run_dir=args.run_root / spec.opaque_case_id,
-            database=spec.opaque_case_id.replace("-", "_"),
-        )
-        with prepare_openrca2_transfer_environment(protocol, spec, config) as prepared:
-            source_report = prepared.source_audit
-        if source_report is None:
-            raise ValueError("transfer no-model preflight produced no source audit")
-        source_audits.append(source_report)
+    source_audits = collect_source_audits_concurrently(
+        protocol,
+        selection,
+        cache_dir=args.cache_dir,
+        manifest_path=args.manifest,
+        greptimedb_repo=args.greptimedb_repo,
+        run_root=args.run_root,
+    )
     report = build_openrca2_transfer_preflight(
         protocol,
         args.protocol,
@@ -625,38 +613,26 @@ def transfer_run(args: argparse.Namespace) -> int:
     if not isinstance(execution, dict) or execution.get("complete") is True:
         print(args.report)
         return 0
-    schedule = report.get("schedule")
-    runs = report.get("runs")
-    if not isinstance(schedule, list) or not isinstance(runs, list):
-        raise ValueError("transfer report schedule or runs are malformed")
-    next_cell = schedule[len(runs)]
-    if not isinstance(next_cell, dict):
-        raise ValueError("transfer schedule cell is malformed")
-    spec = selection.selected_cases[int(next_cell["case_index"])]
-    config = OpenRCA2TransferEnvironmentConfig(
-        cache_dir=args.cache_dir,
-        manifest_path=args.manifest,
-        greptimedb_repo=args.greptimedb_repo,
-        run_dir=args.run_dir,
-        database=spec.opaque_case_id.replace("-", "_"),
-    )
     try:
-        with prepare_openrca2_transfer_environment(protocol, spec, config) as prepared:
-            execute_openrca2_transfer_case_runs(
-                report,
-                protocol,
-                args.protocol,
-                selection,
-                prepared,
-                paid_api_confirmed=True,
-                max_new_runs=args.max_new_runs,
-                on_update=lambda value: write_json(args.report, value),
-            )
+        execute_pending_runs_concurrently(
+            report,
+            protocol,
+            args.protocol,
+            selection,
+            cache_dir=args.cache_dir,
+            manifest_path=args.manifest,
+            greptimedb_repo=args.greptimedb_repo,
+            run_root=args.run_root,
+            paid_api_confirmed=True,
+            max_new_runs=args.max_new_runs,
+            on_update=lambda value: write_json(args.report, value),
+        )
+        validate_private_report(report, protocol, args.protocol, selection)
     finally:
         write_json(args.report, report)
     print(args.report)
     execution = report["execution"]
-    return 0 if execution["runner_errors"] == 0 else 1
+    return 0 if execution["runner_errors"] == 0 and execution["budget_exhaustions"] == 0 else 1
 
 
 def transfer_export(args: argparse.Namespace) -> int:

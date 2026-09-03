@@ -157,8 +157,8 @@ def test_formal_suite_freezes_every_micro_and_transfer_cell() -> None:
     schedule = micro_schedule(suite, transfer)
 
     assert len(schedule) == 128
-    assert suite.expected_transfer_cells == 224
-    assert suite.expected_total_cells == 352
+    assert suite.expected_transfer_cells == 336
+    assert suite.expected_total_cells == 464
     assert {cell["model"] for cell in schedule} == {model.model for model in transfer.models}
     for source_case in {str(cell["source_case"]) for cell in schedule}:
         cells = [cell for cell in schedule if cell["source_case"] == source_case]

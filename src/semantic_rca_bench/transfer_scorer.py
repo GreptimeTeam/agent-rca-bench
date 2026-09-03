@@ -29,6 +29,8 @@ from semantic_rca_bench.datasets.openrca2_transfer import (
 from semantic_rca_bench.evaluation import component_matches
 from semantic_rca_bench.evidence import is_valid_evidence_trace
 
+GROUNDING_VERIFIER_TOOLS = frozenset({"execute_sql"})
+
 
 class ClaimGrounding(BaseModel):
     required: bool
@@ -67,6 +69,7 @@ class TransferEvaluation(BaseModel):
     evidence_audit_failure_reasons: list[str]
     semantic_adjudication_required: bool
     semantic_adjudication_reason_codes: list[str]
+    grounding_not_estimable_reason: str | None = None
     correct_completion_tool_calls: int | None = None
     tool_calls_through_required_evidence: int | None = None
     rows_returned_through_required_evidence: int | None = None
@@ -188,15 +191,33 @@ def evaluate_transfer_run(
     )
 
     verdicts: list[tuple[str, int, ClaimVerdict]] = []
+    verifiable_citations = 0
     for item in evidence:
         matches = traces_by_query_id.get(item.query_id, [])
         if len(matches) != 1 or not is_valid_evidence_trace(matches):
             continue
         trace = matches[0]
+        if trace.tool_name in GROUNDING_VERIFIER_TOOLS:
+            verifiable_citations += 1
         verdicts.append(
             (item.query_id, trace_indexes[id(trace)], _mechanism_verdict_from_trace(trace, case))
         )
-    auditable = case.mechanism_evidence is not None
+    # The deterministic verifier reads SQL. A run whose evidence is entirely in
+    # a language it cannot parse has an unmeasured claim, not a failed one, so
+    # the audit reports it as not estimable rather than scoring it against the
+    # model. Recording False there would read as an evidence failure and would
+    # penalise whichever arm the verifier happens not to cover.
+    grounding_estimable = case.mechanism_evidence is not None and verifiable_citations > 0
+    auditable = grounding_estimable
+    grounding_not_estimable_reason = (
+        None
+        if grounding_estimable
+        else (
+            "no_deterministic_oracle"
+            if case.mechanism_evidence is None
+            else "grounding_verifier_language_unsupported"
+        )
+    )
     baseline_ids = [query_id for query_id, _, verdict in verdicts if verdict.baseline_clear]
     anomaly_ids = [query_id for query_id, _, verdict in verdicts if verdict.anomaly_present]
     direct_ids = [query_id for query_id, _, verdict in verdicts if verdict.direct_mechanism]
@@ -257,7 +278,10 @@ def evaluate_transfer_run(
         and typed_evidence
         and citations_execution_valid
         and execution_reliability
-        and not required_evidence_covered
+        # Only a measured failure earns adjudication. A not-estimable grounding
+        # would otherwise queue every correct run whose evidence the verifier
+        # cannot read.
+        and required_evidence_covered is False
     )
     has_execution_valid_citation = valid_evidence_count > 0
     efficiency_eligible = (
@@ -334,6 +358,7 @@ def evaluate_transfer_run(
         semantic_adjudication_reason_codes=(
             adjudication_reason_codes if semantic_adjudication_required else []
         ),
+        grounding_not_estimable_reason=grounding_not_estimable_reason,
         correct_completion_tool_calls=len(run.tool_calls) if efficiency_eligible else None,
         tool_calls_through_required_evidence=(
             support_index + 1 if support_index is not None else None

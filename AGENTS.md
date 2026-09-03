@@ -6,11 +6,29 @@ on the path you edit. If `.local/AGENTS.md` exists, read it as well. Files under
 
 ## Purpose
 
-Semantic RCA Bench measures whether the complete GreptimeDB Semantic Graph
-interface changes the accuracy, investigation work, and cost of LLM-based root
-cause analysis (RCA). The primary paired comparison is `semantic_graph - raw`
-for the same model, incident, telemetry, prompt, runner contract, and resource
-budget.
+Semantic RCA Bench measures how the observability stack behind an LLM changes
+the accuracy, investigation work, and cost of root cause analysis (RCA). One
+measurement answers three questions:
+
+1. **Storage shape.** How the GreptimeDB all-in-one agent-facing interface
+   compares with a Prometheus, Loki and Tempo native interface bundle. Paired
+   comparison `raw - split_pillars`; secondary confirmatory.
+2. **Semantic layer.** Whether the complete GreptimeDB Semantic Graph interface
+   changes RCA. Paired comparison `semantic_graph - raw`; primary confirmatory.
+3. **Model ranking.** How models differ at RCA. Descriptive; no hypothesis test.
+
+Every comparison holds the model, incident, telemetry, prompt, runner contract,
+and resource budget fixed. The prompt's investigation method and diagnosis
+contract are byte-identical across all three arms; only the notes describing how
+to drive a particular store differ, and those state interface facts rather than
+investigation strategy. The two GreptimeDB arms therefore receive one identical
+prompt and differ only in the tools they are given.
+
+Question 1 is not a single-factor comparison of storage topology. The split arm
+changes the store, the query languages, and the tool surface together, which is
+what `treatment_estimand: complete-agent-facing-interface` in `protocol.py`
+already declares. Describe it as an interface-bundle comparison, never as
+isolating storage shape.
 
 The benchmark is designed to falsify as well as support the hypothesis. Do not
 alter source data, select cases after observing trajectories, relax a scorer to
@@ -25,21 +43,38 @@ the database or benchmark.
 
 ## Measurement contract
 
-- Compare only the same model and frozen configuration across `raw` and
-  `semantic_graph`.
+- Compare only the same model and frozen configuration across `split_pillars`,
+  `raw` and `semantic_graph`.
 - Treat cases as the independent units. Repetitions describe variability and do
   not increase the inferential sample size.
 - Reduce eligible repetition-pair deltas to one median per model and case before
   cross-case summaries.
+- The two confirmatory families are corrected separately, each with `m` equal to
+  the number of models times the number of endpoints in that family. Pooling
+  them would make one question's significance depend on how many tests the other
+  question ran.
 - The registered end-to-end efficiency metrics are
-  `database_load.rows_returned` and
-  `evaluation.correct_completion_tool_calls`.
+  `evaluation.correct_completion_tool_calls` for both families,
+  `database_load.rows_returned` for `semantic_graph - raw`, and
+  `usage.provider_visible_input_tokens` for `raw - split_pillars`.
+- `database_load.rows_returned` is not applicable to `split_pillars`: a
+  Prometheus sample, a Loki entry and a Tempo trace are not the unit a
+  GreptimeDB row is. It serializes as null there and must render as N/A, never
+  as zero.
+- Metric queries answered by PromQL count their returned rows into
+  `rows_returned` exactly as SQL does. Leaving them uncounted would make the
+  same investigation look free on a registered endpoint.
 - End-to-end efficiency eligibility requires a correct diagnosis, at least one
   citation to a successful non-truncated query, no runner error, and no budget
   exhaustion.
 - Deterministic evidence sufficiency is a separate audit. It does not select the
   headline efficiency sample and an LLM judge must not rewrite the primary
   endpoints.
+- The evidence verifier reads SQL. A run whose cited evidence is entirely in
+  another query language is `not estimable`, carrying
+  `grounding_not_estimable_reason`, and never `False`. Recording a failure there
+  would report a missing tool as a model defect and would penalise whichever arm
+  the verifier does not cover.
 - Discovery and Graph micro-benchmarks use
   `rows_returned_through_evidence` and `tool_calls_through_evidence`. Do not mix
   these fields with end-to-end metrics.
@@ -81,9 +116,39 @@ fixtures are the machine-readable protocol sources.
   not abort a complete schedule because a model cell fails.
 - Use one exclusive GreptimeDB process, port, data directory, and database for
   each formal case. Stop only the process started by the benchmark.
+- Use one exclusive Prometheus, Loki and Tempo container per formal case, on
+  loopback ports, from digest-pinned images. A split stack that will not start
+  or will not ingest is an environment failure that stops the case before any
+  provider is called; it is not a scoreable model failure.
 - Do not modify, reuse, or stop an unrelated service on `localhost:4000`.
 - Commands that call model providers require explicit user approval for that
   invocation.
+
+## Split-stack ingestion
+
+Traces reach Tempo as the same protocol bytes GreptimeDB receives. Metrics and
+logs cannot, so each carries a declared protocol mapping and is audited on
+stored content instead of payload bytes.
+
+- Metrics: GreptimeDB keeps OTLP; Prometheus receives remote write. Prometheus
+  rejects `AGGREGATION_TEMPORALITY_UNSPECIFIED` sums and histograms, and the
+  OpenRCA2 archives declare no temporality. Writing one would stamp
+  `metric.temporality` into GreptimeDB's semantic options, so the replay keeps
+  the source's silence and changes transport instead.
+- Logs: Loki accepts only `[a-zA-Z_][a-zA-Z0-9_]*` label names, does not read
+  `x-greptime-log-table-name`, indexes every distinct label set as a stream,
+  treats an empty label value as absent, and collapses entries identical in
+  labels, timestamp and line. The fanout folds label names, carries the table as
+  a `log_table` label, and sends `trace_id` and `span_id` as structured
+  metadata.
+- Loki's `discover_service_name` and `discover_log_levels` are off. A store that
+  invents `service_name: unknown_service` would supply an identity the source
+  does not have, in a benchmark about establishing identity.
+- Loki answers a push `204` even when it drops entries. Ingestion is proved by
+  reading the case back, never by the response code.
+- Build every split-stack expectation from the source archive. Deriving one
+  store's input from the other store's contents would let the audit clear
+  itself.
 
 ## Public artifacts
 

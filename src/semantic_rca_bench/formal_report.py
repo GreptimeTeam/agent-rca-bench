@@ -98,7 +98,20 @@ def build_formal_measurement_report(
     micro_runs = _mapping_list(micro, "runs")
     transfer_runs = _mapping_list(transfer, "runs")
     micro_resource_effects = _paired_resource_effects(micro_runs, transfer=False)
-    transfer_resource_effects = _paired_resource_effects(transfer_runs, transfer=True)
+    transfer_families = {
+        family.goal: _paired_resource_effects(
+            transfer_runs,
+            transfer=True,
+            baseline=family.baseline.value,
+            treatment=family.treatment.value,
+        )
+        for family in protocol.inference.confirmatory_families
+        if {family.baseline.value, family.treatment.value}
+        <= set(_treatments_present(transfer_runs))
+    }
+    # The per-model resource view is the semantic-layer family, taken from the
+    # family map rather than computed a second time.
+    transfer_resource_effects = transfer_families["semantic_layer"]
     case_context = {
         str(source["opaque_case_id"]): _case_context(source)
         for source in _mapping_list(transfer, "sources")
@@ -122,10 +135,31 @@ def build_formal_measurement_report(
         "report_schema_version": FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION,
         "report_type": "semantic-rca-measurement-report",
         "publication_status": "public measurement report",
-        "research_question": (
-            "Does the complete GreptimeDB Semantic Graph interface reduce RCA investigation "
-            "work while preserving diagnosis and evidence validity?"
-        ),
+        "research_questions": [
+            {
+                "goal": "semantic_layer",
+                "status": "primary confirmatory",
+                "question": (
+                    "Does the complete GreptimeDB Semantic Graph interface reduce RCA "
+                    "investigation work while preserving diagnosis and evidence validity?"
+                ),
+            },
+            {
+                "goal": "storage_shape",
+                "status": "secondary confirmatory",
+                "question": (
+                    "How does the GreptimeDB all-in-one agent-facing interface compare with a "
+                    "Prometheus, Loki and Tempo native interface bundle on the same incidents? "
+                    "The arms differ in store, query languages and tool surface together, so "
+                    "this is an interface-bundle comparison, not an isolated storage effect."
+                ),
+            },
+            {
+                "goal": "model_ranking",
+                "status": "descriptive",
+                "question": "How do the models differ at RCA under each interface?",
+            },
+        ],
         "license": {
             "report_schema_and_derived_aggregates": "Apache-2.0",
             "source_telemetry_redistributed": False,
@@ -157,6 +191,7 @@ def build_formal_measurement_report(
         "model_reports": model_reports,
         "case_outcomes": _case_outcomes(transfer_runs, case_context),
         "capability_scores": _capability_scores(transfer_runs, names),
+        "confirmatory_family_resource_effects": transfer_families,
         "semantic_layer_findings": _semantic_findings(model_reports),
         "resource_effect_contract": {
             "role": "descriptive; not a pre-registered endpoint",
@@ -179,8 +214,9 @@ def build_formal_measurement_report(
         "limitations": [
             (
                 f"The {execution['micro_cases']}-case micro cohort is fixed reference data; the "
-                f"{execution['transfer_cases']}-case end-to-end cohort is a source-ranked fresh "
-                "measurement cohort."
+                f"{execution['transfer_cases']}-case end-to-end cohort is source-ranked. Ten "
+                "of its cases carry over from the previously published measurement rather "
+                "than being reselected."
             ),
             (
                 "Case-level within-model estimates apply to these systems and mechanisms; "
@@ -196,7 +232,8 @@ def build_formal_measurement_report(
                 "not control headline efficiency eligibility."
             ),
             (
-                "The 40/40/20 capability score is a post-measurement descriptive index. It is "
+                f"The {capability_rubric_label()} capability score is a post-measurement "
+                "descriptive index. It is "
                 "not a pre-registered endpoint and its evidence component inherits verifier "
                 "coverage limits."
             ),
@@ -487,8 +524,18 @@ RESOURCE_EFFECT_METRICS = (
 
 
 def _paired_resource_effects(
-    runs: list[Mapping[str, object]], *, transfer: bool
+    runs: list[Mapping[str, object]],
+    *,
+    transfer: bool,
+    baseline: str = "raw",
+    treatment: str = "semantic_graph",
 ) -> dict[str, object]:
+    """Per-case resource deltas for one named pair of treatments.
+
+    The pair is named rather than inferred from the cell's contents: requiring
+    the cell to hold exactly two treatments dropped every pair once a third arm
+    existed, and reported no estimable effects instead of failing.
+    """
     grouped: dict[str, dict[str, dict[str, dict[int, dict[str, Mapping[str, object]]]]]] = (
         defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(dict))))
     )
@@ -511,10 +558,11 @@ def _paired_resource_effects(
                 deltas: dict[str, list[float]] = defaultdict(list)
                 eligible_repetitions = 0
                 for pair in repetitions.values():
-                    if set(pair) != {"raw", "semantic_graph"}:
-                        continue
-                    raw = pair["raw"]
-                    graph = pair["semantic_graph"]
+                    missing = {baseline, treatment} - set(pair)
+                    if missing:
+                        raise ValueError(f"resource pair for {case} is missing {sorted(missing)}")
+                    raw = pair[baseline]
+                    graph = pair[treatment]
                     if not (
                         _resource_run_eligible(raw, transfer)
                         and _resource_run_eligible(graph, transfer)
@@ -534,7 +582,7 @@ def _paired_resource_effects(
                     "eligible_repetitions": eligible_repetitions,
                     **{metric: _median(values) for metric, values in deltas.items()},
                 }
-                for visibility in ("raw", "semantic_graph"):
+                for visibility in (baseline, treatment):
                     costs = [
                         _resource_usage(pair[visibility], transfer).get("estimated_cost")
                         for pair in repetitions.values()
@@ -561,7 +609,7 @@ def _paired_resource_effects(
             for value in case_reports.values():
                 value["estimated_cost_currency"] = currency
             actual_cost_by_treatment = {}
-            for visibility in ("raw", "semantic_graph"):
+            for visibility in (baseline, treatment):
                 values = [value[f"actual_cost_{visibility}"] for value in case_reports.values()]
                 actual_cost_by_treatment[visibility] = (
                     sum(float(value) for value in values)
@@ -676,12 +724,14 @@ CAPABILITY_SCORE_RUBRIC = {
         "label": "executed evidence",
         "dimension": "evidence",
     },
-    "required_evidence_covered": {
-        "points": 15,
-        "label": "deterministic evidence proof",
-        "dimension": "evidence",
-    },
 }
+
+# Deliberately outside the rubric. The deterministic proof is decidable only for
+# SQL evidence, so scoring it would rank a model that cited PromQL above one that
+# cited SQL and failed the audit — an availability bias on top of the treatment
+# bias of scoring an unmeasured dimension as a failure. It is reported beside the
+# score instead.
+CAPABILITY_UNSCORED_DIMENSIONS = ("required_evidence_covered",)
 
 
 def _capability_scores(
@@ -694,7 +744,7 @@ def _capability_scores(
             visibility: _score_runs(
                 [item for item in model_runs if item.get("visibility") == visibility]
             )
-            for visibility in ("raw", "semantic_graph")
+            for visibility in _treatments_present(runs)
         }
         reports[model] = {
             "overall": _score_runs(model_runs),
@@ -706,10 +756,13 @@ def _capability_scores(
             "and not used for hypothesis testing"
         ),
         "overall_formula": (
-            "sum of rubric points over every end-to-end run for the model divided by that "
-            "run count; Raw and Graph contribute equally, failed runs remain in the "
-            "denominator"
+            "sum of rubric points over every end-to-end run for the model divided by the "
+            "points that were estimable for those runs; every treatment contributes "
+            "equally, failed runs remain in the denominator, and a dimension the "
+            "verifier cannot decide for a treatment is excluded from both sides rather "
+            "than scored as a failure"
         ),
+        "ranking_basis": "normalized_score",
         "method_basis": [
             {
                 "benchmark": "RCAEval",
@@ -729,8 +782,10 @@ def _capability_scores(
         "models": reports,
         "rankings": {
             "overall": _score_ranking(reports, None),
-            "raw": _score_ranking(reports, "raw"),
-            "semantic_graph": _score_ranking(reports, "semantic_graph"),
+            **{
+                treatment: _score_ranking(reports, treatment)
+                for treatment in _treatments_present(runs)
+            },
         },
     }
 
@@ -739,25 +794,34 @@ def _score_runs(runs: list[Mapping[str, object]]) -> dict[str, object]:
     hits = {key: 0 for key in CAPABILITY_SCORE_RUBRIC}
     dimension_points = {"location": 0, "root_cause": 0, "evidence": 0}
     total = 0
+    unscored: dict[str, Counter[str]] = {key: Counter() for key in CAPABILITY_UNSCORED_DIMENSIONS}
     for item in runs:
         evaluation = _mapping(_mapping(item, "run"), "evaluation")
+        for key in CAPABILITY_UNSCORED_DIMENSIONS:
+            value = evaluation.get(key)
+            unscored[key][
+                "not_estimable" if value is None else "covered" if value is True else "failed"
+            ] += 1
         for key, contract in CAPABILITY_SCORE_RUBRIC.items():
-            matched = (
-                int(evaluation.get("valid_evidence_count", 0) or 0) > 0
-                if key == "has_execution_valid_citation"
-                else evaluation.get(key) is True
-            )
+            points = int(contract["points"])
+            if key == "has_execution_valid_citation":
+                matched = int(evaluation.get("valid_evidence_count", 0) or 0) > 0
+            else:
+                matched = evaluation.get(key) is True
             if matched:
                 hits[key] += 1
-                points = int(contract["points"])
                 total += points
                 dimension_points[str(contract["dimension"])] += points
-    maximum = len(runs) * 100
+    maximum = len(runs) * sum(int(c["points"]) for c in CAPABILITY_SCORE_RUBRIC.values())
     return {
         "runs": len(runs),
         "score": round(total / len(runs), 2) if runs else None,
         "points": total,
         "maximum_points": maximum,
+        "normalized_score": round(100 * total / maximum, 2) if maximum else None,
+        "unscored_dimensions": {
+            key: dict(sorted(counts.items())) for key, counts in unscored.items()
+        },
         "component_hits": hits,
         "average_dimension_points": {
             dimension: round(points / len(runs), 2) if runs else None
@@ -771,11 +835,15 @@ def _score_ranking(
 ) -> list[dict[str, object]]:
     values = []
     for model, report in reports.items():
-        score = (
-            _mapping(report, "overall").get("score")
+        # Ranked on the normalized score: a treatment whose evidence grounding
+        # is not estimable would otherwise rank below one that was measured, for
+        # the missing instrument rather than for the model.
+        source = (
+            _mapping(report, "overall")
             if treatment is None
-            else _mapping(_mapping(report, "by_treatment"), treatment).get("score")
+            else _mapping(_mapping(report, "by_treatment"), treatment)
         )
+        score = source.get("normalized_score")
         values.append((model, score))
     values.sort(key=lambda item: (-float(item[1]), item[0]))
     return [
@@ -784,9 +852,30 @@ def _score_ranking(
     ]
 
 
+def _treatments_present(runs: list[Mapping[str, object]]) -> tuple[str, ...]:
+    return tuple(sorted({str(item["visibility"]) for item in runs})) or ("raw", "semantic_graph")
+
+
+def _rows_returned_delta(
+    baseline_run: Mapping[str, object], treatment_run: Mapping[str, object]
+) -> float | None:
+    """`rows_returned` is null in the split arm, where a row is not a row."""
+    values = [
+        _mapping(run, "database_load").get("rows_returned") for run in (baseline_run, treatment_run)
+    ]
+    if any(value is None for value in values):
+        return None
+    return float(values[1]) - float(values[0])
+
+
 def _case_outcomes(
-    runs: list[Mapping[str, object]], case_context: Mapping[str, Mapping[str, object]]
+    runs: list[Mapping[str, object]],
+    case_context: Mapping[str, Mapping[str, object]],
+    *,
+    baseline: str = "raw",
+    treatment: str = "semantic_graph",
 ) -> list[dict[str, object]]:
+    """Per-case outcomes for one named pair; see `_paired_resource_effects`."""
     outcomes = []
     for case_id, context in case_context.items():
         case_runs = [item for item in runs if item.get("case_id") == case_id]
@@ -796,7 +885,7 @@ def _case_outcomes(
                 for item in case_runs
                 if item.get("visibility") == visibility
             )
-            for visibility in ("raw", "semantic_graph")
+            for visibility in _treatments_present(runs)
         }
         effects = []
         for model in sorted({str(item["model"]) for item in case_runs}):
@@ -806,10 +895,11 @@ def _case_outcomes(
                 pair_values[int(item["repetition"])][str(item["visibility"])] = item
             eligible_deltas = []
             for pair in pair_values.values():
-                if set(pair) != {"raw", "semantic_graph"}:
-                    continue
-                raw = _mapping(pair["raw"], "run")
-                graph = _mapping(pair["semantic_graph"], "run")
+                missing = {baseline, treatment} - set(pair)
+                if missing:
+                    raise ValueError(f"case pair for {case_id} is missing {sorted(missing)}")
+                raw = _mapping(pair[baseline], "run")
+                graph = _mapping(pair[treatment], "run")
                 raw_eval = _mapping(raw, "evaluation")
                 graph_eval = _mapping(graph, "evaluation")
                 if not (
@@ -819,8 +909,7 @@ def _case_outcomes(
                     continue
                 eligible_deltas.append(
                     {
-                        "rows": int(_mapping(graph, "database_load")["rows_returned"])
-                        - int(_mapping(raw, "database_load")["rows_returned"]),
+                        "rows": _rows_returned_delta(raw, graph),
                         "calls": int(graph_eval["correct_completion_tool_calls"])
                         - int(raw_eval["correct_completion_tool_calls"]),
                         "tokens": _public_reported_tokens(graph) - _public_reported_tokens(raw),
@@ -833,7 +922,13 @@ def _case_outcomes(
                 {
                     "model": model,
                     "eligible_repetitions": len(eligible_deltas),
-                    "rows_returned": _median([float(item["rows"]) for item in eligible_deltas]),
+                    "rows_returned": _median(
+                        [
+                            float(item["rows"])
+                            for item in eligible_deltas
+                            if item["rows"] is not None
+                        ]
+                    ),
                     "correct_completion_tool_calls": _median(
                         [float(item["calls"]) for item in eligible_deltas]
                     ),
@@ -1110,9 +1205,11 @@ def _localized_report_body(report, language):
         }
         overview = "这是什么"
         overview_text = (
-            "同一个 LLM agent、同一个故障分别运行两次：Raw 只提供遥测表和只读 SQL；"
-            "Graph 在相同数据上增加 GreptimeDB 的表语义、实体、关系和查询工具。"
-            "评测关注诊断正确时，Graph 能否减少调查所需的数据检索和工具调用。"
+            f"同一个 LLM agent、同一个故障分别在 {len(execution['treatments'])} 种接口下运行："
+            "Split 只提供 Prometheus、Loki、Tempo 各自的原生查询 API；"
+            "Raw 提供 GreptimeDB 的遥测表和只读 SQL；"
+            "Graph 在相同数据上再加表语义、实体、关系和查询工具。"
+            "评测关注诊断正确时，一体化接口和语义层各自能否减少调查所需的检索和工具调用。"
         )
         reproducibility_text = (
             f"仓库公开全部 {execution['completed_cells']} 次运行的脱敏记录，"
@@ -1137,13 +1234,15 @@ def _localized_report_body(report, language):
         sections = {
             "cards": "模型结果",
             "scores": "模型能力评分",
-            "dimension_scores": "六项独立排行",
+            "dimension_scores": "各维度独立排行",
             "model_metrics": "端到端诊断与效率",
             "score_note": (
-                "描述性评分采用定位 40、根因 40、证据 20。"
+                f"描述性评分按 {capability_rubric_label()} 分配定位、根因与证据。"
                 f"Overall 是 {transfer_runs_per_model} 个端到端 run 的平均分；"
-                f"Raw 与 Graph 各 {transfer_runs_per_treatment} 个 run，"
-                "因此等于两者的等权平均。失败 run 不从分母中删除。"
+                f"{'、'.join(str(name) for name in execution['treatments'])} "
+                f"各 {transfer_runs_per_treatment} 个 run，因此等于各臂的等权平均。"
+                "失败 run 不从分母中删除。确定性证据审计只对 SQL 证据可判定，"
+                "因此不计入该评分，另行报告。"
                 "该评分不是预注册主要指标，也不参与显著性检验。"
             ),
             "catalog": "端到端 Case 特征",
@@ -1198,7 +1297,7 @@ def _localized_report_body(report, language):
         limit_items = (
             (
                 f"Micro-benchmark 使用固定的 {execution['micro_cases']}-case reference cohort；"
-                f"端到端测试使用 source-ranked 的 {transfer_cases}-case fresh cohort。"
+                f"端到端测试使用 source-ranked 的 {transfer_cases}-case cohort。"
             ),
             (
                 "模型内、case 级估计只适用于本次覆盖的系统和故障机制，不能外推为"
@@ -1208,7 +1307,7 @@ def _localized_report_body(report, language):
             "各 provider 的 reasoning 配置已冻结，但不代表相同的推理算力。",
             "Deterministic evidence sufficiency 作为次级审计报告，不决定主要效率指标的入选集合。",
             (
-                "40/40/20 模型能力分是测量后定义的描述性指标，不是预注册终点；"
+                f"{capability_rubric_label()} 模型能力分是测量后定义的描述性指标，不是预注册终点；"
                 "其中证据分仍受 verifier 覆盖能力限制。"
             ),
             (
@@ -1237,10 +1336,13 @@ def _localized_report_body(report, language):
         }
         overview = "What this is"
         overview_text = (
-            "The same LLM agent investigates the same incident twice. Raw exposes telemetry "
-            "tables and read-only SQL. Graph adds GreptimeDB table semantics, entities, "
-            "relationships, and query tools over the same data. The benchmark asks whether "
-            "Graph reduces investigation work when the diagnosis is correct."
+            "The same LLM agent investigates the same incident under "
+            f"{len(execution['treatments'])} interfaces. Split exposes only the native query "
+            "APIs of Prometheus, Loki and Tempo. Raw exposes GreptimeDB telemetry tables and "
+            "read-only SQL. Graph adds table semantics, entities, relationships, and query "
+            "tools over the same data. The benchmark asks whether the all-in-one interface "
+            "and the semantic layer each reduce investigation work when the diagnosis is "
+            "correct."
         )
         reproducibility_text = (
             f"The repository publishes sanitized records for all {execution['completed_cells']} "
@@ -1270,14 +1372,17 @@ def _localized_report_body(report, language):
         sections = {
             "cards": "Model results",
             "scores": "Model capability score",
-            "dimension_scores": "Six independent rankings",
+            "dimension_scores": "Independent rankings by dimension",
             "model_metrics": "End-to-end diagnosis and efficiency",
             "score_note": (
-                "The descriptive score assigns 40 points to location, 40 to root cause, and "
-                "20 to evidence. Overall is the mean across every end-to-end run for the "
-                "model. Raw and Graph contribute equally, so Overall is their equally "
-                "weighted mean; failed runs remain in the denominator. It is not a "
-                "pre-registered endpoint and is not used for hypothesis testing."
+                f"The descriptive score splits {capability_rubric_label()} across location, "
+                "root cause and evidence. Overall is the mean across every end-to-end run "
+                f"for the model; {', '.join(str(name) for name in execution['treatments'])} "
+                f"each contribute {transfer_runs_per_treatment} runs, so Overall is their "
+                "equally weighted mean and failed runs remain in the denominator. The "
+                "deterministic evidence audit is decidable only for SQL evidence, so it is "
+                "reported separately rather than scored. It is not a pre-registered "
+                "endpoint and is not used for hypothesis testing."
             ),
             "catalog": "End-to-end case characteristics",
             "catalog_note": (
@@ -1363,9 +1468,9 @@ def _localized_report_body(report, language):
     )
     capability_details = _details(
         (
-            "查看 40/40/20 评分细则和精确分数"
+            f"查看 {capability_rubric_label()} 评分细则和精确分数"
             if language == "zh"
-            else "View the 40/40/20 rubric and exact scores"
+            else f"View the {capability_rubric_label()} rubric and exact scores"
         ),
         f"{_capability_rubric_table(report, language)}{_capability_table(report, language)}",
     )
@@ -1560,11 +1665,14 @@ def _model_card(model, report, language):
     output_tokens = _mapping(descriptive, "output_tokens")
     cost = _mapping(descriptive, "estimated_cost")
     diagnosis = _mapping(transfer, "diagnosis_correct")
-    runs_per_treatment = int(transfer.get("runs", 0)) // 2
+    # Derived from the treatments the run actually had. Dividing by two reported
+    # 28 runs as 42 the moment a third arm existed.
+    treatment_labels = {"raw": "Raw", "semantic_graph": "Graph", "split_pillars": "Split"}
+    present = [key for key in treatment_labels if key in diagnosis]
+    runs_per_treatment = int(transfer.get("runs", 0)) // max(len(present), 1)
     case_count = len(_mapping_list(transfer, "case_effects"))
-    diagnosis_summary = (
-        f"{diagnosis.get('raw', 0)}/{runs_per_treatment} Raw · "
-        f"{diagnosis.get('semantic_graph', 0)}/{runs_per_treatment} Graph"
+    diagnosis_summary = " · ".join(
+        f"{diagnosis.get(key, 0)}/{runs_per_treatment} {treatment_labels[key]}" for key in present
     )
     eligible_summary = f"{rows.get('eligible_cases')} / {case_count}"
     labels = (
@@ -1604,28 +1712,40 @@ def _model_card(model, report, language):
 def _capability_table(report, language):
     scores = _mapping(report, "capability_scores")
     models = _mapping(scores, "models")
+    maxima = _capability_dimension_maxima()
+    treatments = _capability_treatments(models)
+
+    def by_treatment(model, key):
+        return _mapping(_mapping(_mapping(models, model), "by_treatment"), key)
+
     rows = []
     for model in report["model_order"]:
         item = _mapping(models, model)
         overall = _mapping(item, "overall")
-        raw = _mapping(_mapping(item, "by_treatment"), "raw")
-        graph = _mapping(_mapping(item, "by_treatment"), "semantic_graph")
         dimensions = _mapping(overall, "average_dimension_points")
         rows.append(
             (
                 model,
                 overall.get("score"),
-                raw.get("score"),
-                graph.get("score"),
-                f"{dimensions.get('location')} / 40",
-                f"{dimensions.get('root_cause')} / 40",
-                f"{dimensions.get('evidence')} / 20",
+                *(by_treatment(model, key).get("score") for key in treatments),
+                *(
+                    f"{dimensions.get(key)} / {maxima[key]}"
+                    for key in ("location", "root_cause", "evidence")
+                ),
             )
         )
+    treatment_names = {"raw": "Raw", "semantic_graph": "Graph", "split_pillars": "Split"}
     headers = (
-        ("模型", "总分", "Raw", "Graph", "定位", "根因", "证据")
+        ("模型", "总分", *(treatment_names[key] for key in treatments), "定位", "根因", "证据")
         if language == "zh"
-        else ("Model", "Overall", "Raw", "Graph", "Location", "Root cause", "Evidence")
+        else (
+            "Model",
+            "Overall",
+            *(treatment_names[key] for key in treatments),
+            "Location",
+            "Root cause",
+            "Evidence",
+        )
     )
     return _html_table(headers, rows)
 
@@ -1644,6 +1764,7 @@ def _capability_leaderboard(report: Mapping[str, object], language: str) -> str:
             "evidence": "严格证据",
             "raw": "Raw",
             "semantic_graph": "Graph",
+            "split_pillars": "Split",
         }
         if language == "zh"
         else {
@@ -1652,17 +1773,19 @@ def _capability_leaderboard(report: Mapping[str, object], language: str) -> str:
             "evidence": "Strict evidence",
             "raw": "Raw",
             "semantic_graph": "Graph",
+            "split_pillars": "Split",
         }
     )
+    treatments = _capability_treatments(models)
     rows = []
     for rank, model in enumerate(ranked, 1):
         item = _mapping(models, model)
         scores = {
             "overall": _mapping(item, "overall").get("score"),
-            "raw": _mapping(_mapping(item, "by_treatment"), "raw").get("score"),
-            "semantic_graph": _mapping(_mapping(item, "by_treatment"), "semantic_graph").get(
-                "score"
-            ),
+            **{
+                key: _mapping(_mapping(item, "by_treatment"), key).get("score")
+                for key in treatments
+            },
         }
         dimensions = _mapping(_mapping(item, "overall"), "average_dimension_points")
         dimension_values = {
@@ -1672,25 +1795,27 @@ def _capability_leaderboard(report: Mapping[str, object], language: str) -> str:
         }
         if not all(isinstance(value, (int, float)) for value in dimension_values.values()):
             raise ValueError("capability dimension score is not numeric")
+        maximum = sum(_capability_dimension_maxima().values())
         stack_label = ", ".join(
             f"{labels[key]} {_format_number(value)}" for key, value in dimension_values.items()
         )
         stack = "".join(
-            f'<span class="score-segment score-{key}" style="width: {float(value):g}%" '
+            f'<span class="score-segment score-{key}" '
+            f'style="width: {100.0 * float(value) / maximum:g}%" '
             f'title="{labels[key]}: {_format_number(value)}"></span>'
             for key, value in dimension_values.items()
         )
         bars = []
-        for key in ("raw", "semantic_graph"):
+        for key in treatments:
             value = scores[key]
             if not isinstance(value, (int, float)):
                 raise ValueError("capability score is not numeric")
-            width = min(max(float(value), 0.0), 100.0)
+            width = min(max(100.0 * float(value) / maximum, 0.0), 100.0)
             display = _format_number(value)
             bars.append(
                 f'<div class="score-bar-row"><span>{labels[key]}</span>'
                 f'<div class="score-track" role="img" aria-label="{_escape(model)} '
-                f'{labels[key]} {display} / 100"><span class="score-fill score-{key}" '
+                f'{labels[key]} {display} / {maximum}"><span class="score-fill score-{key}" '
                 f'style="width: {width:g}%"></span></div><strong>{display}</strong></div>'
             )
         rows.append(
@@ -1709,26 +1834,53 @@ def _capability_leaderboard(report: Mapping[str, object], language: str) -> str:
     )
 
 
+def capability_rubric_label() -> str:
+    """The rubric's point split, e.g. `40/40/5`, derived rather than repeated."""
+    maxima = _capability_dimension_maxima()
+    return "/".join(str(maxima[key]) for key in ("location", "root_cause", "evidence"))
+
+
+def _capability_treatments(models: Mapping[str, object]) -> tuple[str, ...]:
+    """The treatments the run had, in report order."""
+    order = ("split_pillars", "raw", "semantic_graph")
+    present = {key for model in models for key in _mapping(_mapping(models, model), "by_treatment")}
+    return tuple(key for key in order if key in present)
+
+
+def _capability_dimension_maxima() -> dict[str, int]:
+    maxima: dict[str, int] = {}
+    for contract in CAPABILITY_SCORE_RUBRIC.values():
+        maxima[str(contract["dimension"])] = maxima.get(str(contract["dimension"]), 0) + int(
+            contract["points"]
+        )
+    return maxima
+
+
 def _capability_dimension_charts(report: Mapping[str, object], language: str) -> str:
     models = _mapping(_mapping(report, "capability_scores"), "models")
-    dimensions = (
-        (
-            ("overall", "总分", 100),
-            ("raw", "Raw", 100),
-            ("semantic_graph", "Graph", 100),
-            ("location", "定位", 40),
-            ("root_cause", "根因", 40),
-            ("evidence", "严格证据", 20),
-        )
+    # Derived from the rubric and from the treatments the run actually had. A
+    # repeated literal drifts the moment either changes.
+    total = _capability_dimension_maxima()
+    treatment_labels = {"raw": "Raw", "semantic_graph": "Graph", "split_pillars": "Split"}
+    names = (
+        {"overall": "总分", "location": "定位", "root_cause": "根因", "evidence": "严格证据"}
         if language == "zh"
-        else (
-            ("overall", "Overall", 100),
-            ("raw", "Raw", 100),
-            ("semantic_graph", "Graph", 100),
-            ("location", "Location", 40),
-            ("root_cause", "Root cause", 40),
-            ("evidence", "Strict evidence", 20),
-        )
+        else {
+            "overall": "Overall",
+            "location": "Location",
+            "root_cause": "Root cause",
+            "evidence": "Strict evidence",
+        }
+    )
+    treatments = tuple(
+        key
+        for key in treatment_labels
+        if any(key in _mapping(_mapping(models, model), "by_treatment") for model in models)
+    )
+    dimensions = (
+        ("overall", names["overall"], sum(total.values())),
+        *((key, treatment_labels[key], sum(total.values())) for key in treatments),
+        *((key, names[key], total[key]) for key in ("location", "root_cause", "evidence")),
     )
     charts = []
     for key, label, maximum in dimensions:
@@ -1737,7 +1889,7 @@ def _capability_dimension_charts(report: Mapping[str, object], language: str) ->
                 str(model): _mapping(_mapping(models, model), "overall").get("score")
                 for model in report["model_order"]
             }
-        elif key in {"raw", "semantic_graph"}:
+        elif key in treatment_labels:
             values = {
                 str(model): _mapping(_mapping(_mapping(models, model), "by_treatment"), key).get(
                     "score"
@@ -1780,37 +1932,55 @@ def _capability_dimension_charts(report: Mapping[str, object], language: str) ->
 
 def _capability_rubric_table(report, language):
     scopes = _causal_scope_phrase(report, language)
-    if language == "zh":
-        rows = (
-            ("定位", "Causal scope", 10, f"识别{scopes} scope"),
-            ("定位", "Causal locus", 30, f"命中正式声明的{scopes}"),
-            ("根因", "Fault category", 10, "命中故障大类"),
-            ("根因", "Mechanism code", 30, "命中具体因果机制"),
-            ("证据", "Executed citation", 5, "至少一条 citation 对应成功执行的查询"),
-            ("证据", "Deterministic proof", 15, "引用结果通过冻结 evidence verifier"),
+    # Derived from the rubric so the published points cannot state a split the
+    # scorer does not use, and so a dimension that is scored nowhere is shown as
+    # reported-only rather than as points a model can earn.
+    text = {
+        "causal_scope_match": (f"识别{scopes} scope", f"Identifies {scopes} scope"),
+        "causal_locus_match": (f"命中正式声明的{scopes}", f"Matches the declared {scopes}"),
+        "fault_category_match": ("命中故障大类", "Matches the fault class"),
+        "mechanism_code_match": ("命中具体因果机制", "Matches the causal mechanism"),
+        "has_execution_valid_citation": (
+            "至少一条 citation 对应成功执行的查询",
+            "At least one citation resolved to a successful query",
+        ),
+        "required_evidence_covered": (
+            "引用结果通过冻结 evidence verifier；只对 SQL 证据可判定，故不计分",
+            "Cited results pass the frozen evidence verifier; decidable only for "
+            "SQL evidence, so reported rather than scored",
+        ),
+    }
+    dimension_names = {
+        "location": ("定位", "Location"),
+        "root_cause": ("根因", "Root cause"),
+        "evidence": ("证据", "Evidence"),
+    }
+    index = 0 if language == "zh" else 1
+    not_scored = "不计分" if language == "zh" else "not scored"
+    rows = [
+        (
+            dimension_names[str(contract["dimension"])][index],
+            str(contract["label"]).capitalize(),
+            int(contract["points"]),
+            text[key][index],
         )
-        headers = ("维度", "评分项", "分值", "判定")
-    else:
-        rows = (
-            ("Location", "Causal scope", 10, f"Identifies {scopes} scope"),
-            ("Location", "Causal locus", 30, f"Matches the declared {scopes}"),
-            ("Root cause", "Fault category", 10, "Matches the fault class"),
-            ("Root cause", "Mechanism code", 30, "Matches the causal mechanism"),
-            (
-                "Evidence",
-                "Executed citation",
-                5,
-                "At least one citation resolved to a successful query",
-            ),
-            (
-                "Evidence",
-                "Deterministic proof",
-                15,
-                "Cited results pass the frozen evidence verifier",
-            ),
+        for key, contract in CAPABILITY_SCORE_RUBRIC.items()
+    ]
+    rows.extend(
+        (
+            dimension_names["evidence"][index],
+            key.replace("_", " ").capitalize(),
+            not_scored,
+            text[key][index],
         )
-        headers = ("Dimension", "Item", "Points", "Rule")
-    return _html_table(headers, rows)
+        for key in CAPABILITY_UNSCORED_DIMENSIONS
+    )
+    headers = (
+        ("维度", "评分项", "分值", "判定")
+        if language == "zh"
+        else ("Dimension", "Item", "Points", "Rule")
+    )
+    return _html_table(headers, tuple(rows))
 
 
 def _case_catalog_table(report, language):
@@ -2532,13 +2702,14 @@ def _cost_table(report, language):
 
 def _treatment_cost_table(report, language):
     rows = []
+    treatments: list[str] = []
     for model in report["model_order"]:
         model_report = _mapping(_mapping(report, "model_reports"), model)
         transfer = _mapping(model_report, "transfer")
         costs = _mapping(transfer, "actual_cost_by_treatment")
         currency = transfer.get("cost_currency")
-        raw = _absolute_cost(costs.get("raw"), currency)
-        graph = _absolute_cost(costs.get("semantic_graph"), currency)
+        treatments = [key for key in ("split_pillars", "raw", "semantic_graph") if key in costs]
+        per_treatment = [_absolute_cost(costs.get(key), currency) for key in treatments]
         delta = (
             _absolute_cost(
                 float(costs["semantic_graph"]) - float(costs["raw"]), currency, signed=True
@@ -2553,18 +2724,18 @@ def _treatment_cost_table(report, language):
         rows.append(
             (
                 model,
-                raw,
-                graph,
+                *per_treatment,
                 delta,
                 _absolute_cost(combined.get("raw"), currency),
                 _absolute_cost(combined.get("semantic_graph"), currency),
             )
         )
+    names = {"raw": "Raw", "semantic_graph": "Graph", "split_pillars": "Split"}
+    treatment_headers = tuple(names[key] for key in treatments)
     headers = (
         (
             "模型",
-            "端到端 Raw",
-            "端到端 Graph",
+            *(f"端到端 {name}" for name in treatment_headers),
             "端到端 Graph − Raw",
             "全部 Raw",
             "全部 Graph",
@@ -2572,8 +2743,7 @@ def _treatment_cost_table(report, language):
         if language == "zh"
         else (
             "Model",
-            "End-to-end Raw",
-            "End-to-end Graph",
+            *(f"End-to-end {name}" for name in treatment_headers),
             "End-to-end Graph − Raw",
             "All Raw",
             "All Graph",

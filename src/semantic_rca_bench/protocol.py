@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import random
+from collections import Counter
+from itertools import permutations
 
 from semantic_rca_bench.contracts import Visibility
 
@@ -23,17 +25,78 @@ def run_orders(
     ]
 
 
+def counterbalanced_orders(
+    levels: list[Visibility],
+    *,
+    orderings: int,
+) -> list[tuple[Visibility, ...]]:
+    """Treatment orders that spread every level evenly across every position.
+
+    `run_orders` rotates one shuffled order, which balances two treatments
+    exactly and three treatments not at all: with two repetitions it only ever
+    emits two of the six permutations, and both share a middle element, so one
+    treatment lands in the middle twice as often as the others.
+
+    This walks all permutations and greedily takes the one that leaves the
+    (treatment, position) counts closest together. Deterministic, and the
+    resulting spread is asserted by the schedule tests rather than assumed.
+    """
+    if orderings < 1:
+        raise ValueError("orderings must be at least 1")
+    if not levels:
+        raise ValueError("at least one visibility level is required")
+    candidates = sorted(permutations(levels), key=lambda order: [level.value for level in order])
+    counts: Counter[tuple[Visibility, int]] = Counter()
+    chosen: list[tuple[Visibility, ...]] = []
+    for _ in range(orderings):
+        best: tuple[tuple[int, int, int], tuple[Visibility, ...], Counter] | None = None
+        for index, candidate in enumerate(candidates):
+            trial = Counter(counts)
+            for position, level in enumerate(candidate):
+                trial[(level, position)] += 1
+            observed = [
+                trial[(level, position)] for level in levels for position in range(len(levels))
+            ]
+            key = (max(observed) - min(observed), max(observed), index)
+            if best is None or key < best[0]:
+                best = (key, candidate, trial)
+        assert best is not None
+        chosen.append(best[1])
+        counts = best[2]
+    return chosen
+
+
+def rotate_levels(
+    order: tuple[Visibility, ...], levels: list[Visibility], shift: int
+) -> tuple[Visibility, ...]:
+    """Relabels an order so models do not share one treatment assignment."""
+    mapping = {level: levels[(index + shift) % len(levels)] for index, level in enumerate(levels)}
+    return tuple(mapping[level] for level in order)
+
+
 def benchmark_protocol() -> dict[str, object]:
     return {
-        "version": 33,
-        "treatments": ["raw", "semantic_graph"],
+        "version": 34,
+        "treatments": ["split_pillars", "raw", "semantic_graph"],
         "treatment_estimand": "complete-agent-facing-interface-v1",
         "treatment_components": {
-            "raw": ["telemetry", "ordinary-schema-metadata", "read-only-sql"],
+            "split_pillars": [
+                "telemetry",
+                "prometheus-native-http-api",
+                "loki-native-http-api",
+                "tempo-native-http-api",
+            ],
+            "raw": [
+                "telemetry",
+                "ordinary-schema-metadata",
+                "read-only-sql",
+                "promql-without-metric-metadata",
+            ],
             "semantic_graph": [
                 "telemetry",
                 "ordinary-schema-metadata",
                 "read-only-sql",
+                "promql",
                 "table-semantics",
                 "semantic-entities",
                 "semantic-relationships",
@@ -48,9 +111,9 @@ def benchmark_protocol() -> dict[str, object]:
         "semantic_context": "benchmark-preflight-v1",
         "sql_contract": "greptimedb-read-only-default-200-explicit-1000-v2",
         "citation": "typed-claim-successful-nonmetadata-nontruncated-query-result-v5",
-        "evaluator": "diagnosis-and-execution-valid-citation-headline-v28",
-        "primary_metrics": "case-median-end-to-end-resource-headline-v7",
-        "repetition_schedule": "seeded-rotating-order-with-position-v2",
+        "evaluator": "diagnosis-and-execution-valid-citation-headline-tri-state-grounding-v29",
+        "primary_metrics": "case-median-end-to-end-resource-headline-per-family-v8",
+        "repetition_schedule": "counterbalanced-order-with-position-v3",
         "tool_budget": "shared-visible-cap-api-turn-limit-v6",
         "case_role": "explicit-development-or-measurement-v1",
         "case_context": "baseline-availability-v1",
@@ -63,7 +126,7 @@ def benchmark_protocol() -> dict[str, object]:
         "diagnosis": "scope-isomorphic-component-edge-node-locus-operation-diagnostic-v7",
         "mechanism_ontology": "case-independent-restart-delay-cpu-memory-host-v4",
         "evidence_oracle": "deterministic-threshold-transition-optional-not-estimable-v1",
-        "investigation_prompt": "case-invariant-symmetric-hypothesis-discrimination-v4",
+        "investigation_prompt": "case-invariant-symmetric-hypothesis-discrimination-v5",
     }
 
 

@@ -120,7 +120,9 @@ The transfer scorer reports:
 
 - `diagnosis_correct`: the structured causal answer matches the rubric.
 - `claim_grounding`: required claim status and supporting citations.
-- `required_evidence_covered`: every required claim is grounded.
+- `required_evidence_covered`: every required claim is grounded, or `null` when grounding is not
+  estimable.
+- `grounding_not_estimable_reason`: why grounding was not decided, when it was not.
 - `citation_integrity`: every submitted citation is execution-valid and unique.
 - `execution_reliability`: the runner contract, tool budget, and execution completed without an
   invalid call or runner failure.
@@ -135,6 +137,22 @@ runs have a correct diagnosis, at least one execution-valid citation, and reliab
 evidence-sufficiency audit. They describe how much of the cited causal proof the current verifier
 can establish; they do not select the headline efficiency sample. Rows, calls, tokens, cost, and
 latency from noneligible runs may be reported only as descriptive trajectory data.
+
+### The evidence audit does not span every treatment
+
+The deterministic verifier parses SQL. It decides grounding for a run whose cited evidence includes
+at least one `execute_sql` result, and reports `required_evidence_covered: null` with
+`grounding_not_estimable_reason: grounding_verifier_language_unsupported` otherwise. That covers
+every `split_pillars` run, whose evidence is PromQL, LogQL or TraceQL, and any GreptimeDB run that
+cites only PromQL.
+
+`false` is reserved for a run whose SQL evidence was read and did not establish the claim. Reporting
+`false` for an unread language would state a model failure where the benchmark has no instrument,
+and would push whichever arm the verifier does not cover toward a worse published result. A
+not-estimable grounding also never queues a run for semantic adjudication.
+
+No PromQL, LogQL or TraceQL verifier exists. The evidence audit therefore remains a comparison
+between the two GreptimeDB arms, and the three-arm efficiency endpoints do not depend on it.
 
 ## Current OpenRCA2 evidence rubric
 

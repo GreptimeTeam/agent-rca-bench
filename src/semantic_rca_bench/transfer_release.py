@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from statistics import median
 
@@ -21,7 +21,11 @@ from semantic_rca_bench.datasets.openrca2_transfer import (
     TransferCaseSpec,
 )
 from semantic_rca_bench.evaluation import component_matches
-from semantic_rca_bench.evidence import is_evidence_sql, is_valid_evidence_trace
+from semantic_rca_bench.evidence import (
+    NATIVE_EVIDENCE_OPERATIONS,
+    is_evidence_sql,
+    is_valid_evidence_trace,
+)
 from semantic_rca_bench.report import _estimated_api_cost, _raw_input_breakdown
 from semantic_rca_bench.transfer_adjudication import (
     JUDGE_MODELS,
@@ -32,6 +36,7 @@ from semantic_rca_bench.transfer_adjudication import (
     validate_semantic_adjudication_resolution,
 )
 from semantic_rca_bench.transfer_scorer import (
+    GROUNDING_VERIFIER_TOOLS,
     ClaimVerdict,
     TransferEvaluation,
     _accepted_mechanism_codes,
@@ -308,7 +313,28 @@ def validate_public_transfer_run(
     mechanism_match = diagnosis is not None and diagnosis.get("mechanism_code") in {
         code.value for code in _accepted_mechanism_codes(case)
     }
-    auditable = case.mechanism_evidence is not None
+    # Mirrors `transfer_scorer`: the deterministic verifier reads SQL, so a run
+    # whose evidence is entirely in another query language is not estimable
+    # rather than failed. The two paths must agree or the public artifact stops
+    # rescoring.
+    verifiable_citations = sum(
+        citation.get("execution_valid") is True
+        and any(
+            summary.get("tool_name") in GROUNDING_VERIFIER_TOOLS
+            for summary in _mapping_list(citation, "query_summaries")
+        )
+        for citation in citations
+    )
+    auditable = case.mechanism_evidence is not None and verifiable_citations > 0
+    grounding_not_estimable_reason = (
+        None
+        if auditable
+        else (
+            "no_deterministic_oracle"
+            if case.mechanism_evidence is None
+            else "grounding_verifier_language_unsupported"
+        )
+    )
     allowed_operations = (
         set(case.mechanism_evidence.allowed_operations) if case.mechanism_evidence else set()
     )
@@ -437,7 +463,9 @@ def validate_public_transfer_run(
         and typed_evidence
         and citations_execution_valid
         and execution_reliability
-        and not required_evidence_covered
+        # Only a measured failure earns adjudication; a not-estimable
+        # grounding must not queue a correct run.
+        and required_evidence_covered is False
     )
     supporting_ordinals = [
         int(citation["ordinal"])
@@ -502,6 +530,7 @@ def validate_public_transfer_run(
         "anomaly_evidence_match": anomaly_present if auditable else None,
         "mechanism_evidence_match": mechanism_evidence_match,
         "required_evidence_covered": required_evidence_covered,
+        "grounding_not_estimable_reason": grounding_not_estimable_reason,
         "citations_execution_valid": citations_execution_valid,
         "execution_reliability": execution_reliability,
         "efficiency_eligible": efficiency_eligible,
@@ -730,19 +759,17 @@ def build_measurement_artifact(
         public_runs,
         [model.model for model in protocol.models],
         family_size=protocol.inference.holm_family_size,
+        families=protocol.inference.confirmatory_families,
     )
     payload = {
         "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
-        "artifact_type": "semantic-rca-openrca2-transfer-measurement",
+        "artifact_type": "semantic-rca-transfer-measurement",
         "publication_status": (
             "sanitized measurement result; contains no provider payloads or raw telemetry rows"
         ),
         "license": {
             "benchmark_code": "Apache-2.0",
-            "source_dataset": (
-                "dataset card says Apache-2.0; paper says CC-BY-SA-4.0; telemetry rows "
-                "are not redistributed"
-            ),
+            "source_datasets": _source_dataset_licenses(selection),
             "artifact_schema_and_derived_aggregates": "Apache-2.0",
         },
         "benchmark_protocol": private_report["benchmark_protocol"],
@@ -830,7 +857,7 @@ def validate_measurement_artifact(
     protocol, selection = load_transfer_protocol(protocol_path)
     if (
         artifact.get("artifact_schema_version") != ARTIFACT_SCHEMA_VERSION
-        or artifact.get("artifact_type") != "semantic-rca-openrca2-transfer-measurement"
+        or artifact.get("artifact_type") != "semantic-rca-transfer-measurement"
         or artifact.get("formal_protocol") != json.loads(protocol_path.read_text())
         or _mapping(artifact, "bindings").get("protocol_fixture_sha256")
         != sha256_file(protocol_path)
@@ -888,6 +915,7 @@ def validate_measurement_artifact(
             runs,
             [model.model for model in protocol.models],
             family_size=protocol.inference.holm_family_size,
+            families=protocol.inference.confirmatory_families,
         )
         if artifact.get("model_reports") != expected_reports:
             raise ValueError("public transfer model reports drifted")
@@ -950,6 +978,7 @@ def validate_measurement_artifact(
         runs,
         [model.model for model in protocol.models],
         family_size=protocol.inference.holm_family_size,
+        families=protocol.inference.confirmatory_families,
     )
     if artifact.get("model_reports") != expected_reports:
         raise ValueError("public transfer model reports drifted")
@@ -1027,7 +1056,20 @@ def _public_source(audit: Mapping[str, object], case: TransferCaseSpec) -> dict[
 
 def _public_inference(inference: object) -> dict[str, object]:
     return {
-        "estimand": "semantic_graph - raw within the same model and case",
+        # Every pre-declared family, not just the semantic-layer one. Publishing
+        # a single estimand would hide the comparison the second family answers.
+        "confirmatory_families": [
+            {
+                "goal": family.goal,
+                "status": family.status,
+                "estimand": (
+                    f"{family.treatment.value} - {family.baseline.value} "
+                    "within the same model and case"
+                ),
+                "metrics": list(family.metrics),
+            }
+            for family in inference.confirmatory_families
+        ],
         "independent_unit": "case",
         "repetitions": "descriptive; paired run deltas are reduced to a case median",
         "primary_metrics": list(inference.primary_metrics),
@@ -1044,24 +1086,69 @@ def _public_inference(inference: object) -> dict[str, object]:
     }
 
 
+def _family_field(family: object, name: str) -> object:
+    """Reads a confirmatory family from the protocol fixture or a plain mapping.
+
+    The families are declared once, in the protocol. Keeping a second copy in
+    code let the two drift silently.
+    """
+    value = family[name] if isinstance(family, Mapping) else getattr(family, name)
+    return value.value if hasattr(value, "value") else value
+
+
 def _model_reports(
     runs: list[Mapping[str, object]],
     model_names: list[str],
     *,
     family_size: int,
+    families: Sequence[object],
 ) -> dict[str, object]:
+    """Per-model effects, one pre-declared confirmatory family at a time.
+
+    Each family is Holm-corrected on its own. Pooling them would make one
+    goal's significance depend on how many tests the other goal ran.
+    """
+    treatments = (
+        tuple(dict.fromkeys(str(item["visibility"]) for item in runs)) or _GREPTIMEDB_TREATMENTS
+    )
+    active = [
+        family
+        for family in families
+        if {_family_field(family, "baseline"), _family_field(family, "treatment")}
+        <= set(treatments)
+    ]
+    if not active:
+        raise ValueError("no confirmatory family matches the treatments present in the runs")
     reports: dict[str, object] = {}
-    deterministic_p_values: list[tuple[str, str, float]] = []
+    family_p_values: dict[str, list[tuple[str, str, float]]] = {
+        str(_family_field(family, "goal")): [] for family in active
+    }
     for model in model_names:
         model_runs = [item for item in runs if item["model"] == model]
-        deterministic, p_values = _effect_report(
-            model_runs,
-            evaluation_key="evaluation",
-            family_size=family_size,
-        )
-        deterministic_p_values.extend((model, metric, value) for metric, value in p_values)
+        effects: dict[str, object] = {}
+        deterministic: dict[str, object] = {}
+        for family in active:
+            goal = str(_family_field(family, "goal"))
+            report, p_values = _effect_report(
+                model_runs,
+                evaluation_key="evaluation",
+                family_size=family_size,
+                baseline=str(_family_field(family, "baseline")),
+                treatment=str(_family_field(family, "treatment")),
+                metrics=tuple(_family_field(family, "metrics")),
+                treatments=treatments,
+            )
+            family_p_values[goal].extend((model, metric, value) for metric, value in p_values)
+            effects[goal] = {
+                "comparison": (
+                    f"{_family_field(family, 'treatment')} - {_family_field(family, 'baseline')}"
+                ),
+                **report,
+            }
+            deterministic = report
         reports[model] = {
             "runs": len(model_runs),
+            "confirmatory_families": effects,
             **deterministic,
             "evidence_quality": _evidence_quality_report(model_runs),
             "reliability": {
@@ -1098,11 +1185,19 @@ def _model_reports(
             },
             "usage": _usage_summary(model_runs),
         }
-    _apply_holm(reports, deterministic_p_values, family_size=family_size)
+    for goal, values in family_p_values.items():
+        _apply_holm(reports, values, family_size=family_size, goal=goal)
     return reports
 
 
 def _evidence_quality_report(model_runs: list[Mapping[str, object]]) -> dict[str, object]:
+    """The deterministic evidence audit, which only covers the GreptimeDB arms.
+
+    The verifier reads SQL, so the split arm reports `None` rather than a
+    verdict. Counting it here would divide the pair total by the wrong number
+    of treatments and read as an evidence failure.
+    """
+    model_runs = [item for item in model_runs if item["visibility"] in _GREPTIMEDB_TREATMENTS]
     by_treatment = {
         visibility: sum(
             _mapping(_mapping(item, "run"), "evaluation").get("required_evidence_covered") is True
@@ -1125,7 +1220,7 @@ def _evidence_quality_report(model_runs: list[Mapping[str, object]]) -> dict[str
             if values == {"raw"}
             else "semantic_graph_only"
         ] += 1
-    total_pairs = len(model_runs) // 2
+    total_pairs = len(model_runs) // len(_GREPTIMEDB_TREATMENTS)
     disposition["neither"] = total_pairs - sum(disposition.values())
     return {
         "role": "secondary deterministic evidence-sufficiency audit",
@@ -1137,22 +1232,117 @@ def _evidence_quality_report(model_runs: list[Mapping[str, object]]) -> dict[str
     }
 
 
+_GREPTIMEDB_TREATMENTS = ("raw", "semantic_graph")
+
+# One statement per source that contributed a case. Naming only the first would
+# publish derived facts from a dataset whose terms the artifact never declares.
+SOURCE_DATASET_LICENSES = {
+    "openrca2": (
+        "OpenRCA2 ops-lite: dataset card says Apache-2.0, paper says CC-BY-SA-4.0; "
+        "telemetry rows are not redistributed"
+    ),
+    "rca100": (
+        "RCA100 v1.1: CC BY-NC-SA 4.0; telemetry rows are not redistributed and the "
+        "dataset paper arXiv:2606.29193 must be attributed with derived facts"
+    ),
+}
+
+
+def _source_dataset_licenses(selection: object) -> dict[str, str]:
+    licenses = {}
+    for source in selection.sources:
+        if not source.case_ids:
+            continue
+        statement = SOURCE_DATASET_LICENSES.get(source.adapter)
+        if statement is None:
+            raise ValueError(f"no published license statement for adapter {source.adapter}")
+        licenses[source.adapter] = statement
+    return licenses
+
+
+# Every argument a native investigation tool accepts. The values are the model's
+# own query text and bounds, so they are published in full.
+NATIVE_QUERY_INPUT_KEYS = (
+    "operation",
+    "query",
+    "match",
+    "metric",
+    "label",
+    "tag",
+    "trace_id",
+    "time",
+    "start",
+    "end",
+    "step",
+    "direction",
+    "max_items",
+)
+
+_ALL_PAIR_METRICS = (
+    "rows_returned",
+    "correct_completion_tool_calls",
+    "provider_visible_input_tokens",
+    "reported_total_tokens",
+)
+
+
+def _metric_delta(
+    metric: str,
+    baseline_run: Mapping[str, object],
+    treatment_run: Mapping[str, object],
+    baseline_eval: Mapping[str, object],
+    treatment_eval: Mapping[str, object],
+) -> int | None:
+    if metric == "rows_returned":
+        rows = [
+            _mapping(run, "database_load").get("rows_returned")
+            for run in (baseline_run, treatment_run)
+        ]
+        # Not applicable in the split arm, where a returned row is not a
+        # database row; a null there must stay null rather than become a zero.
+        if any(value is None for value in rows):
+            return None
+        return int(rows[1]) - int(rows[0])
+    if metric == "correct_completion_tool_calls":
+        return int(treatment_eval["correct_completion_tool_calls"]) - int(
+            baseline_eval["correct_completion_tool_calls"]
+        )
+    if metric == "provider_visible_input_tokens":
+        return int(
+            _mapping(treatment_run, "usage").get("provider_visible_input_tokens", 0) or 0
+        ) - int(_mapping(baseline_run, "usage").get("provider_visible_input_tokens", 0) or 0)
+    if metric == "reported_total_tokens":
+        return _reported_total_tokens(treatment_run) - _reported_total_tokens(baseline_run)
+    raise ValueError(f"unknown paired metric: {metric}")
+
+
 def _effect_report(
     model_runs: list[Mapping[str, object]],
     *,
     evaluation_key: str,
     family_size: int,
+    baseline: str,
+    treatment: str,
+    metrics: tuple[str, ...],
+    treatments: tuple[str, ...],
 ) -> tuple[dict[str, object], list[tuple[str, float]]]:
+    """One paired comparison, `treatment - baseline`, over a model's runs.
+
+    The pair is named rather than inferred. Requiring the cell to hold exactly
+    two treatments silently dropped every pair once a third arm existed, which
+    reported "no estimable pairs" instead of failing.
+    """
     pairs: dict[tuple[str, int], dict[str, Mapping[str, object]]] = defaultdict(dict)
     for item in model_runs:
         pairs[(str(item["case_id"]), int(item["repetition"]))][str(item["visibility"])] = item
     pair_deltas: dict[str, list[dict[str, object]]] = defaultdict(list)
     eligibility_disposition = Counter()
     for (case_id, repetition), values in sorted(pairs.items()):
-        if set(values) != {"raw", "semantic_graph"}:
-            continue
-        raw = _mapping(values["raw"], "run")
-        graph = _mapping(values["semantic_graph"], "run")
+        missing = {baseline, treatment} - set(values)
+        if missing:
+            raise ValueError(f"transfer pair {case_id}/{repetition} is missing {sorted(missing)}")
+        raw = _mapping(values[baseline], "run")
+        graph = _mapping(values[treatment], "run")
         raw_eval = _mapping(raw, evaluation_key)
         graph_eval = _mapping(graph, evaluation_key)
         raw_eligible = raw_eval.get("efficiency_eligible") is True
@@ -1161,9 +1351,9 @@ def _effect_report(
         status = (
             "both"
             if eligible
-            else "raw_only"
+            else f"{baseline}_only"
             if raw_eligible
-            else "semantic_graph_only"
+            else f"{treatment}_only"
             if graph_eligible
             else "neither"
         )
@@ -1174,23 +1364,14 @@ def _effect_report(
                 "repetition": repetition,
                 "eligible": eligible,
                 "eligibility_status": status,
-                "rows_returned": (
-                    int(_mapping(graph, "database_load")["rows_returned"])
-                    - int(_mapping(raw, "database_load")["rows_returned"])
-                    if eligible
-                    else None
-                ),
-                "correct_completion_tool_calls": (
-                    int(graph_eval["correct_completion_tool_calls"])
-                    - int(raw_eval["correct_completion_tool_calls"])
-                    if eligible
-                    else None
-                ),
-                "reported_total_tokens": (
-                    _reported_total_tokens(graph) - _reported_total_tokens(raw)
-                    if eligible
-                    else None
-                ),
+                **{
+                    metric: (
+                        _metric_delta(metric, raw, graph, raw_eval, graph_eval)
+                        if eligible
+                        else None
+                    )
+                    for metric in _ALL_PAIR_METRICS
+                },
             }
         )
     case_effects = []
@@ -1200,21 +1381,18 @@ def _effect_report(
             {
                 "case_id": case_id,
                 "eligible_repetitions": len(eligible),
-                "rows_returned": _median_or_none([item["rows_returned"] for item in eligible]),
-                "correct_completion_tool_calls": _median_or_none(
-                    [item["correct_completion_tool_calls"] for item in eligible]
-                ),
-                "reported_total_tokens": _median_or_none(
-                    [item["reported_total_tokens"] for item in eligible]
-                ),
+                **{
+                    metric: _median_or_none([item[metric] for item in eligible])
+                    for metric in _ALL_PAIR_METRICS
+                },
             }
         )
-    metrics = {}
+    metric_reports = {}
     p_values = []
-    for metric in ("rows_returned", "correct_completion_tool_calls"):
+    for metric in metrics:
         values = [item[metric] for item in case_effects if item[metric] is not None]
         p_value = _sign_test(values)
-        metrics[metric] = {
+        metric_reports[metric] = {
             "eligible_cases": len(values),
             "case_median_delta": _median_or_none(values),
             "negative_cases": sum(value < 0 for value in values),
@@ -1234,7 +1412,7 @@ def _effect_report(
                     for item in model_runs
                     if item["visibility"] == visibility
                 )
-                for visibility in ("raw", "semantic_graph")
+                for visibility in treatments
             },
             "valid_completion": {
                 visibility: sum(
@@ -1243,7 +1421,7 @@ def _effect_report(
                     for item in model_runs
                     if item["visibility"] == visibility
                 )
-                for visibility in ("raw", "semantic_graph")
+                for visibility in treatments
             },
             "efficiency_eligibility": {
                 "by_treatment": {
@@ -1253,11 +1431,11 @@ def _effect_report(
                         for item in model_runs
                         if item["visibility"] == visibility
                     )
-                    for visibility in ("raw", "semantic_graph")
+                    for visibility in treatments
                 },
                 "paired_disposition": {
                     status: eligibility_disposition[status]
-                    for status in ("both", "raw_only", "semantic_graph_only", "neither")
+                    for status in ("both", f"{baseline}_only", f"{treatment}_only", "neither")
                 },
                 "claim_rejection_codes": {
                     visibility: dict(
@@ -1275,7 +1453,7 @@ def _effect_report(
                 },
             },
             "case_effects": case_effects,
-            "primary_metrics": metrics,
+            "primary_metrics": metric_reports,
             "descriptive_metrics": {
                 "reported_total_tokens": _direction_summary(
                     [
@@ -1357,12 +1535,22 @@ def _apply_holm(
     values: list[tuple[str, str, float]],
     *,
     family_size: int,
+    goal: str,
 ) -> None:
+    """Holm-corrects one family in place.
+
+    `family_size` is the number of hypotheses `m`. More computed tests than `m`
+    would drive `family_size - rank` to zero or below, and the running maximum
+    would then silently return an uncorrected p rather than a conservative one.
+    """
+    if len(values) > family_size:
+        raise ValueError(f"family {goal} has {len(values)} tests but declares m={family_size}")
     previous = 0.0
     for rank, (model, metric, value) in enumerate(sorted(values, key=lambda item: item[2])):
         adjusted = min(1.0, max(previous, value * (family_size - rank)))
         previous = adjusted
-        reports[model]["primary_metrics"][metric]["holm_adjusted_p"] = adjusted
+        family = reports[model]["confirmatory_families"][goal]
+        family["primary_metrics"][metric]["holm_adjusted_p"] = adjusted
 
 
 def _median_or_none(values: list[object]) -> float | int | None:
@@ -1440,6 +1628,15 @@ def _public_input(tool_name: str, value: Mapping[str, object]) -> dict[str, obje
             "limit",
         }
         return {key: item for key, item in value.items() if key in allowed}
+    if tool_name in NATIVE_EVIDENCE_OPERATIONS:
+        # Model-authored PromQL, LogQL and TraceQL, published like the SQL text
+        # of `execute_sql`: without it a split citation could not be reviewed.
+        return {
+            key: value[key]
+            for key in NATIVE_QUERY_INPUT_KEYS
+            if isinstance(value.get(key), str)
+            or (isinstance(value.get(key), int) and not isinstance(value.get(key), bool))
+        }
     if tool_name == "describe_table":
         return {"table": value["table"]} if isinstance(value.get("table"), str) else {}
     if tool_name == "search_table_semantics":
@@ -1711,6 +1908,7 @@ def _validate_query_summary(
         "describe_table",
         "search_table_semantics",
         "query_semantic_graph",
+        *NATIVE_EVIDENCE_OPERATIONS,
     }:
         raise ValueError("public query summary exposes an unsupported tool")
     if not isinstance(summary.get("input"), Mapping) or not isinstance(summary.get("error"), bool):
@@ -1750,6 +1948,14 @@ def _validate_query_summary(
 
 
 def _validate_public_input(tool_name: str, value: Mapping[str, object]) -> None:
+    if tool_name in NATIVE_EVIDENCE_OPERATIONS:
+        if (
+            not value
+            or not set(value) <= set(NATIVE_QUERY_INPUT_KEYS)
+            or not isinstance(value.get("operation"), str)
+        ):
+            raise ValueError("public native query input is malformed")
+        return
     if tool_name == "execute_sql":
         if set(value) not in ({"query"}, {"sql"}) or not all(
             isinstance(item, str) and item.strip() for item in value.values()
@@ -1785,14 +1991,21 @@ def _validate_public_input(tool_name: str, value: Mapping[str, object]) -> None:
 
 
 def _public_query_execution_valid(summary: Mapping[str, object]) -> bool:
-    if summary.get("tool_name") not in {"execute_sql", "query_semantic_graph"}:
+    tool_name = summary.get("tool_name")
+    if tool_name not in {"execute_sql", "query_semantic_graph", *NATIVE_EVIDENCE_OPERATIONS}:
         return False
     if summary.get("error") is not False:
         return False
     result = summary.get("result")
     if not isinstance(result, Mapping) or result.get("truncated") is not False:
         return False
-    if summary.get("tool_name") == "execute_sql":
+    if tool_name in NATIVE_EVIDENCE_OPERATIONS:
+        # Same rule the private scorer applies: a discovery operation reports
+        # what exists, not what happened, so it cannot carry a causal claim.
+        input_value = summary.get("input")
+        operation = str(input_value.get("operation")) if isinstance(input_value, Mapping) else ""
+        return operation in NATIVE_EVIDENCE_OPERATIONS[str(tool_name)]
+    if tool_name == "execute_sql":
         input_value = summary.get("input")
         if not isinstance(input_value, Mapping):
             return False

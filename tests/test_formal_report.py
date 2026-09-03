@@ -251,7 +251,17 @@ def _report(*, transfer_graph_run_cost: float = 0.08) -> dict[str, object]:
                         "efficiency_eligible": True,
                         "correct_completion_tool_calls": 5,
                     },
-                    "database_load": {"rows_returned": 100 if visibility == "raw" else 90},
+                    # Null in the split arm: a returned row there is not a
+                    # database row.
+                    "database_load": {
+                        "rows_returned": (
+                            None
+                            if visibility == "split_pillars"
+                            else 100
+                            if visibility == "raw"
+                            else 90
+                        )
+                    },
                     "usage": {
                         "provider_visible_input_tokens": 100 if visibility == "raw" else 90,
                         "output_tokens": 20 if visibility == "raw" else 15,
@@ -264,7 +274,7 @@ def _report(*, transfer_graph_run_cost: float = 0.08) -> dict[str, object]:
             for name in names
             for case_id in case_ids
             for repetition in range(2)
-            for visibility in ("raw", "semantic_graph")
+            for visibility in ("split_pillars", "raw", "semantic_graph")
         ],
         "model_reports": {name: _model_report(case_ids) for name in names},
     }
@@ -284,16 +294,16 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     validate_formal_measurement_report(report)
 
     assert report["execution"] == {
-        "expected_cells": 352,
-        "completed_cells": 352,
+        "expected_cells": 464,
+        "completed_cells": 464,
         "micro_cells": 128,
-        "transfer_cells": 224,
+        "transfer_cells": 336,
         "runner_errors": 0,
         "budget_exhaustions": 0,
         "models": 4,
         "micro_cases": 8,
         "transfer_cases": 14,
-        "treatments": ["raw", "semantic_graph"],
+        "treatments": ["split_pillars", "raw", "semantic_graph"],
         "repetitions_per_model_case": 2,
     }
     assert report["cohort_provenance"] == {
@@ -306,9 +316,11 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
             {"dataset": "rca100", "cases": 4},
         ],
     }
+    # "fresh" would misdescribe a cohort that carries ten cases over.
     assert report["limitations"][0] == (
-        "The 8-case micro cohort is fixed reference data; the 14-case end-to-end cohort is a "
-        "source-ranked fresh measurement cohort."
+        "The 8-case micro cohort is fixed reference data; the 14-case end-to-end cohort is "
+        "source-ranked. Ten of its cases carry over from the previously published "
+        "measurement rather than being reselected."
     )
     assert report["limitations"][6] == (
         "Mechanism cohorts are unevenly sized: Workload restart 4, Call-path delay 3, "
@@ -336,7 +348,13 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     assert report["case_outcomes"][0]["models_with_fewer_output_tokens"] == 4
     assert report["case_outcomes"][0]["models_with_lower_estimated_cost"] == 4
     assert report["case_outcomes"][0]["models_with_estimable_cost"] == 4
-    assert report["capability_scores"]["models"]["gpt-5.6-sol"]["overall"]["score"] == 100
+    capability = report["capability_scores"]["models"]["gpt-5.6-sol"]["overall"]
+    # 85 of 85: the deterministic proof is reported beside the score, not in it.
+    assert capability["score"] == 85
+    assert capability["normalized_score"] == 100.0
+    assert capability["unscored_dimensions"]["required_evidence_covered"] == {
+        "covered": capability["runs"]
+    }
     transfer_metrics = report["model_reports"]["gpt-5.6-sol"]["transfer"]["descriptive_metrics"]
     assert transfer_metrics["provider_visible_input_tokens"]["case_median_delta"] == -10
     assert transfer_metrics["output_tokens"]["case_median_delta"] == -5
@@ -372,9 +390,9 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     render_formal_measurement_report(report, output)
     document = output.read_text()
     assert "__REPORT_DATA__" not in document
-    assert 'href="semantic-rca-v33.json"' in document
-    assert "sanitized records for all 352 runs" in document
-    assert "仓库公开全部 352 次运行" in document
+    assert 'href="semantic-rca-v34.json"' in document
+    assert "sanitized records for all 464 runs" in document
+    assert "仓库公开全部 464 次运行" in document
     assert "gpt-5.6-sol" in document
     assert "Focused retrieval micro-benchmarks" in document
     assert "End-to-end case effects" in document
@@ -409,13 +427,18 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     assert '<details class="report-details"' in document
     assert '<div class="score-leaderboard">' in document
     assert '<span class="rank">#1</span>' in document
-    assert "gpt-5.6-sol: Location 40, Root cause 40, Strict evidence 20" in document
+    assert "gpt-5.6-sol: Location 40, Root cause 40, Strict evidence 5" in document
     assert '<div class="score-stack" role="img"' in document
-    assert document.count('<article class="dimension-chart">') == 12
-    assert "Six independent rankings" in document
-    assert "六项独立排行" in document
-    assert "gpt-5.6-sol Strict evidence: 20 / 20" in document
-    assert "查看 40/40/20 评分细则和精确分数" in document
+    # A full 85-point score fills the stack instead of leaving a 15% remainder.
+    assert 'style="width: 47.0588%" title="Location: 40"' in document
+    assert 'style="width: 5.88235%" title="Strict evidence: 5"' in document
+    # Overall, three treatments, and three rubric dimensions, in both languages.
+    assert document.count('<article class="dimension-chart">') == 14
+    assert "Independent rankings by dimension" in document
+    assert "各维度独立排行" in document
+    assert "gpt-5.6-sol Strict evidence: 5 / 5" in document
+    # The rubric split is derived, so the copy cannot drift from it.
+    assert "查看 40/40/5 评分细则和精确分数" in document
     assert "Datasets and acknowledgements" in document
     assert "数据来源与致谢" in document
     assert "https://github.com/microsoft/OpenRCA" in document
@@ -462,3 +485,37 @@ def test_formal_measurement_report_rejects_tampered_summary() -> None:
 
     with pytest.raises(ValueError, match="execution is incomplete"):
         validate_formal_measurement_report(tampered)
+
+
+def test_an_unmeasurable_evidence_dimension_does_not_cap_a_treatment() -> None:
+    from semantic_rca_bench.formal_report import _score_runs
+
+    def run(required_evidence_covered):
+        return {
+            "run": {
+                "evaluation": {
+                    "causal_scope_match": True,
+                    "causal_locus_match": True,
+                    "fault_category_match": True,
+                    "mechanism_code_match": True,
+                    "valid_evidence_count": 1,
+                    "required_evidence_covered": required_evidence_covered,
+                }
+            }
+        }
+
+    audited = _score_runs([run(True)])
+    not_estimable = _score_runs([run(None)])
+    failed = _score_runs([run(False)])
+
+    # The deterministic proof is decidable only for SQL evidence, so it is
+    # reported beside the score rather than inside it. Scoring it would both
+    # penalise an arm the verifier cannot read and reward a model for citing a
+    # language the verifier cannot check.
+    assert audited["normalized_score"] == 100.0
+    assert not_estimable["normalized_score"] == 100.0
+    assert failed["normalized_score"] == 100.0
+    assert {r["maximum_points"] for r in (audited, not_estimable, failed)} == {85}
+    assert audited["unscored_dimensions"]["required_evidence_covered"] == {"covered": 1}
+    assert not_estimable["unscored_dimensions"]["required_evidence_covered"] == {"not_estimable": 1}
+    assert failed["unscored_dimensions"]["required_evidence_covered"] == {"failed": 1}

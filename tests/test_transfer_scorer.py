@@ -1982,3 +1982,74 @@ def test_metric_scorer_accepts_a_cap_on_the_returned_scope() -> None:
 
     assert evaluation.baseline_evidence_match is True
     assert evaluation.mechanism_evidence_match is True
+
+
+def _promql_run(case: TransferCaseSpec) -> AgentRun:
+    """A correct diagnosis whose only citation is a PromQL result."""
+    result = {
+        "query_id": "q1",
+        "backend": "prometheus",
+        "operation": "query_range",
+        "columns": ["labels", "timestamp", "value"],
+        "rows": [[{"k8s_container_name": "user"}, 1, "6"]],
+        "elapsed_seconds": 0.1,
+        "returned_items": 1,
+        "result_bytes": 64,
+        "truncated": False,
+    }
+    return AgentRun(
+        run_id="synthetic",
+        visibility=Visibility.RAW,
+        model="test-model",
+        runner=AgentRunner.API,
+        api_transport=ApiTransport.OPENAI_RESPONSES,
+        reasoning_effort="high",
+        max_output_tokens=16384,
+        diagnosis=_diagnosis(case, "q1"),
+        tool_calls=[
+            ToolTrace(
+                tool_name="query_metrics",
+                input={"operation": "query_range", "query": "k8s_container_restarts"},
+                query_id="q1",
+                output=result,
+                database_load=DatabaseLoad(query_count=1, rows_returned=1),
+            )
+        ],
+        tool_calls_requested=1,
+        usage=AgentUsage(),
+        elapsed_seconds=0,
+        responses=[],
+    )
+
+
+def test_promql_only_evidence_is_not_estimable_rather_than_failed() -> None:
+    case = _case(0)
+
+    evaluation = _evaluate(_promql_run(case), case)
+
+    # The verifier reads SQL. Scoring PromQL evidence as False would report a
+    # missing tool as a model failure and queue the run for adjudication.
+    assert evaluation.required_evidence_covered is None
+    assert evaluation.mechanism_evidence_match is None
+    assert evaluation.causal_locus_evidence_match is None
+    assert evaluation.grounding_not_estimable_reason == "grounding_verifier_language_unsupported"
+    assert evaluation.semantic_adjudication_required is False
+    assert evaluation.efficiency_eligible is True
+    assert evaluation.correct_completion_tool_calls == 1
+
+
+def test_sql_evidence_that_fails_the_predicate_still_scores_as_a_real_failure() -> None:
+    case = _case(0)
+    result = QueryResult(
+        query_id="q1",
+        columns=["greptime_value"],
+        rows=[[0.0]],
+        elapsed_seconds=0.1,
+    )
+
+    evaluation = _evaluate(
+        _run(case, "SELECT greptime_value FROM k8s_container_restarts", result), case
+    )
+
+    assert evaluation.required_evidence_covered is False
+    assert evaluation.grounding_not_estimable_reason is None

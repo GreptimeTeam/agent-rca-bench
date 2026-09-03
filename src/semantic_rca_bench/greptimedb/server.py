@@ -172,6 +172,11 @@ def write_json(path: Path, value: object) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         temporary.replace(path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
     finally:
         if temporary is not None and temporary.exists():
             temporary.unlink()

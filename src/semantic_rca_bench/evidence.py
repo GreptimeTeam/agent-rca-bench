@@ -4,13 +4,34 @@ import sqlglot
 from sqlglot import exp
 
 from semantic_rca_bench.contracts import QueryResult, ToolTrace
+from semantic_rca_bench.split_query import NativeQueryResult
+
+NATIVE_EVIDENCE_OPERATIONS = {
+    "query_metrics": {"query", "query_range"},
+    "query_logs": {"query_range"},
+    "query_traces": {"search", "get_trace", "metrics_range"},
+}
 
 
 def is_valid_evidence_trace(matches: list[ToolTrace]) -> bool:
     if len(matches) != 1:
         return False
     trace = matches[0]
-    if trace.error is not None or trace.tool_name not in {"execute_sql", "query_semantic_graph"}:
+    if trace.error is not None:
+        return False
+    if trace.tool_name in NATIVE_EVIDENCE_OPERATIONS:
+        if not isinstance(trace.output, dict):
+            return False
+        try:
+            result = NativeQueryResult.model_validate(trace.output)
+        except ValueError:
+            return False
+        return (
+            result.query_id == trace.query_id
+            and not result.truncated
+            and result.operation in NATIVE_EVIDENCE_OPERATIONS[trace.tool_name]
+        )
+    if trace.tool_name not in {"execute_sql", "query_semantic_graph"}:
         return False
     if trace.tool_name == "execute_sql":
         query = str(trace.input.get("query") or trace.input.get("sql") or "")

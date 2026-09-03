@@ -14,6 +14,15 @@ The published measurement contains 18 incidents from two source families:
 | Graph retrieval | OpenRCA2 ops-lite | 2 | Service-dependency retrieval |
 | End-to-end RCA | OpenRCA2 ops-lite | 10 | Component or edge localization, mechanism diagnosis, and evidence |
 
+The v34 cohort, which has not been run, keeps those eight micro cases and adds
+four RCA100 infrastructure-node cases to the end-to-end set, for 22 incidents
+from three source families. The ten OpenRCA2 end-to-end cases are the same ones
+the published measurement used, carried over rather than reselected.
+
+| Benchmark | Source | Cases | Role |
+| --- | --- | ---: | --- |
+| End-to-end RCA | RCA100 v1.1 | 4 | Infrastructure-node localization, mechanism diagnosis, and evidence |
+
 The six Discovery cases and two Graph cases form a fixed reference cohort. The
 ten end-to-end cases were selected by a frozen source-only ranking before their
 formal model trajectories were observed.
@@ -178,12 +187,20 @@ source, identity, time scope, lineage, and result completeness. See
 
 ## Other adapters
 
-RCA100, RCAEval RE2-OB, Aegis, OpenRCA Market, and OpenRCA Telecom adapters
-remain available for smoke tests and source-fidelity audits. They are not part
-of the 2026 report unless listed in the release cohort. Run
+RCAEval RE2-OB, Aegis, OpenRCA Market, and OpenRCA Telecom adapters remain
+available for smoke tests and source-fidelity audits. They are not part of the
+2026 report unless listed in the release cohort. Run
 `uv run semantic-rca --help` for their commands.
 
-RCA100 is distributed inside AgenticOpsEval. The adapter pins dataset revision
-`v1.1` and source revision `69cf36430b43024d02530c610b1a4738b5c9a7fb`; the
-license statement above was read from `RCA100/LICENSE` at that revision.
-Attribution requires the dataset paper, [arXiv:2606.29193](https://arxiv.org/abs/2606.29193).
+RCA100 supplies the four infrastructure-node cases of the v34 end-to-end cohort,
+alongside the ten OpenRCA2 service and edge cases. It is distributed inside
+AgenticOpsEval. The adapter pins dataset revision `v1.1` and source revision
+`69cf36430b43024d02530c610b1a4738b5c9a7fb`; the license statement above was read
+from `RCA100/LICENSE` at that revision. Attribution requires the dataset paper,
+[arXiv:2606.29193](https://arxiv.org/abs/2606.29193).
+
+RCA100 metrics arrive as Prometheus remote write rather than OTLP, so GreptimeDB
+records their tables with `metadata_quality: inferred` and no
+`greptime.semantic.*` metric options. The four node cases therefore have a
+thinner metric semantic surface than the ten OpenRCA2 cases. This predates the
+three-arm protocol and is a property of the source, not of the treatment.

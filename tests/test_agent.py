@@ -297,6 +297,7 @@ def test_incident_prompt_exposes_alert_time_without_injection_time() -> None:
             alert_time=300,
         ),
         48,
+        Visibility.RAW,
     )
 
     assert "Generic telemetry anomaly" in prompt
@@ -307,13 +308,13 @@ def test_incident_prompt_exposes_alert_time_without_injection_time() -> None:
 
 
 def test_system_prompt_only_requires_baseline_comparison_when_known() -> None:
-    prompt = " ".join(_system_prompt().split())
+    prompt = " ".join(_system_prompt(Visibility.RAW).split())
 
     assert "when the telemetry window contains a known baseline" in prompt
 
 
 def test_system_prompt_uses_generic_hypothesis_triage_without_case_clues() -> None:
-    prompt = " ".join(_system_prompt().split())
+    prompt = " ".join(_system_prompt(Visibility.RAW).split())
     lowered = prompt.lower()
 
     assert "two or three hypotheses that differ in causal scope or mechanism" in prompt
@@ -369,7 +370,7 @@ def test_diagnosis_requires_canonical_fault_category() -> None:
 
 
 def test_current_diagnosis_contract_is_case_independent() -> None:
-    prompt = _system_prompt().lower()
+    prompt = _system_prompt(Visibility.RAW).lower()
     schema = json.dumps(SUBMIT_TOOL, sort_keys=True).lower()
 
     for source_label in (
@@ -1722,3 +1723,184 @@ def test_infrastructure_node_diagnosis_names_the_node_and_no_edge() -> None:
         Diagnosis.model_validate(
             node.model_dump() | {"edge_source": "frontend", "edge_destination": "cart"}
         )
+
+
+def test_every_arm_shares_the_same_investigation_method_and_diagnosis_contract() -> None:
+    prompts = {
+        visibility: _system_prompt(visibility)
+        for visibility in (Visibility.RAW, Visibility.SEMANTIC_GRAPH, Visibility.SPLIT_PILLARS)
+    }
+
+    # A difference in the shared sections would measure the prompt rather than
+    # the stack, so they have to survive byte-for-byte in every arm.
+    for prompt in prompts.values():
+        assert agent_module._INVESTIGATION_METHOD in prompt
+        assert agent_module._DIAGNOSIS_CONTRACT in prompt
+    # The two GreptimeDB arms differ by the tools they are given, not by the
+    # guidance they receive. Coaching one of them would move the primary
+    # comparison by prompt rather than by interface.
+    assert prompts[Visibility.RAW] == prompts[Visibility.SEMANTIC_GRAPH]
+    assert prompts[Visibility.SPLIT_PILLARS] != prompts[Visibility.RAW]
+
+
+def test_the_split_prompt_never_instructs_the_agent_to_drive_greptimedb() -> None:
+    prompt = _system_prompt(Visibility.SPLIT_PILLARS)
+    lowered = prompt.lower()
+
+    for greptimedb_only in (
+        "greptimedb",
+        "execute_sql",
+        "information_schema",
+        "date_bin",
+        "union",
+        "incident database",
+    ):
+        assert greptimedb_only not in lowered, greptimedb_only
+    for native in ("query_metrics", "query_logs", "query_traces"):
+        assert native in prompt, native
+
+
+def test_no_arm_receives_investigation_strategy_the_others_do_not() -> None:
+    prompts = {
+        visibility: _system_prompt(visibility)
+        for visibility in (Visibility.RAW, Visibility.SEMANTIC_GRAPH, Visibility.SPLIT_PILLARS)
+    }
+
+    # Recovering from an unhelpful lookup is arm-independent, so it lives in the
+    # shared method. It used to sit in a semantic-only note, which handed the
+    # primary hypothesis' own arm a strategy the control never saw.
+    for prompt in prompts.values():
+        assert "empty discovery result does not by itself prove" in prompt
+        assert "checking its time range, filters, and coverage" in prompt
+    # Neither arm is told how to correlate signals; both are told what their
+    # interface can do.
+    assert "one\nsurface" in prompts[Visibility.RAW]
+    assert (
+        "execute_sql can query the metric, log, and trace tables in the named incident database."
+        in prompts[Visibility.RAW]
+    )
+    assert "No store can read another's data." in prompts[Visibility.SPLIT_PILLARS]
+    assert "carrying an identity" not in prompts[Visibility.SPLIT_PILLARS]
+    # A discoverable fact handed over for free is a tool call the other arms pay.
+    assert "log_table label whose values" not in prompts[Visibility.SPLIT_PILLARS]
+
+
+def test_the_split_incident_prompt_drops_the_database_scoping_instruction() -> None:
+    case_input = CaseInput(
+        case_token="case",
+        database="benchmark_db",
+        time_start=100,
+        time_end=300,
+        alert_time=300,
+    )
+
+    split = _incident_prompt(case_input, 48, Visibility.SPLIT_PILLARS)
+    raw = _incident_prompt(case_input, 48, Visibility.RAW)
+
+    assert "benchmark_db" not in split
+    assert "INFORMATION_SCHEMA" not in split
+    assert "three telemetry stores" in split
+    assert "benchmark_db" in raw
+    for shared in ("Alert fired at", "at most 48 tool calls", "propagated impact when present"):
+        assert shared in split and shared in raw
+
+
+def test_the_end_to_end_arms_expose_promql_and_the_micro_benchmarks_do_not() -> None:
+    for visibility in (Visibility.RAW, Visibility.SEMANTIC_GRAPH):
+        end_to_end = {
+            tool["name"]
+            for tool in agent_module._investigation_tools(visibility, [], None, promql=True)
+        }
+        micro = {tool["name"] for tool in agent_module._investigation_tools(visibility, [], None)}
+        assert "query_metrics" in end_to_end
+        assert "query_metrics" not in micro
+
+
+def test_the_promql_tool_offers_the_same_operations_in_every_arm() -> None:
+    from semantic_rca_bench.split_query import metrics_query_tool
+
+    greptimedb = metrics_query_tool(native_stack=False)
+    split = metrics_query_tool(native_stack=True)
+
+    assert greptimedb["input_schema"] == split["input_schema"]
+    assert greptimedb["description"] != split["description"]
+
+
+def test_the_raw_arm_cannot_read_metric_semantics_through_promql_metadata() -> None:
+    def operations(visibility):
+        tools = agent_module._investigation_tools(visibility, [], None, promql=True)
+        metrics = next(tool for tool in tools if tool["name"] == "query_metrics")
+        return set(metrics["input_schema"]["properties"]["operation"]["enum"])
+
+    # GreptimeDB serves metric metadata from greptime.semantic.*, the same facts
+    # the raw arm is denied in table_semantics.
+    assert "metadata" not in operations(Visibility.RAW)
+    assert "metadata" in operations(Visibility.SEMANTIC_GRAPH)
+
+
+def test_the_raw_gateway_rejects_metric_metadata_even_if_the_model_asks() -> None:
+    from semantic_rca_bench.greptimedb.visibility import QueryGateway, QueryRejected
+
+    class _Client:
+        database = "case_001"
+        endpoint = "http://127.0.0.1:1"
+
+        def prometheus_api(self, path, params, *, rows_in):
+            raise AssertionError("the raw arm must not reach the metadata endpoint")
+
+    gateway = QueryGateway(_Client(), Visibility.RAW)
+
+    with pytest.raises(QueryRejected, match="metric metadata is unavailable"):
+        gateway.execute_metrics({"operation": "metadata"})
+
+
+def test_a_split_tool_call_records_load_without_subtracting_a_null_row_count() -> None:
+    """The real combination: InvestigationSession over a split gateway.
+
+    Testing the gateway alone missed this. `rows_returned` is null in the split
+    arm, and the per-call delta subtracted it unconditionally, so the first
+    successful query raised inside the tool loop and raised again inside the
+    handler meant to turn a tool failure into a tool error.
+    """
+    import httpx
+
+    from semantic_rca_bench.split_query import SplitQueryGateway, split_investigation_tools
+
+    gateway = SplitQueryGateway(
+        prometheus_endpoint="http://prometheus",
+        loki_endpoint="http://loki",
+        tempo_endpoint="http://tempo",
+    )
+    gateway.http = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"status": "success", "data": ["cpu", "mem"]})
+        )
+    )
+    session = agent_module.InvestigationSession(
+        gateway,
+        CaseInput(case_token="c", database="db", time_start=1, time_end=2, alert_time=2),
+        Visibility.SPLIT_PILLARS,
+        investigation_tools=split_investigation_tools(),
+        max_tool_calls=48,
+        semantic_coverage=None,
+    )
+
+    with gateway.measure_query_load():
+        invocation = session.invoke("query_metrics", {"operation": "labels"})
+
+    assert invocation.is_error is False
+    trace = session.tool_calls[-1]
+    assert trace.error is None
+    assert trace.output["returned_items"] == 2
+    assert trace.database_load.query_count == 1
+    assert trace.database_load.rows_returned is None
+
+
+def test_a_greptimedb_tool_call_still_records_its_row_delta() -> None:
+    before = DatabaseLoad(query_count=1, rows_returned=10)
+    after = DatabaseLoad(query_count=2, rows_returned=35)
+
+    delta = agent_module._database_load_delta(before, after)
+
+    assert delta.rows_returned == 25
+    assert delta.query_count == 1

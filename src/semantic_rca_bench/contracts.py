@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class Visibility(StrEnum):
     RAW = "raw"
     SEMANTIC_GRAPH = "semantic_graph"
+    SPLIT_PILLARS = "split_pillars"
 
 
 class AgentRunner(StrEnum):
@@ -256,7 +257,11 @@ class AgentUsage(BaseModel):
 class DatabaseLoad(BaseModel):
     query_count: int = 0
     failed_query_count: int = 0
-    rows_returned: int = 0
+    # None where a returned row is not a database row. A Prometheus sample, a
+    # Loki entry and a Tempo trace are different units, so summing them into the
+    # registered load endpoint would compare incommensurable counts; a zero
+    # would read as "completed the investigation without reading anything".
+    rows_returned: int | None = 0
     query_elapsed_seconds: float = 0
     max_concurrency: int = 0
 
