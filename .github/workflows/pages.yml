@@ -4,9 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - artifacts/measurement/semantic-rca-v32.html
-      - artifacts/measurement/semantic-rca-v32.json
-      - artifacts/measurement/semantic-rca-v32-SHA256SUMS
+      - artifacts/measurement/semantic-rca-v34.html
+      - artifacts/measurement/semantic-rca-v34.json
+      - artifacts/measurement/semantic-rca-v34-SHA256SUMS
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -28,12 +28,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      - run: sha256sum --check artifacts/measurement/semantic-rca-v32-SHA256SUMS
+      - run: sha256sum --check artifacts/measurement/semantic-rca-v34-SHA256SUMS
       - name: Prepare site
         run: |
           mkdir _site
-          cp artifacts/measurement/semantic-rca-v32.html _site/index.html
-          cp artifacts/measurement/semantic-rca-v32.json _site/
+          cp artifacts/measurement/semantic-rca-v34.html _site/index.html
+          cp artifacts/measurement/semantic-rca-v34.json _site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

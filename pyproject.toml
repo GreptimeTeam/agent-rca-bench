@@ -1,10 +1,30 @@
 [project]
 name = "semantic-rca-bench"
 version = "0.1.0"
-description = "Paired RCA evaluation for GreptimeDB Semantic Graph"
+description = "Paired benchmark measuring how the observability interface behind an LLM agent changes root cause analysis"
 readme = "README.md"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11,<3.12"
+keywords = [
+  "benchmark",
+  "root-cause-analysis",
+  "observability",
+  "llm-agent",
+  "opentelemetry",
+  "greptimedb",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering",
+  "Topic :: System :: Monitoring",
+  "Typing :: Typed",
+]
+
 dependencies = [
   "anthropic>=0.64.0",
   "anyio>=4.0.0",
@@ -25,6 +45,12 @@ dev = [
   "pytest>=8.4.0",
   "ruff>=0.12.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/GreptimeTeam/semantic-rca-bench"
+Report = "https://semantic-rca.greptime.com"
+Source = "https://github.com/GreptimeTeam/semantic-rca-bench"
+Issues = "https://github.com/GreptimeTeam/semantic-rca-bench/issues"
 
 [project.scripts]
 semantic-rca = "semantic_rca_bench.cli:main"

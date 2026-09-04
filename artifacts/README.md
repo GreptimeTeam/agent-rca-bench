@@ -6,11 +6,12 @@ payloads, reasoning text, credentials, endpoints, and machine-local paths.
 
 The active report uses:
 
-- `semantic-rca-v32-micro.json`: 160 fixed-cohort Discovery and Graph cells.
-- `semantic-rca-v32-transfer.json`: 200 fresh end-to-end RCA cells.
-- `semantic-rca-v32.json`: deterministic combined report data.
-- `semantic-rca-v32.html`: self-contained bilingual report.
-- `semantic-rca-v32-SHA256SUMS`: hashes for the public artifacts and narrative reports.
+- `semantic-rca-v34-micro.json`: 128 fixed-cohort Discovery and Graph cells.
+- `semantic-rca-v34-transfer.json`: 336 end-to-end RCA cells.
+- `semantic-rca-v34.json`: deterministic combined report data.
+- `semantic-rca-v34.html`: self-contained bilingual report.
+- `semantic-rca-v34-SHA256SUMS`: hashes for the public artifacts and narrative
+  reports, listed as paths relative to the repository root.
 
 Regenerate the combined JSON and HTML with:
 
@@ -18,15 +19,23 @@ Regenerate the combined JSON and HTML with:
 output_dir=$(mktemp -d)
 
 uv run semantic-rca formal-suite-report \
-  --micro-artifact artifacts/measurement/semantic-rca-v32-micro.json \
-  --transfer-artifact artifacts/measurement/semantic-rca-v32-transfer.json \
+  --micro-artifact artifacts/measurement/semantic-rca-v34-micro.json \
+  --transfer-artifact artifacts/measurement/semantic-rca-v34-transfer.json \
+  --suite-protocol fixtures/reference/semantic-rca-v34-four-model-suite.json \
+  --transfer-protocol fixtures/reference/transfer-v34-protocol.json \
   --output-json "$output_dir/semantic-rca.json" \
   --output-html "$output_dir/semantic-rca.html"
 
-cmp artifacts/measurement/semantic-rca-v32.json \
+cmp artifacts/measurement/semantic-rca-v34.json \
   "$output_dir/semantic-rca.json"
-cmp artifacts/measurement/semantic-rca-v32.html \
+cmp artifacts/measurement/semantic-rca-v34.html \
   "$output_dir/semantic-rca.html"
+```
+
+Verify the published hashes from the repository root:
+
+```bash
+shasum -a 256 -c artifacts/measurement/semantic-rca-v34-SHA256SUMS
 ```
 
 The exporter validates source artifact hashes before generating either output.
@@ -40,6 +49,6 @@ the downloaded artifact as the promised archival release. Reproduction obtains
 the pinned source under its upstream terms; this repository does not
 redistribute it.
 
-Historical development artifacts belong under `.local/` or at their historical
-Git revision. The active runtime does not include compatibility loaders for
-internal protocol cycles.
+Artifacts from earlier protocol cycles are not published. Retrieve them from
+their historical Git revision; the active runtime carries no compatibility
+loaders for internal protocol cycles.

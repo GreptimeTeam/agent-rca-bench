@@ -13,8 +13,8 @@
     "semantic_effect": "paired within model and case descriptive effect sizes only"
   },
   "integrity": {
-    "private_report_sha256": "a2f93d563cfb7c9895f5b7bdde270743088f0c20c0fb50ebd5c8887a2d3f9758",
-    "semantic_payload_sha256": "1e715ffbe5152adc45ca241df73e6584f081cce413195133137a44c459a28014"
+    "private_report_sha256": "2b46cf59759203ffc90d7a10fd02878670281c73eabc080993d5ed0b91a5d446",
+    "semantic_payload_sha256": "227dc8434f30b3100e6b05c0dc1c92e06a1f81ebb2c555cae7f8128728a8c3bc"
   },
   "license": {
     "artifact_schema_and_derived_aggregates": "Apache-2.0 benchmark artifact",
@@ -851,7 +851,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 514304,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 2.5578480000000003,
         "output_tokens": 22736,
         "reasoning_output_tokens": 4564,
         "uncached_input_tokens": 111579
@@ -1165,10 +1165,12 @@
       "source": "https://api-docs.deepseek.com/quick_start/pricing/"
     },
     "glm-5.3": {
-      "checked_at": "2026-08-30",
-      "cost_available": false,
+      "checked_at": "2026-09-04",
       "currency": "CNY",
-      "note": "The BigModel China pricing page did not yet list GLM-5.3 rates when the protocol was prepared. Token usage remains auditable, but estimated cost is unavailable until an official model-specific rate is frozen.",
+      "input_cache_hit_per_million": 2.0,
+      "input_per_million": 8.0,
+      "note": "BigModel China list price for the 1M-context text model, in force during this run. The rate was missed when the snapshot was first assembled and was filled in from the same source the protocol cites, verified on 2026-09-04. Cache storage is billed per million tokens per hour and was a limited-time free promotion, so no cache-write rate is frozen and cost fails closed if a cache-write field is returned.",
+      "output_per_million": 28.0,
       "source": "https://bigmodel.cn/pricing"
     },
     "gpt-5.6-sol": {
@@ -3638,7 +3640,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 18496,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.12346,
         "output_tokens": 575,
         "reasoning_output_tokens": 104,
         "uncached_input_tokens": 8796
@@ -3818,7 +3820,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 19712,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.1023,
         "output_tokens": 623,
         "reasoning_output_tokens": 108,
         "uncached_input_tokens": 5679
@@ -4051,7 +4053,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 26752,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.121656,
         "output_tokens": 1298,
         "reasoning_output_tokens": 529,
         "uncached_input_tokens": 3976
@@ -4261,7 +4263,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 28224,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.116816,
         "output_tokens": 648,
         "reasoning_output_tokens": 92,
         "uncached_input_tokens": 5278
@@ -6470,7 +6472,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 25984,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.114636,
         "output_tokens": 747,
         "reasoning_output_tokens": 90,
         "uncached_input_tokens": 5219
@@ -6637,7 +6639,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 21760,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.09484,
         "output_tokens": 692,
         "reasoning_output_tokens": 163,
         "uncached_input_tokens": 3993
@@ -6782,7 +6784,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 16320,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.07776,
         "output_tokens": 574,
         "reasoning_output_tokens": 97,
         "uncached_input_tokens": 3631
@@ -7025,7 +7027,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 25792,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.148744,
         "output_tokens": 1612,
         "reasoning_output_tokens": 853,
         "uncached_input_tokens": 6503
@@ -9671,7 +9673,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 16576,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.0892,
         "output_tokens": 752,
         "reasoning_output_tokens": 83,
         "uncached_input_tokens": 4374
@@ -9855,7 +9857,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 20864,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.098056,
         "output_tokens": 902,
         "reasoning_output_tokens": 234,
         "uncached_input_tokens": 3884
@@ -10040,7 +10042,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 22016,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.101132,
         "output_tokens": 689,
         "reasoning_output_tokens": 68,
         "uncached_input_tokens": 4726
@@ -10294,7 +10296,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 24320,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.125324,
         "output_tokens": 1123,
         "reasoning_output_tokens": 427,
         "uncached_input_tokens": 5655
@@ -12965,7 +12967,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 7808,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.05998,
         "output_tokens": 713,
         "reasoning_output_tokens": 163,
         "uncached_input_tokens": 3050
@@ -13218,7 +13220,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 27584,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.119596,
         "output_tokens": 985,
         "reasoning_output_tokens": 318,
         "uncached_input_tokens": 4606
@@ -13401,7 +13403,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 23168,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.076228,
         "output_tokens": 719,
         "reasoning_output_tokens": 163,
         "uncached_input_tokens": 1220
@@ -13618,7 +13620,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 12032,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.071704,
         "output_tokens": 754,
         "reasoning_output_tokens": 136,
         "uncached_input_tokens": 3316
@@ -15703,7 +15705,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 7552,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.045328,
         "output_tokens": 526,
         "reasoning_output_tokens": 54,
         "uncached_input_tokens": 1937
@@ -15862,7 +15864,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 13696,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.062992,
         "output_tokens": 494,
         "reasoning_output_tokens": 55,
         "uncached_input_tokens": 2721
@@ -16030,7 +16032,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 16192,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.058952,
         "output_tokens": 430,
         "reasoning_output_tokens": 32,
         "uncached_input_tokens": 1816
@@ -16206,7 +16208,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 12480,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.078624,
         "output_tokens": 488,
         "reasoning_output_tokens": 40,
         "uncached_input_tokens": 5000
@@ -18233,7 +18235,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 7232,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.045668,
         "output_tokens": 555,
         "reasoning_output_tokens": 18,
         "uncached_input_tokens": 1958
@@ -18378,7 +18380,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 12160,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.053776,
         "output_tokens": 516,
         "reasoning_output_tokens": 44,
         "uncached_input_tokens": 1876
@@ -18547,7 +18549,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 16128,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.061384,
         "output_tokens": 540,
         "reasoning_output_tokens": 38,
         "uncached_input_tokens": 1751
@@ -18720,7 +18722,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 6720,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.044572,
         "output_tokens": 495,
         "reasoning_output_tokens": 28,
         "uncached_input_tokens": 2159
@@ -21599,7 +21601,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 20416,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.106876,
         "output_tokens": 853,
         "reasoning_output_tokens": 85,
         "uncached_input_tokens": 5270
@@ -21778,7 +21780,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 3264,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.03562,
         "output_tokens": 293,
         "reasoning_output_tokens": 17,
         "uncached_input_tokens": 2611
@@ -21972,7 +21974,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 5376,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.0267,
         "output_tokens": 413,
         "reasoning_output_tokens": 57,
         "uncached_input_tokens": 548
@@ -22299,7 +22301,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 15808,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.08978,
         "output_tokens": 1219,
         "reasoning_output_tokens": 165,
         "uncached_input_tokens": 3004
@@ -25096,7 +25098,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 16576,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.089124,
         "output_tokens": 979,
         "reasoning_output_tokens": 59,
         "uncached_input_tokens": 3570
@@ -25276,7 +25278,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 5248,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.024096,
         "output_tokens": 304,
         "reasoning_output_tokens": 36,
         "uncached_input_tokens": 636
@@ -25456,7 +25458,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 5568,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.022096,
         "output_tokens": 298,
         "reasoning_output_tokens": 36,
         "uncached_input_tokens": 327
@@ -25759,7 +25761,7 @@
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 12480,
         "cost_currency": "CNY",
-        "estimated_cost": null,
+        "estimated_cost": 0.070828,
         "output_tokens": 927,
         "reasoning_output_tokens": 172,
         "uncached_input_tokens": 2489

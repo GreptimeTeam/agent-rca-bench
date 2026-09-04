@@ -126,7 +126,6 @@ def build_report_view_model(report: Mapping[str, object]) -> dict[str, object]:
             "diagnosis_by_dataset": _diagnosis_split(report, "dataset"),
             "cost_bars": _cost_bars(report),
             "pricing_basis": _pricing_basis(report),
-            "post_hoc_cost": _post_hoc_cost(report),
             "capability_bars": _capability_bars(report),
         },
     }
@@ -1618,51 +1617,6 @@ def _cost_bars(report: Mapping[str, object]) -> dict[str, object]:
         and item["billed_currency"] in rates
     ]
     return {"series": series, "exchange_rates": rates, "converted": converted}
-
-
-def _post_hoc_cost(report: Mapping[str, object]) -> list[dict[str, object]]:
-    """Spend priced after the run, kept visibly apart from the measured figures.
-
-    The sentence is built here because it states why a number sits outside the
-    cost totals, which is a claim about the measurement and has to stay within
-    reach of the tests.
-    """
-    estimates = mapping(mapping(report, "costs"), "post_hoc_estimates")
-    rows = []
-    for model in _sequence(report, "model_order"):
-        entry = estimates.get(str(model))
-        if not isinstance(entry, Mapping):
-            continue
-        rate = mapping(entry, "rate")
-        currency = str(entry["currency"])
-        amount = float(entry["amount"])
-        usd = float(entry["usd_amount"])
-        rows.append(
-            {
-                "model": str(model),
-                "currency": currency,
-                "amount": amount,
-                "usd_amount": usd,
-                "checked_at": rate.get("checked_at"),
-                "source": rate.get("source"),
-                "note": {
-                    "en": (
-                        f"{model} cost an estimated {currency} {amount:,.2f} "
-                        f"(USD {usd:,.2f}). The protocol freezes the pricing snapshot at "
-                        "execution and that snapshot carried no rate for this model, so the "
-                        "figure is not in the totals above. It applies the rate published on "
-                        f"{rate.get('checked_at')} to the token counts the run recorded."
-                    ),
-                    "zh": (
-                        f"{model} 的估算成本为 {currency} {amount:,.2f}（USD {usd:,.2f}）。"
-                        "协议要求定价快照在执行时冻结，而该快照没有这个模型的价格，"
-                        "因此这个数字不计入上方合计。它把 "
-                        f"{rate.get('checked_at')} 公布的价格应用到 run 已记录的 token 计数上。"
-                    ),
-                },
-            }
-        )
-    return rows
 
 
 def _pricing_basis(report: Mapping[str, object]) -> list[dict[str, object]]:

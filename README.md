@@ -15,16 +15,20 @@ prompt, runner, telemetry, and resource budget constant.
 Read the [interactive report](https://semantic-rca.greptime.com), the
 [English report](REPORT.md), or the [Chinese report](REPORT.zh-CN.md).
 
-## Result in one paragraph
+## Results in one paragraph
 
-Semantic Graph reduced rows in every eligible focused retrieval result, but no
-`semantic_graph - raw` end-to-end endpoint passed Holm correction. The
-`raw - split_pillars` family produced one significant result:
-`claude-fable-5-1` used fewer provider-visible input tokens under Raw in all 13
-eligible cases. Across 112 runs per treatment, Split produced 60 correct
-diagnoses, Raw 80, and Graph 77. These diagnosis totals are descriptive and vary
-sharply between the OpenRCA2 service cases and the RCA100 infrastructure-node
-cases. See [REPORT.md](REPORT.md) for the complete results and limits.
+The interface bundle mattered more than the semantic layer. Over 112 runs per
+treatment the three-backend bundle produced 60 correct diagnoses against
+GreptimeDB's 80, cost 2.21x as much, and made the models read 1.54x the tokens;
+one endpoint in that family survived Holm correction, `claude-fable-5-1` reading
+fewer provider-visible input tokens under GreptimeDB in all 13 eligible cases
+(case median -446,252.5, Holm p 0.00195). The Semantic Graph compressed focused
+retrieval on every eligible micro case but moved no end-to-end endpoint: 0 of 8
+passed correction and the case medians point both ways, which is insufficient
+evidence rather than evidence of no effect. Graph's diagnosis totals also
+reverse between the OpenRCA2 service cases and the RCA100 infrastructure-node
+cases. See [REPORT.md](REPORT.md) for the complete results, the power limit, and
+what the cohort cannot support.
 
 ## What the benchmark measures
 
@@ -57,9 +61,16 @@ The measurement contains 464 completed agent cells:
 - four model configurations;
 - two repetitions per model, case, and treatment.
 
-Rows returned and complete-run tool calls are the registered end-to-end
-efficiency metrics. Input, cache use, output, reasoning, latency, and cost are
-reported separately.
+Each paired comparison has its own two efficiency metrics, specified and frozen
+in the protocol before any run:
+
+| Comparison | Metrics |
+| --- | --- |
+| `semantic_graph - raw` | rows returned, complete-run tool calls |
+| `raw - split_pillars` | provider-visible input tokens, complete-run tool calls |
+
+Rows returned does not apply across the split stack and reports N/A there. Cache
+use, output, reasoning, and cost are reported separately and are descriptive.
 
 ### Published protocol
 

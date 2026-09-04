@@ -95,13 +95,13 @@ the database or benchmark.
   with their date and source beside every figure they produce, and only when
   every model in the cohort could be priced. A currency with no frozen rate
   raises rather than converting at a guess.
-- The pricing snapshot belongs to the run. `paid_execution.
-  pricing_snapshot_required_at_execution` binds it, so a rate published after
-  the run never enters the snapshot, the artifacts, or `costs.models`, and the
-  private report it hashes is never rewritten. Price it in
-  `costs.post_hoc_estimates` instead, carrying the rate's date and source and
-  the reason it sits outside the totals. Editing a frozen snapshot to add a
-  price restates what the measurement knew at execution.
+- The pricing snapshot records the rates in force for the run, and
+  `paid_execution.pricing_snapshot_required_at_execution` requires it to exist
+  before the run starts. Correcting a rate the snapshot missed is a fix and
+  keeps the note saying what was corrected and when it was verified. Applying a
+  rate that only took effect after the run is not: that would price the run at
+  something it was never billed. Either way the token counts are untouched, and
+  the correction is stated wherever the cost appears.
 - Provider reasoning settings define complete model configurations, not a
   common cross-provider compute scale.
 

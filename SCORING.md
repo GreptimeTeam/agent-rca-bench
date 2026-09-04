@@ -156,7 +156,7 @@ between the two GreptimeDB arms, and the three-arm efficiency endpoints do not d
 
 ## Current OpenRCA2 evidence rubric
 
-The v32 cohort covers four source-observable mechanisms: workload restart, container CPU
+The ten OpenRCA2 cases cover four source-observable mechanisms: workload restart, container CPU
 saturation, container memory pressure, and call-path start delay. Every rubric requires a nonempty
 normal baseline with no value at or above its frozen threshold and at least two anomalous
 observations at or above that threshold. The frozen threshold and exact source aggregate belong to

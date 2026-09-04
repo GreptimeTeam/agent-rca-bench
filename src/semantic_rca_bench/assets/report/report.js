@@ -858,16 +858,6 @@
             : h("p", { class: "caption", text: t("cost.not_estimable") }),
         );
       }),
-      view.charts.post_hoc_cost.length
-        ? h(
-            "div",
-            { class: "post-hoc" },
-            h("h4", { text: t("cost.post_hoc_title") }),
-            view.charts.post_hoc_cost.map((item) =>
-              h("p", { class: "caption", text: item.note[language] || item.note.en }),
-            ),
-          )
-        : null,
       converted.length
         ? h("p", {
             class: "caption",
