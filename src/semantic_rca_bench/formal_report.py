@@ -19,7 +19,7 @@ from semantic_rca_bench.formal_suite_release import validate_micro_measurement_a
 from semantic_rca_bench.report import MODEL_PRICING
 from semantic_rca_bench.transfer_release import validate_measurement_artifact
 
-FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION = 6
+FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION = 7
 
 # Display names, upstream links, and the license statement each source declares.
 # The published prose enumerates only the datasets the bound cohort actually uses.
@@ -200,6 +200,7 @@ def build_formal_measurement_report(
         "tool_use_audit": _tool_use_audit(transfer_runs),
         "claim_rejection_audit": _claim_rejection_audit(transfer_runs),
         "citation_submission": _citation_submission(transfer_runs, names),
+        "usage_by_treatment": _usage_by_treatment(transfer_runs),
         "capability_scores": _capability_scores(transfer_runs, names),
         "confirmatory_family_resource_effects": transfer_families,
         "semantic_layer_findings": _semantic_findings(model_reports),
@@ -1143,6 +1144,45 @@ def _tool_use_audit(runs: list[Mapping[str, object]]) -> dict[str, object]:
             f"{' or '.join(_PROMQL_EVALUATING_OPERATIONS)} evaluate PromQL; metadata, "
             "series, labels and label_values operations do not and are excluded"
         ),
+    }
+
+
+def _usage_by_treatment(runs: list[Mapping[str, object]]) -> dict[str, object]:
+    """Tokens and priced spend per arm, summed over every executed run.
+
+    Totals cover all runs, including unsuccessful ones, because that is what the
+    arm actually cost to operate. Spend is summed only where the provider rate is
+    frozen, so a model without a published price cannot silently drop out of one
+    arm's total while staying in another's.
+    """
+    tokens: Counter[str] = Counter()
+    output: Counter[str] = Counter()
+    spend: dict[str, float] = defaultdict(float)
+    priced: set[str] = set()
+    unpriced: set[str] = set()
+    for item in runs:
+        treatment = str(item["visibility"])
+        usage = _mapping(_mapping(item, "run"), "usage")
+        tokens[treatment] += int(usage.get("provider_visible_input_tokens") or 0)
+        output[treatment] += int(usage.get("output_tokens") or 0)
+        cost = usage.get("estimated_cost")
+        if isinstance(cost, (int, float)):
+            spend[treatment] += float(cost)
+            priced.add(str(item["model"]))
+        else:
+            unpriced.add(str(item["model"]))
+    return {
+        "role": "descriptive; every executed run, including unsuccessful ones",
+        "by_treatment": {
+            treatment: {
+                "provider_visible_input_tokens": tokens[treatment],
+                "output_tokens": output[treatment],
+                "estimated_cost": round(spend[treatment], 6),
+            }
+            for treatment in _treatments_present(runs)
+        },
+        "priced_models": sorted(priced - unpriced),
+        "unpriced_models": sorted(unpriced),
     }
 
 

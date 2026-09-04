@@ -216,6 +216,9 @@
         }),
         armCards(),
         interfaceMatrix(),
+        h("h2", { class: "findings-title", text: t("headline.title") }),
+        h("p", { class: "section-lede", text: t("headline.lede") }),
+        headlineBars(),
         h("h2", { class: "findings-title", text: t("overview.findings_title") }),
         h("div", { class: "findings" }, view.takeaways.map(takeawayRow)),
         h(
@@ -228,6 +231,129 @@
 
   /* Split, Raw and Graph are the names every later chart and table refers back
    * to, so the card leads with the name rather than tucking it underneath. */
+  /* Ratios against the best arm. A 2.4x gap has to look like 2.4x; the badge on
+   * the row says whether the number is a registered endpoint or a total. */
+  const headlineBars = () => {
+    const chart = view.charts.headline;
+    return h(
+      "div",
+      { class: "headline" },
+      chart.rows.map((row) => {
+        const best = Object.entries(row.ratios).find(([, r]) => r === 1)?.[0];
+        return h(
+          "div",
+          { class: "headline-row" },
+          h(
+            "div",
+            { class: "headline-head" },
+            h("h3", { text: t(`headline.${row.id}`) }),
+            h("span", { class: "caption", text: t(`headline.${row.id}.note`) }),
+            h("span", {
+              class: "badge badge-sm",
+              "data-grade": row.registered ? "confirmed" : "descriptive",
+              text: t(row.registered ? "headline.registered" : "headline.descriptive"),
+            }),
+          ),
+          h(
+            "div",
+            { class: "bars" },
+            chart.treatments.map((key) => {
+              const value = row.values[key];
+              const ratio = row.ratios[key];
+              return h(
+                "div",
+                { class: "bar-row", "data-best": String(key === best) },
+                h("span", { class: "bar-name", text: treatment(key) }),
+                h(
+                  "div",
+                  { class: "bar-track" },
+                  h("div", {
+                    class: "bar-fill",
+                    "data-arm": key,
+                    style: `width:${Math.max(1, (row.fractions[key] || 0) * 100)}%`,
+                  }),
+                ),
+                h(
+                  "div",
+                  { class: "bar-value" },
+                  h("strong", { text: headlineValue(row, value) }),
+                  h("span", {
+                    class: "bar-ratio",
+                    text: ratio ? `×${ratio.toFixed(2)}` : NA(),
+                  }),
+                ),
+              );
+            }),
+          ),
+          row.excluded_models && row.excluded_models.length
+            ? h("p", {
+                class: "caption",
+                text: t("headline.excluded", { models: row.excluded_models.join(", ") }),
+              })
+            : null,
+        );
+      }),
+    );
+  };
+
+  const headlineValue = (row, value) => {
+    if (row.unit === "runs") {
+      return `${num(value)} / ${num(row.denominator)}  ${Math.round((value / row.denominator) * 100)}%`;
+    }
+    if (row.unit === "USD") return `USD ${num(value, 2)}`;
+    return compact(value).replace(/^\+/, "");
+  };
+
+  /* Where the semantic layer earns its keep, and where it does not. */
+  const accuracyByLevel = () => {
+    const chart = view.charts.accuracy_by_level;
+    return h(
+      "div",
+      { class: "headline" },
+      chart.groups.map((group) =>
+        h(
+          "div",
+          { class: "headline-row" },
+          h(
+            "div",
+            { class: "headline-head" },
+            h("h3", { text: group.label[language] || group.label.en }),
+            h("span", { class: "caption", text: t("label.cases_n", { n: group.cases }) }),
+          ),
+          h(
+            "div",
+            { class: "bars" },
+            chart.treatments.map((key) => {
+              const rate = group.rates[key];
+              const counts = group.counts[key];
+              const top = Math.max(...Object.values(group.rates));
+              return h(
+                "div",
+                { class: "bar-row", "data-best": String(rate === top) },
+                h("span", { class: "bar-name", text: treatment(key) }),
+                h(
+                  "div",
+                  { class: "bar-track" },
+                  h("div", {
+                    class: "bar-fill",
+                    "data-arm": key,
+                    style: `width:${Math.max(1, rate * 100)}%`,
+                  }),
+                ),
+                h(
+                  "div",
+                  { class: "bar-value" },
+                  h("strong", { text: `${Math.round(rate * 100)}%` }),
+                  h("span", { class: "bar-ratio", text: `${counts.correct}/${counts.runs}` }),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  };
+
   const armCards = () =>
     h(
       "div",
@@ -682,7 +808,7 @@
       h("h3", { style: "margin-top:28px", text: t("semantic.reversal_title") }),
       h("p", { class: "caption", text: t("semantic.reversal_lede") }),
       sectionInsight("fault_dependent"),
-      reversalChart(view.charts.diagnosis_by_scope),
+      accuracyByLevel(),
       // The same runs split by source, published because the two splits are
       // collinear here and the reader has to be able to see that.
       panel(

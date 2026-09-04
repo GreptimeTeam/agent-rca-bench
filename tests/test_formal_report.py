@@ -610,7 +610,7 @@ def test_rendered_page_inlines_every_payload_and_leaks_nothing(tmp_path: Path) -
         )
         for name in ("semantic-rca-report", "semantic-rca-view", "semantic-rca-i18n")
     }
-    assert payloads["semantic-rca-report"]["report_schema_version"] == 6
+    assert payloads["semantic-rca-report"]["report_schema_version"] == 7
     assert payloads["semantic-rca-view"]["report_json_filename"] == "semantic-rca-v34.json"
     assert set(payloads["semantic-rca-i18n"]["en"]) == set(payloads["semantic-rca-i18n"]["zh"])
 

@@ -202,7 +202,18 @@
     "th.rejection_other": "Other citations checked",
     "method.rejection_note": "The verifier runs its mechanism check over every citation, including ones submitted as exclusion or downstream-impact evidence that never claimed to prove the mechanism. Only the first column describes an attempt that fell short; the second only shows how wide the check reaches. A code in either column does not by itself mean a claim failed, because another citation may already ground it.",
     "grade.not_confirmed": "Not confirmed",
-    "grade.not_confirmed.gloss": "No registered endpoint survives correction"
+    "grade.not_confirmed.gloss": "No registered endpoint survives correction",
+    "headline.title": "What changed when only the interface changed",
+    "headline.lede": "Every bar covers the same incidents, models and budget. Ratios are against the best arm on that row.",
+    "headline.accuracy": "Correct diagnoses",
+    "headline.accuracy.note": "higher is better",
+    "headline.cost": "Cost to run",
+    "headline.cost.note": "lower is better; every executed run, failures included",
+    "headline.input_tokens": "Tokens the model had to read",
+    "headline.input_tokens.note": "lower is better; a registered endpoint",
+    "headline.registered": "Registered endpoint",
+    "headline.descriptive": "Descriptive",
+    "headline.excluded": "{models} has no frozen rate and is excluded from this row."
   },
   "zh": {
     "lang.en": "English",
@@ -407,6 +418,17 @@
     "th.rejection_other": "被一并检查的其他引用",
     "method.rejection_note": "验证器会对每一条引用都跑机制检查，包括那些作为排除性证据或下游影响提交、本来就不声称证明机制的引用。只有第一列代表「尝试了但没做到」，第二列只反映检查覆盖了多广。任一列出现计数都不等于该 claim 失败，因为可能已有另一条引用把它证明了。",
     "grade.not_confirmed": "未确认",
-    "grade.not_confirmed.gloss": "没有注册端点通过校正"
+    "grade.not_confirmed.gloss": "没有注册端点通过校正",
+    "headline.title": "只换接口，结果差多少",
+    "headline.lede": "每条都基于同一批故障、同样的模型和预算。倍数相对该行表现最好的那一臂。",
+    "headline.accuracy": "诊断正确数",
+    "headline.accuracy.note": "越高越好",
+    "headline.cost": "实际运行成本",
+    "headline.cost.note": "越低越好；含全部执行过的 run，失败的也算",
+    "headline.input_tokens": "模型需要读的 token",
+    "headline.input_tokens.note": "越低越好；这是注册端点",
+    "headline.registered": "注册端点",
+    "headline.descriptive": "描述性",
+    "headline.excluded": "{models} 没有冻结价格，不计入本行。"
   }
 }

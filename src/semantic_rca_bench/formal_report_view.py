@@ -114,6 +114,8 @@ def build_report_view_model(report: Mapping[str, object]) -> dict[str, object]:
         "charts": {
             "delta_strips": _delta_strips(report),
             "diagnosis_slope": _diagnosis_slope(report),
+            "headline": _headline_bars(report),
+            "accuracy_by_level": _accuracy_by_level(report),
             "diagnosis_by_scope": _diagnosis_split(report, "causal_scope"),
             "diagnosis_by_dataset": _diagnosis_split(report, "dataset"),
             "cost_bars": _cost_bars(report),
@@ -1108,6 +1110,113 @@ def _diagnosis_slope(report: Mapping[str, object]) -> dict[str, object]:
             }
         )
     return {"treatments": treatments, "runs_per_treatment": runs, "series": series}
+
+
+def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
+    """The three arm-level contrasts, each as a bar with a ratio to the best arm.
+
+    Ratios are what make a 2.4x cost gap read as one. Each row states whether it
+    is a registered endpoint or a descriptive total so the size of a bar is never
+    mistaken for the strength of its evidence.
+    """
+    treatments = [str(item) for item in _sequence(mapping(report, "execution"), "treatments")]
+    diagnosis = _diagnosis_slope(report)
+    runs = int(diagnosis["runs_per_treatment"]) * len(mapping_list(diagnosis, "series"))
+    correct = {
+        treatment: sum(
+            int(mapping(item, "values")[treatment]) for item in mapping_list(diagnosis, "series")
+        )
+        for treatment in treatments
+    }
+    usage = mapping(mapping(report, "usage_by_treatment"), "by_treatment")
+    unpriced = [
+        str(item) for item in _sequence(mapping(report, "usage_by_treatment"), "unpriced_models")
+    ]
+    rows = [
+        {
+            "id": "accuracy",
+            "better": "higher",
+            "registered": False,
+            "unit": "runs",
+            "values": {t: correct[t] for t in treatments},
+            "denominator": runs,
+        },
+        {
+            "id": "cost",
+            "better": "lower",
+            "registered": False,
+            "unit": "USD",
+            "values": {t: float(mapping(usage, t)["estimated_cost"]) for t in treatments},
+            "excluded_models": unpriced,
+        },
+        {
+            "id": "input_tokens",
+            "better": "lower",
+            "registered": True,
+            "unit": "tokens",
+            "values": {
+                t: int(mapping(usage, t)["provider_visible_input_tokens"]) for t in treatments
+            },
+        },
+    ]
+    for row in rows:
+        values = [value for value in row["values"].values() if value]
+        reference = max(values) if row["better"] == "higher" else min(values)
+        row["reference"] = reference
+        widest = max(values) if values else 1
+        row["ratios"] = {
+            treatment: (
+                None
+                if not value or not reference
+                else (reference / value if row["better"] == "higher" else value / reference)
+            )
+            for treatment, value in row["values"].items()
+        }
+        row["fractions"] = {
+            treatment: (value / widest if widest else 0.0)
+            for treatment, value in row["values"].items()
+        }
+    return {"treatments": treatments, "rows": rows}
+
+
+def _accuracy_by_level(report: Mapping[str, object]) -> dict[str, object]:
+    """Correct-diagnosis rate per arm, grouped by the level the fault sat at.
+
+    The rate, not the count, because the three levels hold different numbers of
+    runs and only the rate is comparable across them.
+    """
+    treatments = [str(item) for item in _sequence(mapping(report, "execution"), "treatments")]
+    buckets = mapping(report, "diagnosis_by_causal_scope")
+    groups = []
+    for scope, bucket in buckets.items():
+        correct = mapping(bucket, "diagnosis_correct")
+        runs = mapping(bucket, "runs")
+        groups.append(
+            {
+                "key": scope,
+                "label": {
+                    language: CAUSAL_SCOPE_LABELS.get(scope, {}).get(language, scope)
+                    for language in LANGUAGES
+                },
+                "cases": int(bucket["cases"]),
+                "rates": {
+                    treatment: (
+                        int(correct[treatment]) / int(runs[treatment])
+                        if int(runs[treatment])
+                        else 0.0
+                    )
+                    for treatment in treatments
+                },
+                "counts": {
+                    treatment: {
+                        "correct": int(correct[treatment]),
+                        "runs": int(runs[treatment]),
+                    }
+                    for treatment in treatments
+                },
+            }
+        )
+    return {"treatments": treatments, "groups": groups}
 
 
 def _diagnosis_split(report: Mapping[str, object], field: str) -> dict[str, object]:

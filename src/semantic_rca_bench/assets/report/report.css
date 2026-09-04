@@ -540,3 +540,40 @@ footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--m
   .strip-scale span { grid-column: 1; }
   .strip-scale .scale-right { grid-row: auto; justify-self: start; }
 }
+
+/* --- headline bars: ratios you can see ----------------------------------- */
+
+.headline { display: grid; gap: 22px; margin-top: 20px; }
+.headline-row { display: grid; gap: 8px; }
+.headline-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+.headline-head h3 { font-size: 16px; }
+.headline-row > .caption { margin: 2px 0 0; }
+.headline-row p { margin: 0; }
+
+.bars { display: grid; gap: 7px; }
+.bar-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 168px;
+  align-items: center;
+  gap: 14px;
+}
+.bar-name { font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+.bar-row[data-best="true"] .bar-name { color: var(--ink); font-weight: 600; }
+.bar-track { height: 26px; border-radius: 5px; background: color-mix(in srgb, var(--rule) 55%, transparent); }
+.bar-fill { height: 26px; border-radius: 5px; }
+
+/* Three arm identities. None of them is a "good" or "bad" colour; the number
+ * beside the bar carries the direction. */
+.bar-fill[data-arm="split_pillars"] { background: #94a3b3; }
+.bar-fill[data-arm="raw"] { background: #1f5fa8; }
+.bar-fill[data-arm="semantic_graph"] { background: #6b4c9a; }
+
+.bar-value { display: flex; align-items: baseline; justify-content: flex-end; gap: 10px; }
+.bar-value strong { font-family: var(--font-mono); font-size: 14px; font-weight: 600; }
+.bar-ratio { font-family: var(--font-mono); font-size: 13px; color: var(--muted); min-width: 48px; text-align: right; }
+.bar-row[data-best="true"] .bar-ratio { color: var(--ink); }
+
+@media (max-width: 900px) {
+  .bar-row { grid-template-columns: 60px minmax(0, 1fr); }
+  .bar-value { grid-column: 2; justify-content: flex-start; }
+}

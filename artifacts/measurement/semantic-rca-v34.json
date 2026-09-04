@@ -2821,7 +2821,7 @@
   },
   "integrity": {
     "hash_scope": "all report fields except integrity",
-    "semantic_payload_sha256": "fe568031899a2b95fd4f757291358d5557ad9d7a9cdc813815a7d9334a87f3e9"
+    "semantic_payload_sha256": "8e8b3fbed2c82e981a298fb00183913546ee9901f6a3b1af67f20cb3f1654e1e"
   },
   "license": {
     "micro_source_terms": {
@@ -10182,7 +10182,7 @@
     }
   },
   "publication_status": "public measurement report",
-  "report_schema_version": 6,
+  "report_schema_version": 7,
   "report_type": "semantic-rca-measurement-report",
   "research_questions": [
     {
@@ -10513,5 +10513,33 @@
       "runs_with_successful_call": 112,
       "successful_calls": 230
     }
+  },
+  "usage_by_treatment": {
+    "by_treatment": {
+      "raw": {
+        "estimated_cost": 61.929391,
+        "output_tokens": 1348496,
+        "provider_visible_input_tokens": 99527877
+      },
+      "semantic_graph": {
+        "estimated_cost": 68.430571,
+        "output_tokens": 1331418,
+        "provider_visible_input_tokens": 99581584
+      },
+      "split_pillars": {
+        "estimated_cost": 148.919564,
+        "output_tokens": 1590255,
+        "provider_visible_input_tokens": 153559236
+      }
+    },
+    "priced_models": [
+      "claude-fable-5-1",
+      "deepseek-v4-pro",
+      "gpt-5.6-sol"
+    ],
+    "role": "descriptive; every executed run, including unsuccessful ones",
+    "unpriced_models": [
+      "glm-5.3"
+    ]
   }
 }
