@@ -14,24 +14,23 @@ prompt, runner, telemetry, and resource budget constant.
 
 Read the [interactive report](https://rca-bench.greptime.com), the
 [English report](REPORT.md), or the [Chinese report](REPORT.zh-CN.md).
-[CHANGELOG.md](CHANGELOG.md) records what each release measured, and
-[CONTRIBUTING.md](CONTRIBUTING.md) covers how to work on it.
 
-## Results in one paragraph
+## Results
 
-The interface bundle mattered more than the semantic layer. Over 112 runs per
-treatment the three-backend bundle produced 60 correct diagnoses against
-GreptimeDB's 80, cost 2.21x as much at the frozen `6.7179` CNY per USD rate
-checked 2026-09-03, and made the models read 1.54x the tokens;
-one endpoint in that family survived Holm correction, `claude-fable-5-1` reading
-fewer provider-visible input tokens under GreptimeDB in all 13 eligible cases
-(case median -446,252.5, Holm p 0.00195). The Semantic Graph compressed focused
-retrieval on every eligible micro case but moved no end-to-end endpoint: 0 of 8
-passed correction and the case medians point both ways, which is insufficient
-evidence rather than evidence of no effect. Graph's diagnosis totals also
-reverse between the OpenRCA2 service cases and the RCA100 infrastructure-node
-cases. See [REPORT.md](REPORT.md) for the complete results, the power limit, and
-what the cohort cannot support.
+Protocol v34 produced one confirmatory result. With `claude-fable-5-1`, the
+GreptimeDB all-in-one interface used fewer provider-visible input tokens than
+the Prometheus, Loki, and Tempo interface bundle in all 13 eligible cases. The
+case-median difference was `-446,252.5` tokens (Holm-adjusted p `0.001953125`).
+
+No endpoint in the `semantic_graph - raw` family passed Holm correction. The
+Semantic Graph reduced rows in every eligible Discovery result (`23/23`) and
+Graph-retrieval result (`8/8`), but the end-to-end case medians point in both
+directions.
+
+Across 112 runs per treatment, Split, Raw, and Graph produced 60, 80, and 77
+correct diagnoses. These totals are descriptive. The direction also changes
+between the OpenRCA2 service cases and the RCA-100 infrastructure-node cases.
+[REPORT.md](REPORT.md) has the complete results and power limits.
 
 ## What the benchmark measures
 
@@ -43,26 +42,19 @@ The suite has three layers:
 | Graph retrieval | Find and verify the relevant service dependency | Isolate topology navigation |
 | End-to-end RCA | Locate the fault, diagnose the mechanism, and cite evidence | Measure the complete investigation |
 
-The micro-benchmarks compare two treatments:
-
-- `raw`: production SQL over the ingested metric, log, and trace tables.
-- `semantic_graph`: the same SQL surface plus table semantics, entities,
-  relationships, coverage, and Semantic Graph query tools.
-
-The end-to-end benchmark adds a third treatment:
-
-- `split_pillars`: Prometheus, Loki, and Tempo through their native query APIs.
+| Treatment | Agent interface |
+| --- | --- |
+| `split_pillars` | Native Prometheus, Loki, and Tempo query APIs |
+| `raw` | Read-only SQL and PromQL over GreptimeDB telemetry tables |
+| `semantic_graph` | The Raw interface plus table semantics, entities, relationships, coverage, and Semantic Graph query tools |
 
 The shared system prompt does not contain case-specific query recipes or hidden
 answers. Ground truth, injection metadata, publisher causal graphs, and
 label-bearing case names are excluded from the agent surface.
 
-The measurement contains 464 completed agent cells:
-
-- 128 fixed-cohort micro-benchmark cells;
-- 336 end-to-end cells over ten OpenRCA2 and four RCA100 incidents;
-- four model configurations;
-- two repetitions per model, case, and treatment.
+The measurement contains 128 fixed-cohort micro-benchmark cells and 336
+end-to-end cells over ten OpenRCA2 and four RCA-100 incidents. It covers four
+model configurations and two repetitions per model, case, and treatment.
 
 Each paired comparison has its own two efficiency metrics, specified and frozen
 in the protocol before any run:
@@ -75,79 +67,20 @@ in the protocol before any run:
 Rows returned does not apply across the split stack and reports N/A there. Cache
 use, output, reasoning, and cost are reported separately and are descriptive.
 
-### Published protocol
+## Reproduce the published report
 
-The published report uses benchmark protocol v34. Its third end-to-end
-treatment, `split_pillars`, replays the same case into Prometheus, Loki, and
-Tempo and gives the agent those stores' native query APIs. The schedule is 14
-cases × 4 models × 3 treatments × 2 repetitions = 336 end-to-end cells.
-
-v34 answers two paired questions instead of one, each corrected on its own:
-`semantic_graph - raw` for the semantic layer, and `raw - split_pillars` for the
-all-in-one interface against a native interface bundle. Model ranking is
-reported descriptively. `rows_returned` does not apply to `split_pillars` and is
-reported as N/A there; the cross-stack endpoints are provider-visible input
-tokens and complete-run tool calls.
-
-See [SCORING.md](SCORING.md) for the scoring contract,
-[DATASETS.md](DATASETS.md) for provenance and selection, [DISCOVERY.md](DISCOVERY.md)
-for schema discovery, and [GRAPH.md](GRAPH.md) for Graph retrieval and exact-edge
-validation.
-
-## Repository layout
-
-```text
-artifacts/measurement/  Sanitized public measurement artifacts
-fixtures/measurement/   Fixed micro-benchmark case fixtures and selection manifests
-fixtures/reference/     Active source-selection and formal protocol fixtures
-src/agent_rca_bench/    Adapters, runners, scorers, exporters, and report code
-tests/                  Protocol and regression tests
-REPORT.md               Canonical English report
-REPORT.zh-CN.md         Maintained Chinese translation
-```
-
-Raw telemetry, source archives, provider responses, reasoning payloads,
-credentials, and private trajectories are not part of the repository.
-
-## Install
-
-Use Python 3.11 and [`uv`](https://docs.astral.sh/uv/).
+Report reproduction uses Python 3.11 and [`uv`](https://docs.astral.sh/uv/). It
+does not call a model provider, download source telemetry, or require Docker or
+a GreptimeDB build.
 
 ```bash
 git clone https://github.com/GreptimeTeam/agent-rca-bench.git
 cd agent-rca-bench
 uv sync --extra dev --frozen
-uv run pytest -q
 ```
 
-That is everything needed to rescore the published artifacts and regenerate the
-report. It calls no model provider, and needs neither Docker nor a GreptimeDB
-build.
-
-Running the measurement yourself needs both: a GreptimeDB checkout at the
-protocol revision built in release mode, and Docker for the digest-pinned
-Prometheus, Loki, and Tempo images that back the `split_pillars` treatment. Each
-case starts its own four stores on loopback ports and removes them afterwards.
-Check that environment with:
-
-```bash
-uv run agent-rca doctor --greptimedb-repo /path/to/greptimedb
-```
-
-Build the wheel and source distribution with:
-
-```bash
-uv build
-```
-
-## Reproduce the published report
-
-Report reproduction does not call a model provider or require source telemetry.
-It validates both sanitized source artifacts, recomputes the combined report,
-and renders a self-contained HTML file.
-
-Run the command from the v34 release tree. The command rejects artifacts whose
-protocol or source bindings differ from the checked-out fixtures.
+From the v34 release tree, validate the sanitized artifacts, recompute the
+combined report, and render the self-contained HTML report:
 
 ```bash
 output_dir=$(mktemp -d)
@@ -166,7 +99,8 @@ cmp artifacts/measurement/agent-rca-v34.html \
   "$output_dir/agent-rca.html"
 ```
 
-Run the complete provider-free repository validation with:
+Both `cmp` commands exit with status 0 when the release reproduces byte for
+byte. Run the complete provider-free validation before publishing a change:
 
 ```bash
 uv run pytest -q
@@ -177,99 +111,26 @@ uv build
 shasum -a 256 -c artifacts/measurement/agent-rca-v34-SHA256SUMS
 ```
 
-## Reproduce source and Semantic Graph audits
+Source replay, Semantic Graph preflight, credential setup, paid model execution,
+and the public artifact contract are documented in [RUNNING.md](RUNNING.md).
 
-The end-to-end source audit reads the pinned source artifacts and replays cases
-in batches of up to four. Each case has an exclusive release-mode GreptimeDB
-process and split stack. At most two environments are prepared concurrently;
-all environments in a batch must pass their provider-free gates before that
-batch is released. The command stops only the processes and containers it
-started and retains the run directories for inspection.
+## Documentation
 
-```bash
-uv run agent-rca transfer-selection-audit \
-  --output .reports/openrca2-transfer-selection-audit.json
+| Document | Scope |
+| --- | --- |
+| [REPORT.md](REPORT.md) | Canonical measurement report |
+| [REPORT.zh-CN.md](REPORT.zh-CN.md) | Maintained Chinese report |
+| [RUNNING.md](RUNNING.md) | Source audits and model execution |
+| [DATASETS.md](DATASETS.md) | Dataset provenance, selection, attribution, and license statements |
+| [SCORING.md](SCORING.md) | Diagnosis, evidence, and eligibility rules |
+| [DISCOVERY.md](DISCOVERY.md) | Schema-discovery micro-benchmark |
+| [GRAPH.md](GRAPH.md) | Dependency-retrieval micro-benchmark |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development and review workflow |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [CITATION.cff](CITATION.cff) | Citation metadata for the benchmark and source datasets |
 
-uv run agent-rca transfer-preflight \
-  --greptimedb-repo /path/to/greptimedb \
-  --run-root .instances/openrca2-transfer-preflight \
-  --output .reports/openrca2-transfer-preflight.json
-```
-
-The preflight fails on source or fixture drift, protocol rejection, identity or
-span-ID remapping, stored row-count drift, reference causal-graph ingestion, a
-non-empty Semantic Graph instance, or any raw-span/Graph edge mismatch. It also
-recomputes each frozen mechanism predicate from stored telemetry.
-
-The audit does not redistribute upstream telemetry. Review
-[DATASETS.md](DATASETS.md) before downloading a dataset.
-
-## Run model measurements
-
-The `*-run` commands call paid APIs. Review the active fixtures, provider-free
-audits, expected schedule, and pricing before passing `--confirm-paid-api`.
-
-The runner reads credentials from environment variables or macOS Keychain:
-
-| Provider | Environment variable | Keychain service |
-| --- | --- | --- |
-| OpenAI | `OPENAI_API_KEY` | `agent-rca-bench-openai` |
-| Anthropic | `ANTHROPIC_API_KEY` | `agent-rca-bench-anthropic` |
-| DeepSeek | `DEEPSEEK_API_KEY` | `agent-rca-bench-deepseek` |
-| BigModel | `BIGMODEL_API_KEY` | `agent-rca-bench-bigmodel` |
-| DashScope | `DASHSCOPE_API_KEY` | `agent-rca-bench-dashscope` |
-
-DashScope also requires a caller-owned Beijing workspace Responses endpoint in
-`DASHSCOPE_BASE_URL` or the `agent-rca-bench-dashscope-base-url` Keychain
-service. Tenant hostnames remain local runtime configuration.
-
-Add a key without placing it in shell history:
-
-```bash
-security add-generic-password -U -a "$USER" \
-  -s agent-rca-bench-openai -w
-```
-
-Run pending end-to-end cells with the concurrency limits frozen in the transfer
-protocol:
-
-```bash
-uv run agent-rca transfer-run \
-  --report .reports/openrca2-transfer-measurement.json \
-  --run-root .instances/openrca2-transfer-measurement \
-  --confirm-paid-api
-```
-
-Each active case receives an exclusive GreptimeDB process, split stack, port
-set, and data directory under `--run-root`. Cases run in batches of up to four,
-with at most two environments prepared concurrently. Every environment in a
-batch is ready before any model call, so ingestion does not overlap measured
-queries. The runner limits each provider to two active cells, journals a cell
-before calling its provider, and records the result before merging it into the
-report. A run-root lock rejects a second runner invocation. If an invocation
-stops with an active cell and no recorded result, the next invocation refuses
-to retry that cell automatically.
-
-Run `uv run agent-rca --help` for the micro-benchmark, export, and
-render commands. A runner failure is persisted as a failed cell. It does not
-silently fall back to another provider or abort the complete schedule.
-
-## Artifact contract
-
-The public micro and transfer artifacts retain the information required to
-recompute scoring and aggregate results:
-
-- sanitized tool inputs and result projections;
-- execution status, row counts, truncation, and result hashes;
-- citation resolution and deterministic claim verdicts;
-- protocol, selection, source, and GreptimeDB bindings;
-- model usage and frozen pricing fields;
-- case-level paired effects and integrity hashes.
-
-They exclude provider payloads, reasoning text, free-form diagnosis
-explanations, raw telemetry rows, credentials, endpoints, query IDs, and local
-paths. Re-running a provider is a replication; deterministic rescoring from the
-published artifacts is the report-reproduction contract.
+Raw telemetry, source archives, provider responses, reasoning payloads,
+credentials, and private trajectories are not part of the repository.
 
 ## License and data terms
 
@@ -286,12 +147,5 @@ downloaded artifact is not the archival release described by the paper.
 [DATASETS.md](DATASETS.md) records the source scope, transformations,
 attribution, provenance, and license statements.
 
-## Project governance
-
-Greptime sponsors and maintains this benchmark. The report states that interest
-directly. The protocol is designed to report negative results and applicability
-limits, not to guarantee a Semantic Graph improvement.
-
-Changes to the prompt, treatment surface, scorer, selection, runner, or primary
-metrics require a new protocol identifier. Historical internal protocols are
-available from Git history rather than compatibility code in `main`.
+Greptime sponsors and maintains this benchmark. The report discloses that
+relationship.

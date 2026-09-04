@@ -242,6 +242,7 @@ the fallback cannot state a different result from the page.
 ## Repository map
 
 - `README.md`: project entry point and reproduction workflow.
+- `RUNNING.md`: source replay, preflight, credentials, and model execution.
 - `REPORT.md`, `REPORT.zh-CN.md`: English and Chinese measurement reports.
 - `SCORING.md`: end-to-end scoring and evidence-verifier specification.
 - `DATASETS.md`: dataset provenance, selection, fidelity, and license audit.
