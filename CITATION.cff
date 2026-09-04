@@ -11,7 +11,7 @@ authors:
     affiliation: Greptime
     orcid: null
 repository-code: https://github.com/GreptimeTeam/agent-rca-bench
-url: https://semantic-rca.greptime.com
+url: https://rca-bench.greptime.com
 abstract: >-
   A paired benchmark measuring how the observability interface behind a large
   language model agent changes root cause analysis. Protocol v34 compares three

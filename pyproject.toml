@@ -55,7 +55,7 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/GreptimeTeam/agent-rca-bench"
 Documentation = "https://github.com/GreptimeTeam/agent-rca-bench#readme"
-Report = "https://semantic-rca.greptime.com"
+Report = "https://rca-bench.greptime.com"
 Repository = "https://github.com/GreptimeTeam/agent-rca-bench"
 Issues = "https://github.com/GreptimeTeam/agent-rca-bench/issues"
 Changelog = "https://github.com/GreptimeTeam/agent-rca-bench/blob/main/CHANGELOG.md"

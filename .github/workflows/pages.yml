@@ -34,6 +34,9 @@ jobs:
           mkdir _site
           cp artifacts/measurement/agent-rca-v34.html _site/index.html
           cp artifacts/measurement/agent-rca-v34.json _site/
+          # Keeps the custom domain with the deployment rather than only in the
+          # repository settings, where a redeploy can silently drop it.
+          echo rca-bench.greptime.com > _site/CNAME
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

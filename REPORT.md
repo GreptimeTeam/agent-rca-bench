@@ -1,6 +1,6 @@
 # Agent RCA Bench — 2026 report
 
-[Interactive report](https://semantic-rca.greptime.com) · [中文](REPORT.zh-CN.md)
+[Interactive report](https://rca-bench.greptime.com) · [中文](REPORT.zh-CN.md)
 
 ## Conclusion
 

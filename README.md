@@ -1,7 +1,7 @@
 # Agent RCA Bench
 
 [![CI](https://github.com/GreptimeTeam/agent-rca-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/GreptimeTeam/agent-rca-bench/actions/workflows/ci.yml)
-[![Report](https://img.shields.io/badge/report-2026-0c7259)](https://semantic-rca.greptime.com)
+[![Report](https://img.shields.io/badge/report-2026-0c7259)](https://rca-bench.greptime.com)
 [![Python](https://img.shields.io/badge/python-3.11-3776ab)](https://www.python.org/downloads/release/python-3110/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
@@ -12,7 +12,7 @@ surface, then compares raw GreptimeDB telemetry with the complete GreptimeDB
 Semantic Graph interface. Each paired comparison holds the model, incident,
 prompt, runner, telemetry, and resource budget constant.
 
-Read the [interactive report](https://semantic-rca.greptime.com), the
+Read the [interactive report](https://rca-bench.greptime.com), the
 [English report](REPORT.md), or the [Chinese report](REPORT.zh-CN.md).
 [CHANGELOG.md](CHANGELOG.md) records what each release measured, and
 [CONTRIBUTING.md](CONTRIBUTING.md) covers how to work on it.
@@ -96,13 +96,13 @@ validation.
 ## Repository layout
 
 ```text
-artifacts/measurement/   Sanitized public measurement artifacts
-fixtures/measurement/    Fixed micro-benchmark case fixtures and selection manifests
-fixtures/reference/      Active source-selection and formal protocol fixtures
-src/agent_rca_bench/  Adapters, runners, scorers, exporters, and report code
-tests/                   Protocol and regression tests
-REPORT.md                Canonical English report
-REPORT.zh-CN.md          Maintained Chinese translation
+artifacts/measurement/  Sanitized public measurement artifacts
+fixtures/measurement/   Fixed micro-benchmark case fixtures and selection manifests
+fixtures/reference/     Active source-selection and formal protocol fixtures
+src/agent_rca_bench/    Adapters, runners, scorers, exporters, and report code
+tests/                  Protocol and regression tests
+REPORT.md               Canonical English report
+REPORT.zh-CN.md         Maintained Chinese translation
 ```
 
 Raw telemetry, source archives, provider responses, reasoning payloads,
