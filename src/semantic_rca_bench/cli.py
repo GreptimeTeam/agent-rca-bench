@@ -82,9 +82,9 @@ from semantic_rca_bench.discovery import (
 from semantic_rca_bench.evaluation import evaluate
 from semantic_rca_bench.formal_report import (
     build_formal_measurement_report_from_files,
-    render_formal_measurement_report,
     validate_formal_measurement_report,
 )
+from semantic_rca_bench.formal_report_view import render_formal_measurement_report
 from semantic_rca_bench.formal_suite import (
     MicroEnvironmentConfig,
     build_micro_preflight_report,

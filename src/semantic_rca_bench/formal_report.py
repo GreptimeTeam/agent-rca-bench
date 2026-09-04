@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import html
 import json
+import re
 from collections import Counter, defaultdict
 from collections.abc import Mapping
-from importlib.resources import files
 from pathlib import Path
+
+import sqlglot
+from sqlglot import exp as sqlglot_exp
 
 from semantic_rca_bench.formal_suite import canonical_sha256
 from semantic_rca_bench.formal_suite_protocol import (
@@ -17,7 +19,7 @@ from semantic_rca_bench.formal_suite_release import validate_micro_measurement_a
 from semantic_rca_bench.report import MODEL_PRICING
 from semantic_rca_bench.transfer_release import validate_measurement_artifact
 
-FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION = 5
+FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION = 6
 
 # Display names, upstream links, and the license statement each source declares.
 # The published prose enumerates only the datasets the bound cohort actually uses.
@@ -115,8 +117,11 @@ def build_formal_measurement_report(
     # The per-model resource view is the semantic-layer family, taken from the
     # family map rather than computed a second time.
     transfer_resource_effects = transfer_families["semantic_layer"]
+    cohort = load_transfer_cohort(suite, suite_protocol_path)
     case_context = {
-        str(source["opaque_case_id"]): _case_context(source)
+        str(source["opaque_case_id"]): _case_context(
+            source, cohort.adapter_for(str(source["opaque_case_id"]))
+        )
         for source in _mapping_list(transfer, "sources")
     }
     model_reports = {
@@ -130,7 +135,7 @@ def build_formal_measurement_report(
         )
         for name in names
     }
-    cohort_provenance = _cohort_provenance(suite, load_transfer_cohort(suite, suite_protocol_path))
+    cohort_provenance = _cohort_provenance(suite, cohort)
     payload = {
         "report_schema_version": FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION,
         "report_type": "semantic-rca-measurement-report",
@@ -190,6 +195,11 @@ def build_formal_measurement_report(
         "model_order": names,
         "model_reports": model_reports,
         "case_outcomes": _case_outcomes(transfer_runs, case_context),
+        "diagnosis_by_dataset": _diagnosis_by(transfer_runs, case_context, "dataset"),
+        "diagnosis_by_causal_scope": _diagnosis_by(transfer_runs, case_context, "causal_scope"),
+        "tool_use_audit": _tool_use_audit(transfer_runs),
+        "claim_rejection_audit": _claim_rejection_audit(transfer_runs),
+        "citation_submission": _citation_submission(transfer_runs, names),
         "capability_scores": _capability_scores(transfer_runs, names),
         "confirmatory_family_resource_effects": transfer_families,
         "semantic_layer_findings": _semantic_findings(model_reports),
@@ -270,23 +280,6 @@ def validate_formal_measurement_report(report: dict[str, object]) -> None:
     payload = {key: value for key, value in report.items() if key != "integrity"}
     if _mapping(report, "integrity").get("semantic_payload_sha256") != canonical_sha256(payload):
         raise ValueError("formal measurement report semantic payload hash drifted")
-
-
-def render_formal_measurement_report(report: dict[str, object], output: Path) -> None:
-    validate_formal_measurement_report(report)
-    template = (
-        files("semantic_rca_bench")
-        .joinpath("assets/formal-measurement-report.html")
-        .read_text(encoding="utf-8")
-    )
-    serialized = json.dumps(report, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    document = (
-        template.replace("__REPORT_TITLE__", "Semantic RCA Bench — 2026 report")
-        .replace("__REPORT_BODY__", _report_body(report))
-        .replace("__REPORT_DATA__", serialized)
-    )
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(document, encoding="utf-8")
 
 
 def _execution(suite, protocol, micro, transfer, micro_runs, transfer_runs):
@@ -413,13 +406,14 @@ def _case_target(source: Mapping[str, object]) -> str:
     raise ValueError("transfer source has no publishable causal target")
 
 
-def _case_context(source: Mapping[str, object]) -> dict[str, object]:
+def _case_context(source: Mapping[str, object], dataset: str) -> dict[str, object]:
     # None when the source offers no signal the deterministic oracle can express.
     raw_oracle = source.get("oracle")
     oracle = _mapping(source, "oracle") if raw_oracle is not None else None
     return {
         "case_id": source["opaque_case_id"],
         "source_case": source["source_case"],
+        "dataset": dataset,
         "system": source["system"],
         "mechanism_code": source["mechanism_code"],
         "causal_scope": source["causal_scope"],
@@ -1006,6 +1000,244 @@ def _case_outcomes(
     return outcomes
 
 
+def _diagnosis_by(
+    runs: list[Mapping[str, object]],
+    case_context: Mapping[str, Mapping[str, object]],
+    field: str,
+) -> dict[str, object]:
+    """Correct diagnoses per treatment, grouped by one case attribute.
+
+    Reported for the source dataset and for the causal scope. The cohort totals
+    hide a direction reversal that both splits expose, and the two splits are
+    published together because they are collinear here: every infrastructure-node
+    case comes from one source, so neither split can attribute the reversal on its
+    own.
+    """
+    treatments = _treatments_present(runs)
+    group_of = {case_id: str(context[field]) for case_id, context in case_context.items()}
+    cases: Counter[str] = Counter(group_of.values())
+    correct: dict[str, Counter[str]] = {group: Counter() for group in cases}
+    totals: dict[str, Counter[str]] = {group: Counter() for group in cases}
+    for item in runs:
+        group = group_of[str(item["case_id"])]
+        treatment = str(item["visibility"])
+        totals[group][treatment] += 1
+        if _mapping(_mapping(item, "run"), "evaluation").get("diagnosis_correct") is True:
+            correct[group][treatment] += 1
+    return {
+        group: {
+            "cases": cases[group],
+            "runs": {treatment: totals[group][treatment] for treatment in treatments},
+            "diagnosis_correct": {treatment: correct[group][treatment] for treatment in treatments},
+        }
+        for group in sorted(cases)
+    }
+
+
+# A tool call is one model decision, so the audit counts calls and the runs that
+# issued them. `\bJOIN\b` covers INNER, LEFT and comma-free ANSI joins alike.
+_SQL_JOIN = re.compile(r"\bJOIN\b", re.IGNORECASE)
+_PROMQL_EVALUATING_OPERATIONS = ("query", "query_range")
+
+# The protocol fixes these two table names: the direct-log oracle reads `logs`
+# and call-path delay evidence reads `traces`. Every other table in the replayed
+# schema carries metrics. A join is cross-signal when its base tables span more
+# than one of those kinds, which is the thing a single-store interface makes
+# possible and the three-backend bundle cannot express at all.
+_LOG_TABLE = "logs"
+_TRACE_TABLE = "traces"
+
+
+def _signal_kinds(query: str) -> set[str]:
+    """Signal kinds among a statement's base tables, ignoring CTEs and subqueries.
+
+    Counting alias names as tables inflates this badly: a subquery alias is not a
+    second signal. Only names sqlglot resolves to real tables are considered.
+    """
+    try:
+        statement = sqlglot.parse_one(query)
+    except Exception:  # noqa: BLE001 - an unparseable agent query proves nothing here
+        return set()
+    if statement is None:
+        return set()
+    defined = {cte.alias_or_name.lower() for cte in statement.find_all(sqlglot_exp.CTE)}
+    tables = {table.name.lower() for table in statement.find_all(sqlglot_exp.Table)} - defined
+    return {
+        "log" if name == _LOG_TABLE else "trace" if name == _TRACE_TABLE else "metric"
+        for name in tables
+    }
+
+
+def _tool_use_audit(runs: list[Mapping[str, object]]) -> dict[str, object]:
+    """Which of the offered interfaces the frozen agents actually exercised.
+
+    Descriptive only. It records what the trajectories did, not whether a run was
+    correct, and it never reclassifies a query by guessing what its tables hold.
+    """
+    treatments = _treatments_present(runs)
+    calls: dict[str, Counter[str]] = {treatment: Counter() for treatment in treatments}
+    successful_calls: dict[str, Counter[str]] = {treatment: Counter() for treatment in treatments}
+    join_calls: Counter[str] = Counter()
+    join_runs: dict[str, set[tuple[str, str, int]]] = defaultdict(set)
+    cross_signal_calls: Counter[str] = Counter()
+    cross_signal_runs: dict[str, set[tuple[str, str, int]]] = defaultdict(set)
+    promql_runs: dict[str, set[tuple[str, str, int]]] = defaultdict(set)
+    semantic_graph_runs: set[tuple[str, str, int]] = set()
+    semantic_graph_calls = 0
+    run_counts: Counter[str] = Counter()
+
+    for item in runs:
+        treatment = str(item["visibility"])
+        key = (str(item["model"]), str(item["case_id"]), int(item["repetition"]))
+        run_counts[treatment] += 1
+        for call in _mapping_list(_mapping(item, "run"), "tool_calls"):
+            name = str(call.get("tool_name"))
+            failed = call.get("error") is True
+            calls[treatment][name] += 1
+            if failed:
+                continue
+            successful_calls[treatment][name] += 1
+            arguments = call.get("input")
+            arguments = arguments if isinstance(arguments, Mapping) else {}
+            query = str(arguments.get("query", ""))
+            if name == "execute_sql" and _SQL_JOIN.search(query):
+                join_calls[treatment] += 1
+                join_runs[treatment].add(key)
+                if len(_signal_kinds(query)) > 1:
+                    cross_signal_calls[treatment] += 1
+                    cross_signal_runs[treatment].add(key)
+            if (
+                name == "query_metrics"
+                and arguments.get("operation") in _PROMQL_EVALUATING_OPERATIONS
+            ):
+                promql_runs[treatment].add(key)
+            if name == "query_semantic_graph":
+                semantic_graph_runs.add(key)
+                semantic_graph_calls += 1
+
+    return {
+        "role": (
+            "descriptive audit of which offered interfaces the frozen agents used; "
+            "not an endpoint and not part of eligibility"
+        ),
+        "by_treatment": {
+            treatment: {
+                "runs": run_counts[treatment],
+                "tool_calls": dict(sorted(calls[treatment].items())),
+                "successful_tool_calls": dict(sorted(successful_calls[treatment].items())),
+                "successful_sql_join_calls": join_calls[treatment],
+                "runs_with_successful_sql_join": len(join_runs[treatment]),
+                "successful_cross_signal_join_calls": cross_signal_calls[treatment],
+                "runs_with_successful_cross_signal_join": len(cross_signal_runs[treatment]),
+                "runs_with_successful_promql_evaluation": len(promql_runs[treatment]),
+            }
+            for treatment in treatments
+        },
+        "semantic_graph_tool": {
+            "runs": run_counts.get("semantic_graph", 0),
+            "runs_with_successful_call": len(semantic_graph_runs),
+            "successful_calls": semantic_graph_calls,
+        },
+        "promql_evaluation_contract": (
+            "query_metrics operations "
+            f"{' or '.join(_PROMQL_EVALUATING_OPERATIONS)} evaluate PromQL; metadata, "
+            "series, labels and label_values operations do not and are excluded"
+        ),
+    }
+
+
+def _citation_submission(
+    runs: list[Mapping[str, object]],
+    models: list[str],
+) -> dict[str, object]:
+    """How often each model submitted no citation at all.
+
+    Eligibility needs at least one execution-valid citation, so a model that
+    ends a run without citing anything drops out of the paired sample even when
+    its diagnosis was right. Published per model because a small eligible sample
+    then reflects that habit rather than chance.
+    """
+    submitted: Counter[str] = Counter()
+    empty: Counter[str] = Counter()
+    empty_but_correct: Counter[str] = Counter()
+    for item in runs:
+        model = str(item["model"])
+        evaluation = _mapping(_mapping(item, "run"), "evaluation")
+        submitted[model] += 1
+        if int(evaluation.get("cited_evidence_count") or 0) == 0:
+            empty[model] += 1
+            if evaluation.get("diagnosis_correct") is True:
+                empty_but_correct[model] += 1
+    return {
+        "role": "descriptive; explains eligible-sample size, not model accuracy",
+        "by_model": {
+            model: {
+                "runs": submitted[model],
+                "runs_without_citation": empty[model],
+                "correct_diagnoses_lost_to_missing_citation": empty_but_correct[model],
+            }
+            for model in models
+        },
+    }
+
+
+def _claim_rejection_audit(runs: list[Mapping[str, object]]) -> dict[str, object]:
+    """Rejection codes split by whether the citation claimed the mechanism.
+
+    The verifier runs its mechanism check over every citation, including ones
+    submitted as exclusion or propagated-impact evidence that never claimed to
+    prove the mechanism. Those produce codes too. Counting both together makes a
+    run look like it failed far more checks than it attempted, so the two are
+    reported apart: `claiming` is the count that describes a model's attempt,
+    `not_claiming` is the count that only describes verifier coverage.
+    """
+    claiming: Counter[str] = Counter()
+    not_claiming: Counter[str] = Counter()
+    by_treatment: dict[str, Counter[str]] = defaultdict(Counter)
+    for item in runs:
+        treatment = str(item["visibility"])
+        # A run may carry no citations at all; that is an absence of codes.
+        citations = _mapping(item, "run").get("citations")
+        for citation in citations if isinstance(citations, list) else ():
+            if not isinstance(citation, Mapping):
+                continue
+            claim_types = citation.get("claim_types")
+            claims_mechanism = isinstance(claim_types, list) and "fault_mechanism" in claim_types
+            codes: set[str] = set()
+            verdicts = citation.get("mechanism_verdicts")
+            for verdict in verdicts if isinstance(verdicts, list) else ():
+                if not isinstance(verdict, Mapping):
+                    continue
+                for key in ("anomaly_rejection_codes", "baseline_rejection_codes"):
+                    value = verdict.get(key)
+                    if isinstance(value, list):
+                        codes.update(str(code) for code in value)
+            for code in codes:
+                if claims_mechanism:
+                    claiming[code] += 1
+                    by_treatment[treatment][code] += 1
+                else:
+                    not_claiming[code] += 1
+    return {
+        "role": (
+            "descriptive; counts each citation once per distinct code. Only "
+            "`claiming` describes an attempt to prove the mechanism"
+        ),
+        "counting_unit": "citation",
+        "by_code": {
+            code: {
+                "claiming": claiming[code],
+                "not_claiming": not_claiming[code],
+            }
+            for code in sorted(set(claiming) | set(not_claiming))
+        },
+        "claiming_by_treatment": {
+            treatment: dict(sorted(codes.items()))
+            for treatment, codes in sorted(by_treatment.items())
+        },
+    }
+
+
 def _public_reported_tokens(run: Mapping[str, object]) -> int:
     usage = _mapping(run, "usage")
     return int(usage.get("provider_visible_input_tokens", 0) or 0) + int(
@@ -1163,687 +1395,6 @@ def _audit(micro, transfer):
     }
 
 
-def _report_body(report):
-    return f"""<div class="language-switch" role="group" aria-label="Report language">
-<a href="#en" data-language-button="en">English</a>
-<a href="#zh" data-language-button="zh">中文</a></div>
-<div id="en" data-report-language="en">{_localized_report_body(report, "en")}</div>
-<div id="zh" data-report-language="zh" hidden>{_localized_report_body(report, "zh")}</div>"""
-
-
-def _localized_report_body(report, language):
-    execution = _mapping(report, "execution")
-    scope = _mapping(report, "scope")
-    cards = "".join(
-        _model_card(model, _mapping(_mapping(report, "model_reports"), model), language)
-        for model in report["model_order"]
-    )
-    audit = _mapping(report, "audit")
-    model_count = len(report["model_order"])
-    transfer_cases = int(execution["transfer_cases"])
-    repetitions = int(execution["repetitions_per_model_case"])
-    transfer_runs_per_treatment = transfer_cases * repetitions
-    transfer_runs_per_model = transfer_runs_per_treatment * len(execution["treatments"])
-    case_model_pairs = transfer_cases * model_count
-    mechanism_counts = _mechanism_cohort(_mapping_list(report, "case_catalog"))
-    report_json = f"semantic-rca-v{scope['benchmark_protocol_version']}.json"
-    attribution_text, attribution_terms, attribution_links = _attribution(report, language)
-    mechanism_cells = sum(
-        len(
-            _mapping_list(
-                _mapping(_mapping(_mapping(report, "model_reports"), model), "transfer"),
-                "mechanism_effects",
-            )
-        )
-        for model in report["model_order"]
-    )
-    if language == "zh":
-        eyebrow = "GreptimeDB Semantic Graph · 配对 Agent Benchmark"
-        lede = "LLM agent 通过 Split、Raw 或完整 Semantic Graph 接口调查真实故障的开放评测。"
-        actions = (
-            f'<a href="{report_json}" download>下载报告 JSON</a>'
-            '<a href="https://github.com/GreptimeTeam/semantic-rca-bench#reproduce-the-published-report">复现报告</a>'
-            '<a href="https://github.com/GreptimeTeam/semantic-rca-bench">查看源码</a>'
-        )
-        labels = {
-            "cells": "已完成 runs",
-            "models": "模型",
-            "cases": "故障场景",
-            "result": "主要结论",
-        }
-        overview = "这是什么"
-        overview_text = (
-            f"同一个 LLM agent、同一个故障分别在 {len(execution['treatments'])} 种接口下运行："
-            "Split 只提供 Prometheus、Loki、Tempo 各自的原生查询 API；"
-            "Raw 提供 GreptimeDB 的遥测表和只读 SQL；"
-            "Graph 在相同数据上再加表语义、实体、关系和查询工具。"
-            "评测关注诊断正确时，一体化接口和语义层各自能否减少调查所需的检索和工具调用。"
-        )
-        reproducibility_text = (
-            f"仓库公开全部 {execution['completed_cells']} 次运行的脱敏记录，"
-            "包括工具输入、SQL、结果投影、评分事实和哈希。"
-            "对应 tag 的代码无需调用模型即可重新生成所有聚合结果和本页面。"
-        )
-        glossary = (
-            ("Run", "一个模型 × 一个故障 × 一个 treatment × 一次重复。"),
-            ("Raw / Graph", "Raw 只含遥测与 SQL；Graph 额外包含完整 Semantic Graph 能力。"),
-            ("合格 case", "参与比较的两个 treatment 均诊断正确、引用有效且执行可靠的配对 case。"),
-            ("Case median", "同一模型与 case 的重复差值先取中位数。"),
-            ("Δ", "按表头计算 Graph − Raw 或 Raw − Split；负数表示左侧 treatment 使用的资源更少。"),
-            ("Holm p", "对同一检验族做多重比较校正后的 p 值。"),
-        )
-        attribution_title = "数据来源与致谢"
-        conclusion = "结论"
-        conclusion_text = _conclusion_text(report, language)
-        sections = {
-            "cards": "模型结果",
-            "scores": "模型能力评分",
-            "dimension_scores": "各维度独立排行",
-            "model_metrics": "端到端诊断与效率",
-            "score_note": (
-                f"描述性评分采用 {_capability_rubric_maximum()} 分制 rubric，按 "
-                f"{capability_rubric_label()} 分配定位、"
-                "根因与证据；页面中的 Overall 和各臂得分归一到 100。"
-                f"Overall 覆盖 {transfer_runs_per_model} 个端到端 run；"
-                f"{'、'.join(str(name) for name in execution['treatments'])} "
-                f"各 {transfer_runs_per_treatment} 个 run，因此等于各臂的等权平均。"
-                "失败 run 不从分母中删除。确定性证据审计只对 SQL 证据可判定，"
-                "因此不计入该评分，另行报告。"
-                "该评分不是预注册主要指标，也不参与显著性检验。"
-            ),
-            "catalog": "端到端 Case 特征",
-            "catalog_note": (
-                "Source oracle 在模型运行前冻结。Normal/abnormal samples "
-                "是 oracle 直接使用的观测数。"
-            ),
-            "case_outcomes": "逐 Case 汇总",
-            "case_outcome_note": (
-                f"诊断列汇总全部模型、每模型 {repetitions} 次重复。改善模型数不做跨模型推断。"
-            ),
-            "mechanisms": "故障机制决定收益方向",
-            "mechanism_note": (
-                "每个单元格是同一模型、同一机制内的 case-median Graph − Raw。负数表示 Graph 更省。"
-            ),
-            "cases": "逐 case 端到端结果",
-            "case_note": (
-                "先在每个模型和 case 内对合格重复取中位数。"
-                f"Raw/Graph 实际成本汇总 {repetitions} 次重复；任一 run 不可计价则显示 n/a。"
-                "机制和目标只在发布报告中显示，不提供给 agent。"
-            ),
-            "micro": "聚焦检索 Micro-benchmark",
-            "benchmark_map": "三个 Benchmark 分别测什么",
-            "tokens": "Token 使用明细",
-            "token_note": (
-                "Input 为 provider-visible input；reasoning 是 output 的子集，不能再次相加。"
-            ),
-            "execution": "执行与可靠性",
-            "eligibility": "端到端入选审计",
-            "evidence": "证据充分性审计",
-            "evidence_note": (
-                "Deterministic verifier 作为独立审计发布，不决定 headline eligibility。"
-            ),
-            "audit": "数据与协议审计",
-            "cost": "Provider 成本",
-            "cost_note": (
-                "实际成本包含所有执行过的 run，包括失败运行。只对同币种的完整估算求小计；"
-                "不转换币种，也不把不可估算模型计入小计。"
-            ),
-            "limits": "适用边界",
-        }
-        navigation = (
-            ("overview", "这是什么"),
-            ("summary", "结论"),
-            ("mechanisms", "故障机制"),
-            ("models", "模型"),
-            ("benchmarks", "Benchmark"),
-            ("cases", "Cases"),
-            ("resources", "成本与可靠性"),
-            ("method", "方法与边界"),
-        )
-        limit_items = (
-            (
-                f"Micro-benchmark 使用固定的 {execution['micro_cases']}-case reference cohort；"
-                f"端到端测试使用 source-ranked 的 {transfer_cases}-case cohort。"
-            ),
-            (
-                "模型内、case 级估计只适用于本次覆盖的系统和故障机制，不能外推为"
-                "所有可观测性工作负载的普遍效应。"
-            ),
-            "Null 表示无法估计，0 表示未观察到减少；统计不显著不等于两种 treatment 等效。",
-            "各 provider 的 reasoning 配置已冻结，但不代表相同的推理算力。",
-            "Deterministic evidence sufficiency 作为次级审计报告，不决定主要效率指标的入选集合。",
-            (
-                f"{capability_rubric_label()} 模型能力分是测量后定义的描述性指标，不是预注册终点；"
-                "其中证据分仍受 verifier 覆盖能力限制。"
-            ),
-            (
-                f"机制样本不均衡：{_mechanism_cohort_phrase(mechanism_counts, 'zh')}。"
-                "机制级结论只作描述。"
-            ),
-            "成本保留 provider 原始币种，不进行汇率换算。",
-        )
-    else:
-        eyebrow = "GreptimeDB Semantic Graph · paired agent benchmark"
-        lede = (
-            "An open evaluation of LLM agents investigating real incidents through Split, "
-            "Raw, or complete Semantic Graph interfaces."
-        )
-        actions = (
-            f'<a href="{report_json}" download>Download report JSON</a>'
-            '<a href="https://github.com/GreptimeTeam/semantic-rca-bench'
-            '#reproduce-the-published-report">Reproduce the report</a>'
-            '<a href="https://github.com/GreptimeTeam/semantic-rca-bench">View source</a>'
-        )
-        labels = {
-            "cells": "completed runs",
-            "models": "models",
-            "cases": "incidents",
-            "result": "primary result",
-        }
-        overview = "What this is"
-        overview_text = (
-            "The same LLM agent investigates the same incident under "
-            f"{len(execution['treatments'])} interfaces. Split exposes only the native query "
-            "APIs of Prometheus, Loki and Tempo. Raw exposes GreptimeDB telemetry tables and "
-            "read-only SQL. Graph adds table semantics, entities, relationships, and query "
-            "tools over the same data. The benchmark asks whether the all-in-one interface "
-            "and the semantic layer each reduce investigation work when the diagnosis is "
-            "correct."
-        )
-        reproducibility_text = (
-            f"The repository publishes sanitized records for all {execution['completed_cells']} "
-            "runs, including tool inputs, SQL, result projections, scoring facts, and hashes. "
-            "The tagged code regenerates every aggregate and this page without calling a model "
-            "provider."
-        )
-        glossary = (
-            ("Run", "One model × incident × treatment × repetition."),
-            ("Raw / Graph", "Raw provides telemetry and SQL; Graph adds the full Semantic Graph."),
-            (
-                "Eligible case",
-                "A paired case where both compared treatments are correct, cited, and reliable.",
-            ),
-            ("Case median", "The median paired-run difference within one model and case."),
-            (
-                "Δ",
-                "Graph − Raw or Raw − Split, as labeled; a negative value favors the "
-                "left-hand treatment.",
-            ),
-            ("Holm p", "A p value adjusted for multiple comparisons in the same test family."),
-        )
-        attribution_title = "Datasets and acknowledgements"
-        conclusion = "Conclusion"
-        conclusion_text = _conclusion_text(report, language)
-        sections = {
-            "cards": "Model results",
-            "scores": "Model capability score",
-            "dimension_scores": "Independent rankings by dimension",
-            "model_metrics": "End-to-end diagnosis and efficiency",
-            "score_note": (
-                f"The descriptive score uses a {_capability_rubric_maximum()}-point rubric split "
-                f"{capability_rubric_label()} across location, root cause, and evidence. "
-                "The page normalizes Overall and each treatment score to 100. Overall covers "
-                "every end-to-end run for the model; "
-                f"{', '.join(str(name) for name in execution['treatments'])} "
-                f"each contribute {transfer_runs_per_treatment} runs, so Overall is their "
-                "equally weighted mean and failed runs remain in the denominator. The "
-                "deterministic evidence audit is decidable only for SQL evidence, so it is "
-                "reported separately rather than scored. It is not a pre-registered "
-                "endpoint and is not used for hypothesis testing."
-            ),
-            "catalog": "End-to-end case characteristics",
-            "catalog_note": (
-                "The source oracle was frozen before model execution. Normal and anomalous "
-                "samples are the observations used by that oracle."
-            ),
-            "case_outcomes": "Case-level summary",
-            "case_outcome_note": (
-                f"Diagnosis counts aggregate every model with {repetitions} repetitions each. "
-                "Improved-model counts are descriptive and are not pooled inference."
-            ),
-            "mechanisms": "Fault mechanism changes the effect",
-            "mechanism_note": (
-                "Each cell is a case-median Graph − Raw effect within one model and mechanism. "
-                "Negative values favor Graph."
-            ),
-            "cases": "End-to-end case effects",
-            "case_note": (
-                "Eligible repetitions are reduced to a median within each model and case. "
-                f"Raw and Graph actual cost sum all {repetitions} repetitions and become n/a if "
-                "either run is not priceable. "
-                "Mechanisms and targets are published here but were hidden from the agent."
-            ),
-            "micro": "Focused retrieval micro-benchmarks",
-            "benchmark_map": "What each benchmark measures",
-            "tokens": "Token usage",
-            "token_note": (
-                "Input is provider-visible input. Reasoning is a subset of output and must "
-                "not be added again."
-            ),
-            "execution": "Execution and reliability",
-            "eligibility": "End-to-end eligibility audit",
-            "evidence": "Evidence-sufficiency audit",
-            "evidence_note": (
-                "The deterministic verifier is a separate audit and does not control "
-                "headline eligibility."
-            ),
-            "audit": "Data and protocol audit",
-            "cost": "Provider cost",
-            "cost_note": (
-                "Actual cost includes every executed run, including failures. Only complete "
-                "estimates in the same currency are subtotaled. Currencies are not converted, "
-                "and unavailable models are excluded from subtotals."
-            ),
-            "limits": "Limits",
-        }
-        navigation = (
-            ("overview", "What this is"),
-            ("summary", "Conclusion"),
-            ("mechanisms", "Mechanisms"),
-            ("models", "Models"),
-            ("benchmarks", "Benchmarks"),
-            ("cases", "Cases"),
-            ("resources", "Cost and reliability"),
-            ("method", "Methods and limits"),
-        )
-        limit_items = report["limitations"]
-    limits = "".join(f"<li>{_escape(item)}</li>" for item in limit_items)
-    glossary_html = "".join(
-        f"<dt>{_escape(term)}</dt><dd>{_escape(definition)}</dd>" for term, definition in glossary
-    )
-    diagnosis_raw = 0
-    diagnosis_graph = 0
-    for model in report["model_order"]:
-        diagnosis = _mapping(
-            _mapping(_mapping(_mapping(report, "model_reports"), model), "transfer"),
-            "diagnosis_correct",
-        )
-        diagnosis_raw += int(diagnosis.get("raw", 0))
-        diagnosis_graph += int(diagnosis.get("semantic_graph", 0))
-    runs_per_treatment = int(execution["models"]) * transfer_runs_per_treatment
-    diagnosis_total = (
-        f"{model_count} 个模型合计：Raw {diagnosis_raw}/{runs_per_treatment}，"
-        f"Graph {diagnosis_graph}/{runs_per_treatment}。"
-        if language == "zh"
-        else f"Across all {model_count} models: Raw {diagnosis_raw}/{runs_per_treatment}; "
-        f"Graph {diagnosis_graph}/{runs_per_treatment}."
-    )
-    primary_result = _primary_result(report, language)
-    capability_details = _details(
-        (
-            f"查看 {capability_rubric_label()} 评分细则和精确分数"
-            if language == "zh"
-            else f"View the {capability_rubric_label()} rubric and exact scores"
-        ),
-        f"{_capability_rubric_table(report, language)}{_capability_table(report, language)}",
-    )
-    benchmark_details = _details(
-        "展开 benchmark 定义和 micro 结果"
-        if language == "zh"
-        else "Open benchmark definitions and micro results",
-        f"<h3>{sections['benchmark_map']}</h3>{_benchmark_map(language)}"
-        f"<h3>{sections['micro']}</h3>{_micro_table(report, language)}",
-        element_id=f"{language}-benchmarks",
-    )
-    case_details = _details(
-        f"展开 {transfer_cases} 个 case 和 {case_model_pairs} 个 case-model 组合的完整明细"
-        if language == "zh"
-        else f"Open all {transfer_cases} cases and {case_model_pairs} case-model combinations",
-        f'<h3>{sections["catalog"]}</h3><p class="small">{sections["catalog_note"]}</p>'
-        f"{_case_catalog_table(report, language)}"
-        f"<h3>{sections['case_outcomes']}</h3>"
-        f'<p class="small">{sections["case_outcome_note"]}</p>'
-        f"{_case_outcome_table(report, language)}"
-        f'<h3>{sections["cases"]}</h3><p class="small">{sections["case_note"]}</p>'
-        f"{_transfer_table(report, language)}",
-        element_id=f"{language}-cases",
-    )
-    resource_details = _details(
-        "展开 token、可靠性和成本审计"
-        if language == "zh"
-        else "Open token, reliability, and cost audits",
-        f'<h3>{sections["tokens"]}</h3><p class="small">{sections["token_note"]}</p>'
-        f"{_usage_table(report, language)}"
-        f"<h3>{sections['execution']}</h3>{_reliability_table(report, language)}"
-        f'<h3>{sections["cost"]}</h3><p class="small">{sections["cost_note"]}</p>'
-        f"{_treatment_cost_table(report, language)}{_cost_totals(report, language)}"
-        f"{_pricing_table(report, language)}{_cost_table(report, language)}",
-        element_id=f"{language}-resources",
-    )
-    edge_equality_definition = _definition(
-        "Raw/Graph exact edge equality",
-        audit.get("transfer_raw_graph_exact_edge_equality"),
-    )
-    method_details = _details(
-        "展开评分、证据、数据协议和适用边界"
-        if language == "zh"
-        else "Open scoring, evidence, protocol, and limitation audits",
-        f"<h3>{sections['eligibility']}</h3>{_eligibility_table(report, language)}"
-        f'<h3>{sections["evidence"]}</h3><p class="small">{sections["evidence_note"]}</p>'
-        f"{_evidence_quality_table(report, language)}"
-        f"<h3>{sections['audit']}</h3><dl>"
-        f"{_definition('Micro no-model gates', audit.get('micro_no_model_gates_passed'))}"
-        f"{_definition('Transfer no-model gates', audit.get('transfer_no_model_gates_passed'))}"
-        f"{edge_equality_definition}"
-        f"{_definition('Budget exhaustions', execution.get('budget_exhaustions'))}</dl>"
-        f"<h3>{sections['limits']}</h3><ul>{limits}</ul>",
-        element_id=f"{language}-method",
-    )
-    mechanism_details = _details(
-        (
-            f"查看全部 {mechanism_cells} 个模型-机制组合"
-            if language == "zh"
-            else f"View all {mechanism_cells} model-mechanism combinations"
-        ),
-        f'<p class="small">{sections["mechanism_note"]}</p>{_mechanism_table(report, language)}',
-    )
-    attribution = (
-        f'<aside class="attribution"><h3>{attribution_title}</h3><p>{attribution_text}</p>'
-        f'<p class="small">{attribution_terms} {attribution_links}</p></aside>'
-    )
-    nav = "".join(f'<a href="#{language}-{target}">{label}</a>' for target, label in navigation)
-    return f"""
-<header><p class="eyebrow">{eyebrow}</p>
-<h1>Semantic RCA Bench</h1><p class="lede">{lede}</p>
-<div class="report-actions">{actions}</div><div class="stat-grid">
-{_stat(execution["completed_cells"], labels["cells"])}{_stat(execution["models"], labels["models"])}
-{_stat(execution["micro_cases"] + execution["transfer_cases"], labels["cases"])}
-{_stat(primary_result, labels["result"])}</div></header>
-<nav class="report-nav" aria-label="Report sections">{nav}</nav>
-<main><section class="overview" id="{language}-overview"><h2>{overview}</h2>
-<p class="overview-copy">{overview_text}</p><p class="trust-copy">{reproducibility_text}</p>
-<dl class="glossary">{glossary_html}</dl>{attribution}</section>
-<section id="{language}-summary"><h2>{conclusion}</h2>
-<p class="section-lede">{conclusion_text}</p>
-{_finding_grid(report, language)}</section>
-<section id="{language}-mechanisms"><h2>{sections["mechanisms"]}</h2>
-<p class="mechanism-lede">{_mechanism_summary(report, language)}</p>
-{_mechanism_direction_grid(report, language)}
-{mechanism_details}</section>
-<section id="{language}-models"><h2>{sections["cards"]}</h2>
-<h3>{sections["scores"]}</h3><p class="score-intro">{sections["score_note"]}</p>
-{_capability_leaderboard(report, language)}{capability_details}
-<h3 class="dimension-title">{sections["dimension_scores"]}</h3>
-{_capability_dimension_charts(report, language)}
-<h3 class="model-metrics-title">{sections["model_metrics"]}</h3>
-<p class="diagnosis-total">{diagnosis_total}</p><div class="model-grid">{cards}</div></section>
-{benchmark_details}{case_details}{resource_details}{method_details}</main>"""
-
-
-def _join(items: list[str], language: str) -> str:
-    if language == "zh":
-        return "、".join(items)
-    if len(items) < 3:
-        return " and ".join(items)
-    return f"{', '.join(items[:-1])}, and {items[-1]}"
-
-
-def _dataset(adapter: object) -> dict[str, str]:
-    attribution = DATASET_ATTRIBUTION.get(str(adapter))
-    if attribution is None:
-        raise ValueError(f"no publishable attribution for dataset: {adapter}")
-    return attribution
-
-
-def _attribution(report: Mapping[str, object], language: str) -> tuple[str, str, str]:
-    provenance = _mapping(report, "cohort_provenance")
-    micro = _mapping_list(provenance, "micro")
-    transfer = _mapping_list(provenance, "transfer")
-    micro_parts = []
-    for entry in micro:
-        benchmark = MICRO_BENCHMARK_LABELS.get(str(entry["benchmark"]))
-        if benchmark is None:
-            raise ValueError(f"no publishable label for benchmark: {entry['benchmark']}")
-        label = _dataset(entry["dataset"])["label"]
-        micro_parts.append(
-            f"{entry['cases']} 个来自 {label} 的 {benchmark['zh']} case"
-            if language == "zh"
-            else f"{entry['cases']} {benchmark['en']} cases from {label}"
-        )
-    transfer_parts = [
-        f"{entry['cases']} 个来自 {_dataset(entry['dataset'])['label']} 的 case"
-        if language == "zh"
-        else f"{entry['cases']} cases from {_dataset(entry['dataset'])['label']}"
-        for entry in transfer
-    ]
-    datasets = list(dict.fromkeys(str(entry["dataset"]) for entry in (*micro, *transfer)))
-    names = _join([_dataset(adapter)["label"] for adapter in datasets], language)
-    if language == "zh":
-        text = (
-            f"Micro-benchmark 使用 {_join(micro_parts, language)}；"
-            f"端到端 cohort 使用 {_join(transfer_parts, language)}。"
-            f"感谢 {names} 的作者与维护者公开数据和研究材料，使本评测能够复现。"
-        )
-        terms = (
-            "".join(_dataset(adapter)["zh"] for adapter in datasets)
-            + "本项目不替上游解决 license 冲突，也不重新分发原始 telemetry。"
-        )
-    else:
-        text = (
-            f"The micro-benchmarks use {_join(micro_parts, language)}. The end-to-end cohort "
-            f"uses {_join(transfer_parts, language)}. We thank the authors and maintainers of "
-            f"{names} for publishing the datasets and research materials that make this "
-            "evaluation reproducible."
-        )
-        terms = (
-            " ".join(_dataset(adapter)["en"] for adapter in datasets)
-            + " This project does not resolve upstream license conflicts and does not "
-            "redistribute source telemetry."
-        )
-    links = " · ".join(
-        f'<a href="{_dataset(adapter)["url"]}">{_escape(_dataset(adapter)["label"])}</a>'
-        for adapter in datasets
-    )
-    return text, terms, links
-
-
-def _causal_scope_phrase(report: Mapping[str, object], language: str) -> str:
-    scopes = []
-    for case in _mapping_list(report, "case_catalog"):
-        label = CAUSAL_SCOPE_LABELS.get(str(case["causal_scope"]))
-        if label is None:
-            raise ValueError(f"no publishable label for causal scope: {case['causal_scope']}")
-        if label[language] not in scopes:
-            scopes.append(label[language])
-    if language == "zh":
-        return "、".join(scopes)
-    return f"{', '.join(scopes[:-1])}, or {scopes[-1]}" if len(scopes) > 2 else " or ".join(scopes)
-
-
-def _details(summary: str, body: str, *, element_id: str | None = None) -> str:
-    identifier = f' id="{element_id}"' if element_id is not None else ""
-    return (
-        f'<details class="report-details"{identifier}><summary>{_escape(summary)}</summary>'
-        f'<div class="details-body">{body}</div></details>'
-    )
-
-
-def _model_card(model, report, language):
-    transfer = _mapping(report, "transfer")
-    metrics = _mapping(transfer, "primary_metrics")
-    rows = _mapping(metrics, "rows_returned")
-    calls = _mapping(metrics, "correct_completion_tool_calls")
-    descriptive = _mapping(transfer, "descriptive_metrics")
-    input_tokens = _mapping(descriptive, "provider_visible_input_tokens")
-    output_tokens = _mapping(descriptive, "output_tokens")
-    cost = _mapping(descriptive, "estimated_cost")
-    diagnosis = _mapping(transfer, "diagnosis_correct")
-    # Derived from the treatments the run actually had. Dividing by two reported
-    # 28 runs as 42 the moment a third arm existed.
-    treatment_labels = {"raw": "Raw", "semantic_graph": "Graph", "split_pillars": "Split"}
-    present = [key for key in treatment_labels if key in diagnosis]
-    runs_per_treatment = int(transfer.get("runs", 0)) // max(len(present), 1)
-    case_count = len(_mapping_list(transfer, "case_effects"))
-    diagnosis_summary = " · ".join(
-        f"{diagnosis.get(key, 0)}/{runs_per_treatment} {treatment_labels[key]}" for key in present
-    )
-    eligible_summary = f"{rows.get('eligible_cases')} / {case_count}"
-    labels = (
-        (
-            "诊断正确",
-            "合格 case",
-            "Rows Graph − Raw",
-            "Calls Graph − Raw",
-            "Input Graph − Raw",
-            "Output Graph − Raw",
-            "合格 case 成本中位差",
-            "Rows Holm p",
-        )
-        if language == "zh"
-        else (
-            "Correct diagnosis",
-            "Eligible cases",
-            "Rows Graph − Raw",
-            "Calls Graph − Raw",
-            "Input Graph − Raw",
-            "Output Graph − Raw",
-            "Eligible case-median cost",
-            "Rows Holm p",
-        )
-    )
-    return f"""<article class="model-card"><h3>{_escape(model)}</h3>
-{_metric(labels[0], diagnosis_summary)}
-{_metric(labels[1], eligible_summary)}
-{_metric(labels[2], _delta(rows.get("case_median_delta")))}
-{_metric(labels[3], _delta(calls.get("case_median_delta")))}
-{_metric(labels[4], _delta(input_tokens.get("case_median_delta")))}
-{_metric(labels[5], _delta(output_tokens.get("case_median_delta")))}
-{_metric(labels[6], _cost_delta(cost))}
-{_metric(labels[7], rows.get("holm_adjusted_p"))}</article>"""
-
-
-def _capability_table(report, language):
-    scores = _mapping(report, "capability_scores")
-    models = _mapping(scores, "models")
-    maxima = _capability_dimension_maxima()
-    treatments = _capability_treatments(models)
-
-    def by_treatment(model, key):
-        return _mapping(_mapping(_mapping(models, model), "by_treatment"), key)
-
-    rows = []
-    for model in report["model_order"]:
-        item = _mapping(models, model)
-        overall = _mapping(item, "overall")
-        dimensions = _mapping(overall, "average_dimension_points")
-        rows.append(
-            (
-                model,
-                overall.get("normalized_score"),
-                *(by_treatment(model, key).get("normalized_score") for key in treatments),
-                *(
-                    f"{dimensions.get(key)} / {maxima[key]}"
-                    for key in ("location", "root_cause", "evidence")
-                ),
-            )
-        )
-    treatment_names = {"raw": "Raw", "semantic_graph": "Graph", "split_pillars": "Split"}
-    headers = (
-        (
-            "模型",
-            "总分 / 100",
-            *(f"{treatment_names[key]} / 100" for key in treatments),
-            "定位",
-            "根因",
-            "证据",
-        )
-        if language == "zh"
-        else (
-            "Model",
-            "Overall / 100",
-            *(f"{treatment_names[key]} / 100" for key in treatments),
-            "Location",
-            "Root cause",
-            "Evidence",
-        )
-    )
-    return _html_table(headers, rows)
-
-
-def _capability_leaderboard(report: Mapping[str, object], language: str) -> str:
-    models = _mapping(_mapping(report, "capability_scores"), "models")
-    ranked = sorted(
-        report["model_order"],
-        key=lambda model: float(_mapping(_mapping(models, model), "overall")["normalized_score"]),
-        reverse=True,
-    )
-    labels = (
-        {
-            "location": "定位",
-            "root_cause": "根因",
-            "evidence": "严格证据",
-            "raw": "Raw",
-            "semantic_graph": "Graph",
-            "split_pillars": "Split",
-        }
-        if language == "zh"
-        else {
-            "location": "Location",
-            "root_cause": "Root cause",
-            "evidence": "Strict evidence",
-            "raw": "Raw",
-            "semantic_graph": "Graph",
-            "split_pillars": "Split",
-        }
-    )
-    treatments = _capability_treatments(models)
-    rows = []
-    for rank, model in enumerate(ranked, 1):
-        item = _mapping(models, model)
-        scores = {
-            "overall": _mapping(item, "overall").get("normalized_score"),
-            **{
-                key: _mapping(_mapping(item, "by_treatment"), key).get("normalized_score")
-                for key in treatments
-            },
-        }
-        dimensions = _mapping(_mapping(item, "overall"), "average_dimension_points")
-        dimension_values = {
-            "location": dimensions.get("location"),
-            "root_cause": dimensions.get("root_cause"),
-            "evidence": dimensions.get("evidence"),
-        }
-        if not all(isinstance(value, (int, float)) for value in dimension_values.values()):
-            raise ValueError("capability dimension score is not numeric")
-        rubric_maximum = _capability_rubric_maximum()
-        stack_label = ", ".join(
-            f"{labels[key]} {_format_number(value)}" for key, value in dimension_values.items()
-        )
-        stack = "".join(
-            f'<span class="score-segment score-{key}" '
-            f'style="width: {100.0 * float(value) / rubric_maximum:g}%" '
-            f'title="{labels[key]}: {_format_number(value)}"></span>'
-            for key, value in dimension_values.items()
-        )
-        bars = []
-        for key in treatments:
-            value = scores[key]
-            if not isinstance(value, (int, float)):
-                raise ValueError("capability score is not numeric")
-            width = min(max(float(value), 0.0), 100.0)
-            display = _format_number(value)
-            bars.append(
-                f'<div class="score-bar-row"><span>{labels[key]}</span>'
-                f'<div class="score-track" role="img" aria-label="{_escape(model)} '
-                f'{labels[key]} {display} / 100"><span class="score-fill score-{key}" '
-                f'style="width: {width:g}%"></span></div><strong>{display}</strong></div>'
-            )
-        rows.append(
-            f'<article class="score-entry"><div class="score-heading"><span class="rank">'
-            f"#{rank}</span><h4>{_escape(model)}</h4><strong>{_format_number(scores['overall'])}"
-            f'</strong></div><div class="score-stack" role="img" aria-label="{_escape(model)}: '
-            f'{_escape(stack_label)}">{stack}</div>{"".join(bars)}</article>'
-        )
-    legend = "".join(
-        f'<span><i class="score-{key}"></i>{labels[key]}</span>'
-        for key in ("location", "root_cause", "evidence")
-    )
-    return (
-        f'<div class="score-legend" aria-label="Score dimensions">{legend}</div>'
-        f'<div class="score-leaderboard">{"".join(rows)}</div>'
-    )
-
-
 def capability_rubric_label() -> str:
     """The rubric's point split, e.g. `40/40/5`, derived rather than repeated."""
     maxima = _capability_dimension_maxima()
@@ -1852,13 +1403,6 @@ def capability_rubric_label() -> str:
 
 def _capability_rubric_maximum() -> int:
     return sum(_capability_dimension_maxima().values())
-
-
-def _capability_treatments(models: Mapping[str, object]) -> tuple[str, ...]:
-    """The treatments the run had, in report order."""
-    order = ("split_pillars", "raw", "semantic_graph")
-    present = {key for model in models for key in _mapping(_mapping(models, model), "by_treatment")}
-    return tuple(key for key in order if key in present)
 
 
 def _capability_dimension_maxima() -> dict[str, int]:
@@ -1870,1225 +1414,12 @@ def _capability_dimension_maxima() -> dict[str, int]:
     return maxima
 
 
-def _capability_dimension_charts(report: Mapping[str, object], language: str) -> str:
-    models = _mapping(_mapping(report, "capability_scores"), "models")
-    # Derived from the rubric and from the treatments the run actually had. A
-    # repeated literal drifts the moment either changes.
-    total = _capability_dimension_maxima()
-    treatment_labels = {"raw": "Raw", "semantic_graph": "Graph", "split_pillars": "Split"}
-    names = (
-        {"overall": "总分", "location": "定位", "root_cause": "根因", "evidence": "严格证据"}
-        if language == "zh"
-        else {
-            "overall": "Overall",
-            "location": "Location",
-            "root_cause": "Root cause",
-            "evidence": "Strict evidence",
-        }
-    )
-    treatments = tuple(
-        key
-        for key in treatment_labels
-        if any(key in _mapping(_mapping(models, model), "by_treatment") for model in models)
-    )
-    dimensions = (
-        ("overall", names["overall"], 100),
-        *((key, treatment_labels[key], 100) for key in treatments),
-        *((key, names[key], total[key]) for key in ("location", "root_cause", "evidence")),
-    )
-    charts = []
-    for key, label, maximum in dimensions:
-        if key == "overall":
-            values = {
-                str(model): _mapping(_mapping(models, model), "overall").get("normalized_score")
-                for model in report["model_order"]
-            }
-        elif key in treatment_labels:
-            values = {
-                str(model): _mapping(_mapping(_mapping(models, model), "by_treatment"), key).get(
-                    "normalized_score"
-                )
-                for model in report["model_order"]
-            }
-        else:
-            values = {
-                str(model): _mapping(
-                    _mapping(_mapping(models, model), "overall"),
-                    "average_dimension_points",
-                ).get(key)
-                for model in report["model_order"]
-            }
-        if not all(isinstance(value, (int, float)) for value in values.values()):
-            raise ValueError("capability dimension score is not numeric")
-        ranked = sorted(
-            report["model_order"],
-            key=lambda model: float(values[str(model)]),
-            reverse=True,
-        )
-        rows = []
-        for rank, model in enumerate(ranked, 1):
-            value = float(values[str(model)])
-            display = _format_number(value)
-            width = min(max(value / maximum * 100, 0.0), 100.0)
-            rows.append(
-                f'<div class="dimension-row"><span class="dimension-rank">#{rank}</span>'
-                f'<strong>{_escape(model)}</strong><div class="dimension-track" role="img" '
-                f'aria-label="{_escape(model)} {label}: {display} / {maximum}"><span '
-                f'class="dimension-fill score-{key}" style="width: {width:g}%"></span></div>'
-                f"<b>{display}</b></div>"
-            )
-        charts.append(
-            f'<article class="dimension-chart"><h4>{label} <span>/ {maximum}</span></h4>'
-            f"{''.join(rows)}</article>"
-        )
-    return f'<div class="dimension-grid">{"".join(charts)}</div>'
-
-
-def _capability_rubric_table(report, language):
-    scopes = _causal_scope_phrase(report, language)
-    # Derived from the rubric so the published points cannot state a split the
-    # scorer does not use, and so a dimension that is scored nowhere is shown as
-    # reported-only rather than as points a model can earn.
-    text = {
-        "causal_scope_match": (f"识别{scopes} scope", f"Identifies {scopes} scope"),
-        "causal_locus_match": (f"命中正式声明的{scopes}", f"Matches the declared {scopes}"),
-        "fault_category_match": ("命中故障大类", "Matches the fault class"),
-        "mechanism_code_match": ("命中具体因果机制", "Matches the causal mechanism"),
-        "has_execution_valid_citation": (
-            "至少一条 citation 对应成功执行的查询",
-            "At least one citation resolved to a successful query",
-        ),
-        "required_evidence_covered": (
-            "引用结果通过冻结 evidence verifier；只对 SQL 证据可判定，故不计分",
-            "Cited results pass the frozen evidence verifier; decidable only for "
-            "SQL evidence, so reported rather than scored",
-        ),
-    }
-    dimension_names = {
-        "location": ("定位", "Location"),
-        "root_cause": ("根因", "Root cause"),
-        "evidence": ("证据", "Evidence"),
-    }
-    index = 0 if language == "zh" else 1
-    not_scored = "不计分" if language == "zh" else "not scored"
-    rows = [
-        (
-            dimension_names[str(contract["dimension"])][index],
-            str(contract["label"]).capitalize(),
-            int(contract["points"]),
-            text[key][index],
-        )
-        for key, contract in CAPABILITY_SCORE_RUBRIC.items()
-    ]
-    rows.extend(
-        (
-            dimension_names["evidence"][index],
-            key.replace("_", " ").capitalize(),
-            not_scored,
-            text[key][index],
-        )
-        for key in CAPABILITY_UNSCORED_DIMENSIONS
-    )
-    headers = (
-        ("维度", "评分项", "分值", "判定")
-        if language == "zh"
-        else ("Dimension", "Item", "Points", "Rule")
-    )
-    return _html_table(headers, tuple(rows))
-
-
-def _case_catalog_table(report, language):
-    rows = []
-    for case in _mapping_list(report, "case_catalog"):
-        oracle = case.get("oracle")
-        if isinstance(oracle, Mapping):
-            operation = oracle.get("allowed_operations")
-            operation_text = ", ".join(operation) if isinstance(operation, list) else ""
-            signal = f"{oracle.get('source_table')}.{oracle.get('value_column')}"
-            if operation_text:
-                signal = f"{signal} · {operation_text}"
-            threshold = _format_number(oracle.get("threshold"))
-            samples = f"{oracle.get('normal_samples')} / {oracle.get('abnormal_samples')}"
-        else:
-            # No node metric expresses this mechanism as a threshold crossing, so
-            # the secondary evidence audit reports not estimable for the case.
-            signal = threshold = samples = "not estimable"
-        rows.append(
-            (
-                case.get("case_id"),
-                case.get("source_case"),
-                case.get("system"),
-                _mechanism_label(case.get("mechanism_code"), language),
-                case.get("target"),
-                signal,
-                threshold,
-                samples,
-            )
-        )
-    headers = (
-        (
-            "Case",
-            "Source case",
-            "系统",
-            "机制",
-            "故障目标",
-            "Oracle 信号",
-            "阈值",
-            "Normal / Abnormal samples",
-        )
-        if language == "zh"
-        else (
-            "Case",
-            "Source case",
-            "System",
-            "Mechanism",
-            "Fault target",
-            "Oracle signal",
-            "Threshold",
-            "Normal / anomalous samples",
-        )
-    )
-    return _html_table(headers, rows)
-
-
-def _case_outcome_table(report, language):
-    rows = []
-    for case in _mapping_list(report, "case_outcomes"):
-        diagnosis = _mapping(case, "diagnosis_correct")
-        rows.append(
-            (
-                case.get("case_id"),
-                _mechanism_label(case.get("mechanism_code"), language),
-                f"{diagnosis.get('raw')} / {diagnosis.get('semantic_graph')}",
-                case.get("eligible_models"),
-                case.get("models_with_fewer_rows"),
-                case.get("models_with_fewer_calls"),
-                case.get("models_with_fewer_input_tokens"),
-                case.get("models_with_fewer_output_tokens"),
-                (
-                    f"{case.get('models_with_lower_estimated_cost')} / "
-                    f"{case.get('models_with_estimable_cost')}"
-                ),
-            )
-        )
-    headers = (
-        (
-            "Case",
-            "机制",
-            "诊断正确 Raw / Graph",
-            "合格模型",
-            "Rows 改善模型",
-            "Calls 改善模型",
-            "Input 改善模型",
-            "Output 改善模型",
-            "成本改善 / 可估算模型",
-        )
-        if language == "zh"
-        else (
-            "Case",
-            "Mechanism",
-            "Correct Raw / Graph",
-            "Eligible models",
-            "Models with fewer rows",
-            "Models with fewer calls",
-            "Models with less input",
-            "Models with less output",
-            "Lower cost / estimable models",
-        )
-    )
-    return _html_table(headers, rows)
-
-
-def _micro_row_reduction(report: Mapping[str, object], language: str) -> str:
-    """Eligible micro cases where Graph returned fewer rows, per benchmark."""
-    totals: dict[str, list[int]] = defaultdict(lambda: [0, 0])
-    for model in report["model_order"]:
-        micro = _mapping(_mapping(_mapping(report, "model_reports"), model), "micro")
-        for benchmark, summary in _mapping(micro, "benchmarks").items():
-            if not isinstance(summary, Mapping):
-                raise ValueError("micro benchmark summary is not an object")
-            effect = _mapping(
-                _mapping(summary, "case_level_effect"), "rows_returned_through_evidence"
-            )
-            totals[benchmark][0] += int(effect["improvements"])
-            totals[benchmark][1] += int(effect["eligible_cases"])
-    parts = []
-    for benchmark, (improved, eligible) in sorted(totals.items()):
-        label = MICRO_BENCHMARK_LABELS.get(benchmark)
-        if label is None:
-            raise ValueError(f"no publishable label for benchmark: {benchmark}")
-        parts.append(f"{label[language]} {improved}/{eligible}")
-    return _join(parts, language)
-
-
-def _mechanism_row_direction(report: Mapping[str, object]) -> tuple[int, int, int]:
-    """Mechanisms that reduce rows, that increase rows, for every model, and the estimable total."""
-    effects = _mechanism_row_effects(report)
-    improved = 0
-    regressed = 0
-    estimable = 0
-    for values in effects.values():
-        known = [value for value in values.values() if value is not None]
-        if not known:
-            continue
-        estimable += 1
-        improved += all(value < 0 for value in known)
-        regressed += all(value > 0 for value in known)
-    return improved, regressed, estimable
-
-
-def _confirmatory_primary_results(report: Mapping[str, object]) -> list[dict[str, object]]:
-    results = []
-    reports = _mapping(report, "model_reports")
-    for model in report["model_order"]:
-        transfer = _mapping(_mapping(reports, model), "transfer")
-        raw_families = transfer.get("confirmatory_families")
-        if isinstance(raw_families, Mapping):
-            families = raw_families
-        else:
-            families = {
-                "semantic_layer": {
-                    "comparison": "semantic_graph - raw",
-                    "primary_metrics": _mapping(transfer, "primary_metrics"),
-                }
-            }
-        for family_name, raw_family in families.items():
-            if not isinstance(raw_family, Mapping):
-                raise ValueError("confirmatory family result is not an object")
-            metrics = raw_family.get("primary_metrics")
-            if not isinstance(metrics, Mapping):
-                raise ValueError("confirmatory family primary metrics are not an object")
-            comparison = raw_family.get("comparison")
-            if not isinstance(comparison, str):
-                raise ValueError("confirmatory family comparison is malformed")
-            for metric_name, raw_metric in metrics.items():
-                if not isinstance(raw_metric, Mapping):
-                    raise ValueError("confirmatory primary metric is not an object")
-                results.append(
-                    {
-                        "family": str(family_name),
-                        "model": str(model),
-                        "metric_name": str(metric_name),
-                        "comparison": comparison,
-                        "effect": dict(raw_metric),
-                    }
-                )
-    return results
-
-
-def _significant_primary_results(
-    report: Mapping[str, object], family: str | None = None
-) -> list[dict[str, object]]:
-    return [
-        result
-        for result in _confirmatory_primary_results(report)
-        if (family is None or result["family"] == family)
-        and isinstance(_mapping(result, "effect").get("holm_adjusted_p"), (int, float))
-        and float(_mapping(result, "effect")["holm_adjusted_p"]) < 0.05
-    ]
-
-
-def _primary_metric_label(metric_name: object, language: str) -> str:
-    labels = {
-        "correct_completion_tool_calls": (
-            "correct-completion tool calls",
-            "正确完成所需的工具调用",
-        ),
-        "provider_visible_input_tokens": (
-            "provider-visible input tokens",
-            "provider-visible input",
-        ),
-        "rows_returned": ("rows returned", "返回行数"),
-    }
-    english, chinese = labels.get(str(metric_name), (str(metric_name), str(metric_name)))
-    return chinese if language == "zh" else english
-
-
-def _treatment_label(value: str) -> str:
-    return {
-        "raw": "Raw",
-        "semantic_graph": "Graph",
-        "split_pillars": "Split",
-    }.get(value, value)
-
-
-def _significant_result_text(result: Mapping[str, object], language: str) -> str:
-    effect = _mapping(result, "effect")
-    comparison = str(result["comparison"])
-    parts = comparison.split(" - ")
-    if len(parts) != 2:
-        raise ValueError("confirmatory family comparison is malformed")
-    delta = effect.get("case_median_delta")
-    if not isinstance(delta, (int, float)):
-        raise ValueError("significant primary result has no case median delta")
-    left, right = map(_treatment_label, parts)
-    favored, other = (left, right) if delta < 0 else (right, left)
-    metric = _primary_metric_label(result["metric_name"], language)
-    p_value = effect["holm_adjusted_p"]
-    delta_text = f"{float(delta):+,.12g}"
-    p_text = f"{float(p_value):.8g}"
-    if language == "zh":
-        return (
-            f"{result['model']}：{favored} 使用的 {metric} 少于 {other}"
-            f"（case-median Δ {delta_text}；Holm p {p_text}）"
-        )
-    return (
-        f"{result['model']}: {favored} used fewer {metric} than {other} "
-        f"(case-median Δ {delta_text}; Holm p {p_text})"
-    )
-
-
-def _family_finding(report: Mapping[str, object], family: str, language: str) -> tuple[str, str]:
-    results = [item for item in _confirmatory_primary_results(report) if item["family"] == family]
-    if not results:
-        raise ValueError(f"formal report has no primary results for confirmatory family: {family}")
-    significant = _significant_primary_results(report, family)
-    family_sizes = {
-        int(_mapping(item, "effect")["multiplicity_family_size"])
-        for item in results
-        if isinstance(_mapping(item, "effect").get("multiplicity_family_size"), int)
-    }
-    if len(family_sizes) != 1:
-        raise ValueError("confirmatory family multiplicity size is inconsistent")
-    family_size = family_sizes.pop()
-    if language == "zh":
-        title = "语义层结果" if family == "semantic_layer" else "接口组合结果"
-        if not significant:
-            comparison = "Graph − Raw" if family == "semantic_layer" else "Raw − Split"
-            return title, f"{comparison} 的 {family_size} 项检验经 Holm 校正后均不显著。"
-        return title, "；".join(
-            _significant_result_text(item, language) for item in significant
-        ) + "。"
-    title = "Semantic-layer result" if family == "semantic_layer" else "Interface-bundle result"
-    if not significant:
-        comparison = "Graph − Raw" if family == "semantic_layer" else "Raw − Split"
-        return (
-            title,
-            f"No {comparison} endpoint is significant after Holm correction "
-            f"over {family_size} tests.",
-        )
-    return title, "; ".join(_significant_result_text(item, language) for item in significant) + "."
-
-
-def _conclusion_text(report: Mapping[str, object], language: str) -> str:
-    semantic = _significant_primary_results(report, "semantic_layer")
-    storage = _significant_primary_results(report, "storage_shape")
-    micro_reduction = _micro_row_reduction(report, language)
-    if language == "zh":
-        semantic_text = (
-            "语义层检验族没有端到端主要指标通过 Holm 校正"
-            if not semantic
-            else f"语义层检验族有 {len(semantic)} 项端到端主要指标通过 Holm 校正"
-        )
-        storage_text = (
-            "接口组合检验族没有主要指标通过 Holm 校正"
-            if not storage
-            else "接口组合检验族的显著结果是"
-            + "；".join(_significant_result_text(item, language) for item in storage)
-        )
-        return (
-            f"聚焦检索中 Graph 减少 rows 的合格结果为 {micro_reduction}；{semantic_text}。"
-            f"{storage_text}。其余端到端效果随模型和故障机制变化。"
-        )
-    semantic_text = (
-        "No end-to-end primary endpoint in the semantic-layer family passes Holm correction"
-        if not semantic
-        else f"{len(semantic)} end-to-end primary endpoints in the semantic-layer family "
-        "pass Holm correction"
-    )
-    storage_text = (
-        "No primary endpoint in the interface-bundle family passes Holm correction"
-        if not storage
-        else (
-            "The significant interface-bundle result is "
-            if len(storage) == 1
-            else "The significant interface-bundle results are "
-        )
-        + "; ".join(_significant_result_text(item, language) for item in storage)
-    )
-    return (
-        f"Eligible focused-retrieval results where Graph reduced rows: {micro_reduction}. "
-        f"{semantic_text}. {storage_text}. Other end-to-end effects vary by model and fault "
-        "mechanism."
-    )
-
-
-def _primary_result(report: Mapping[str, object], language: str) -> str:
-    storage = _significant_primary_results(report, "storage_shape")
-    semantic = _significant_primary_results(report, "semantic_layer")
-    if storage and not semantic:
-        count = len(storage)
-        return (
-            f"接口组合 {count} 项显著；Graph 端到端不稳定"
-            if language == "zh"
-            else (
-                f"{'One' if count == 1 else count} interface "
-                f"endpoint{' is' if count == 1 else 's are'} significant; "
-                "Graph E2E varies"
-            )
-        )
-    return (
-        "聚焦检索更省，端到端因场景而异"
-        if language == "zh"
-        else ("Focused retrieval improves; E2E varies")
-    )
-
-
-def _finding_grid(report, language):
-    reports = _mapping(report, "model_reports")
-    comparable_cost_models = []
-    lower_cost_models = []
-    for model in report["model_order"]:
-        transfer = _mapping(_mapping(reports, model), "transfer")
-        actual_cost = _mapping(transfer, "actual_cost_by_treatment")
-        raw_cost = actual_cost.get("raw")
-        graph_cost = actual_cost.get("semantic_graph")
-        if isinstance(raw_cost, (int, float)) and isinstance(graph_cost, (int, float)):
-            comparable_cost_models.append(model)
-            if graph_cost < raw_cost:
-                lower_cost_models.append(model)
-    micro_reduction = _micro_row_reduction(report, language)
-    improved, regressed, estimable = _mechanism_row_direction(report)
-    comparable = len(comparable_cost_models)
-    semantic_finding = _family_finding(report, "semantic_layer", language)
-    storage_finding = _family_finding(report, "storage_shape", language)
-    if language == "zh":
-        cost_text = (
-            f"{comparable} 个可完整比较的模型中，没有模型降低端到端实际成本。"
-            if not lower_cost_models
-            else f"{comparable} 个可完整比较的模型中，"
-            f"{_join(lower_cost_models, language)} 降低了端到端实际成本。"
-        )
-        findings = (
-            (
-                "聚焦检索",
-                f"Graph 减少 rows 的合格 micro case：{micro_reduction}。",
-            ),
-            (
-                "机制差异",
-                f"{estimable} 个可估算机制中，{improved} 个在全部模型上减少 rows，"
-                f"{regressed} 个在全部模型上增加 rows。",
-            ),
-            (
-                semantic_finding[0],
-                semantic_finding[1],
-            ),
-            storage_finding,
-            ("成本结果", f"{cost_text}Rows 压缩不能替代成本核算。"),
-        )
-    else:
-        cost_text = (
-            f"No model reduced actual end-to-end cost among {comparable} fully comparable models."
-            if not lower_cost_models
-            else f"{_join(lower_cost_models, language)} reduced actual end-to-end cost among "
-            f"{comparable} fully comparable models."
-        )
-        findings = (
-            (
-                "Focused retrieval",
-                f"Eligible micro cases where Graph returned fewer rows: {micro_reduction}.",
-            ),
-            (
-                "Mechanism spread",
-                f"Of {estimable} estimable mechanisms, {improved} reduce rows for every model "
-                f"and {regressed} increase rows for every model.",
-            ),
-            (
-                semantic_finding[0],
-                semantic_finding[1],
-            ),
-            storage_finding,
-            (
-                "Cost result",
-                f"{cost_text} Row compression is not a substitute for cost accounting.",
-            ),
-        )
-    return (
-        '<div class="finding-grid">'
-        + "".join(
-            f'<article class="finding"><h3>{_escape(title)}</h3><p>{_escape(text)}</p></article>'
-            for title, text in findings
-        )
-        + "</div>"
-    )
-
-
-def _benchmark_map(language):
-    if language == "zh":
-        rows = (
-            (
-                "Discovery micro-benchmark",
-                "从未知 schema 中找到承载目标组件和异常信号的正确遥测表，并返回冻结窗口内的证据。",
-                "隔离测量 schema discovery 与证据检索成本。",
-                "Rows / calls through evidence",
-            ),
-            (
-                "Graph micro-benchmark",
-                "从已知异常信号出发，找到正确的服务依赖边，并用可执行证据确认。",
-                "隔离测量依赖导航和关系检索成本。",
-                "Rows / calls through evidence",
-            ),
-            (
-                "End-to-end transfer",
-                "从事故窗口和工具开始，完成组件定位、机制诊断和证据引用。",
-                "测量完整 RCA；只有诊断正确且执行可靠的配对进入主要效率指标。",
-                "Rows / complete-run calls",
-            ),
-        )
-        headers = ("Benchmark", "Agent 任务", "测量目的", "核心指标")
-    else:
-        rows = (
-            (
-                "Discovery micro-benchmark",
-                "Find the telemetry table that carries the target component and anomalous "
-                "signal in an unfamiliar schema, then return evidence from the frozen window.",
-                "Isolates schema discovery and evidence retrieval cost.",
-                "Rows / calls through evidence",
-            ),
-            (
-                "Graph micro-benchmark",
-                "Start from a known anomalous signal, identify the correct service dependency, "
-                "and confirm it with executable evidence.",
-                "Isolates dependency navigation and relationship retrieval cost.",
-                "Rows / calls through evidence",
-            ),
-            (
-                "End-to-end transfer",
-                "Start from the incident window and tools, then localize the component, diagnose "
-                "the mechanism, and cite evidence.",
-                "Measures complete RCA; headline efficiency requires a correct, reliable pair.",
-                "Rows / complete-run calls",
-            ),
-        )
-        headers = ("Benchmark", "Agent task", "Purpose", "Core metrics")
-    return _html_table(headers, rows)
-
-
-def _micro_table(report, language):
-    rows = []
-    for model in report["model_order"]:
-        micro = _mapping(_mapping(_mapping(report, "model_reports"), model), "micro")
-        for benchmark, summary in sorted(_mapping(micro, "benchmarks").items()):
-            if not isinstance(summary, Mapping):
-                raise ValueError("micro benchmark summary is not an object")
-            success = _mapping(summary, "treatment_success")
-            effects = _mapping(summary, "case_level_effect")
-            row_effect = _mapping(effects, "rows_returned_through_evidence")
-            call_effect = _mapping(effects, "tool_calls_through_evidence")
-            resources = _mapping(summary, "resource_effects")
-            input_effect = _mapping(_mapping(resources, "summary"), "provider_visible_input_tokens")
-            output_effect = _mapping(_mapping(resources, "summary"), "output_tokens")
-            cost_effect = _mapping(_mapping(resources, "summary"), "estimated_cost")
-            rows.append(
-                (
-                    model,
-                    benchmark,
-                    success.get("raw"),
-                    success.get("semantic_graph"),
-                    _delta(row_effect.get("median_delta")),
-                    _delta(call_effect.get("median_delta")),
-                    _delta(input_effect.get("case_median_delta")),
-                    _delta(output_effect.get("case_median_delta")),
-                    _cost_delta(cost_effect),
-                    row_effect.get("eligible_cases"),
-                )
-            )
-    headers = (
-        (
-            "模型",
-            "任务",
-            "Raw 成功",
-            "Graph 成功",
-            "Rows Δ",
-            "Calls Δ",
-            "Input Δ",
-            "Output Δ",
-            "成本 Δ",
-            "合格 case",
-        )
-        if language == "zh"
-        else (
-            "Model",
-            "Task",
-            "Raw success",
-            "Graph success",
-            "Rows Δ",
-            "Calls Δ",
-            "Input Δ",
-            "Output Δ",
-            "Cost Δ",
-            "Eligible cases",
-        )
-    )
-    return _html_table(headers, rows)
-
-
-def _transfer_table(report, language):
-    rows = []
-    for model in report["model_order"]:
-        transfer = _mapping(_mapping(_mapping(report, "model_reports"), model), "transfer")
-        for effect in _mapping_list(transfer, "case_effects"):
-            rows.append(
-                (
-                    model,
-                    effect.get("case_id"),
-                    _mechanism_label(effect.get("mechanism_code"), language),
-                    effect.get("target"),
-                    effect.get("eligible_repetitions"),
-                    _delta(effect.get("rows_returned")),
-                    _delta(effect.get("correct_completion_tool_calls")),
-                    _delta(effect.get("provider_visible_input_tokens")),
-                    _delta(effect.get("output_tokens")),
-                    _absolute_cost(
-                        effect.get("actual_cost_raw"), effect.get("estimated_cost_currency")
-                    ),
-                    _absolute_cost(
-                        effect.get("actual_cost_semantic_graph"),
-                        effect.get("estimated_cost_currency"),
-                    ),
-                    _cost_delta_from_case(effect),
-                )
-            )
-    headers = (
-        (
-            "模型",
-            "Case",
-            "机制",
-            "故障目标",
-            "合格重复",
-            "Rows Δ",
-            "Calls Δ",
-            "Input Δ",
-            "Output Δ",
-            "Raw 实际成本",
-            "Graph 实际成本",
-            "成本 Δ",
-        )
-        if language == "zh"
-        else (
-            "Model",
-            "Case",
-            "Mechanism",
-            "Fault target",
-            "Eligible reps",
-            "Rows Δ",
-            "Calls Δ",
-            "Input Δ",
-            "Output Δ",
-            "Raw actual cost",
-            "Graph actual cost",
-            "Cost Δ",
-        )
-    )
-    return _html_table(headers, rows)
-
-
-def _mechanism_row_effects(report: Mapping[str, object]) -> dict[str, dict[str, float | None]]:
-    effects: dict[str, dict[str, float | None]] = defaultdict(dict)
-    for model in report["model_order"]:
-        transfer = _mapping(_mapping(_mapping(report, "model_reports"), model), "transfer")
-        for item in _mapping_list(transfer, "mechanism_effects"):
-            rows = _mapping(_mapping(item, "metrics"), "rows_returned")
-            value = rows.get("case_median_delta") if rows.get("eligible_cases", 0) else None
-            effects[str(item["mechanism_code"])][str(model)] = (
-                float(value) if isinstance(value, (int, float)) else None
-            )
-    return effects
-
-
-def _mechanism_summary(report: Mapping[str, object], language: str) -> str:
-    effects = _mechanism_row_effects(report)
-    parts = []
-    for mechanism, _ in _mechanism_cohort(_mapping_list(report, "case_catalog")):
-        values = [value for value in effects.get(mechanism, {}).values() if value is not None]
-        better = sum(value < 0 for value in values)
-        parts.append(f"{_mechanism_label(mechanism, language)} {better}/{len(values)}")
-    case_better = 0
-    case_total = 0
-    for case in _mapping_list(report, "case_outcomes"):
-        case_better += int(case.get("models_with_fewer_rows", 0))
-        case_total += int(case.get("eligible_models", 0))
-    if language == "zh":
-        return (
-            f"按机制统计 rows 减少的模型数：{_join(parts, language)}。"
-            f"逐 case 看，{case_better}/{case_total} 个可估算的模型-case 组合减少 rows。"
-            "负数表示 Graph 返回更少数据。"
-        )
-    return (
-        f"Models where Graph returned fewer rows, by mechanism: {_join(parts, language)}. "
-        f"Rows fall in {case_better}/{case_total} estimable case-model combinations. "
-        "Negative values mean Graph returned fewer rows."
-    )
-
-
-def _mechanism_direction_grid(report: Mapping[str, object], language: str) -> str:
-    effects = _mechanism_row_effects(report)
-    mechanisms = [
-        mechanism for mechanism, _ in _mechanism_cohort(_mapping_list(report, "case_catalog"))
-    ]
-    headers = "".join(f"<th>{_escape(model)}</th>" for model in report["model_order"])
-    rows = []
-    for mechanism in mechanisms:
-        cells = []
-        for model in report["model_order"]:
-            value = effects.get(mechanism, {}).get(str(model))
-            if value is None:
-                class_name = "effect-na"
-                display = "n/a"
-                meaning = "not estimable" if language == "en" else "不可估算"
-            elif value < 0:
-                class_name = "effect-better"
-                display = f"↓ {_format_number(abs(value))}"
-                meaning = "Graph returned fewer rows" if language == "en" else "Graph 返回更少 rows"
-            elif value > 0:
-                class_name = "effect-worse"
-                display = f"↑ {_format_number(value)}"
-                meaning = "Graph returned more rows" if language == "en" else "Graph 返回更多 rows"
-            else:
-                class_name = "effect-tied"
-                display = "0"
-                meaning = "no observed difference" if language == "en" else "未观察到差异"
-            cells.append(
-                f'<td class="effect-cell {class_name}" title="{_escape(meaning)}">'
-                f"{_escape(display)}</td>"
-            )
-        rows.append(
-            f"<tr><th>{_escape(_mechanism_label(mechanism, language))}</th>{''.join(cells)}</tr>"
-        )
-    mechanism_header = "机制" if language == "zh" else "Mechanism"
-    return (
-        '<div class="table-wrap mechanism-grid"><table><thead><tr>'
-        f"<th>{mechanism_header}</th>{headers}</tr></thead><tbody>"
-        f"{''.join(rows)}</tbody></table></div>"
-    )
-
-
-def _mechanism_table(report, language):
-    rows = []
-    for model in report["model_order"]:
-        transfer = _mapping(_mapping(_mapping(report, "model_reports"), model), "transfer")
-        for effect in _mapping_list(transfer, "mechanism_effects"):
-            metrics = _mapping(effect, "metrics")
-            row_effect = _mapping(metrics, "rows_returned")
-            call_effect = _mapping(metrics, "correct_completion_tool_calls")
-            input_effect = _mapping(metrics, "provider_visible_input_tokens")
-            output_effect = _mapping(metrics, "output_tokens")
-            cost_effect = _mapping(metrics, "estimated_cost")
-            rows.append(
-                (
-                    model,
-                    _mechanism_label(effect.get("mechanism_code"), language),
-                    effect.get("cohort_cases"),
-                    effect.get("eligible_cases"),
-                    _delta(row_effect.get("case_median_delta")),
-                    _direction(row_effect),
-                    _delta(call_effect.get("case_median_delta")),
-                    _delta(input_effect.get("case_median_delta")),
-                    _delta(output_effect.get("case_median_delta")),
-                    _cost_delta(cost_effect),
-                )
-            )
-    headers = (
-        (
-            "模型",
-            "机制",
-            "Cohort case",
-            "合格 case",
-            "Rows Δ",
-            "改善/平/变差",
-            "Calls Δ",
-            "Input Δ",
-            "Output Δ",
-            "成本 Δ",
-        )
-        if language == "zh"
-        else (
-            "Model",
-            "Mechanism",
-            "Cohort cases",
-            "Eligible cases",
-            "Rows Δ",
-            "Better/tied/worse",
-            "Calls Δ",
-            "Input Δ",
-            "Output Δ",
-            "Cost Δ",
-        )
-    )
-    return _html_table(headers, rows)
-
-
-def _eligibility_table(report, language):
-    rows = []
-    for model in report["model_order"]:
-        transfer = _mapping(_mapping(_mapping(report, "model_reports"), model), "transfer")
-        eligibility = _mapping(transfer, "efficiency_eligibility")
-        by_treatment = _mapping(eligibility, "by_treatment")
-        disposition = _mapping(eligibility, "paired_disposition")
-        rows.append(
-            (
-                model,
-                by_treatment.get("raw"),
-                by_treatment.get("semantic_graph"),
-                disposition.get("both"),
-                disposition.get("raw_only"),
-                disposition.get("semantic_graph_only"),
-                disposition.get("neither"),
-            )
-        )
-    headers = (
-        ("模型", "Raw 合格", "Graph 合格", "双臂", "仅 Raw", "仅 Graph", "均不合格")
-        if language == "zh"
-        else (
-            "Model",
-            "Raw eligible",
-            "Graph eligible",
-            "Both",
-            "Raw only",
-            "Graph only",
-            "Neither",
-        )
-    )
-    return _html_table(headers, rows)
-
-
-def _evidence_quality_table(report, language):
-    rows = []
-    for model in report["model_order"]:
-        transfer = _mapping(_mapping(_mapping(report, "model_reports"), model), "transfer")
-        quality = _mapping(transfer, "evidence_quality")
-        coverage = _mapping(quality, "required_evidence_covered_by_treatment")
-        disposition = _mapping(quality, "paired_disposition")
-        rows.append(
-            (
-                model,
-                coverage.get("raw"),
-                coverage.get("semantic_graph"),
-                disposition.get("both"),
-                disposition.get("raw_only"),
-                disposition.get("semantic_graph_only"),
-                disposition.get("neither"),
-            )
-        )
-    headers = (
-        ("模型", "Raw 已证明", "Graph 已证明", "双臂", "仅 Raw", "仅 Graph", "均未证明")
-        if language == "zh"
-        else ("Model", "Raw proven", "Graph proven", "Both", "Raw only", "Graph only", "Neither")
-    )
-    return _html_table(headers, rows)
-
-
-def _usage_table(report, language):
-    rows = []
-    for model in report["model_order"]:
-        usage = _mapping(
-            _mapping(_mapping(_mapping(report, "model_reports"), model), "usage"), "combined"
-        )
-        rows.append(
-            (
-                model,
-                _format_tokens(usage.get("provider_visible_input_tokens")),
-                _format_tokens(usage.get("uncached_input_tokens")),
-                _format_tokens(usage.get("cache_read_input_tokens")),
-                _format_tokens(usage.get("cache_creation_input_tokens")),
-                _format_tokens(usage.get("output_tokens")),
-                _format_tokens(usage.get("reasoning_output_tokens")),
-                usage.get("input_breakdown_complete"),
-            )
-        )
-    headers = (
-        (
-            "模型",
-            "Input 总量",
-            "Uncached input",
-            "Cache read",
-            "Cache write",
-            "Output",
-            "Reasoning（Output 子集）",
-            "Input breakdown 完整",
-        )
-        if language == "zh"
-        else (
-            "Model",
-            "Total input",
-            "Uncached input",
-            "Cache read",
-            "Cache write",
-            "Output",
-            "Reasoning (output subset)",
-            "Input breakdown complete",
-        )
-    )
-    return _html_table(headers, rows)
-
-
-def _reliability_table(report, language):
-    rows = []
-    for model in report["model_order"]:
-        model_report = _mapping(_mapping(report, "model_reports"), model)
-        reliability = _mapping(model_report, "reliability")
-        transfer = _mapping(model_report, "transfer")
-        diagnosis = _mapping(transfer, "diagnosis_correct")
-        eligibility = _mapping(_mapping(transfer, "efficiency_eligibility"), "by_treatment")
-        disposition = _mapping(_mapping(transfer, "efficiency_eligibility"), "paired_disposition")
-        rows.append(
-            (
-                model,
-                reliability.get("runs"),
-                reliability.get("runner_errors"),
-                reliability.get("failed_database_queries"),
-                f"{diagnosis.get('raw')} / {diagnosis.get('semantic_graph')}",
-                f"{eligibility.get('raw')} / {eligibility.get('semantic_graph')}",
-                disposition.get("semantic_graph_only"),
-            )
-        )
-    headers = (
-        (
-            "模型",
-            "Runs",
-            "Runner errors",
-            "Transfer SQL 失败",
-            "诊断正确 Raw / Graph",
-            "合格 Raw / Graph",
-            "仅 Graph 合格 pair",
-        )
-        if language == "zh"
-        else (
-            "Model",
-            "Runs",
-            "Runner errors",
-            "Failed transfer SQL",
-            "Correct Raw / Graph",
-            "Eligible Raw / Graph",
-            "Graph-only eligible pairs",
-        )
-    )
-    return _html_table(headers, rows)
-
-
-def _cost_table(report, language):
-    costs = _mapping(report, "costs")
-    rows = []
-    for model in report["model_order"]:
-        value = _mapping(_mapping(costs, "models"), model)
-        estimate = value.get("estimated_cost")
-        currency = value.get("currency")
-        display = (
-            f"{currency} {float(estimate):.4f}"
-            if isinstance(estimate, (int, float)) and isinstance(currency, str)
-            else "Not estimable"
-            if language == "en"
-            else "不可估算"
-        )
-        status = value.get("status")
-        reason = value.get("unavailable_reason") or "—"
-        if language == "zh":
-            status = {"available": "可估算", "not_estimable": "不可估算"}.get(status, status)
-            reason = {
-                "model_price_not_frozen": "未冻结官方模型级价格。",
-                "cache_breakdown_incomplete": (
-                    "至少一个 run 缺少完整 cache breakdown，计价契约拒绝部分估算。"
-                ),
-                "usage_not_priceable": "Provider usage 无法按冻结计价契约估算。",
-            }.get(value.get("unavailable_reason_code"), reason)
-        rows.append((model, status, display, reason))
-    headers = (
-        ("模型", "状态", "估算", "不可估算原因")
-        if language == "zh"
-        else ("Model", "Status", "Estimate", "Reason when unavailable")
-    )
-    return _html_table(headers, rows)
-
-
-def _treatment_cost_table(report, language):
-    rows = []
-    treatments: list[str] = []
-    family_effects = _mapping(report, "confirmatory_family_resource_effects")
-    for model in report["model_order"]:
-        model_report = _mapping(_mapping(report, "model_reports"), model)
-        transfer = _mapping(model_report, "transfer")
-        costs = {}
-        for raw_family in family_effects.values():
-            if not isinstance(raw_family, Mapping):
-                raise ValueError("confirmatory family resource effects are malformed")
-            model_effect = _mapping(raw_family, model)
-            for treatment, value in _mapping(model_effect, "actual_cost_by_treatment").items():
-                if treatment in costs and costs[treatment] != value:
-                    raise ValueError("treatment cost differs between confirmatory families")
-                costs[treatment] = value
-        currency = transfer.get("cost_currency")
-        treatments = [key for key in ("split_pillars", "raw", "semantic_graph") if key in costs]
-        per_treatment = [_absolute_cost(costs.get(key), currency) for key in treatments]
-        storage_delta = (
-            _absolute_cost(
-                float(costs["raw"]) - float(costs["split_pillars"]), currency, signed=True
-            )
-            if isinstance(costs.get("split_pillars"), (int, float))
-            and isinstance(costs.get("raw"), (int, float))
-            else "n/a"
-        )
-        semantic_delta = (
-            _absolute_cost(
-                float(costs["semantic_graph"]) - float(costs["raw"]), currency, signed=True
-            )
-            if isinstance(costs.get("raw"), (int, float))
-            and isinstance(costs.get("semantic_graph"), (int, float))
-            else "n/a"
-        )
-        combined = _mapping(
-            _mapping(_mapping(model_report, "usage"), "combined"), "actual_cost_by_treatment"
-        )
-        rows.append(
-            (
-                model,
-                *per_treatment,
-                storage_delta,
-                semantic_delta,
-                _absolute_cost(combined.get("raw"), currency),
-                _absolute_cost(combined.get("semantic_graph"), currency),
-            )
-        )
-    names = {"raw": "Raw", "semantic_graph": "Graph", "split_pillars": "Split"}
-    treatment_headers = tuple(names[key] for key in treatments)
-    headers = (
-        (
-            "模型",
-            *(f"端到端 {name}" for name in treatment_headers),
-            "端到端 Raw − Split",
-            "端到端 Graph − Raw",
-            "全部 Raw",
-            "全部 Graph",
-        )
-        if language == "zh"
-        else (
-            "Model",
-            *(f"End-to-end {name}" for name in treatment_headers),
-            "End-to-end Raw − Split",
-            "End-to-end Graph − Raw",
-            "All Raw",
-            "All Graph",
-        )
-    )
-    return _html_table(headers, rows)
-
-
-def _pricing_table(report, language):
-    rows = []
-    pricing = _mapping(_mapping(report, "costs"), "pricing_basis")
-    for model in report["model_order"]:
-        item = _mapping(pricing, model)
-        currency = item.get("currency")
-        rows.append(
-            (
-                model,
-                _rate(item.get("uncached_input_per_million"), currency),
-                _rate(item.get("cache_read_per_million"), currency),
-                _rate(item.get("cache_write_per_million"), currency),
-                _rate(item.get("output_per_million"), currency),
-            )
-        )
-    headers = (
-        (
-            "模型",
-            "Uncached input / 1M",
-            "Cache read / 1M",
-            "Cache write / 1M",
-            "Output / 1M",
-        )
-        if language == "zh"
-        else (
-            "Model",
-            "Uncached input / 1M",
-            "Cache read / 1M",
-            "Cache write / 1M",
-            "Output / 1M",
-        )
-    )
-    return _html_table(headers, rows)
-
-
-def _cost_totals(report, language):
-    totals = _mapping(_mapping(report, "costs"), "known_totals_by_currency")
-    label = "完整估算小计" if language == "zh" else "complete subtotal"
-    return "".join(
-        '<p class="cost-total"><strong>'
-        f"{_escape(currency)} {_escape(round(float(value), 4))}"
-        f"</strong> {_escape(label)}</p>"
-        for currency, value in sorted(totals.items())
-    )
-
-
-def _absolute_cost(value: object, currency: object, *, signed: bool = False) -> str:
-    if not isinstance(value, (int, float)) or not isinstance(currency, str):
-        return "n/a"
-    formatted = f"{float(value):+.4f}" if signed else f"{float(value):.4f}"
-    return f"{currency} {formatted}"
-
-
-def _rate(value: object, currency: object) -> str:
-    if not isinstance(value, (int, float)) or not isinstance(currency, str):
-        return "n/a"
-    return f"{currency} {float(value):g}"
-
-
-def _html_table(headers, rows):
-    head = "".join(f"<th>{_escape(item)}</th>" for item in headers)
-    body = "".join(
-        "<tr>" + "".join(f"<td>{_escape(item)}</td>" for item in row) + "</tr>" for row in rows
-    )
-    return (
-        f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead>'
-        f"<tbody>{body}</tbody></table></div>"
-    )
-
-
-def _definition(term, value):
-    return f"<dt>{_escape(term)}</dt><dd>{_escape(value)}</dd>"
-
-
 def _artifact_binding(artifact, path):
     return {
         "artifact_type": artifact.get("artifact_type"),
         "sha256": sha256_file(path),
         "semantic_payload_sha256": _mapping(artifact, "integrity").get("semantic_payload_sha256"),
     }
-
-
-def _metric(label, value):
-    return (
-        f'<div class="metric"><span>{_escape(label)}</span><strong>{_escape(value)}</strong></div>'
-    )
-
-
-def _stat(value, label):
-    return f'<div class="stat"><strong>{_escape(value)}</strong><span>{_escape(label)}</span></div>'
-
-
-def _delta(value):
-    return f"{float(value):+g}" if isinstance(value, (int, float)) else "n/a"
-
-
-def _cost_delta(effect: Mapping[str, object]) -> str:
-    value = effect.get("case_median_delta")
-    currency = effect.get("currency")
-    if not isinstance(value, (int, float)) or not isinstance(currency, str):
-        return "n/a"
-    return f"{currency} {float(value):+.4f}"
-
-
-def _cost_delta_from_case(effect: Mapping[str, object]) -> str:
-    value = effect.get("estimated_cost")
-    currency = effect.get("estimated_cost_currency")
-    if not isinstance(value, (int, float)) or not isinstance(currency, str):
-        return "n/a"
-    return f"{currency} {float(value):+.4f}"
-
-
-def _direction(effect: Mapping[str, object]) -> str:
-    return (
-        f"{effect.get('negative_cases', 0)} / {effect.get('tied_cases', 0)} / "
-        f"{effect.get('positive_cases', 0)}"
-    )
 
 
 def _mechanism_label(value: object, language: str) -> str:
@@ -3102,22 +1433,6 @@ def _mechanism_label(value: object, language: str) -> str:
     }
     english, chinese = labels.get(str(value), (str(value), str(value)))
     return chinese if language == "zh" else english
-
-
-def _format_number(value: object) -> str:
-    if not isinstance(value, (int, float)):
-        return "n/a"
-    return f"{float(value):g}"
-
-
-def _format_tokens(value: object) -> str:
-    if not isinstance(value, (int, float)):
-        return "—"
-    return f"{int(value):,}"
-
-
-def _escape(value):
-    return html.escape(str(value), quote=True)
 
 
 def _mapping(value: Mapping[str, object], key: str) -> dict[str, object]:

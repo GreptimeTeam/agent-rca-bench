@@ -167,6 +167,34 @@ tree must deterministically rescore the published sanitized artifacts and
 regenerate the combined JSON and HTML. Reinvoking a provider is a replication,
 not a byte-for-byte reproduction of model output.
 
+The HTML report renders in the browser from two inlined payloads: the combined
+report JSON and the view model `formal_report_view.py` derives from it. Which
+side a string belongs to is fixed:
+
+- A sentence whose wording depends on a measured value is built in Python and
+  enters the view model in both languages. Moving one into the renderer would
+  put a claim about the measurement outside the reach of the test suite, which
+  is what keeps published copy from drifting away from the numbers.
+- Static interface copy that no measurement can change - section titles, table
+  headers, legends, the glossary - lives in `assets/report/i18n.json`. Both
+  language maps carry the same keys.
+- The renderer lays out and draws. It must not word a claim about significance,
+  direction, eligibility, or which arm a comparison favours: those sentences
+  arrive from the view model already written. Mapping a value the view model
+  already signed to a colour or a bar length is layout, not judgement.
+
+No grading tier may sit beside the registered test. An endpoint either survives
+Holm correction or it does not, and the page says so with the registered
+numbers. A softer tier invented after the run - "directional", "near
+significant" - reads as a weaker result while being a threshold chosen once its
+effect on the conclusion is already visible, which is the reading the
+registration exists to prevent. Report the case medians and their signs as
+description instead; they are the same evidence without the borrowed authority.
+
+Rendering client-side means the page needs a no-JavaScript path. Python emits a
+static summary of the verdicts and headline numbers from the same view model, so
+the fallback cannot state a different result from the page.
+
 ## Repository map
 
 - `README.md`: project entry point and reproduction workflow.
@@ -185,8 +213,9 @@ not a byte-for-byte reproduction of model output.
 - `src/semantic_rca_bench/datasets/`: source adapters and provider-free audits.
 - `src/semantic_rca_bench/greptimedb/`: GreptimeDB process and query boundary.
 - `src/semantic_rca_bench/formal_report.py`: deterministic combined report.
-- `src/semantic_rca_bench/assets/formal-measurement-report.html`: bilingual
-  self-contained HTML template.
+- `src/semantic_rca_bench/formal_report_view.py`: view model and HTML renderer.
+- `src/semantic_rca_bench/assets/report/`: page skeleton, stylesheet, renderer,
+  and static interface strings, inlined into one self-contained HTML file.
 - `tests/`: protocol, scorer, runner, adapter, and regression tests.
 
 ## Development workflow

@@ -41,6 +41,7 @@ from semantic_rca_bench.transfer_scorer import (
     TransferEvaluation,
     _accepted_mechanism_codes,
     _mechanism_verdict_from_trace,
+    _source_declared_identities,
 )
 
 ARTIFACT_SCHEMA_VERSION = 2
@@ -294,7 +295,11 @@ def validate_public_transfer_run(
             diagnosis is not None
             and isinstance(diagnosis.get("causal_component"), str)
             and case.causal_component is not None
-            and component_matches(str(diagnosis["causal_component"]), case.causal_component)
+            and component_matches(
+                str(diagnosis["causal_component"]),
+                case.causal_component,
+                source_identities=_source_declared_identities(case),
+            )
             and diagnosis.get("edge_source") is None
             and diagnosis.get("edge_destination") is None
         )
@@ -1683,7 +1688,9 @@ def _public_locus_projection_matches(
 ) -> bool:
     if case.causal_scope.uses_causal_component:
         return projection.get("scope") == case.causal_scope.value and component_matches(
-            str(projection.get("component")), str(case.causal_component)
+            str(projection.get("component")),
+            str(case.causal_component),
+            source_identities=_source_declared_identities(case),
         )
     return (
         projection.get("scope") == "dependency_edge"

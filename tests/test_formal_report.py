@@ -1,12 +1,17 @@
 import copy
+import json
+import re
 from pathlib import Path
 
 import pytest
 
 from semantic_rca_bench.formal_report import (
     build_formal_measurement_report,
-    render_formal_measurement_report,
     validate_formal_measurement_report,
+)
+from semantic_rca_bench.formal_report_view import (
+    build_report_view_model,
+    render_formal_measurement_report,
 )
 from semantic_rca_bench.formal_suite_protocol import (
     DEFAULT_SUITE_PROTOCOL_FIXTURE,
@@ -46,10 +51,10 @@ def _model_report(
         "multiplicity_family_size": 10,
     }
     analysis = {
-        "diagnosis_correct": {"raw": 18, "semantic_graph": 19},
-        "valid_completion": {"raw": 18, "semantic_graph": 19},
+        "diagnosis_correct": {"split_pillars": 11, "raw": 18, "semantic_graph": 19},
+        "valid_completion": {"split_pillars": 11, "raw": 18, "semantic_graph": 19},
         "efficiency_eligibility": {
-            "by_treatment": {"raw": 18, "semantic_graph": 19},
+            "by_treatment": {"split_pillars": 11, "raw": 18, "semantic_graph": 19},
             "paired_disposition": {
                 "both": 17,
                 "raw_only": 1,
@@ -81,6 +86,16 @@ def _model_report(
         "semantic_layer": {
             "comparison": "semantic_graph - raw",
             "primary_metrics": analysis["primary_metrics"],
+            "case_effects": [
+                {
+                    "case_id": case_id,
+                    "eligible_repetitions": 2,
+                    "rows_returned": -10,
+                    "correct_completion_tool_calls": 0,
+                    "provider_visible_input_tokens": -100,
+                }
+                for case_id in case_ids
+            ],
         },
         "storage_shape": {
             "comparison": "raw - split_pillars",
@@ -95,6 +110,17 @@ def _model_report(
                     "holm_adjusted_p": storage_holm_adjusted_p,
                 },
             },
+            # Rows are null against the split stack: not comparable, not zero.
+            "case_effects": [
+                {
+                    "case_id": case_id,
+                    "eligible_repetitions": 2,
+                    "rows_returned": None,
+                    "correct_completion_tool_calls": -2,
+                    "provider_visible_input_tokens": -100,
+                }
+                for case_id in case_ids
+            ],
         },
     }
     return {
@@ -128,6 +154,38 @@ def _model_report(
             "reasoning_output_tokens": 10,
         },
     }
+
+
+def _tool_calls(visibility: str) -> list[dict[str, object]]:
+    """One trajectory per run, shaped so every audit counter has a distinct value.
+
+    Each arm issues a successful and a failed call, exactly one join, and one
+    PromQL-evaluating operation, so a counter that silently counts failures or
+    non-evaluating operations changes a number the test pins.
+    """
+    if visibility == "split_pillars":
+        return [
+            {"tool_name": "query_metrics", "error": False, "input": {"operation": "query_range"}},
+            {"tool_name": "query_metrics", "error": True, "input": {"operation": "query"}},
+            {"tool_name": "query_logs", "error": False, "input": {"query": '{app="x"}'}},
+        ]
+    calls: list[dict[str, object]] = [
+        {
+            "tool_name": "execute_sql",
+            "error": False,
+            "input": {"query": "SELECT * FROM a JOIN b ON a.id = b.id"},
+        },
+        # Failed, and it contains JOIN: a counter that ignores `error` overcounts.
+        {"tool_name": "execute_sql", "error": True, "input": {"query": "SELECT * FROM c JOIN d"}},
+        # `series` does not evaluate PromQL and must not be counted as such.
+        {"tool_name": "query_metrics", "error": False, "input": {"operation": "series"}},
+        {"tool_name": "query_metrics", "error": False, "input": {"operation": "query_range"}},
+    ]
+    if visibility == "semantic_graph":
+        calls.append(
+            {"tool_name": "query_semantic_graph", "error": False, "input": {"view": "entities"}}
+        )
+    return calls
 
 
 def _report(
@@ -296,6 +354,7 @@ def _report(
                         "estimated_cost": (0.1 if visibility == "raw" else transfer_graph_run_cost),
                         "cost_currency": "USD",
                     },
+                    "tool_calls": _tool_calls(visibility),
                 },
             }
             for name in names
@@ -420,91 +479,164 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
         "actual_cost_by_treatment": {"raw": 4.4, "semantic_graph": 3.5199999999999996},
         "cost_currency": "USD",
     }
+    audit = report["tool_use_audit"]
+    # 14 cases x 2 repetitions x 4 models. Only the successful join counts, and
+    # `series` is not a PromQL evaluation.
+    assert audit["by_treatment"]["raw"] == {
+        "runs": 112,
+        "tool_calls": {"execute_sql": 224, "query_metrics": 224},
+        "successful_tool_calls": {"execute_sql": 112, "query_metrics": 224},
+        "successful_sql_join_calls": 112,
+        "runs_with_successful_sql_join": 112,
+        # The fixture joins two metric tables, so no join spans signal kinds.
+        "successful_cross_signal_join_calls": 0,
+        "runs_with_successful_cross_signal_join": 0,
+        "runs_with_successful_promql_evaluation": 112,
+    }
+    assert audit["by_treatment"]["split_pillars"]["successful_sql_join_calls"] == 0
+    assert audit["by_treatment"]["split_pillars"]["runs_with_successful_promql_evaluation"] == 112
+    assert audit["semantic_graph_tool"] == {
+        "runs": 112,
+        "runs_with_successful_call": 112,
+        "successful_calls": 112,
+    }
 
+    # The cohort spans two sources; the split is what makes a reversal visible.
+    assert report["diagnosis_by_dataset"] == {
+        "openrca2": {
+            "cases": 10,
+            "runs": {"split_pillars": 80, "raw": 80, "semantic_graph": 80},
+            "diagnosis_correct": {"split_pillars": 80, "raw": 80, "semantic_graph": 80},
+        },
+        "rca100": {
+            "cases": 4,
+            "runs": {"split_pillars": 32, "raw": 32, "semantic_graph": 32},
+            "diagnosis_correct": {"split_pillars": 32, "raw": 32, "semantic_graph": 32},
+        },
+    }
+    assert {case["dataset"] for case in report["case_catalog"]} == {"openrca2", "rca100"}
+
+
+def test_view_model_states_the_verdict_and_the_strip_geometry() -> None:
+    view = build_report_view_model(_report(storage_holm_adjusted_p=0.01))
+
+    verdicts = {item["goal"]: item for item in view["verdicts"]}
+    # Case medians agreeing is a direction, not a result: without correction the
+    # family is simply unsupported.
+    assert verdicts["semantic_layer"]["status"] == "not_supported"
+    assert verdicts["semantic_layer"]["endpoints"] == {
+        "total": 8,
+        "significant": 0,
+        "favouring_treatment": 8,
+        "favouring_baseline": 0,
+        "family_size": 10,
+    }
+    assert verdicts["semantic_layer"]["tally_text"]["en"] == (
+        "No registered endpoint of 8 survived Holm correction"
+    )
+    assert verdicts["semantic_layer"]["comparison"] == "Graph − Raw"
+    # Every storage endpoint is significant in this fixture, so the whole family
+    # is supported rather than partly supported.
+    assert verdicts["storage_shape"]["status"] == "supported"
+    assert verdicts["storage_shape"]["endpoints"]["significant"] == 8
+    ranking = verdicts["model_ranking"]
+    assert ranking["status"] == "descriptive"
+    assert ranking["endpoints"] is None
+    assert "no significance is claimed" in ranking["tally_text"]["en"]
+
+    narrative = view["narrative"]["en"]
+    assert narrative["families"]["semantic_layer"] == (
+        "None of the 10 Graph − Raw tests is significant after Holm correction."
+    )
+    assert "Raw used fewer" in narrative["families"]["storage_shape"]
+    assert "Holm p 0.01" in narrative["families"]["storage_shape"]
+    assert view["narrative"]["zh"]["families"]["semantic_layer"] == (
+        "Graph − Raw 的 10 项检验，经 Holm 校正后没有一项显著。"
+    )
+    assert "Discovery 12/16" in narrative["micro_row_reduction"]
+
+    strips = {
+        (item["model"], item["family"], item["metric"]): item
+        for item in view["charts"]["delta_strips"]
+    }
+    # Rows returned is not comparable against the split stack, so it is absent
+    # from that family rather than plotted as a zero delta.
+    assert ("gpt-5.6-sol", "storage_shape", "rows_returned") not in strips
+    strip = strips[("gpt-5.6-sol", "semantic_layer", "rows_returned")]
+    assert strip["favors"] == {"negative": "Graph", "positive": "Raw"}
+    assert len(strip["points"]) == 14
+    assert all(-1.0 <= point["position"] <= 0.0 for point in strip["points"])
+    assert strip["counts"] == {"eligible": 8, "negative": 6, "positive": 1, "tied": 1}
+    # Equal magnitudes must land on the same position for the axis to be readable.
+    assert len({point["position"] for point in strip["points"]}) == 1
+    assert strip["median"]["position"] == pytest.approx(-1.0)
+    # knee is 1 here, so the decade ticks run from 1 to the widest magnitude.
+    assert [tick["value"] for tick in strip["axis"]["ticks"]] == [-10.0, -1.0, 0.0, 1.0, 10.0]
+
+
+def test_view_model_merges_actual_cost_from_both_families() -> None:
+    # Each family reports only the arms it compares, so the split arm's spend is
+    # absent from the semantic-layer family and would otherwise read as unpriced.
+    series = {
+        item["model"]: item
+        for item in build_report_view_model(_report())["charts"]["cost_bars"]["series"]
+    }
+    entry = series["gpt-5.6-sol"]
+    assert set(entry["values"]) == {"split_pillars", "raw", "semantic_graph"}
+    assert all(value is not None for value in entry["values"].values())
+    assert entry["estimable"] is True
+
+
+def test_rendered_page_inlines_every_payload_and_leaks_nothing(tmp_path: Path) -> None:
+    report = _report()
     output = tmp_path / "report.html"
     render_formal_measurement_report(report, output)
     document = output.read_text()
-    assert "__REPORT_DATA__" not in document
-    assert 'href="semantic-rca-v34.json"' in document
-    assert "sanitized records for all 464 runs" in document
-    assert "仓库公开全部 464 次运行" in document
-    assert "gpt-5.6-sol" in document
-    assert "Focused retrieval micro-benchmarks" in document
-    assert "End-to-end case effects" in document
-    assert "End-to-end Split" in document
-    assert "End-to-end Raw − Split" in document
-    assert "Fault mechanism changes the effect" in document
-    assert "What this is" in document
-    assert "这是什么" in document
-    assert "Focused retrieval improves; E2E varies" in document
-    assert "聚焦检索更省，端到端因场景而异" in document
-    assert (
-        "Models where Graph returned fewer rows, by mechanism: Workload restart 4/4, "
-        "Call-path delay 4/4, CPU saturation 4/4, Memory pressure 4/4, "
-        "Disk I/O degradation 4/4, and Host unavailable 4/4." in document
-    )
-    assert "Of 6 estimable mechanisms, 6 reduce rows for every model" in document
-    assert (
-        "Eligible micro cases where Graph returned fewer rows: Discovery 12/16 and "
-        "Graph-retrieval 12/16." in document
-    )
-    assert "No Graph − Raw endpoint is significant after Holm correction over 10 tests." in document
-    assert "No Raw − Split endpoint is significant after Holm correction over 10 tests." in document
-    assert "18/28 Raw · 19/28 Graph" in document
-    assert "Across all 4 models: Raw 72/112; Graph 76/112." in document
-    assert "Open all 14 cases and 56 case-model combinations" in document
-    assert "View all 24 model-mechanism combinations" in document
-    assert (
-        "The micro-benchmarks use 6 Discovery cases from OpenRCA 1.0 and 2 Graph-retrieval "
-        "cases from OpenRCA2 ops-lite. The end-to-end cohort uses 10 cases from OpenRCA2 "
-        "ops-lite and 4 cases from RCA100." in document
-    )
-    assert "RCA100 v1.1 declares CC BY-NC-SA 4.0" in document
-    assert "Identifies component, dependency edge, or infrastructure node scope" in document
-    assert "识别组件、依赖边、基础设施节点 scope" in document
-    assert '<details class="report-details"' in document
-    assert '<div class="score-leaderboard">' in document
-    assert '<span class="rank">#1</span>' in document
-    assert "The page normalizes Overall and each treatment score to 100." in document
-    assert "<th>Overall / 100</th>" in document
-    assert "<th>总分 / 100</th>" in document
-    assert "gpt-5.6-sol: Location 40, Root cause 40, Strict evidence 5" in document
-    assert '<div class="score-stack" role="img"' in document
-    # A full 85-point score fills the stack instead of leaving a 15% remainder.
-    assert 'style="width: 47.0588%" title="Location: 40"' in document
-    assert 'style="width: 5.88235%" title="Strict evidence: 5"' in document
-    # Overall, three treatments, and three rubric dimensions, in both languages.
-    assert document.count('<article class="dimension-chart">') == 14
-    assert "Independent rankings by dimension" in document
-    assert "各维度独立排行" in document
-    assert "gpt-5.6-sol Strict evidence: 5 / 5" in document
-    # The rubric split is derived, so the copy cannot drift from it.
-    assert "查看 40/40/5 评分细则和精确分数" in document
-    assert "Datasets and acknowledgements" in document
-    assert "数据来源与致谢" in document
-    assert "https://github.com/microsoft/OpenRCA" in document
-    assert 'href="#en" data-language-button="en"' in document
-    assert 'href="#zh" data-language-button="zh"' in document
-    assert "/^#(en|zh)(?:-(.+))?$/" in document
-    assert 'window.addEventListener("hashchange", applyHash)' in document
-    assert "navigator.language" not in document
-    for language in ("en", "zh"):
-        assert document.count(f'id="{language}" data-report-language="{language}"') == 1
-        for section in (
-            "overview",
-            "summary",
-            "mechanisms",
-            "models",
-            "benchmarks",
-            "cases",
-            "resources",
-            "method",
-        ):
-            assert document.count(f'id="{language}-{section}"') == 1
-            assert f'href="#{language}-{section}"' in document
-    assert "Raw/Graph exact edge equality" in document
+
+    assert "__REPORT_" not in document
     assert "/Users/" not in document
     assert "private/tmp" not in document
+    assert 'href="semantic-rca-v34.json"' not in document  # emitted by the renderer, not the shell
+
+    payloads = {
+        name: json.loads(
+            re.search(
+                rf'<script type="application/json" id="{name}">(.*?)</script>',
+                document,
+                re.S,
+            )
+            .group(1)
+            .replace("<\\/", "</")
+        )
+        for name in ("semantic-rca-report", "semantic-rca-view", "semantic-rca-i18n")
+    }
+    assert payloads["semantic-rca-report"]["report_schema_version"] == 6
+    assert payloads["semantic-rca-view"]["report_json_filename"] == "semantic-rca-v34.json"
+    assert set(payloads["semantic-rca-i18n"]["en"]) == set(payloads["semantic-rca-i18n"]["zh"])
+
+    # Every key the renderer asks for must exist, or the page prints the key.
+    referenced = set(re.findall(r'(?<![A-Za-z0-9_])t\("([a-z][a-z0-9_.]*)"', document))
+    assert referenced
+    assert referenced <= set(payloads["semantic-rca-i18n"]["en"])
+
+    # The no-JavaScript summary carries the same findings the page leads with.
+    summary = re.search(r'<div id="fallback">(.*?)</div>\s*<noscript>', document, re.S).group(1)
+    view = build_report_view_model(report)
+    for takeaway in view["takeaways"]:
+        headline = view["narrative"]["en"]["takeaways"][takeaway["id"]]["headline"]
+        assert headline in summary
+    assert "REPORT.md" in summary
+    assert str(report["execution"]["completed_cells"]) in summary
+
+
+def test_rendered_page_reports_missing_i18n_keys(tmp_path: Path, monkeypatch) -> None:
+    import semantic_rca_bench.formal_report_view as view_module
+
+    monkeypatch.setattr(
+        view_module, "_load_i18n", lambda assets: (_ for _ in ()).throw(ValueError("boom"))
+    )
+    with pytest.raises(ValueError, match="boom"):
+        render_formal_measurement_report(_report(), tmp_path / "report.html")
 
 
 def test_incomplete_artifacts_fail_before_pair_aggregation() -> None:
@@ -525,29 +657,37 @@ def test_treatment_ranking_omits_a_model_without_a_score() -> None:
     ]
 
 
-def test_formal_measurement_report_states_a_cost_result_without_improved_models(
-    tmp_path: Path,
-) -> None:
-    report = _report(transfer_graph_run_cost=0.12)
+def test_cost_direction_counts_models_instead_of_claiming_a_reduction() -> None:
+    # Graph costs more per run than Raw here, so nothing got cheaper on that
+    # comparison and the sentence must say so.
+    narrative = build_report_view_model(_report(transfer_graph_run_cost=0.12))["narrative"]
+    assert narrative["en"]["cost_direction"]["semantic_layer"] == (
+        "0 of 4 priced models spent less through Graph than through Raw."
+    )
+    assert narrative["en"]["cost_direction"]["storage_shape"] == (
+        "4 of 4 priced models spent less through Raw than through Split."
+    )
+    assert narrative["zh"]["cost_direction"]["semantic_layer"] == (
+        "4 个可计价模型里，0 个走 Graph 比走 Raw 便宜。"
+    )
 
-    output = tmp_path / "report.html"
-    render_formal_measurement_report(report, output)
-    document = output.read_text()
-    assert "No model reduced actual end-to-end cost among 4 fully comparable models." in document
-    assert "4 个可完整比较的模型中，没有模型降低端到端实际成本。" in document
+    cheaper = build_report_view_model(_report(transfer_graph_run_cost=0.05))
+    assert cheaper["narrative"]["en"]["cost_direction"]["semantic_layer"] == (
+        "4 of 4 priced models spent less through Graph than through Raw."
+    )
 
 
-def test_formal_measurement_report_publishes_a_significant_interface_result(
-    tmp_path: Path,
-) -> None:
-    report = _report(storage_holm_adjusted_p=0.01)
+def test_a_significant_interface_result_reaches_the_headline() -> None:
+    view = build_report_view_model(_report(storage_holm_adjusted_p=0.01))
 
-    output = tmp_path / "report.html"
-    render_formal_measurement_report(report, output)
-    document = output.read_text()
-    assert "8 interface endpoints are significant; Graph E2E varies" in document
-    assert "Raw used fewer provider-visible input tokens than Split" in document
-    assert "接口组合检验族的显著结果" in document
+    assert view["narrative"]["en"]["headline"] == (
+        "8 interface endpoints are significant; Graph E2E varies"
+    )
+    assert (
+        "Raw used fewer provider-visible input tokens than Split"
+        in view["narrative"]["en"]["conclusion"]
+    )
+    assert "接口组合检验族的显著结果" in view["narrative"]["zh"]["conclusion"]
 
 
 def test_formal_measurement_report_rejects_tampered_summary() -> None:
@@ -591,3 +731,68 @@ def test_an_unmeasurable_evidence_dimension_does_not_cap_a_treatment() -> None:
     assert audited["unscored_dimensions"]["required_evidence_covered"] == {"covered": 1}
     assert not_estimable["unscored_dimensions"]["required_evidence_covered"] == {"not_estimable": 1}
     assert failed["unscored_dimensions"]["required_evidence_covered"] == {"failed": 1}
+
+
+def test_no_post_hoc_grade_survives_beside_the_registered_test() -> None:
+    """Only Holm correction decides an endpoint; nothing softer may reappear.
+
+    An earlier draft added a "directional" tier whose cutoffs were picked after
+    seeing how the endpoints landed. This pins the vocabulary so that tier cannot
+    come back through the view model.
+    """
+    import semantic_rca_bench.formal_report_view as view_module
+
+    assert not hasattr(view_module, "_evidence_grade")
+    assert not hasattr(view_module, "DIRECTIONAL_MINIMUM_CASES")
+    assert not hasattr(view_module, "DIRECTIONAL_AGREEMENT")
+
+    view = build_report_view_model(_report(storage_holm_adjusted_p=1.0))
+    assert view["evidence_rule"] == {"alpha": 0.05}
+    statuses = {item["goal"]: item["status"] for item in view["verdicts"]}
+    assert statuses["semantic_layer"] == "not_supported"
+    assert statuses["storage_shape"] == "not_supported"
+    assert {t["grade"] for t in view["takeaways"]} <= {"confirmed", "not_confirmed", "descriptive"}
+
+    # A family where every endpoint passes is supported; one that passes some is partial.
+    assert (
+        build_report_view_model(_report(storage_holm_adjusted_p=0.01))["verdicts"][1]["status"]
+        == "supported"
+    )
+
+
+def test_rejection_codes_separate_claiming_citations_from_the_rest() -> None:
+    """A code on a citation that never claimed the mechanism is verifier reach, not a failure.
+
+    Counting both together made a run look like it failed far more checks than it
+    attempted, which is how the published tally read before this split.
+    """
+    report = _report()
+    audit = report["claim_rejection_audit"]
+    assert audit["counting_unit"] == "citation"
+    # The fixture cites nothing, so both sides are empty rather than absent.
+    assert audit["by_code"] == {}
+
+    submission = report["citation_submission"]["by_model"]
+    assert set(submission) == set(report["model_order"])
+    for counts in submission.values():
+        assert counts["runs"] == 84
+        assert counts["runs_without_citation"] == 84
+        assert counts["correct_diagnoses_lost_to_missing_citation"] == 84
+
+
+def test_a_model_that_always_cites_produces_no_citation_warning() -> None:
+    from semantic_rca_bench.formal_report_view import _citation_submission_text
+
+    report = copy.deepcopy(_report())
+    for counts in report["citation_submission"]["by_model"].values():
+        counts["runs_without_citation"] = 0
+        counts["correct_diagnoses_lost_to_missing_citation"] = 0
+    assert _citation_submission_text(report, "en") is None
+
+    report["citation_submission"]["by_model"]["glm-5.3"].update(
+        {"runs_without_citation": 24, "correct_diagnoses_lost_to_missing_citation": 13}
+    )
+    text = _citation_submission_text(report, "en")
+    assert "24 of its 84 runs" in text
+    assert "13 of which" in text
+    assert _citation_submission_text(report, "zh").startswith("glm-5.3 的 84 次 run 里有 24 次")

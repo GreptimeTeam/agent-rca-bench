@@ -2053,3 +2053,297 @@ def test_sql_evidence_that_fails_the_predicate_still_scores_as_a_real_failure() 
 
     assert evaluation.required_evidence_covered is False
     assert evaluation.grounding_not_estimable_reason is None
+
+
+# --- audit fixes: shapes the contract allows that the verifier used to reject ---
+
+
+def test_metric_scorer_evaluates_case_folded_identity_predicates() -> None:
+    """`LOWER(col) LIKE '%x%'` is judged by whether the frozen identity satisfies it.
+
+    A wider filter that still admits the target, with the identity projected in
+    the result, binds the target. Rejecting it on spelling alone dropped real
+    evidence.
+    """
+    case = _case(0)
+    evidence = case.mechanism_evidence
+    fragment = evidence.identity_value.split("-")[-1]
+    query = f"""
+        SELECT greptime_timestamp, {evidence.identity_column}, greptime_value
+        FROM {evidence.source_table}
+        WHERE LOWER({evidence.identity_column}) LIKE '%{fragment.lower()}%'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+    """
+    rows = [
+        [_time(case.normal_window[0] + 1), evidence.identity_value, 0.0],
+        [_time(case.normal_window[0] + 2), evidence.identity_value, 0.0],
+        [_time(case.abnormal_window[0] + 1), evidence.identity_value, evidence.threshold],
+        [_time(case.abnormal_window[0] + 2), evidence.identity_value, evidence.threshold],
+    ]
+    result = QueryResult(
+        query_id="q1",
+        columns=["greptime_timestamp", evidence.identity_column, "greptime_value"],
+        rows=rows,
+        elapsed_seconds=0,
+    )
+    assert _evaluate(_run(case, query, result), case).required_evidence_covered is True
+
+
+def test_metric_scorer_rejects_case_folded_predicate_that_excludes_the_target() -> None:
+    """The same fold must still reject a filter the frozen identity fails."""
+    case = _case(0)
+    evidence = case.mechanism_evidence
+    query = f"""
+        SELECT greptime_timestamp, {evidence.identity_column}, greptime_value
+        FROM {evidence.source_table}
+        WHERE LOWER({evidence.identity_column}) LIKE '%definitely-not-the-target%'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["greptime_timestamp", evidence.identity_column, "greptime_value"],
+        rows=[[_time(case.abnormal_window[0] + 1), evidence.identity_value, evidence.threshold]],
+        elapsed_seconds=0,
+    )
+    assert _evaluate(_run(case, query, result), case).required_evidence_covered is False
+
+
+def test_metric_scorer_counts_observations_from_timestamp_extremes() -> None:
+    """`MIN(value) >= threshold` with two distinct timestamps proves two hits.
+
+    Without COUNT the aggregate still bounds its own size: distinct extremes
+    need at least two source rows.
+    """
+    case = _case(0)
+    evidence = case.mechanism_evidence
+    query = f"""
+        SELECT
+          CASE WHEN greptime_timestamp < '{_time(case.abnormal_window[0])}'
+               THEN 'normal' ELSE 'abnormal' END AS phase,
+          MIN(greptime_value) AS low_value,
+          MAX(greptime_value) AS high_value,
+          MIN(greptime_timestamp) AS first_sample,
+          MAX(greptime_timestamp) AS last_sample
+        FROM {evidence.source_table}
+        WHERE {evidence.identity_column} = '{evidence.identity_value}'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+        GROUP BY phase
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["phase", "low_value", "high_value", "first_sample", "last_sample"],
+        rows=[
+            [
+                "normal",
+                0.0,
+                0.0,
+                _time(case.normal_window[0] + 1),
+                _time(case.normal_window[0] + 9),
+            ],
+            [
+                "abnormal",
+                evidence.threshold,
+                evidence.threshold + 1,
+                _time(case.abnormal_window[0] + 1),
+                _time(case.abnormal_window[0] + 9),
+            ],
+        ],
+        elapsed_seconds=0,
+    )
+    assert _evaluate(_run(case, query, result), case).required_evidence_covered is True
+
+
+def test_metric_scorer_will_not_infer_two_observations_from_one_timestamp() -> None:
+    """Equal extremes prove one row, which cannot meet a two-observation rubric."""
+    case = _case(0)
+    evidence = case.mechanism_evidence
+    assert evidence.minimum_anomalous_observations >= 2
+    query = f"""
+        SELECT
+          CASE WHEN greptime_timestamp < '{_time(case.abnormal_window[0])}'
+               THEN 'normal' ELSE 'abnormal' END AS phase,
+          MIN(greptime_value) AS low_value,
+          MAX(greptime_value) AS high_value,
+          MIN(greptime_timestamp) AS first_sample,
+          MAX(greptime_timestamp) AS last_sample
+        FROM {evidence.source_table}
+        WHERE {evidence.identity_column} = '{evidence.identity_value}'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+        GROUP BY phase
+    """
+    moment = _time(case.abnormal_window[0] + 1)
+    result = QueryResult(
+        query_id="q1",
+        columns=["phase", "low_value", "high_value", "first_sample", "last_sample"],
+        rows=[
+            [
+                "normal",
+                0.0,
+                0.0,
+                _time(case.normal_window[0] + 1),
+                _time(case.normal_window[0] + 9),
+            ],
+            ["abnormal", evidence.threshold, evidence.threshold, moment, moment],
+        ],
+        elapsed_seconds=0,
+    )
+    assert _evaluate(_run(case, query, result), case).required_evidence_covered is False
+
+
+def test_direct_log_scorer_accepts_grouped_message_with_aggregated_timestamp() -> None:
+    """Grouping by the message keeps it intact; a timestamp extreme still pins the period."""
+    case = _case(0)
+    event = _configuration_event(case)
+    query = """
+        SELECT service_name, level, line, count(*) AS n, min(greptime_timestamp) AS first_ts
+        FROM logs
+        WHERE level IN ('ERROR','WARN')
+        GROUP BY service_name, level, line
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["service_name", "level", "line", "n", "first_ts"],
+        rows=[["user", "WARN", event, 3, _time(case.abnormal_window[0] + 5)]],
+        elapsed_seconds=0,
+    )
+    evaluation = _evaluate(_run(case, query, result), case)
+    assert evaluation.mechanism_evidence_match is True
+
+
+def test_direct_log_scorer_still_needs_the_message_as_a_group_key() -> None:
+    """Without the message in GROUP BY the row no longer carries one exact message."""
+    case = _case(0)
+    event = _configuration_event(case)
+    query = """
+        SELECT service_name, max(line) AS line, min(greptime_timestamp) AS first_ts
+        FROM logs
+        GROUP BY service_name
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["service_name", "line", "first_ts"],
+        rows=[["user", event, _time(case.abnormal_window[0] + 5)]],
+        elapsed_seconds=0,
+    )
+    assert _evaluate(_run(case, query, result), case).required_evidence_covered is False
+
+
+def test_metric_scorer_attributes_whole_time_buckets_to_their_period() -> None:
+    """A bucket fully inside the anomalous window is unambiguous evidence."""
+    case = _case(0)
+    evidence = case.mechanism_evidence
+    query = f"""
+        SELECT date_bin(INTERVAL '30 seconds', greptime_timestamp) AS bucket,
+               MAX(greptime_value) AS high_value
+        FROM {evidence.source_table}
+        WHERE {evidence.identity_column} = '{evidence.identity_value}'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+        GROUP BY bucket
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["bucket", "high_value"],
+        rows=[
+            [_time(case.normal_window[0]), 0.0],
+            [_time(case.abnormal_window[0] + 60), evidence.threshold],
+            [_time(case.abnormal_window[0] + 120), evidence.threshold],
+        ],
+        elapsed_seconds=0,
+    )
+    evaluation = _evaluate(_run(case, query, result), case)
+    assert evaluation.anomaly_evidence_match is True
+
+
+def test_metric_scorer_drops_a_bucket_that_straddles_the_transition() -> None:
+    """A straddling bucket mixes periods, so it cannot carry the universal baseline."""
+    case = _case(0)
+    evidence = case.mechanism_evidence
+    query = f"""
+        SELECT date_bin(INTERVAL '1 minute', greptime_timestamp) AS bucket,
+               MAX(greptime_value) AS high_value
+        FROM {evidence.source_table}
+        WHERE {evidence.identity_column} = '{evidence.identity_value}'
+          AND greptime_timestamp >= '{_time(case.normal_window[0])}'
+          AND greptime_timestamp < '{_time(case.abnormal_window[1])}'
+        GROUP BY bucket
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["bucket", "high_value"],
+        rows=[
+            [_time(case.normal_window[0]), 0.0],
+            # Starts before the transition and runs past it.
+            [_time(case.abnormal_window[0] - 30), 0.0],
+            [_time(case.abnormal_window[0] + 120), evidence.threshold],
+        ],
+        elapsed_seconds=0,
+    )
+    evaluation = _evaluate(_run(case, query, result), case)
+    assert evaluation.baseline_evidence_match is False
+
+
+def test_direct_log_scorer_attributes_whole_message_buckets() -> None:
+    """A `date_bin` bucket wholly inside the anomalous window pins its messages there."""
+    case = _case(0)
+    event = _configuration_event(case)
+    query = """
+        SELECT date_bin('1 minute', greptime_timestamp) AS t, service_name, level, line,
+               COUNT(*) AS n
+        FROM logs
+        WHERE level IN ('ERROR','WARN')
+        GROUP BY t, service_name, level, line
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["t", "service_name", "level", "line", "n"],
+        rows=[[_time(case.abnormal_window[0] + 120), "user", "WARN", event, 1]],
+        elapsed_seconds=0,
+    )
+    assert _evaluate(_run(case, query, result), case).mechanism_evidence_match is True
+
+
+def test_direct_log_scorer_drops_a_message_bucket_that_straddles_the_transition() -> None:
+    """A bucket opening before the transition cannot place its messages after it."""
+    case = _case(0)
+    event = _configuration_event(case)
+    query = """
+        SELECT date_bin('1 minute', greptime_timestamp) AS t, service_name, level, line,
+               COUNT(*) AS n
+        FROM logs
+        WHERE level IN ('ERROR','WARN')
+        GROUP BY t, service_name, level, line
+    """
+    result = QueryResult(
+        query_id="q1",
+        columns=["t", "service_name", "level", "line", "n"],
+        rows=[[_time(case.abnormal_window[0] - 30), "user", "WARN", event, 1]],
+        elapsed_seconds=0,
+    )
+    assert _evaluate(_run(case, query, result), case).required_evidence_covered is False
+
+
+def test_cross_signal_detection_ignores_subquery_and_cte_aliases() -> None:
+    """A subquery alias is not a second signal.
+
+    Counting alias names as tables inflated this figure fourfold in an earlier
+    draft, which is why the check parses the statement instead of matching text.
+    """
+    from semantic_rca_bench.formal_report import _signal_kinds
+
+    assert _signal_kinds("SELECT * FROM traces t JOIN logs l ON t.trace_id = l.trace_id") == {
+        "trace",
+        "log",
+    }
+    assert _signal_kinds(
+        "WITH logs AS (SELECT 1 AS x) "
+        "SELECT * FROM k8s_container_restarts r JOIN logs l ON r.x = l.x"
+    ) == {"metric"}
+    assert _signal_kinds(
+        "SELECT * FROM k8s_container_restarts a JOIN (SELECT 1 AS x) traces ON a.x = traces.x"
+    ) == {"metric"}
+    assert _signal_kinds("SELECT 1 FROM") == set()

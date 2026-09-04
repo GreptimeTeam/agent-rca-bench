@@ -1,0 +1,542 @@
+/* Semantic RCA Bench report.
+ *
+ * Neutral by construction. Hue is reserved for one job: which side of a paired
+ * comparison a delta favours. Verdicts are encoded by fill density and countable
+ * marks instead of colour, so nothing on the page reads as "good" or "bad"
+ * before the reader has looked at the number.
+ */
+
+:root {
+  color-scheme: light;
+
+  --paper: #eef1f3;
+  --card: #fbfcfd;
+  --ink: #10161c;
+  --ink-2: #33424e;
+  --muted: #5b6a75;
+  --rule: #cfd8de;
+  --rule-strong: #a9b7c1;
+
+  /* The only two hues on the page. Negative deltas favour the first treatment
+   * named in the comparison; positive deltas favour the second. */
+  --favors-left: #1f5fa8;
+  --favors-right: #c2680d;
+  --favors-left-soft: #dce7f4;
+  --favors-right-soft: #f6e6d4;
+
+  --step: 4px;
+  --gutter: clamp(20px, 4vw, 40px);
+  --measure: 68ch;
+  --radius: 10px;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.6 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }
+}
+
+.wrap { width: min(1120px, calc(100% - 2 * var(--gutter))); margin-inline: auto; }
+
+h1, h2, h3, h4 { margin: 0; font-weight: 640; letter-spacing: -0.02em; }
+h1 { font-size: clamp(34px, 5.4vw, 58px); line-height: 1.02; letter-spacing: -0.035em; font-weight: 680; }
+h2 { font-size: clamp(21px, 2.6vw, 27px); }
+h3 { font-size: 16px; }
+h4 { font-size: 13px; font-weight: 600; }
+p { margin: 0 0 12px; max-width: var(--measure); }
+a { color: var(--ink); text-underline-offset: 3px; text-decoration-color: var(--rule-strong); overflow-wrap: anywhere; }
+a:hover { text-decoration-color: currentColor; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 2px; }
+
+/* Hashes, model ids and source URLs are unbreakable tokens that would otherwise
+ * push the page wider than a phone viewport. */
+code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: anywhere; }
+.muted { color: var(--muted); }
+.caption { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.eyebrow {
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* --- chrome ------------------------------------------------------------- */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--rule);
+}
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+}
+.topbar nav {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 1;
+}
+.topbar nav::-webkit-scrollbar { display: none; }
+.topbar nav a {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.topbar nav a:hover { color: var(--ink); background: var(--card); }
+
+.lang { display: flex; gap: 0; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.lang button {
+  padding: 5px 11px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.lang button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+
+/* --- hero: the three questions and their verdicts ------------------------ */
+
+.hero { padding: clamp(40px, 6vw, 68px) 0 clamp(24px, 3vw, 36px); }
+.hero h1 { max-width: 16ch; }
+.hero .lede { margin-top: 16px; max-width: 56ch; font-size: clamp(16px, 1.7vw, 19px); color: var(--ink-2); }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 22px; font-size: 13px; color: var(--muted); }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.hero-actions a {
+  padding: 8px 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  font-size: 13.5px;
+  text-decoration: none;
+  background: var(--card);
+}
+.hero-actions a:first-child { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+/* --- overview: the arms, then the findings ------------------------------- */
+
+.arms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 24px 0 8px; }
+.arm {
+  position: relative;
+  padding: 20px 18px 18px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+/* The short name is the card's headline: every later strip, table and axis end
+ * refers to it, so it has to be the thing the reader remembers from here. */
+.arm-name {
+  display: inline-block;
+  margin-bottom: 10px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.arm h3 { margin-bottom: 6px; font-size: 16px; font-weight: 600; color: var(--ink-2); }
+.arm p { margin: 0; }
+
+/* Wherever the three names appear in running prose, they get the same monospace
+ * treatment so the reader ties them back to the cards. */
+.term {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.matrix-panel { margin-top: 12px; }
+
+.findings-title { margin-top: clamp(44px, 6vw, 68px); }
+.findings { display: grid; gap: 2px; margin-top: 20px; border-top: 1px solid var(--rule-strong); }
+.finding {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 190px;
+  gap: 20px;
+  align-items: start;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.finding-index {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--rule-strong);
+}
+.finding h3 { font-size: clamp(17px, 2vw, 21px); line-height: 1.35; max-width: 46ch; }
+.finding-support { margin: 10px 0 0; font-size: 14px; color: var(--ink-2); max-width: 62ch; }
+.finding-grade { display: grid; gap: 6px; justify-items: start; }
+
+.board-title { margin-top: clamp(44px, 6vw, 68px); }
+.board { border-top: 1px solid var(--rule-strong); }
+.verdict {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr) 216px;
+  gap: 20px;
+  align-items: start;
+  padding: 26px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.verdict-question { font-size: clamp(16px, 1.9vw, 20px); line-height: 1.4; max-width: 52ch; }
+.verdict-detail { margin-top: 8px; font-size: 13.5px; color: var(--muted); max-width: 58ch; }
+
+.verdict-status { display: grid; gap: 8px; justify-items: start; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 640;
+  letter-spacing: 0.02em;
+  border: 1.5px solid var(--ink);
+}
+/* Fill weight carries the verdict; no hue, so it survives greyscale and print.
+ * The exact tally lives in the countable marks below, not in the fill. */
+.badge[data-status="supported"],
+.badge[data-grade="confirmed"] { background: var(--ink); color: var(--paper); }
+.badge[data-status="partially_supported"],
+.badge[data-grade="directional"] { background: color-mix(in srgb, var(--ink) 14%, transparent); }
+.badge[data-status="directional_only"] { background: color-mix(in srgb, var(--ink) 14%, transparent); }
+.badge[data-status="not_supported"],
+.badge[data-status="mixed"],
+.badge[data-grade="mixed"] { background: transparent; border-color: var(--rule-strong); color: var(--muted); }
+.badge[data-status="descriptive"],
+.badge[data-grade="descriptive"] { border-style: dashed; border-color: var(--rule-strong); color: var(--muted); }
+.badge-sm { padding: 2px 8px; font-size: 11px; border-width: 1px; }
+
+/* One mark per registered endpoint, filled when it survived correction. */
+.tally { display: flex; gap: 3px; flex-wrap: wrap; }
+.tally i {
+  width: 9px;
+  height: 16px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 1.5px;
+}
+.tally i[data-on="1"] { background: var(--ink); border-color: var(--ink); }
+.tally-label { font-size: 12px; color: var(--muted); }
+
+/* --- sections ------------------------------------------------------------ */
+
+section { padding: clamp(40px, 6vw, 68px) 0; border-top: 1px solid var(--rule); scroll-margin-top: 60px; }
+.section-head { display: grid; gap: 10px; margin-bottom: 28px; }
+.section-head p { color: var(--ink-2); }
+
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+
+.card {
+  padding: 18px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.card h3 { margin-bottom: 6px; overflow-wrap: anywhere; }
+
+.stat { display: grid; gap: 2px; }
+.stat b { font-size: 26px; font-weight: 660; letter-spacing: -0.03em; }
+.stat span { font-size: 12.5px; color: var(--muted); }
+
+.note {
+  max-width: var(--measure);
+  margin: 18px 0 0;
+  padding: 12px 16px;
+  border-left: 2px solid var(--rule-strong);
+  background: var(--card);
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+/* --- signature: paired delta strips -------------------------------------- */
+
+.strips { display: grid; gap: 4px; }
+.strip {
+  display: grid;
+  grid-template-columns: 168px minmax(240px, 1fr) 150px;
+  gap: 18px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 8px;
+}
+.strip:nth-child(odd) { background: color-mix(in srgb, var(--card) 70%, transparent); }
+.strip-model { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.strip-reading { margin-top: 3px; font-size: 12px; line-height: 1.4; color: var(--muted); }
+
+.strip-axis { position: relative; height: 52px; }
+.strip-axis::before {
+  content: "";
+  position: absolute;
+  inset: 30px 0 auto;
+  height: 1px;
+  background: var(--rule-strong);
+}
+/* Zero is the only reference the reader needs, so it outranks the ticks. */
+.strip-zero {
+  position: absolute;
+  top: 12px;
+  bottom: 4px;
+  width: 1.5px;
+  margin-left: -0.75px;
+  background: var(--ink);
+}
+.strip-tick { position: absolute; top: 32px; width: 1px; height: 4px; background: var(--rule-strong); }
+.strip-tick span {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.strip-point {
+  position: absolute;
+  top: 30px;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  border: 1px solid var(--card);
+  animation: point-in 240ms ease-out both;
+}
+.strip-point[data-side="negative"] { background: var(--favors-left); }
+.strip-point[data-side="positive"] { background: var(--favors-right); }
+.strip-point[data-side="zero"] { background: var(--muted); }
+@keyframes point-in { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: scale(1); } }
+
+/* The median sits above the axis so its label cannot collide with a tick label. */
+.strip-median {
+  position: absolute;
+  top: 22px;
+  height: 16px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
+}
+.strip-median::after {
+  content: attr(data-label);
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 3px;
+  background: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.strip[data-grade="confirmed"] .strip-median::after,
+.strip:nth-child(even) .strip-median::after { background: var(--card); }
+
+.strip-result { display: grid; gap: 3px; justify-items: end; text-align: right; }
+.strip-signs { font-family: var(--font-mono); font-size: 13px; }
+.strip-p { font-size: 11.5px; color: var(--muted); }
+/* A confirmed endpoint gets a rule down its left edge; a directional one a
+ * lighter rule. Nothing else on the row changes, so the dots stay comparable. */
+.strip[data-grade="confirmed"] { box-shadow: inset 3px 0 0 var(--ink); background: var(--card); }
+.strip[data-grade="directional"] { box-shadow: inset 3px 0 0 var(--rule-strong); }
+
+.strip-lede { max-width: var(--measure); margin-bottom: 4px; color: var(--ink-2); font-size: 14px; }
+
+/* The axis ends carry the meaning, aligned over the plot column so the words sit
+ * above the side they describe. */
+.strip-scale {
+  display: grid;
+  grid-template-columns: 168px minmax(240px, 1fr) 150px;
+  gap: 18px;
+  padding: 0 14px;
+  margin-bottom: 2px;
+}
+/* Both ends share one grid cell so they sit on the same line, each pushed to the
+ * side of the axis it describes. */
+.strip-scale span { grid-column: 2; grid-row: 1; font-size: 11.5px; font-weight: 600; }
+.strip-scale .scale-left { justify-self: start; color: var(--favors-left); }
+.strip-scale .scale-right { justify-self: end; color: var(--favors-right); }
+
+.family-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  margin: 28px 0 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.family-head h3 { font-size: 15px; }
+.family-head .muted { font-size: 12.5px; }
+
+/* --- charts -------------------------------------------------------------- */
+
+.chart { display: grid; gap: 12px; }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart text { font-family: var(--font-sans); font-variant-numeric: tabular-nums; fill: var(--muted); }
+.chart .axis { stroke: var(--rule-strong); stroke-width: 1; }
+.chart .grid { stroke: var(--rule); stroke-width: 1; }
+.chart .series { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.chart .series-dot { fill: var(--card); stroke: var(--ink); stroke-width: 1.5; }
+.chart .value { fill: var(--ink); font-size: 11px; font-weight: 600; }
+/* Scope labels read as sentence fragments elsewhere; as a chart heading they
+ * need a capital. No effect on the Chinese labels. */
+.chart .group-label { font-size: 13px; text-transform: capitalize; }
+.chart .label { font-size: 11px; }
+.chart .bar { fill: var(--ink); }
+.chart .bar-alt { fill: var(--rule-strong); }
+.chart .bar-na { fill: none; stroke: var(--rule-strong); stroke-dasharray: 3 3; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; background: var(--ink); }
+.legend i.alt { background: var(--rule-strong); }
+
+/* --- tables and detail panels -------------------------------------------- */
+
+.panel {
+  margin: 16px 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.panel > summary {
+  padding: 13px 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel > summary::-webkit-details-marker { display: none; }
+.panel > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+}
+.panel[open] > summary::before { transform: rotate(45deg); }
+.panel[open] > summary { border-bottom: 1px solid var(--rule); }
+.panel-body { padding: 16px; display: grid; gap: 14px; }
+.panel-body > h4 { margin-top: 6px; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--card); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th {
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  font-size: 11px;
+  font-weight: 640;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+td.n, th.n { text-align: right; font-family: var(--font-mono); }
+td.na { color: var(--muted); }
+td.neg { color: var(--favors-left); }
+td.pos { color: var(--favors-right); }
+
+dl.defs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 7px 20px; margin: 0; font-size: 13.5px; }
+dl.defs dt { color: var(--muted); }
+dl.defs dd { margin: 0; min-width: 0; }
+
+ul.plain { margin: 0; padding-left: 18px; }
+ul.plain li { margin: 5px 0; max-width: var(--measure); }
+
+footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; }
+
+/* --- fallback ------------------------------------------------------------ */
+
+#fallback { display: none; }
+.static-summary { width: min(1120px, calc(100% - 2 * var(--gutter))); margin: 48px auto; }
+.static-summary h2 { margin-bottom: 12px; }
+.static-summary h3 { margin: 20px 0 8px; }
+.static-summary ul { padding-left: 18px; }
+.static-summary li { margin: 6px 0; }
+
+/* --- responsive ---------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .verdict { grid-template-columns: 1fr; gap: 12px; padding: 20px 0; }
+  .strip { grid-template-columns: 1fr; gap: 8px; padding: 14px 12px; }
+  .strip-result { justify-items: start; text-align: left; }
+  .strip:nth-child(odd) { background: var(--card); }
+  .strip { border: 1px solid var(--rule); }
+}
+
+@media print {
+  body { background: #fff; }
+  .topbar, .hero-actions { display: none; }
+  section { break-inside: avoid; page-break-inside: avoid; }
+  .panel > summary { display: none; }
+  .panel:not([open]) .panel-body { display: grid; }
+  .strip-point { animation: none; }
+}
+
+/* A section's own finding, restated where its evidence begins. */
+.insight {
+  max-width: 56ch;
+  margin: 0 0 20px;
+  padding-left: 14px;
+  border-left: 3px solid var(--ink);
+  font-size: clamp(16px, 1.8vw, 18px);
+  font-weight: 620;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+}
+
+@media (max-width: 900px) {
+  .arms { grid-template-columns: 1fr; }
+  .finding { grid-template-columns: 28px minmax(0, 1fr); }
+  .finding-grade { grid-column: 2; justify-items: start; }
+  .strip-scale { grid-template-columns: 1fr; padding: 0 12px; }
+  .strip-scale span { grid-column: 1; }
+  .strip-scale .scale-right { grid-row: auto; justify-self: start; }
+}

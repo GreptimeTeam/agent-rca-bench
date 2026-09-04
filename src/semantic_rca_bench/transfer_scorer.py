@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
 import sqlglot
@@ -128,6 +128,7 @@ def evaluate_transfer_run(
 ) -> TransferEvaluation:
     diagnosis = run.diagnosis
     causal_scope_match = diagnosis is not None and diagnosis.causal_scope is case.causal_scope
+    source_identities = _source_declared_identities(case)
     if case.causal_scope.uses_causal_component:
         causal_locus_match = (
             diagnosis is not None
@@ -135,7 +136,11 @@ def evaluate_transfer_run(
             and diagnosis.edge_source is None
             and diagnosis.edge_destination is None
             and case.causal_component is not None
-            and component_matches(diagnosis.causal_component, case.causal_component)
+            and component_matches(
+                diagnosis.causal_component,
+                case.causal_component,
+                source_identities=source_identities,
+            )
         )
     else:
         causal_locus_match = (
@@ -367,6 +372,25 @@ def evaluate_transfer_run(
     )
 
 
+def _source_declared_identities(case: TransferCaseSpec) -> tuple[str, ...]:
+    """Pod and container names the source audit froze as this component's identity.
+
+    Only names the oracle already declares. Nothing here is inferred from the
+    model's answer or from naming conventions.
+    """
+    evidence = case.mechanism_evidence
+    if evidence is None:
+        return ()
+    identities = [evidence.identity_value] if evidence.identity_value else []
+    identities.extend(
+        predicate.value for predicate in evidence.identity_equivalent_predicates if predicate.value
+    )
+    for signal in evidence.alternative_metric_signals:
+        if signal.identity_value:
+            identities.append(signal.identity_value)
+    return tuple(dict.fromkeys(identities))
+
+
 def _accepted_mechanism_codes(case: TransferCaseSpec) -> set[MechanismCode]:
     return {
         case.mechanism_code,
@@ -423,6 +447,19 @@ def _direct_log_verdict(
     scope = scopes[0]
     timestamp_alias = _projection_alias(scope, "greptime_timestamp")
     message_alias = _projection_alias(scope, "line")
+    bucket_width: int | None = None
+    if timestamp_alias is None and message_alias is not None:
+        # A GROUP BY that keys on the message keeps each distinct line intact and
+        # collapses only its timestamps. An extreme of those timestamps still
+        # pins the group to a period: every row in the group is at or after the
+        # minimum and at or before the maximum.
+        timestamp_alias = _grouped_timestamp_alias(scope, "greptime_timestamp", "line")
+        if timestamp_alias is None and _message_is_group_key(scope, "line"):
+            # A `date_bin` bucket pins the group the same way, but only when the
+            # whole bucket sits inside one period.
+            bucket = _time_bucket_projection(scope, "greptime_timestamp", None)
+            if bucket is not None:
+                timestamp_alias, bucket_width = bucket
     columns = [column.lower() for column in result.columns]
     if (
         timestamp_alias is None
@@ -439,9 +476,15 @@ def _direct_log_verdict(
             return _rejected_verdict("lineage_unproven")
         timestamp = _timestamp_ns(row[timestamp_index])
         message = row[message_index]
+        period = (
+            None
+            if timestamp is None
+            else _timestamp_period(timestamp, case)
+            if bucket_width is None
+            else _bucket_period(timestamp, bucket_width, case)
+        )
         if (
-            timestamp is not None
-            and _timestamp_period(timestamp, case) == "abnormal"
+            period == "abnormal"
             and isinstance(message, str)
             and _configuration_error_event_matches(message, evidence)
         ):
@@ -462,6 +505,41 @@ def _direct_log_verdict(
         baseline_clear=False,
         anomaly_present=True,
         direct_mechanism=True,
+    )
+
+
+def _message_is_group_key(scope: exp.Select, message_column: str) -> bool:
+    """Whether the message column is a grouping key, so each row keeps one exact message."""
+    group = scope.args.get("group")
+    if group is None:
+        return False
+    return message_column.lower() in {
+        column.name.lower()
+        for expression in group.expressions
+        for column in expression.find_all(exp.Column)
+    }
+
+
+def _grouped_timestamp_alias(
+    scope: exp.Select,
+    time_column: str,
+    message_column: str,
+) -> str | None:
+    """Alias of a `MIN`/`MAX` timestamp when the message itself is a group key.
+
+    Requiring the message to be a grouping key is what makes this safe: the row
+    then carries one exact source message rather than a collapsed or rewritten
+    one, and the timestamp extreme bounds when that message occurred.
+    """
+    if not _message_is_group_key(scope, message_column):
+        return None
+    return _aggregate_alias(
+        scope,
+        lambda node: (
+            isinstance(node, (exp.Min, exp.Max))
+            and isinstance(node.this, exp.Column)
+            and node.this.name.lower() == time_column.lower()
+        ),
     )
 
 
@@ -957,19 +1035,17 @@ def _identity_expression_value(
         right = _identity_expression_value(expression.expression, values)
         return left or right if left is not None and right is not None else None
     if isinstance(expression, (exp.EQ, exp.Like, exp.ILike)):
-        for column, literal in (
+        for side, literal in (
             (expression.this, expression.expression),
             (expression.expression, expression.this),
         ):
-            if not (
-                isinstance(column, exp.Column)
-                and isinstance(literal, exp.Literal)
-                and literal.is_string
-            ):
+            column, fold = _folded_identity_column(side)
+            if column is None or not (isinstance(literal, exp.Literal) and literal.is_string):
                 continue
             value = values.get(column.name.lower())
             if value is None:
                 return None
+            value = fold(value)
             expected = str(literal.this)
             if isinstance(expression, exp.EQ):
                 return value == expected
@@ -979,16 +1055,38 @@ def _identity_expression_value(
                 for character in expected
             )
             return re.fullmatch(pattern, value, flags=flags) is not None
-    if isinstance(expression, exp.In) and isinstance(expression.this, exp.Column):
-        value = values.get(expression.this.name.lower())
-        literals = [
-            str(item.this)
-            for item in expression.expressions
-            if isinstance(item, exp.Literal) and item.is_string
-        ]
-        if value is not None and len(literals) == len(expression.expressions):
-            return value in literals
+    if isinstance(expression, exp.In):
+        column, fold = _folded_identity_column(expression.this)
+        if column is not None:
+            value = values.get(column.name.lower())
+            literals = [
+                str(item.this)
+                for item in expression.expressions
+                if isinstance(item, exp.Literal) and item.is_string
+            ]
+            if value is not None and len(literals) == len(expression.expressions):
+                return fold(value) in literals
     return None
+
+
+def _folded_identity_column(
+    node: exp.Expression,
+) -> tuple[exp.Column | None, Callable[[str], str]]:
+    """A column reference and the case fold applied to it, if any.
+
+    `LOWER(container) LIKE '%user%'` is the same predicate as `container LIKE
+    '%USER%'`; the scoring contract judges these by whether the frozen identity
+    still satisfies them, not by their spelling. Applying the same fold to the
+    frozen value keeps that comparison exact, so a predicate that genuinely
+    excludes the target still fails.
+    """
+    if isinstance(node, exp.Lower) and isinstance(node.this, exp.Column):
+        return node.this, str.lower
+    if isinstance(node, exp.Upper) and isinstance(node.this, exp.Column):
+        return node.this, str.upper
+    if isinstance(node, exp.Column):
+        return node, lambda value: value
+    return None, lambda value: value
 
 
 def _metric_identity_result(
@@ -1547,12 +1645,18 @@ def _aggregate_result(
     average_alias = average_projection[0] if average_projection is not None else None
     high_projection = _high_count_alias(scope, value_scale, evidence.threshold)
     high_alias = high_projection[0] if high_projection is not None else None
-    if count_alias is None or all(
-        alias is None for alias in (minimum_alias, maximum_alias, average_alias, high_alias)
-    ):
+    # Without COUNT, distinct timestamp extremes still prove how many source rows
+    # the aggregate stands on: two different extremes need at least two rows.
+    # The bound is a floor, never the exact count, so it can only understate what
+    # the period contains.
+    span_aliases = (
+        _timestamp_span_aliases(scope, period_time_column) if count_alias is None else None
+    )
+    if all(alias is None for alias in (minimum_alias, maximum_alias, average_alias, high_alias)):
         return None
     period_alias = None
     period_values: dict[str, str] = {}
+    bucket_projection = None
     if len(periods) == 2:
         period_projection = _period_projection(
             scope,
@@ -1561,14 +1665,27 @@ def _aggregate_result(
             time_column=period_time_column,
             table_alias=period_table_alias,
         )
-        if period_projection is None:
-            return None
-        period_alias, period_values = period_projection
+        if period_projection is not None:
+            period_alias, period_values = period_projection
+        else:
+            bucket_projection = _time_bucket_projection(
+                scope, period_time_column, period_table_alias
+            )
+            if bucket_projection is None:
+                return None
+    bucket_alias = bucket_projection[0] if bucket_projection is not None else None
     columns = [column.lower() for column in result.columns]
-    required = [count_alias]
+    required = [count_alias] if count_alias is not None else list(span_aliases or ())
     required.extend(
         alias
-        for alias in (minimum_alias, maximum_alias, average_alias, high_alias, period_alias)
+        for alias in (
+            minimum_alias,
+            maximum_alias,
+            average_alias,
+            high_alias,
+            period_alias,
+            bucket_alias,
+        )
         if alias
     )
     if any(columns.count(alias) != 1 for alias in required):
@@ -1586,7 +1703,27 @@ def _aggregate_result(
             if not isinstance(raw_period, str):
                 return None
             period = period_values.get(raw_period)
-        count = _strict_int(row[indexes[count_alias]])
+        elif bucket_projection is not None:
+            start = _timestamp_ns(row[indexes[bucket_alias]])
+            if start is None:
+                return None
+            period = _bucket_period(start, bucket_projection[1], case)
+            if period is None:
+                # The bucket spans the transition. It cannot be attributed, and
+                # dropping it leaves a hole, so the baseline can no longer be
+                # claimed as complete from this result alone.
+                valid_periods.discard("normal")
+                continue
+        if count_alias is not None:
+            count = _strict_int(row[indexes[count_alias]])
+        elif span_aliases is not None:
+            count = _timestamp_span_floor(row, indexes, span_aliases)
+        elif bucket_projection is not None:
+            # A bucket only appears in a GROUP BY result when at least one source
+            # row fell in it. That is the whole floor a bucket row carries.
+            count = 1
+        else:
+            count = None
         if period not in periods or count is None or count <= 0:
             return None
         high_count = None
@@ -1623,6 +1760,11 @@ def _aggregate_result(
                 high_count = 0
             elif average is not None and maximum is not None:
                 high_count = _minimum_threshold_hits(count, average, maximum, threshold)
+            elif maximum is not None and maximum >= threshold:
+                # A maximum at or above the threshold needs one row at or above
+                # it. That is one observation, whatever the group's size; more
+                # than one has to come from another group or another aggregate.
+                high_count = 1
             else:
                 valid_periods.discard(period)
                 high_count = 0
@@ -1636,6 +1778,43 @@ def _aggregate_result(
     if not observed or not set(observed) <= periods:
         return None
     return _period_part(observed), tuple(sorted(valid_periods & set(observed)))
+
+
+def _timestamp_span_aliases(scope: exp.Select, time_column: str) -> tuple[str, str] | None:
+    """Aliases of `MIN(time)` and `MAX(time)`, when both are projected."""
+
+    def extreme(aggregate: type[exp.AggFunc]) -> str | None:
+        return _aggregate_alias(
+            scope,
+            lambda node: (
+                isinstance(node, aggregate)
+                and isinstance(node.this, exp.Column)
+                and node.this.name.lower() == time_column.lower()
+            ),
+        )
+
+    first, last = extreme(exp.Min), extreme(exp.Max)
+    return (first, last) if first and last else None
+
+
+def _timestamp_span_floor(
+    row: Sequence[object],
+    indexes: dict[str, int],
+    span_aliases: tuple[str, str] | None,
+) -> int | None:
+    """How many source rows the timestamp extremes prove, at minimum.
+
+    Distinct extremes need two rows; equal extremes prove only one. Anything
+    beyond that is unknown, so the caller must treat this as a lower bound and
+    never as the period's size.
+    """
+    if span_aliases is None:
+        return None
+    first = _timestamp_ns(row[indexes[span_aliases[0]]])
+    last = _timestamp_ns(row[indexes[span_aliases[1]]])
+    if first is None or last is None or last < first:
+        return None
+    return 2 if last > first else 1
 
 
 def _minimum_threshold_hits(
@@ -2187,6 +2366,78 @@ def _period_projection(
         if mapping is not None:
             matches.append((projection.alias_or_name.lower(), mapping))
     return matches[0] if len(matches) == 1 else None
+
+
+_INTERVAL_UNIT_NS = {
+    "second": 1_000_000_000,
+    "seconds": 1_000_000_000,
+    "minute": 60_000_000_000,
+    "minutes": 60_000_000_000,
+    "hour": 3_600_000_000_000,
+    "hours": 3_600_000_000_000,
+}
+
+
+def _time_bucket_projection(
+    scope: exp.Select,
+    time_column: str,
+    table_alias: str | None,
+) -> tuple[str, int] | None:
+    """Alias and width of a `date_bin` bucket over the source timestamp.
+
+    The scoring contract accepts unambiguous grouped buckets. A bucket is
+    unambiguous only when its whole width sits inside one period, which the
+    caller checks per row using this width.
+    """
+    matches = []
+    for projection in scope.expressions:
+        if not projection.alias_or_name:
+            continue
+        node = projection.this if isinstance(projection, exp.Alias) else projection
+        if not isinstance(node, exp.DateBin):
+            continue
+        column = node.args.get("expression")
+        if not _qualified_column(column, table_alias, time_column):
+            continue
+        width = _interval_nanoseconds(node.this)
+        if width is not None and width > 0:
+            matches.append((projection.alias_or_name.lower(), width))
+    return matches[0] if len(matches) == 1 else None
+
+
+def _interval_nanoseconds(node: exp.Expression | None) -> int | None:
+    """Bucket width in nanoseconds, for the interval spellings GreptimeDB accepts."""
+    if node is None:
+        return None
+    if isinstance(node, exp.Interval):
+        # sqlglot keeps the amount as a string literal in `INTERVAL '30' SECONDS`.
+        value = node.this
+        unit = node.args.get("unit")
+        amount = str(value.this).strip() if isinstance(value, exp.Literal) else ""
+        unit_name = (unit.name if hasattr(unit, "name") else str(unit or "")).lower()
+        scale = _INTERVAL_UNIT_NS.get(unit_name)
+        if amount.isdigit() and scale is not None:
+            return int(amount) * scale
+        return None
+    if isinstance(node, exp.Literal) and node.is_string:
+        parts = str(node.this).strip().split()
+        if len(parts) == 2 and parts[0].isdigit():
+            scale = _INTERVAL_UNIT_NS.get(parts[1].lower())
+            if scale is not None:
+                return int(parts[0]) * scale
+    return None
+
+
+def _bucket_period(start: int, width: int, case: TransferCaseSpec) -> str | None:
+    """The period a whole bucket falls in, or None when it straddles the boundary.
+
+    Both edges must land in the same period. A bucket that spans the transition
+    mixes pre- and post-incident observations, so it cannot be attributed either
+    way and the caller must drop it rather than guess.
+    """
+    first = _timestamp_period(start, case)
+    last = _timestamp_period(start + width - 1, case)
+    return first if first is not None and first == last else None
 
 
 def _period_case_matches(

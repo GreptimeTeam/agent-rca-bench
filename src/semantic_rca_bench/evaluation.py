@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from datetime import datetime
 
 from semantic_rca_bench.contracts import AgentRun, Evaluation, GroundTruth, ToolTrace
@@ -12,15 +13,41 @@ def _normalize(value: str) -> str:
     return re.sub(r"[^a-z0-9]", "", value.lower())
 
 
-def component_matches(predicted: str, expected: str) -> bool:
+_QUALIFIER_WORDS = r"(?:service|pod|container|instance|deployment)+"
+
+
+def component_matches(
+    predicted: str,
+    expected: str,
+    *,
+    source_identities: Sequence[str] = (),
+) -> bool:
+    """Whether an answer names the expected component.
+
+    `source_identities` are the pod or container names the case oracle froze as
+    equivalent to that component. An answer that names one of them is more
+    specific than the service, not wrong, so it matches. Only exact declared
+    identities count: the matcher never infers a pod-to-service relation from
+    free text.
+    """
     predicted_key = _component_key(predicted)
     expected_key = _component_key(expected)
     if predicted_key == expected_key:
         return True
+    identity_keys = {_component_key(value) for value in source_identities if value}
+    identity_keys.discard("")
+    if predicted_key in identity_keys:
+        return True
     if not predicted_key.startswith(expected_key):
         return False
     qualifier = predicted_key[len(expected_key) :]
-    return bool(re.fullmatch(r"(?:service|pod|container|instance|deployment)+", qualifier))
+    if re.fullmatch(_QUALIFIER_WORDS, qualifier):
+        return True
+    # "reservation pod reservation-7c6c958b77-fgxl5" carries the canonical name,
+    # a qualifier word, and the declared instance. Strip the first two and the
+    # remainder still has to be a declared identity exactly.
+    remainder = re.sub(f"^{_QUALIFIER_WORDS}", "", qualifier)
+    return remainder != qualifier and remainder in identity_keys
 
 
 def _component_key(value: str) -> str:

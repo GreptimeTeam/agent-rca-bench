@@ -5,25 +5,26 @@
 [![Python](https://img.shields.io/badge/python-3.11-3776ab)](https://www.python.org/downloads/release/python-3110/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-Semantic RCA Bench measures how a telemetry semantic layer changes root cause
-analysis (RCA) performed by large language model agents. It compares raw
-GreptimeDB telemetry with the complete GreptimeDB Semantic Graph interface while
-holding the model, incident, prompt, runner, telemetry, and resource budget
-constant.
+Semantic RCA Bench measures how the observability interface behind a large
+language model agent changes root cause analysis (RCA). It compares the native
+Prometheus, Loki, and Tempo interface bundle with GreptimeDB's all-in-one query
+surface, then compares raw GreptimeDB telemetry with the complete GreptimeDB
+Semantic Graph interface. Each paired comparison holds the model, incident,
+prompt, runner, telemetry, and resource budget constant.
 
 Read the [interactive report](https://semantic-rca.greptime.com), the
 [English report](REPORT.md), or the [Chinese report](REPORT.zh-CN.md).
 
 ## Result in one paragraph
 
-Semantic Graph reduced retrieved rows in most focused schema-discovery and
-dependency-navigation tasks. The 200-run end-to-end measurement did not show a
-general reduction in RCA rows, tool calls, tokens, or cost. The effect depended
-on both model and fault mechanism: call-path delay was the only mechanism with a
-consistent row reduction across all five models, while CPU and memory cases
-often became more expensive. Raw produced 88 correct diagnoses and Graph
-produced 91; the difference is descriptive and does not establish an accuracy
-uplift. See [REPORT.md](REPORT.md) for the complete results and limitations.
+Semantic Graph reduced rows in every eligible focused retrieval result, but no
+`semantic_graph - raw` end-to-end endpoint passed Holm correction. The
+`raw - split_pillars` family produced one significant result:
+`claude-fable-5-1` used fewer provider-visible input tokens under Raw in all 13
+eligible cases. Across 112 runs per treatment, Split produced 60 correct
+diagnoses, Raw 80, and Graph 77. These diagnosis totals are descriptive and vary
+sharply between the OpenRCA2 service cases and the RCA100 infrastructure-node
+cases. See [REPORT.md](REPORT.md) for the complete results and limits.
 
 ## What the benchmark measures
 
@@ -35,34 +36,37 @@ The suite has three layers:
 | Graph retrieval | Find and verify the relevant service dependency | Isolate topology navigation |
 | End-to-end RCA | Locate the fault, diagnose the mechanism, and cite evidence | Measure the complete investigation |
 
-Every task compares two treatments:
+The micro-benchmarks compare two treatments:
 
 - `raw`: production SQL over the ingested metric, log, and trace tables.
 - `semantic_graph`: the same SQL surface plus table semantics, entities,
   relationships, coverage, and Semantic Graph query tools.
 
+The end-to-end benchmark adds a third treatment:
+
+- `split_pillars`: Prometheus, Loki, and Tempo through their native query APIs.
+
 The shared system prompt does not contain case-specific query recipes or hidden
 answers. Ground truth, injection metadata, publisher causal graphs, and
 label-bearing case names are excluded from the agent surface.
 
-The measurement contains 360 completed agent cells:
+The measurement contains 464 completed agent cells:
 
-- 160 fixed-cohort micro-benchmark cells;
-- 200 end-to-end cells over ten trajectory-blind OpenRCA2 incidents;
-- five model configurations;
-- two Raw/Graph repetitions per model and case.
+- 128 fixed-cohort micro-benchmark cells;
+- 336 end-to-end cells over ten OpenRCA2 and four RCA100 incidents;
+- four model configurations;
+- two repetitions per model, case, and treatment.
 
 Rows returned and complete-run tool calls are the registered end-to-end
 efficiency metrics. Input, cache use, output, reasoning, latency, and cost are
 reported separately.
 
-### Current protocol
+### Published protocol
 
-The published report above is benchmark protocol v32. The protocol in this tree
-is v34 and has not been run. It adds a third end-to-end treatment,
-`split_pillars`, which replays the same case into Prometheus, Loki and Tempo and
-gives the agent those stores' native query APIs. The schedule is 14 cases × 4
-models × 3 treatments × 2 repetitions = 336 end-to-end cells.
+The published report uses benchmark protocol v34. Its third end-to-end
+treatment, `split_pillars`, replays the same case into Prometheus, Loki, and
+Tempo and gives the agent those stores' native query APIs. The schedule is 14
+cases × 4 models × 3 treatments × 2 repetitions = 336 end-to-end cells.
 
 v34 answers two paired questions instead of one, each corrected on its own:
 `semantic_graph - raw` for the semantic layer, and `raw - split_pillars` for the
@@ -103,10 +107,10 @@ uv run semantic-rca doctor
 ```
 
 Reproducing the published report needs neither Docker nor a GreptimeDB build.
-Running the v34 protocol needs both: a GreptimeDB checkout at the protocol
-revision built in release mode, and Docker for the digest-pinned Prometheus,
-Loki and Tempo images that back the `split_pillars` treatment. Each case starts
-its own four stores on loopback ports and removes them afterwards.
+Running the provider measurement needs both: a GreptimeDB checkout at the
+protocol revision built in release mode, and Docker for the digest-pinned
+Prometheus, Loki, and Tempo images that back the `split_pillars` treatment. Each
+case starts its own four stores on loopback ports and removes them afterwards.
 
 Build the wheel and source distribution with:
 
@@ -120,23 +124,23 @@ Report reproduction does not call a model provider or require source telemetry.
 It validates both sanitized source artifacts, recomputes the combined report,
 and renders a self-contained HTML file.
 
-Run it from the tree whose benchmark protocol matches the artifacts. The
-published artifacts are protocol v32, produced by commit `83edd73`; this tree is
-v34 and rejects them with `formal micro artifact protocol drifted`.
+Run the command from the v34 release tree. The command rejects artifacts whose
+protocol or source bindings differ from the checked-out fixtures.
 
 ```bash
-git checkout 83edd73
 output_dir=$(mktemp -d)
 
 uv run semantic-rca formal-suite-report \
-  --micro-artifact artifacts/measurement/semantic-rca-v32-micro.json \
-  --transfer-artifact artifacts/measurement/semantic-rca-v32-transfer.json \
+  --micro-artifact artifacts/measurement/semantic-rca-v34-micro.json \
+  --transfer-artifact artifacts/measurement/semantic-rca-v34-transfer.json \
+  --suite-protocol fixtures/reference/semantic-rca-v34-four-model-suite.json \
+  --transfer-protocol fixtures/reference/transfer-v34-protocol.json \
   --output-json "$output_dir/semantic-rca.json" \
   --output-html "$output_dir/semantic-rca.html"
 
-cmp artifacts/measurement/semantic-rca-v32.json \
+cmp artifacts/measurement/semantic-rca-v34.json \
   "$output_dir/semantic-rca.json"
-cmp artifacts/measurement/semantic-rca-v32.html \
+cmp artifacts/measurement/semantic-rca-v34.html \
   "$output_dir/semantic-rca.html"
 ```
 
@@ -148,7 +152,7 @@ uv run ruff check src tests
 uv run ruff format --check src tests
 uv lock --check
 uv build
-shasum -a 256 -c artifacts/measurement/semantic-rca-v32-SHA256SUMS
+shasum -a 256 -c artifacts/measurement/semantic-rca-v34-SHA256SUMS
 ```
 
 ## Reproduce source and Semantic Graph audits
