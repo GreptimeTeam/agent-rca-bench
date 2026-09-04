@@ -36,9 +36,10 @@ not reported as wholly wrong.
 
 Each final citation declares one or more claim types. These annotations describe the agent's
 intent; they do not decide whether the cited result supports a claim. The scorer infers support
-from the executed query and returned values. The current OpenRCA2 transfer cases require:
+from the executed query and returned values. The current transfer cases require:
 
-- `causal_locus`: evidence identifies the component or directed edge where the mechanism occurs.
+- `causal_locus`: evidence identifies the component, directed edge, or node where the mechanism
+  occurs.
 - `fault_mechanism`: evidence discriminates the stated mechanism from plausible alternatives.
 
 `onset`, `propagated_impact`, and `exclusion` are optional unless a case rubric explicitly makes
@@ -203,6 +204,37 @@ Component-scoped metric cases do not publish a causal operation. That field is d
 than scored for those cases: a model may leave it null or report an observed endpoint without
 changing diagnosis correctness. Graph entities and ordinary calls edges may guide an investigation,
 but they do not by themselves prove any of the four mechanisms.
+
+## Current RCA100 node evidence rubric
+
+The four RCA100 cases are scoped to an infrastructure node. The causal answer names the node the
+affected workloads run on, so a correct diagnosis crosses service, instance, pod, and node.
+
+Two of the four carry a deterministic mechanism oracle, built on the same transition contract as
+the OpenRCA2 metric rubrics: a nonempty normal baseline with no value at or above the frozen
+threshold, and at least two anomalous observations at or above it.
+
+| Mechanism | Source table | Threshold |
+| --- | --- | ---: |
+| `node_cpu_saturation` | `node_cpu_usage_rate` | 50.0 |
+| `node_memory_pressure` | `node_memory_usage_rate` | 50.0 |
+
+Node identity is bound by `entity_name` carrying the frozen node, with `entity_set` held at
+`k8s.node` as a scope-preserving predicate. Values come from `greptime_value`. The unit
+normalization, completeness, and fail-closed rules stated for the OpenRCA2 metric rubrics apply
+unchanged.
+
+The other two cases publish no oracle, because the source exposes no node-layer signal the
+deterministic verifier can express:
+
+- disk I/O degradation: the node metric set carries disk capacity but no I/O rate.
+- host unavailable: readiness is emitted only while the node is unready, so there is no baseline
+  period to compare against.
+
+Those two cases still score diagnosis correctness and still supply the efficiency endpoints. Only
+their secondary evidence-sufficiency audit reports as not estimable, on the same footing as a run
+whose cited evidence the SQL verifier cannot read. A published `null` there records an absent
+instrument, never a model failure.
 
 ## Regression standard
 

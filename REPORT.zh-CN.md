@@ -232,6 +232,33 @@ GLM-5.3 按 CNY 计费，输入、缓存命中、输出分别为每百万 token 
 <https://tradingeconomics.com/china/currency> 核实，四个模型合计 `USD 331.422729`。汇率是市场
 报价，不是测量值。
 
+## 数据集署名与许可边界
+
+- **OpenRCA 1.0。**6 个 Discovery case 使用 Bank、Market 和 Telecom 的选定源文件。
+  论文作者为 Junjielong Xu、Qinan Zhang、Zhiqing Zhong、Shilin He、Chaoyun Zhang、
+  Qingwei Lin、Dan Pei、Pinjia He、Dongmei Zhang 和 Qi Zhang。参见
+  [OpenRCA 仓库](https://github.com/microsoft/OpenRCA)、
+  [论文](https://openreview.net/forum?id=M4qNIzQYpd)和
+  [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)。
+- **OpenRCA2 ops-lite。**2 个 Graph-retrieval case 和 10 个端到端 case 来自
+  [ops-lite 数据集](https://huggingface.co/datasets/anon-ops/ops-lite)。Dataset card
+  声明 Apache-2.0，论文声明 CC-BY-SA 4.0。本项目不解决这项冲突。
+- **RCA-100 v1.1。**Source-only selection 记录 15 个节点故障 candidate 的聚合
+  profile，并选出 4 个 case。数据集 citation 列出的作者为 Xidao Wen、Haibin Liu、
+  Guiyang Liu、Cheng Zhang、Fang Situ 和 Qi Zhou。参见
+  [数据集论文](https://arxiv.org/abs/2606.29193)、固定版本的
+  [数据集许可](https://www.aiops.cn/gitlab/aiops-live-benchmark/agenticopseval/-/raw/69cf36430b43024d02530c610b1a4738b5c9a7fb/RCA100/LICENSE)和
+  [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)。
+
+Agent RCA Bench 选择 case，将评测限制在冻结的 case 时间窗内，并把源格式映射到评测
+使用的 ingestion protocol。发布物只包含经过 sanitization 的标识符、派生事实、聚合测量
+和源文件哈希，不包含源 telemetry row、源 archive、topology、causal graph 或 ground-truth
+文件。
+
+Apache-2.0 只适用于本项目原创的代码、artifact schema、报告文本和独立派生的聚合结果，
+不重新许可上游数据或上游数据集文档。[DATASETS.md](DATASETS.md)记录源文件级别的清单
+和转换过程。
+
 ## Artifacts
 
 - [Combined JSON](artifacts/measurement/agent-rca-v34.json)

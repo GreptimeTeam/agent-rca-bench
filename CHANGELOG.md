@@ -43,7 +43,8 @@ First public release, carrying benchmark protocol v34.
   insufficient evidence rather than evidence of no effect.
 - Descriptive totals over 112 runs per interface: 60 correct diagnoses through
   the three-backend bundle, 80 through GreptimeDB, 77 with the Semantic Graph.
-  The bundle cost 2.21x and read 1.54x the tokens.
+  The bundle cost 2.21x, converted at the frozen `6.7179` CNY per USD rate
+  checked 2026-09-03, and read 1.54x the tokens.
 - Sources: OpenRCA 1.0, OpenRCA2 ops-lite, and RCA100, each under its own terms.
   No source telemetry is redistributed.
 

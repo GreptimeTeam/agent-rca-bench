@@ -667,6 +667,20 @@ def test_rendered_page_reports_missing_i18n_keys(tmp_path: Path, monkeypatch) ->
         render_formal_measurement_report(_report(), tmp_path / "report.html")
 
 
+def test_dataset_attribution_carries_source_license_and_transformation_scope() -> None:
+    view = build_report_view_model(_report())
+    links = {item["label"]: item["url"] for item in view["attribution_links"]}
+
+    assert links["OpenRCA 1.0 license"] == ("https://creativecommons.org/licenses/by-nc/4.0/")
+    assert links["RCA-100 v1.1 license"].endswith("/RCA100/LICENSE")
+    assert links["RCA-100 v1.1 terms"] == ("https://creativecommons.org/licenses/by-nc-sa/4.0/")
+    assert (
+        "15 aggregate node-fault candidate profiles" in view["narrative"]["en"]["attribution_terms"]
+    )
+    assert "does not relicense upstream data" in view["narrative"]["en"]["attribution_terms"]
+    assert "15 个节点故障 candidate" in view["narrative"]["zh"]["attribution_terms"]
+
+
 def test_incomplete_artifacts_fail_before_pair_aggregation() -> None:
     with pytest.raises(ValueError, match="formal measurement artifacts are incomplete"):
         _report(drop_last_transfer_run=True)

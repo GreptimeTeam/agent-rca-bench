@@ -27,8 +27,15 @@ DATASET_ATTRIBUTION = {
     "openrca": {
         "label": "OpenRCA 1.0",
         "url": "https://github.com/microsoft/OpenRCA",
-        "en": "OpenRCA 1.0 declares CC BY-NC 4.0.",
-        "zh": "OpenRCA 1.0 声明 CC BY-NC 4.0。",
+        "citation_url": "https://openreview.net/forum?id=M4qNIzQYpd",
+        "license_url": "https://creativecommons.org/licenses/by-nc/4.0/",
+        "en": (
+            "OpenRCA 1.0 is credited to Junjielong Xu et al.; its paper appendix "
+            "declares the telemetry CC BY-NC 4.0."
+        ),
+        "zh": (
+            "OpenRCA 1.0 的作者为 Junjielong Xu 等人；论文附录声明 telemetry 采用 CC BY-NC 4.0。"
+        ),
     },
     "openrca2": {
         "label": "OpenRCA2 ops-lite",
@@ -37,12 +44,25 @@ DATASET_ATTRIBUTION = {
         "zh": "OpenRCA2 的 dataset card 声明 Apache-2.0，论文声明 CC-BY-SA 4.0。",
     },
     "rca100": {
-        "label": "RCA100",
-        "url": "https://arxiv.org/abs/2606.29193",
-        "en": (
-            "RCA100 v1.1 declares CC BY-NC-SA 4.0 and requires attribution to its dataset paper."
+        "label": "RCA-100 v1.1",
+        "url": (
+            "https://www.aiops.cn/gitlab/aiops-live-benchmark/agenticopseval/-/raw/"
+            "69cf36430b43024d02530c610b1a4738b5c9a7fb/RCA100/README.md"
         ),
-        "zh": "RCA100 v1.1 声明 CC BY-NC-SA 4.0，并要求引用其数据集论文。",
+        "citation_url": "https://arxiv.org/abs/2606.29193",
+        "license_url": (
+            "https://www.aiops.cn/gitlab/aiops-live-benchmark/agenticopseval/-/raw/"
+            "69cf36430b43024d02530c610b1a4738b5c9a7fb/RCA100/LICENSE"
+        ),
+        "terms_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "en": (
+            "RCA-100 v1.1 is credited to Xidao Wen et al.; its pinned license "
+            "declares CC BY-NC-SA 4.0 and requires the dataset citation."
+        ),
+        "zh": (
+            "RCA-100 v1.1 的作者为 Xidao Wen 等人；固定版本的 license 声明 "
+            "CC BY-NC-SA 4.0，并要求引用数据集。"
+        ),
     },
 }
 

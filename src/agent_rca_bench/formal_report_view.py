@@ -1014,7 +1014,13 @@ def _attribution(report: Mapping[str, object], language: str) -> tuple[str, str]
         )
         terms = (
             "".join(_dataset_attribution(adapter)["zh"] for adapter in datasets)
-            + "本项目不替上游解决 license 冲突，也不重新分发原始 telemetry。"
+            + "本项目选择 case，将评测限制在冻结的 case 时间窗内，并把源格式映射到"
+            "评测使用的 ingestion protocol。RCA-100 的公开 selection fixture 记录 15 个"
+            "节点故障 candidate 的聚合 profile 和 4 个 selected case。发布物只包含经过 "
+            "sanitization 的标识符、派生事实、聚合测量和源文件哈希，不包含源 telemetry "
+            "row、源 archive、topology、causal graph 或 ground-truth 文件。本项目不替上游"
+            "解决 license 冲突。Apache-2.0 只适用于本项目原创的代码、artifact schema、"
+            "报告文本和独立派生的聚合结果，不重新许可上游数据或上游数据集文档。"
         )
         return text, terms
     text = (
@@ -1025,20 +1031,32 @@ def _attribution(report: Mapping[str, object], language: str) -> tuple[str, str]
     )
     terms = (
         " ".join(_dataset_attribution(adapter)["en"] for adapter in datasets)
-        + " This project does not resolve upstream license conflicts and does not "
-        "redistribute source telemetry."
+        + " Agent RCA Bench selects cases, restricts evaluation to frozen case windows, "
+        "and maps source formats into its ingestion protocols. The public RCA-100 "
+        "selection fixture records 15 aggregate node-fault candidate profiles and four "
+        "selected cases. Published artifacts contain sanitized identifiers, derived "
+        "facts, aggregate measurements, and source hashes; they contain no source "
+        "telemetry rows, source archives, topology, causal graphs, or ground-truth files. "
+        "This project does not resolve upstream license conflicts. Apache-2.0 applies "
+        "only to the benchmark's original code, artifact schemas, report text, and "
+        "independently derived aggregates; it does not relicense upstream data or "
+        "upstream dataset documentation."
     )
     return text, terms
 
 
 def _attribution_links(report: Mapping[str, object]) -> list[dict[str, str]]:
-    return [
-        {
-            "label": _dataset_attribution(adapter)["label"],
-            "url": _dataset_attribution(adapter)["url"],
-        }
-        for adapter in _cohort_datasets(report)
-    ]
+    links = []
+    for adapter in _cohort_datasets(report):
+        attribution = _dataset_attribution(adapter)
+        links.append({"label": f"{attribution['label']} source", "url": attribution["url"]})
+        if citation_url := attribution.get("citation_url"):
+            links.append({"label": f"{attribution['label']} citation", "url": citation_url})
+        if license_url := attribution.get("license_url"):
+            links.append({"label": f"{attribution['label']} license", "url": license_url})
+        if terms_url := attribution.get("terms_url"):
+            links.append({"label": f"{attribution['label']} terms", "url": terms_url})
+    return links
 
 
 def _metric_label(metric: object, language: str) -> str:

@@ -255,6 +255,36 @@ Spend is recorded in the currency it was billed in. The cross-currency total con
 CNY per USD, verified on 2026-09-03 at <https://tradingeconomics.com/china/currency>, giving
 `USD 331.422729` across all four models. An exchange rate is a market quote, not a measurement.
 
+## Dataset attribution and license boundary
+
+- **OpenRCA 1.0.** The six Discovery cases use selected Bank, Market, and
+  Telecom source files. The paper credits Junjielong Xu, Qinan Zhang, Zhiqing
+  Zhong, Shilin He, Chaoyun Zhang, Qingwei Lin, Dan Pei, Pinjia He, Dongmei
+  Zhang, and Qi Zhang. See the [OpenRCA repository](https://github.com/microsoft/OpenRCA),
+  [paper](https://openreview.net/forum?id=M4qNIzQYpd), and
+  [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/).
+- **OpenRCA2 ops-lite.** The two Graph-retrieval and ten end-to-end cases come
+  from the [ops-lite dataset](https://huggingface.co/datasets/anon-ops/ops-lite).
+  Its dataset card declares Apache-2.0, while its paper declares CC-BY-SA 4.0.
+  This project does not resolve that conflict.
+- **RCA-100 v1.1.** The source-only selection records 15 aggregate node-fault
+  candidate profiles and selects four cases. The dataset citation credits Xidao
+  Wen, Haibin Liu, Guiyang Liu, Cheng Zhang, Fang Situ, and Qi Zhou. See the
+  [dataset paper](https://arxiv.org/abs/2606.29193), the pinned
+  [dataset license](https://www.aiops.cn/gitlab/aiops-live-benchmark/agenticopseval/-/raw/69cf36430b43024d02530c610b1a4738b5c9a7fb/RCA100/LICENSE),
+  and [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+
+Agent RCA Bench selects cases, restricts evaluation to frozen case windows, and
+maps source formats into its ingestion protocols. Published artifacts contain
+sanitized identifiers, derived facts, aggregate measurements, and source
+hashes. They contain no source telemetry rows, source archives, topology,
+causal graphs, or ground-truth files.
+
+Apache-2.0 applies only to the benchmark's original code, artifact schemas,
+report text, and independently derived aggregates. It does not relicense
+upstream data or upstream dataset documentation. [DATASETS.md](DATASETS.md)
+records the source-level inventory and transformations.
+
 ## Artifacts
 
 - [Combined JSON](artifacts/measurement/agent-rca-v34.json)

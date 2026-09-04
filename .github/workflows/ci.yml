@@ -37,6 +37,8 @@ jobs:
             "$output_dir/agent-rca.json"
           cmp artifacts/measurement/agent-rca-v34.html \
             "$output_dir/agent-rca.html"
+      - name: Validate the citation metadata
+        run: uvx --from cffconvert cffconvert --validate -i CITATION.cff
       - name: Reject machine-local paths in the published page
         run: |
           if grep -q '/Users/\|/home/runner/' \

@@ -21,7 +21,8 @@ Read the [interactive report](https://rca-bench.greptime.com), the
 
 The interface bundle mattered more than the semantic layer. Over 112 runs per
 treatment the three-backend bundle produced 60 correct diagnoses against
-GreptimeDB's 80, cost 2.21x as much, and made the models read 1.54x the tokens;
+GreptimeDB's 80, cost 2.21x as much at the frozen `6.7179` CNY per USD rate
+checked 2026-09-03, and made the models read 1.54x the tokens;
 one endpoint in that family survived Holm correction, `claude-fable-5-1` reading
 fewer provider-visible input tokens under GreptimeDB in all 13 eligible cases
 (case median -446,252.5, Holm p 0.00195). The Semantic Graph compressed focused
@@ -272,15 +273,18 @@ published artifacts is the report-reproduction contract.
 
 ## License and data terms
 
-The benchmark code, report schema, and derived report are licensed under
-[Apache-2.0](LICENSE). Upstream datasets keep their own terms and are not
-relicensed by this repository.
+The benchmark's original code, artifact schemas, report text, and independently
+derived aggregates are licensed under [Apache-2.0](LICENSE). This license does
+not cover or relicense upstream data or upstream dataset documentation.
 
-OpenRCA2's dataset card declares Apache-2.0, while its paper declares
-CC-BY-SA-4.0 and the downloaded artifact is not the archival release described
-by the paper. The repository therefore publishes derived, sanitized facts and
-hashes but not source telemetry. [DATASETS.md](DATASETS.md) records the complete
-provenance and license audit.
+The repository publishes sanitized identifiers, derived facts, aggregate
+measurements, and source hashes. It does not publish source telemetry rows,
+archives, topology, causal graphs, or ground-truth files. OpenRCA 1.0 and RCA100
+retain their CC BY-NC 4.0 and CC BY-NC-SA 4.0 terms, respectively. OpenRCA2's
+dataset card declares Apache-2.0, while its paper declares CC-BY-SA-4.0 and the
+downloaded artifact is not the archival release described by the paper.
+[DATASETS.md](DATASETS.md) records the source scope, transformations,
+attribution, provenance, and license statements.
 
 ## Project governance
 

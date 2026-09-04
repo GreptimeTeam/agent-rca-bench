@@ -91,5 +91,5 @@ and the frozen fixture all agree.
 
 The formal suite uses two OpenRCA2 Hotel Reservation cases selected before
 their formal model trajectories. Both passed exact Raw/Graph edge equality.
-Their five-model results appear in [REPORT.md](REPORT.md). Two cases support a
+Their four-model results appear in [REPORT.md](REPORT.md). Two cases support a
 focused retrieval observation, not a general Semantic Graph effect claim.

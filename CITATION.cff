@@ -9,7 +9,6 @@ authors:
     family-names: Zhuang
     email: xzhuang@greptime.com
     affiliation: Greptime
-    orcid: null
 repository-code: https://github.com/GreptimeTeam/agent-rca-bench
 url: https://rca-bench.greptime.com
 abstract: >-
@@ -33,19 +32,66 @@ version: 0.1.0
 date-released: '2026-09-04'
 references:
   - type: data
-    title: OpenRCA
+    title: OpenRCA 1.0 telemetry
+    authors:
+      - given-names: Junjielong
+        family-names: Xu
+      - given-names: Qinan
+        family-names: Zhang
+      - given-names: Zhiqing
+        family-names: Zhong
+      - given-names: Shilin
+        family-names: He
+      - given-names: Chaoyun
+        family-names: Zhang
+      - given-names: Qingwei
+        family-names: Lin
+      - given-names: Dan
+        family-names: Pei
+      - given-names: Pinjia
+        family-names: He
+      - given-names: Dongmei
+        family-names: Zhang
+      - given-names: Qi
+        family-names: Zhang
+    version: '1.0'
+    year: 2025
+    license: CC-BY-NC-4.0
     notes: >-
-      Discovery micro-benchmark cases. Declares CC BY-NC 4.0.
+      Six selected Discovery micro-benchmark cases. The paper appendix declares
+      the telemetry CC BY-NC 4.0. The benchmark selects case windows, maps source
+      formats for ingestion, and publishes no source telemetry or ground-truth
+      records.
     url: https://github.com/microsoft/OpenRCA
   - type: data
     title: OpenRCA2 ops-lite
+    authors:
+      - name: anon-ops
     notes: >-
       End-to-end service cases and Graph-retrieval micro cases. The dataset card
       declares Apache-2.0 while the paper declares CC-BY-SA 4.0.
     url: https://huggingface.co/datasets/anon-ops/ops-lite
   - type: data
-    title: RCA100
+    title: RCA-100
+    authors:
+      - given-names: Xidao
+        family-names: Wen
+      - given-names: Haibin
+        family-names: Liu
+      - given-names: Guiyang
+        family-names: Liu
+      - given-names: Cheng
+        family-names: Zhang
+      - given-names: Fang
+        family-names: Situ
+      - given-names: Qi
+        family-names: Zhou
+    version: '1.1'
+    year: 2026
+    license: CC-BY-NC-SA-4.0
     notes: >-
-      End-to-end infrastructure-node cases. Declares CC BY-NC-SA 4.0 and
-      requires attribution to its dataset paper.
-    url: https://arxiv.org/abs/2606.29193
+      The source-only selection records 15 aggregate node-fault candidate
+      profiles and selects four end-to-end infrastructure-node cases. The
+      benchmark publishes no source telemetry, topology, or ground-truth files.
+    url: >-
+      https://www.aiops.cn/gitlab/aiops-live-benchmark/agenticopseval/-/raw/69cf36430b43024d02530c610b1a4738b5c9a7fb/RCA100/README.md

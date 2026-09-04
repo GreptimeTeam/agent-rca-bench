@@ -1,31 +1,27 @@
 # Dataset provenance and selection
 
-Agent RCA Bench downloads upstream telemetry for local execution and does not
-redistribute source rows, labels, causal graphs, or archives. Public artifacts
-contain sanitized trajectories, derived facts, and source hashes.
+Agent RCA Bench downloads source files only for selected cases and source-only
+selection audits. It does not redistribute source rows, labels, causal graphs,
+ground-truth files, or archives. Public artifacts contain sanitized trajectories,
+derived facts, aggregate measurements, and source hashes.
 
 ## Release cohort
 
-The published measurement contains 18 incidents from two source families:
+The published v34 measurement contains 22 incidents from three source families:
 
 | Benchmark | Source | Cases | Role |
 | --- | --- | ---: | --- |
 | Discovery | OpenRCA 1.0 Bank, Market, and Telecom | 6 | Schema and signal discovery |
 | Graph retrieval | OpenRCA2 ops-lite | 2 | Service-dependency retrieval |
 | End-to-end RCA | OpenRCA2 ops-lite | 10 | Component or edge localization, mechanism diagnosis, and evidence |
-
-The v34 cohort, which has not been run, keeps those eight micro cases and adds
-four RCA100 infrastructure-node cases to the end-to-end set, for 22 incidents
-from three source families. The ten OpenRCA2 end-to-end cases are the same ones
-the published measurement used, carried over rather than reselected.
-
-| Benchmark | Source | Cases | Role |
-| --- | --- | ---: | --- |
 | End-to-end RCA | RCA100 v1.1 | 4 | Infrastructure-node localization, mechanism diagnosis, and evidence |
 
 The six Discovery cases and two Graph cases form a fixed reference cohort. The
-ten end-to-end cases were selected by a frozen source-only ranking before their
-formal model trajectories were observed.
+ten OpenRCA2 end-to-end cases were selected by a frozen source-only ranking
+before their formal model trajectories were observed and carried over from the
+previous measurement. The RCA100 source-only selection ranked 15 node-fault
+candidates and selected four cases before their formal model trajectories were
+observed.
 
 The public agent IDs do not expose source case names or injection labels.
 Source case names and mechanisms appear only in the report and scorer inputs.
@@ -34,15 +30,16 @@ Source case names and mechanisms appear only in the report and scorer inputs.
 
 | Dataset | Upstream statement | Benchmark policy |
 | --- | --- | --- |
-| OpenRCA 1.0 | The paper appendix declares telemetry CC BY-NC 4.0 | Download for local evaluation; do not redistribute telemetry |
+| OpenRCA 1.0 | The paper appendix declares telemetry CC BY-NC 4.0 | Download files for six selected Discovery cases; publish no source telemetry or ground-truth files |
 | OpenRCA2 ops-lite | The dataset card says Apache-2.0; the paper says CC-BY-SA 4.0 | Publish derived sanitized facts and hashes; do not redistribute telemetry |
 | Aegis FSE 2026 reviewer cohort | The dataset record says CC BY 4.0; the reviewer artifact's Apache-2.0 file does not explicitly cover `reproduction/data` | Keep downloader-backed; do not bundle source data |
-| RCA100 v1.1 | `RCA100/LICENSE` in the pinned AgenticOpsEval revision declares CC BY-NC-SA 4.0 over the case parquet files, ground truth, summary, and manifest | Keep downloader-backed; do not redistribute telemetry; attribute the dataset paper and license when publishing derived facts |
+| RCA100 v1.1 | `RCA100/LICENSE` in the pinned AgenticOpsEval revision declares CC BY-NC-SA 4.0 over the case Parquet files, ground truth, summary, manifest, README, and disclaimer | Rank 15 node-fault candidate profiles, download four selected case packages, and publish no source telemetry, topology, or ground-truth files |
 | RCAEval RE2-OB | The pinned Hugging Face dataset card declares MIT | Local adapter and semantic-coverage validation |
-| OpenRCA 1.0 Market and Telecom | Same CC BY-NC 4.0 declaration as OpenRCA Bank | Local evaluation only |
+| OpenRCA 1.0 Market and Telecom | Same CC BY-NC 4.0 declaration as OpenRCA Bank | Same six-case policy as the OpenRCA row |
 
-The repository's Apache-2.0 license covers benchmark code, artifact schemas,
-and derived reports. It does not relicense upstream data.
+The repository's Apache-2.0 license covers the benchmark's original code,
+artifact schemas, report text, and independently derived aggregates. It does
+not relicense upstream data or upstream dataset documentation.
 
 ## OpenRCA 1.0 micro cohort
 
@@ -50,6 +47,12 @@ and derived reports. It does not relicense upstream data.
 - Adapter revision: `c1bd4af7f635171a1c31cdd567c07d698dff6abc`
 - Public mirror revision: `07714872ea2cec77c13f9dec17a688e9df9621d1`
 - Telemetry terms: CC BY-NC 4.0 as declared by the paper appendix
+- License: [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)
+- Paper: [OpenRCA: Can Large Language Models Locate the Root Cause of Software
+  Failures?](https://openreview.net/forum?id=M4qNIzQYpd)
+
+The paper credits Junjielong Xu, Qinan Zhang, Zhiqing Zhong, Shilin He, Chaoyun
+Zhang, Qingwei Lin, Dan Pei, Pinjia He, Dongmei Zhang, and Qi Zhang.
 
 The six Discovery cases cover Bank, Market, and Telecom telemetry. Each fixture
 binds one component, signal, table, baseline window, incident window, comparison
@@ -60,6 +63,22 @@ field, and minimum effect. The no-model audit requires:
 - a matching frozen evidence predicate;
 - the target table in the semantic catalog's top five results;
 - an empty exclusive GreptimeDB instance before ingestion.
+
+The selected source cases are:
+
+- `Bank/task_5@2021-03-04T20:00`
+- `Bank/task_6@2021-03-25T09:00`
+- `Market/cloudbed-1@2022-03-20T09:30`
+- `Market/cloudbed-2@2022-03-20T14:30`
+- `Telecom@2020-05-29T03:30`
+- `Telecom@2020-05-23T04:30`
+
+The adapter downloads each source system's `query.csv` and `record.csv` and the
+required telemetry files for the selected dates. It evaluates the frozen case
+windows and maps source formats into the benchmark ingestion protocols. Public
+fixtures record case identifiers, components, signals, source table names,
+windows, comparison fields, thresholds, and aggregate ingestion and query
+audits. They contain no source telemetry rows or ground-truth records.
 
 The source formats do not always carry OpenTelemetry identity, span-kind,
 operation, status, or duration semantics. Adapters preserve those absences. They
@@ -195,9 +214,25 @@ available for smoke tests and source-fidelity audits. They are not part of the
 RCA100 supplies the four infrastructure-node cases of the v34 end-to-end cohort,
 alongside the ten OpenRCA2 service and edge cases. It is distributed inside
 AgenticOpsEval. The adapter pins dataset revision `v1.1` and source revision
-`69cf36430b43024d02530c610b1a4738b5c9a7fb`; the license statement above was read
-from `RCA100/LICENSE` at that revision. Attribution requires the dataset paper,
-[arXiv:2606.29193](https://arxiv.org/abs/2606.29193).
+`69cf36430b43024d02530c610b1a4738b5c9a7fb`. The pinned
+[RCA100 license](https://www.aiops.cn/gitlab/aiops-live-benchmark/agenticopseval/-/raw/69cf36430b43024d02530c610b1a4738b5c9a7fb/RCA100/LICENSE)
+declares [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+and requires the citation in the dataset README. That citation credits Xidao
+Wen, Haibin Liu, Guiyang Liu, Cheng Zhang, Fang Situ, and Qi Zhou. The associated
+AgenticOpsEval paper is [arXiv:2606.29193](https://arxiv.org/abs/2606.29193).
+
+The frozen selection fixture records aggregate profiles for 15 node-fault
+candidates and selects `t019`, `t003`, `t022`, and `t073`. Candidate profiles
+contain a case identifier, node name, source fault type, selection status, and,
+when available, normal, anomalous, and peer maxima. Selected-case records add
+the frozen windows, benchmark fault category, evidence threshold and sample
+counts when available, source table name, and hashes of the source files.
+
+The adapter downloads `task.json`, telemetry Parquet files, events, alerts, and
+topology for each selected case, plus its answer key and the shared taxonomy.
+It maps the source telemetry into the benchmark ingestion protocols and exposes
+neither topology nor answer keys to the agent. Public artifacts contain no
+Parquet rows, topology content, causal graphs, or ground-truth files.
 
 RCA100 metrics arrive as Prometheus remote write rather than OTLP, so GreptimeDB
 records their tables with `metadata_quality: inferred` and no
