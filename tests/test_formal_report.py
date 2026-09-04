@@ -1109,3 +1109,30 @@ def test_plotted_geometry_does_not_carry_raw_libm_output(monkeypatch) -> None:
     ] == [
         point["position"] for strip in view["charts"]["delta_strips"] for point in strip["points"]
     ]
+
+
+def test_hero_board_keeps_the_caveat_with_the_numbers(tmp_path: Path) -> None:
+    """The first screen now leads with the descriptive headline totals.
+
+    Those three rows are not tested endpoints. If the caveat is dropped while the
+    numbers stay, a reader who never scrolls past the first screen reads
+    descriptive totals as a confirmed result, which is the reading the frozen
+    protocol exists to prevent.
+    """
+    output = tmp_path / "hero.html"
+    render_formal_measurement_report(_report(), output)
+    document = output.read_text()
+    strings = json.loads(
+        re.search(
+            r'<script type="application/json" id="semantic-rca-i18n">(.*?)</script>',
+            document,
+            re.S,
+        )
+        .group(1)
+        .replace("<\\/", "</")
+    )
+    for language in ("en", "zh"):
+        assert strings[language]["hero.board.caveat"].strip()
+    # The renderer must still ask for it next to the board it annotates.
+    assert 't("hero.board.caveat")' in document
+    assert 'class: "hero-board"' in document

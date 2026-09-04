@@ -166,6 +166,66 @@
 
   // --- hero and verdict board ---------------------------------------------
 
+  /* The first screen answers the question it asks. These are the report's own
+   * descriptive headline rows, transposed so one interface reads across. The
+   * caveat travels with them: none of these three is a tested endpoint, and a
+   * reader who stops at the first screen must not come away thinking it is. */
+  const heroScoreboard = () => {
+    const chart = view.charts.headline;
+    const rows = chart.rows;
+    const columnKey = {
+      accuracy: "hero.board.accuracy",
+      cost: "hero.board.cost",
+      input_tokens: "hero.board.input",
+    };
+    // Each row picks its own best, so the basis row is marked only when all
+    // three agree; otherwise no row is the basis and the ×1.00 cells say so.
+    const bests = new Set(rows.map((row) => row.best));
+    const basis = bests.size === 1 ? [...bests][0] : null;
+    const cell = (row, key) => {
+      if (row.id === "accuracy") return `${num(row.values[key])} / ${num(row.denominator)}`;
+      const ratio = row.ratios[key];
+      return isNum(ratio) ? `×${ratio.toFixed(2)}` : NA();
+    };
+    return h(
+      "figure",
+      { class: "hero-board" },
+      h("figcaption", { text: t("hero.board.title") }),
+      h(
+        "table",
+        null,
+        h(
+          "thead",
+          null,
+          h(
+            "tr",
+            null,
+            h("th", { scope: "col" }),
+            rows.map((row) => h("th", { scope: "col", text: t(columnKey[row.id]) })),
+          ),
+        ),
+        h(
+          "tbody",
+          null,
+          chart.treatments.map((key) =>
+            h(
+              "tr",
+              { "data-basis": basis && key === basis ? "true" : null },
+              h(
+                "th",
+                { scope: "row" },
+                h("span", { class: "arm-chip", "data-arm": key, text: treatment(key) }),
+              ),
+              rows.map((row) => h("td", { text: cell(row, key) })),
+            ),
+          ),
+        ),
+      ),
+      h("p", { class: "hero-board-note", text: t("hero.board.note") }),
+      h("p", { class: "hero-board-note", text: t("hero.board.caveat") }),
+    );
+  };
+
   const heroSection = () => {
     const facts = view.facts;
     const meta = [
@@ -180,18 +240,23 @@
       { class: "hero" },
       h(
         "div",
-        { class: "wrap" },
-        h("p", { class: "eyebrow", text: t("hero.eyebrow") }),
-        h("h1", { text: t("hero.title") }),
-        h("p", { class: "lede", text: t("hero.lede") }),
-        h("div", { class: "hero-meta" }, meta.map((item) => h("span", { text: item }))),
+        { class: "wrap hero-grid" },
         h(
           "div",
-          { class: "hero-actions" },
-          h("a", { href: view.report_json_filename, download: true, text: t("hero.download") }),
-          h("a", { href: `${repo}#reproduce-the-published-report`, text: t("hero.reproduce") }),
-          h("a", { href: repo, text: t("hero.source") }),
+          { class: "hero-copy" },
+          h("p", { class: "eyebrow", text: t("hero.eyebrow") }),
+          h("h1", { text: t("hero.title") }),
+          h("p", { class: "lede", text: t("hero.lede") }),
+          h("div", { class: "hero-meta" }, meta.map((item) => h("span", { text: item }))),
+          h(
+            "div",
+            { class: "hero-actions" },
+            h("a", { href: view.report_json_filename, download: true, text: t("hero.download") }),
+            h("a", { href: `${repo}#reproduce-the-published-report`, text: t("hero.reproduce") }),
+            h("a", { href: repo, text: t("hero.source") }),
+          ),
         ),
+        heroScoreboard(),
       ),
     );
   };

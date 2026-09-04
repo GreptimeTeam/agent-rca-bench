@@ -24,6 +24,12 @@
   --favors-left-soft: #dce7f4;
   --favors-right-soft: #f6e6d4;
 
+  /* One colour per interface, used by every bar and by the hero board, so the
+   * reader ties a mark back to the same arm wherever it appears. */
+  --arm-split: #94a3b3;
+  --arm-raw: #1f5fa8;
+  --arm-graph: #6b4c9a;
+
   --step: 4px;
   --gutter: clamp(20px, 4vw, 40px);
   --measure: 68ch;
@@ -142,6 +148,77 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
   background: var(--card);
 }
 .hero-actions a:first-child { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+/* The question on the left, the answer on the right. Before this the first
+ * screen was prose with an empty half, and the first number sat two screens
+ * down. */
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 390px);
+  gap: clamp(28px, 4vw, 56px);
+  align-items: start;
+}
+.hero-board {
+  margin: 0;
+  padding: 18px 20px 16px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.hero-board figcaption {
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.hero-board table { width: 100%; border-collapse: collapse; }
+.hero-board thead th {
+  padding: 0 0 9px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-align: right;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hero-board thead th:first-child { text-align: left; }
+.hero-board tbody th { padding: 8px 0; text-align: left; font-weight: 500; }
+.hero-board tbody td {
+  padding: 8px 0 8px 14px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  text-align: right;
+  white-space: nowrap;
+}
+.hero-board tbody tr + tr th,
+.hero-board tbody tr + tr td { border-top: 1px solid var(--rule); }
+.hero-board tbody tr[data-basis="true"] td { font-weight: 600; color: var(--ink); }
+.arm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.arm-chip::before {
+  content: "";
+  width: 3px;
+  height: 15px;
+  border-radius: 2px;
+  background: var(--rule-strong);
+}
+.arm-chip[data-arm="split_pillars"]::before { background: var(--arm-split); }
+.arm-chip[data-arm="raw"]::before { background: var(--arm-raw); }
+.arm-chip[data-arm="semantic_graph"]::before { background: var(--arm-graph); }
+.hero-board-note {
+  margin: 10px 0 0;
+  max-width: none;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.hero-board-note + .hero-board-note { margin-top: 5px; }
 
 /* --- overview: the arms, then the findings ------------------------------- */
 
@@ -617,9 +694,9 @@ footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--m
 
 /* Three arm identities. None of them is a "good" or "bad" colour; the number
  * beside the bar carries the direction. */
-.bar-fill[data-arm="split_pillars"] { background: #94a3b3; }
-.bar-fill[data-arm="raw"] { background: #1f5fa8; }
-.bar-fill[data-arm="semantic_graph"] { background: #6b4c9a; }
+.bar-fill[data-arm="split_pillars"] { background: var(--arm-split); }
+.bar-fill[data-arm="raw"] { background: var(--arm-raw); }
+.bar-fill[data-arm="semantic_graph"] { background: var(--arm-graph); }
 
 .bar-value { display: flex; align-items: baseline; justify-content: flex-end; gap: 10px; }
 .bar-value strong { font-family: var(--font-mono); font-size: 14px; font-weight: 600; }
@@ -634,4 +711,5 @@ footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--m
 @media (max-width: 900px) {
   .bar-row { grid-template-columns: 60px minmax(0, 1fr); }
   .bar-value { grid-column: 2; justify-content: flex-start; }
+  .hero-grid { grid-template-columns: 1fr; gap: 28px; }
 }
