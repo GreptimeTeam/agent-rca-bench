@@ -1,5 +1,6 @@
 import copy
 import json
+import math
 import re
 from pathlib import Path
 
@@ -1059,3 +1060,52 @@ def test_every_lookup_the_renderer_makes_resolves_in_the_view_model() -> None:
     for model in view["models"]:
         for benchmark in report["model_reports"][model]["micro"]["benchmarks"]:
             assert benchmark in labels
+
+
+def test_plotted_geometry_does_not_carry_raw_libm_output(monkeypatch) -> None:
+    """The release reproduces byte for byte across platforms only if the plotted
+    geometry is quantised.
+
+    `log1p` and `log10` are libm functions that implementations may round
+    differently in the last place. Unrounded, that made the published HTML
+    differ between a macOS run and CI while the combined JSON still matched,
+    which breaks the reproduction contract the release tag stands on.
+    """
+    import agent_rca_bench.formal_report_view as view_module
+
+    view = build_report_view_model(_report())
+    positions = [
+        point["position"] for strip in view["charts"]["delta_strips"] for point in strip["points"]
+    ]
+    positions += [
+        tick["position"]
+        for strip in view["charts"]["delta_strips"]
+        for tick in strip["axis"]["ticks"]
+    ]
+    assert positions
+    for position in positions:
+        assert position == round(position, view_module.POSITION_PRECISION)
+
+    # Whatever log10 returns, the decade must bracket the value using exact
+    # powers only, so a tick series cannot shift by an order of magnitude.
+    for value in (1.0, 9.999, 10.0, 100.0, 1000.0, 2500.0):
+        exponent = view_module._floor_log10(value)
+        assert 10.0**exponent <= value < 10.0 ** (exponent + 1)
+
+    monkeypatch.setattr(view_module.math, "log10", lambda _: 1.9999999999999998)
+    assert view_module._floor_log10(100.0) == 2
+
+    # Reproduce the actual failure: a libm whose log1p lands one ULP away must
+    # still render identical coordinates.
+    exact_log1p = math.log1p
+    monkeypatch.setattr(
+        view_module.math, "log1p", lambda x: math.nextafter(exact_log1p(x), math.inf)
+    )
+    perturbed = build_report_view_model(_report())
+    assert [
+        point["position"]
+        for strip in perturbed["charts"]["delta_strips"]
+        for point in strip["points"]
+    ] == [
+        point["position"] for strip in view["charts"]["delta_strips"] for point in strip["points"]
+    ]

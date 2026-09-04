@@ -62,6 +62,13 @@ SIGNIFICANCE_ALPHA = 0.05
 # the data alone and two runs of the same artifact place every point identically.
 SYMLOG_KNEE_FRACTION = 0.01
 
+# Decimal places kept on a plotted axis coordinate. The mapping runs through
+# `log1p`, and libm implementations are free to differ in the last place, so an
+# unrounded coordinate makes the same artifact render to different bytes on
+# macOS and on Linux. Nine places sit far below what a pixel resolves and far
+# above the error being absorbed.
+POSITION_PRECISION = 9
+
 
 def build_report_view_model(report: Mapping[str, object]) -> dict[str, object]:
     """Everything the page renders that the report JSON does not already state."""
@@ -1314,7 +1321,7 @@ def _symlog_axis(magnitudes: Sequence[float]) -> dict[str, object]:
 def _tick_values(widest: float, knee: float) -> list[float]:
     """Zero plus every power of ten between the knee and the widest magnitude."""
     values = [0.0]
-    exponent = math.floor(math.log10(knee))
+    exponent = _floor_log10(knee)
     while True:
         tick = 10.0**exponent
         if tick > widest:
@@ -1325,15 +1332,37 @@ def _tick_values(widest: float, knee: float) -> list[float]:
     return values
 
 
+def _floor_log10(value: float) -> int:
+    """`floor(log10(value))`, corrected so a 1 ULP `log10` error cannot move it.
+
+    `log10` is not required to be correctly rounded, so a power of ten can come
+    back just under its exact exponent and shift every tick by a decade. The
+    comparison that fixes it uses only exact powers and ordering.
+    """
+    exponent = math.floor(math.log10(value))
+    if 10.0 ** (exponent + 1) <= value:
+        return exponent + 1
+    if 10.0**exponent > value:
+        return exponent - 1
+    return exponent
+
+
 def _symlog_position(value: float, axis: Mapping[str, object]) -> float:
-    """Map a delta to [-1, 1]; the browser turns that into pixels."""
+    """Map a delta to [-1, 1]; the browser turns that into pixels.
+
+    The result is quantised because `log1p` is a libm function that platforms
+    may round differently in the last place. Without that step the published
+    HTML stops reproducing byte for byte across operating systems, which is the
+    property the release tag exists to guarantee. `POSITION_PRECISION` keeps
+    several orders of magnitude more resolution than any pixel needs.
+    """
     max_abs = float(axis["max_abs"])
     if max_abs <= 0:
         return 0.0
     knee = float(axis["knee"])
     magnitude = abs(float(value))
     scaled = math.log1p(magnitude / knee) / math.log1p(max_abs / knee)
-    return math.copysign(scaled, value)
+    return round(math.copysign(scaled, value), POSITION_PRECISION)
 
 
 def _diagnosis_slope(report: Mapping[str, object]) -> dict[str, object]:
