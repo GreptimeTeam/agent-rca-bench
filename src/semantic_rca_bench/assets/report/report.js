@@ -239,7 +239,7 @@
       "div",
       { class: "headline" },
       chart.rows.map((row) => {
-        const best = Object.entries(row.ratios).find(([, r]) => r === 1)?.[0];
+        const best = row.best;
         if (!row.estimable) {
           return h(
             "div",
@@ -802,13 +802,12 @@
    * list prices rather than the interfaces. */
   const costChart = () => {
     const chart = view.charts.cost_bars;
-    const rates = chart.exchange_rates || {};
-    const converted = chart.series.filter((item) => item.billed_currency && item.billed_currency !== "USD");
+    const converted = chart.converted || [];
     return h(
       "div",
       { class: "headline cost-groups" },
       chart.series.map((item) => {
-        const best = Object.entries(item.ratios).find(([, r]) => r === 1)?.[0];
+        const best = Object.entries(item.ratios).find(([, r]) => r === 1)?.[0] ?? null;
         return h(
           "div",
           { class: "headline-row" },
@@ -859,6 +858,16 @@
             : h("p", { class: "caption", text: t("cost.not_estimable") }),
         );
       }),
+      view.charts.post_hoc_cost.length
+        ? h(
+            "div",
+            { class: "post-hoc" },
+            h("h4", { text: t("cost.post_hoc_title") }),
+            view.charts.post_hoc_cost.map((item) =>
+              h("p", { class: "caption", text: item.note[language] || item.note.en }),
+            ),
+          )
+        : null,
       converted.length
         ? h("p", {
             class: "caption",
@@ -866,9 +875,9 @@
               .map((item) =>
                 t("cost.converted", {
                   model: item.model,
-                  currency: item.billed_currency,
-                  rate: rates[item.billed_currency].units_per_usd,
-                  date: rates[item.billed_currency].checked_at,
+                  currency: item.currency,
+                  rate: item.units_per_usd,
+                  date: item.checked_at,
                 }),
               )
               .join(" "),

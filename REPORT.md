@@ -227,31 +227,39 @@ trajectories and report: GPT 57, DeepSeek 125, Fable 49, and GLM 258.
 Reasoning is a subset of output and is not added twice. DeepSeek does not report a separate
 reasoning breakdown; zero in that field does not mean that the model performed no reasoning.
 
-End-to-end actual cost includes all 28 executed runs in each treatment, not only eligible pairs:
+End-to-end estimated cost covers all 28 executed runs in each treatment, not only eligible pairs.
+Every figure is an estimate from the frozen provider rates, not an invoice:
 
 | Model | Split | Raw | Graph | Raw - Split | Graph - Raw |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `gpt-5.6-sol` | USD 54.6501 | USD 18.2465 | USD 24.4954 | USD -36.4036 | USD +6.2489 |
 | `deepseek-v4-pro` | USD 8.6517 | USD 6.8193 | USD 5.6526 | USD -1.8324 | USD -1.1667 |
 | `claude-fable-5-1` | USD 85.6178 | USD 36.8636 | USD 38.2825 | USD -48.7542 | USD +1.4189 |
-| `glm-5.3` | CNY 102.1473 | CNY 83.2793 | CNY 86.9650 | CNY -18.8680 | CNY +3.6857 |
+| `glm-5.3` | N/A | N/A | N/A | N/A | N/A |
 
-Across transfer and micro runs, complete estimates by billing currency:
+Across transfer and micro runs, complete estimates total `USD 290.494839896`:
 
 - `gpt-5.6-sol`: `USD 98.5912992`
 - `deepseek-v4-pro`: `USD 21.875483696`
 - `claude-fable-5-1`: `USD 170.028057`
-- `glm-5.3`: `CNY 274.949464`
 
-GLM-5.3 is billed in CNY at `8.0 / 2.0 / 28.0` per million input, cache-hit and output tokens,
-frozen on 2026-09-04 from <https://bigmodel.cn/pricing>. That page did not list the model when the
-protocol was prepared, so the rate was frozen after the run; it converts recorded token counts and
-changes no model behaviour. Cache storage was a limited-time free promotion at the check date, so
-no cache-write rate is frozen and a run reporting cache-creation tokens stays unpriced.
+`paid_execution.pricing_snapshot_required_at_execution` binds the pricing snapshot to the run. The
+snapshot taken on 2026-08-30 recorded no rate for GLM-5.3, because the BigModel China pricing page
+did not list the model at the time, so GLM-5.3 spend is not part of the measurement record and is
+excluded from the totals above and from every per-arm cost figure.
 
-Spend is recorded in the currency it was billed in. Cross-currency totals convert at `6.7179` CNY
-per USD, frozen on 2026-09-03 from <https://tradingeconomics.com/china/currency>, giving
-`USD 331.422729` across all four models. An exchange rate is a market quote, not a measurement.
+The page has since published GLM-5.3 at `8.0 / 2.0 / 28.0` CNY per million input, cache-hit and
+output tokens. Applying that rate to the token counts the runs recorded gives an estimated
+`CNY 274.949464`, which the combined report carries as `costs.post_hoc_estimates` and the page
+labels as priced after the run. It is not merged into the measured totals: the protocol makes the
+execution-time snapshot the record, and a rate published afterwards cannot retroactively become
+part of it. Cache storage was a limited-time free promotion at the check date, so no cache-write
+rate is frozen and any run reporting cache-creation tokens stays unpriced.
+
+Spend is recorded in the currency it was billed in. A cross-currency total converts at `6.7179`
+CNY per USD, frozen on 2026-09-03 from <https://tradingeconomics.com/china/currency>, and is
+reported only when every model is priced; it is therefore absent here. An exchange rate is a
+market quote, not a measurement.
 
 ## Artifacts
 

@@ -206,30 +206,35 @@ Anthropic 临时连接错误已按相同冻结 cell 重跑，最终 artifact 只
 Reasoning 是 output 的子集，不能重复相加。DeepSeek 没有单列 reasoning breakdown；该字段为 0
 不表示模型没有推理。
 
-端到端实际成本包含每个 treatment 的全部 28 个 run，不只统计合格 pair：
+端到端估算成本包含每个 treatment 的全部 28 个 run，不只统计合格 pair。所有数字都是按冻结价格
+估算的，不是账单：
 
 | 模型 | Split | Raw | Graph | Raw - Split | Graph - Raw |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `gpt-5.6-sol` | USD 54.6501 | USD 18.2465 | USD 24.4954 | USD -36.4036 | USD +6.2489 |
 | `deepseek-v4-pro` | USD 8.6517 | USD 6.8193 | USD 5.6526 | USD -1.8324 | USD -1.1667 |
 | `claude-fable-5-1` | USD 85.6178 | USD 36.8636 | USD 38.2825 | USD -48.7542 | USD +1.4189 |
-| `glm-5.3` | CNY 102.1473 | CNY 83.2793 | CNY 86.9650 | CNY -18.8680 | CNY +3.6857 |
+| `glm-5.3` | N/A | N/A | N/A | N/A | N/A |
 
-Transfer 和 micro 的完整成本估算，按计费币种：
+Transfer 和 micro 的完整成本估算合计为 `USD 290.494839896`：
 
 - `gpt-5.6-sol`：`USD 98.5912992`
 - `deepseek-v4-pro`：`USD 21.875483696`
 - `claude-fable-5-1`：`USD 170.028057`
-- `glm-5.3`：`CNY 274.949464`
 
-GLM-5.3 按 CNY 计费，输入、缓存命中、输出分别为每百万 token `8.0 / 2.0 / 28.0`，于 2026-09-04
-从 <https://bigmodel.cn/pricing> 冻结。协议准备时该页面尚未列出此模型，因此价格是在运行之后
-冻结的；它只换算已记录的 token 数，不改变任何模型行为。冻结时缓存存储为限时免费，因此没有
+`paid_execution.pricing_snapshot_required_at_execution` 要求定价快照与运行绑定。2026-08-30 冻结
+的快照没有 GLM-5.3 的价格，因为当时 BigModel 定价页尚未列出该模型，因此 GLM-5.3 的支出不属于
+测量记录，不计入上述合计，也不出现在任何按接口的成本数字中。
+
+该页面此后公布了 GLM-5.3 的价格：输入、缓存命中、输出分别为每百万 token `8.0 / 2.0 / 28.0`
+CNY。把这一价格应用到 run 已记录的 token 计数，估算为 `CNY 274.949464`，combined report 以
+`costs.post_hoc_estimates` 单独记录，页面标注为运行之后定价。它不并入测量合计：协议规定执行
+时的快照才是记录，事后公布的价格不能追溯成为它的一部分。冻结时缓存存储为限时免费，因此没有
 冻结缓存写入费率，返回 cache-creation token 的 run 保持不计价。
 
 成本按计费币种记录。跨币种合计按 `6.7179` CNY 兑 1 USD 换算，汇率于 2026-09-03 从
-<https://tradingeconomics.com/china/currency> 冻结，四个模型合计 `USD 331.422729`。汇率是市场
-报价，不是测量值。
+<https://tradingeconomics.com/china/currency> 冻结，且只在全部模型都可计价时给出，因此这里没有
+该合计。汇率是市场报价，不是测量值。
 
 ## Artifacts
 

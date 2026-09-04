@@ -95,6 +95,13 @@ the database or benchmark.
   with their date and source beside every figure they produce, and only when
   every model in the cohort could be priced. A currency with no frozen rate
   raises rather than converting at a guess.
+- The pricing snapshot belongs to the run. `paid_execution.
+  pricing_snapshot_required_at_execution` binds it, so a rate published after
+  the run never enters the snapshot, the artifacts, or `costs.models`, and the
+  private report it hashes is never rewritten. Price it in
+  `costs.post_hoc_estimates` instead, carrying the rate's date and source and
+  the reason it sits outside the totals. Editing a frozen snapshot to add a
+  price restates what the measurement knew at execution.
 - Provider reasoning settings define complete model configurations, not a
   common cross-provider compute scale.
 
@@ -190,7 +197,13 @@ side a string belongs to is fixed:
 - Static interface copy that no measurement can change - section titles, table
   headers, legends, the glossary - lives in `assets/report/i18n.json`. Both
   language maps carry the same keys.
-- The renderer lays out and draws. It must not word a claim about significance,
+- A cross-reference the renderer follows - a currency into the rate table, a
+treatment into a value map, a benchmark into a label map - is closed by the
+view model, not checked in the browser. A missing key throws and blanks every
+section, and the Python suite stays green while it happens, so the closure is
+asserted in  instead.
+
+The renderer lays out and draws. It must not word a claim about significance,
   direction, eligibility, or which arm a comparison favours: those sentences
   arrive from the view model already written. Mapping a value the view model
   already signed to a colour or a bar length is layout, not judgement.

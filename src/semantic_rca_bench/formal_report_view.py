@@ -126,6 +126,7 @@ def build_report_view_model(report: Mapping[str, object]) -> dict[str, object]:
             "diagnosis_by_dataset": _diagnosis_split(report, "dataset"),
             "cost_bars": _cost_bars(report),
             "pricing_basis": _pricing_basis(report),
+            "post_hoc_cost": _post_hoc_cost(report),
             "capability_bars": _capability_bars(report),
         },
     }
@@ -1382,7 +1383,10 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
             "better": "lower",
             "unit": "currency",
             "currency": "USD",
-            "values": {treatment: float(usd[treatment]) for treatment in treatments},
+            "values": {
+                treatment: (None if usd[treatment] is None else float(usd[treatment]))
+                for treatment in treatments
+            },
             "covered_models": sorted(str(model) for model in priced),
             "excluded_models": unpriced,
             "converted_from": sorted(
@@ -1409,11 +1413,15 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
     )
 
     for row in rows:
-        values = [value for value in row["values"].values() if value]
-        # A row where every arm is zero, or where nothing could be priced, has no
-        # best arm and no meaningful ratio. Say so instead of dividing.
+        # Only None is missing. Zero is a measured value: an arm that got nothing
+        # right, or cost nothing, still belongs on the axis. Treating it as
+        # missing dropped it out of the reference and printed N/A where the
+        # answer was 0.
+        values = [value for value in row["values"].values() if value is not None]
+        # Nothing measured at all: no best arm and no ratio. Say so.
         if not values:
             row["estimable"] = False
+            row["best"] = None
             row["reference"] = None
             row["ratios"] = dict.fromkeys(row["values"], None)
             row["fractions"] = dict.fromkeys(row["values"], 0.0)
@@ -1422,12 +1430,21 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
         reference = max(values) if row["better"] == "higher" else min(values)
         widest = max(values)
         row["reference"] = reference
+        # The best arm is named here rather than recovered downstream by looking
+        # for the ratio that equals 1: with a zero reference no ratio does.
+        row["best"] = next(
+            treatment
+            for treatment, value in row["values"].items()
+            if value is not None and value == reference
+        )
+        # A zero reference gives every other arm an undefined multiple, so the
+        # row keeps its values and reports no ratio rather than dividing by it.
         row["ratios"] = {
-            treatment: (None if not value else value / reference)
+            treatment: (None if value is None or not reference else value / reference)
             for treatment, value in row["values"].items()
         }
         row["fractions"] = {
-            treatment: (value / widest if widest else 0.0)
+            treatment: (value / widest if value is not None and widest else 0.0)
             for treatment, value in row["values"].items()
         }
     return {"treatments": treatments, "rows": rows}
@@ -1576,16 +1593,76 @@ def _cost_bars(report: Mapping[str, object]) -> dict[str, object]:
             )
             for treatment, value in item["values"].items()
         }
-    return {
-        "series": series,
-        "exchange_rates": {
-            currency: dict(rate)
-            for currency, rate in mapping(
-                mapping(report, "usage_by_treatment"), "exchange_rates"
-            ).items()
-            if isinstance(rate, Mapping) and currency != "USD"
-        },
+    rates = {
+        currency: dict(rate)
+        for currency, rate in mapping(
+            mapping(report, "usage_by_treatment"), "exchange_rates"
+        ).items()
+        if isinstance(rate, Mapping) and currency != "USD"
     }
+    # Which models actually needed converting is decided here. A model billed in
+    # another currency but never priced has no converted figure and no rate in
+    # the table, and asking the renderer to work that out left it reading a rate
+    # that was not there.
+    converted = [
+        {
+            "model": str(item["model"]),
+            "currency": str(item["billed_currency"]),
+            "units_per_usd": rates[str(item["billed_currency"])]["units_per_usd"],
+            "checked_at": rates[str(item["billed_currency"])]["checked_at"],
+        }
+        for item in series
+        if item["estimable"]
+        and isinstance(item["billed_currency"], str)
+        and item["billed_currency"] != "USD"
+        and item["billed_currency"] in rates
+    ]
+    return {"series": series, "exchange_rates": rates, "converted": converted}
+
+
+def _post_hoc_cost(report: Mapping[str, object]) -> list[dict[str, object]]:
+    """Spend priced after the run, kept visibly apart from the measured figures.
+
+    The sentence is built here because it states why a number sits outside the
+    cost totals, which is a claim about the measurement and has to stay within
+    reach of the tests.
+    """
+    estimates = mapping(mapping(report, "costs"), "post_hoc_estimates")
+    rows = []
+    for model in _sequence(report, "model_order"):
+        entry = estimates.get(str(model))
+        if not isinstance(entry, Mapping):
+            continue
+        rate = mapping(entry, "rate")
+        currency = str(entry["currency"])
+        amount = float(entry["amount"])
+        usd = float(entry["usd_amount"])
+        rows.append(
+            {
+                "model": str(model),
+                "currency": currency,
+                "amount": amount,
+                "usd_amount": usd,
+                "checked_at": rate.get("checked_at"),
+                "source": rate.get("source"),
+                "note": {
+                    "en": (
+                        f"{model} cost an estimated {currency} {amount:,.2f} "
+                        f"(USD {usd:,.2f}). The protocol freezes the pricing snapshot at "
+                        "execution and that snapshot carried no rate for this model, so the "
+                        "figure is not in the totals above. It applies the rate published on "
+                        f"{rate.get('checked_at')} to the token counts the run recorded."
+                    ),
+                    "zh": (
+                        f"{model} 的估算成本为 {currency} {amount:,.2f}（USD {usd:,.2f}）。"
+                        "协议要求定价快照在执行时冻结，而该快照没有这个模型的价格，"
+                        "因此这个数字不计入上方合计。它把 "
+                        f"{rate.get('checked_at')} 公布的价格应用到 run 已记录的 token 计数上。"
+                    ),
+                },
+            }
+        )
+    return rows
 
 
 def _pricing_basis(report: Mapping[str, object]) -> list[dict[str, object]]:

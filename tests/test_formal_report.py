@@ -954,8 +954,184 @@ def test_an_all_zero_row_reports_no_ratio_instead_of_failing() -> None:
     )
 
     rows = {row["id"]: row for row in _headline_bars(report)["rows"]}
-    assert rows["accuracy"]["estimable"] is False
+    # An all-zero row is measured, not missing: every arm scored nothing. The
+    # row plots, names a best arm, and reports no ratio because dividing by
+    # zero has no meaning.
+    assert rows["accuracy"]["estimable"] is True
+    assert set(rows["accuracy"]["values"].values()) == {0}
     assert set(rows["accuracy"]["ratios"].values()) == {None}
-    assert rows["cost"]["estimable"] is False
+    assert rows["accuracy"]["best"] is not None
+    assert rows["cost"]["estimable"] is True
+    assert set(rows["cost"]["ratios"].values()) == {None}
     # A row that still has values keeps working alongside the empty ones.
     assert rows["input_tokens"]["estimable"] is True
+
+
+def test_a_zero_arm_is_measured_not_missing() -> None:
+    """Zero is an answer. Filtering it out printed N/A where the value was 0.
+
+    An arm that got nothing right still sits on the axis, and it must not drop
+    out of the reference either: on a lower-is-better row a zero arm is the
+    cheapest one, and skipping it would crown the second-cheapest.
+    """
+    from semantic_rca_bench.formal_report_view import _headline_bars
+
+    report = copy.deepcopy(_report())
+    for model in report["model_reports"].values():
+        model["transfer"]["diagnosis_correct"]["split_pillars"] = 0
+
+    accuracy = {row["id"]: row for row in _headline_bars(report)["rows"]}["accuracy"]
+    assert accuracy["estimable"] is True
+    assert accuracy["values"]["split_pillars"] == 0
+    # 0.0, not None: the page prints x0.00 rather than N/A.
+    assert accuracy["ratios"]["split_pillars"] == 0.0
+    assert accuracy["fractions"]["split_pillars"] == 0.0
+    assert accuracy["best"] == "semantic_graph"
+    assert accuracy["ratios"][accuracy["best"]] == 1.0
+
+
+def test_a_zero_reference_names_the_best_arm_without_dividing() -> None:
+    """A free arm is the cheapest arm, and no other arm has a multiple of it."""
+    from semantic_rca_bench.formal_report_view import _headline_bars
+
+    report = copy.deepcopy(_report())
+    report["usage_by_treatment"]["estimated_cost_usd"]["raw"] = 0.0
+
+    cost = {row["id"]: row for row in _headline_bars(report)["rows"]}["cost"]
+    # The zero arm wins a lower-is-better row; it used to be skipped entirely.
+    assert cost["best"] == "raw"
+    assert cost["reference"] == 0.0
+    # Every ratio is undefined against a zero reference, and the row says so
+    # instead of dividing. The values themselves still plot.
+    assert set(cost["ratios"].values()) == {None}
+    assert cost["estimable"] is True
+    assert cost["fractions"]["split_pillars"] == 1.0
+
+
+def test_an_unpriced_cohort_is_not_estimable_rather_than_free() -> None:
+    """No priced model is a different statement from a zero bill.
+
+    Summing an empty cohort gives 0.0, which the page would render as
+    "USD 0.00" and a reader would take as the runs costing nothing.
+    """
+    from semantic_rca_bench.formal_report_view import _headline_bars
+
+    report = _report(unpriced_cells={(model, "raw") for model in _report()["model_order"]})
+    usage = report["usage_by_treatment"]
+    assert usage["priced_models"] == {}
+    assert set(usage["estimated_cost_usd"].values()) == {None}
+
+    cost = {row["id"]: row for row in _headline_bars(report)["rows"]}["cost"]
+    assert cost["estimable"] is False
+    assert cost["best"] is None
+    assert set(cost["ratios"].values()) == {None}
+
+
+def test_a_rate_published_after_the_run_stays_out_of_the_measured_totals() -> None:
+    """The execution-time snapshot is the record; a later rate is an annex.
+
+    The protocol binds the pricing snapshot to the run. A rate published
+    afterwards was once merged into the artifacts, which restated what the
+    measurement knew at execution. It is reported separately instead, with the
+    date and source of the rate and the reason it is not in the totals.
+    """
+    from semantic_rca_bench.formal_report import _post_hoc_cost_estimates
+
+    reports = {
+        "priced-model": {
+            "usage": {
+                "micro": {"estimated_cost": 1.0, "cost_currency": "USD"},
+                "transfer": {"estimated_cost": 2.0, "cost_currency": "USD"},
+            }
+        },
+        "glm-5.3": {
+            "usage": {
+                "micro": {
+                    "uncached_input_tokens": 1_000_000,
+                    "cache_read_input_tokens": 2_000_000,
+                    "cache_creation_input_tokens": 0,
+                    "output_tokens": 500_000,
+                },
+                "transfer": {
+                    "uncached_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "output_tokens": 0,
+                },
+            }
+        },
+    }
+
+    estimates = _post_hoc_cost_estimates(reports, ["glm-5.3"])
+    entry = estimates["glm-5.3"]
+    # 1M uncached at 8, 2M cache-read at 2, 0.5M output at 28.
+    assert entry["amount"] == pytest.approx(1 * 8.0 + 2 * 2.0 + 0.5 * 28.0)
+    assert entry["currency"] == "CNY"
+    assert entry["rate"]["checked_at"] and entry["rate"]["source"]
+    assert "frozen at execution" in entry["excluded_from_costs_because"]
+    # A model that priced normally never appears here.
+    assert "priced-model" not in estimates
+
+
+def test_a_post_hoc_estimate_fails_closed_on_an_uncovered_token_class() -> None:
+    """No cache-write rate is frozen, so cache-creation tokens block the estimate.
+
+    Pricing them at zero would understate spend rather than report that it
+    cannot be estimated.
+    """
+    from semantic_rca_bench.formal_report import _post_hoc_cost_estimates
+
+    reports = {
+        "glm-5.3": {
+            "usage": {
+                "micro": {
+                    "uncached_input_tokens": 1_000_000,
+                    "cache_read_input_tokens": 0,
+                    "cache_creation_input_tokens": 40_000,
+                    "output_tokens": 0,
+                },
+                "transfer": {},
+            }
+        }
+    }
+
+    assert _post_hoc_cost_estimates(reports, ["glm-5.3"]) == {}
+
+
+def test_every_lookup_the_renderer_makes_resolves_in_the_view_model() -> None:
+    """The renderer indexes into the view model; a missing key blanks the page.
+
+    A cost chart entry once pointed at an exchange rate that was not in the
+    table, and the resulting TypeError took down every section while the whole
+    suite stayed green. These are the cross-references the renderer follows
+    without checking, so the view model has to close them.
+    """
+    view = build_report_view_model(_report(currency_by_model={"glm-5.3": "CNY"}))
+    charts = view["charts"]
+
+    rates = charts["cost_bars"]["exchange_rates"]
+    for entry in charts["cost_bars"]["converted"]:
+        assert entry["currency"] in rates
+        assert entry["units_per_usd"] and entry["checked_at"]
+
+    for row in charts["headline"]["rows"]:
+        for currency in row.get("converted_from", []):
+            assert currency in row["exchange_rates"]
+        # `best` indexes the same treatment map the bars iterate.
+        if row["best"] is not None:
+            assert row["best"] in row["values"]
+
+    for key in ("delta_strips", "relative_change"):
+        assert key in charts
+    for group in charts["relative_change"]:
+        for metric in group["metrics"]:
+            for entry in metric["rows"]:
+                assert entry["model"] in view["models"]
+
+    # The retrieval table reads benchmark_labels[name] for every benchmark the
+    # report carries; a name missing there would print a raw key.
+    report = _report(currency_by_model={"glm-5.3": "CNY"})
+    labels = view["benchmark_labels"]
+    for model in view["models"]:
+        for benchmark in report["model_reports"][model]["micro"]["benchmarks"]:
+            assert benchmark in labels

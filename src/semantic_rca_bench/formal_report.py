@@ -1261,13 +1261,20 @@ def _usage_by_treatment(runs: list[Mapping[str, object]]) -> dict[str, object]:
         # Present only when the priced cohort shares one currency; a comparable
         # cross-model total does not exist otherwise.
         "comparable_currency": currencies_present[0] if len(currencies_present) == 1 else None,
+        # Null when no model could be priced, because summing an empty cohort
+        # gives 0.0 and that reads as "the runs were free" rather than "spend is
+        # not estimable here".
         "estimated_cost_usd": {
-            treatment: round(
-                sum(
-                    _to_usd(spend_by_currency[currency][treatment], currency)
-                    for currency in currencies_present
-                ),
-                6,
+            treatment: (
+                None
+                if not currencies_present
+                else round(
+                    sum(
+                        _to_usd(spend_by_currency[currency][treatment], currency)
+                        for currency in currencies_present
+                    ),
+                    6,
+                )
             )
             for treatment in treatments
         },
@@ -1460,6 +1467,86 @@ def _semantic_findings(reports):
     }
 
 
+def _post_hoc_cost_estimates(
+    reports: Mapping[str, object],
+    unavailable: list[str],
+) -> dict[str, object]:
+    """Spend for a model the execution-time snapshot could not price.
+
+    `paid_execution.pricing_snapshot_required_at_execution` binds the snapshot to
+    the run, so a rate published afterwards cannot enter `costs.models` without
+    rewriting what the measurement recorded. The estimate is derived here
+    instead, from the token counts the run did record, and carries the date and
+    source of the rate it used so a reader can tell it apart from a figure the
+    run itself produced.
+    """
+    estimates = {}
+    for model in unavailable:
+        pricing = MODEL_PRICING.get(model)
+        if not pricing or pricing.get("cost_available") is False:
+            continue
+        usage = _mapping(_mapping(reports, model), "usage")
+        parts = [_mapping(usage, "micro"), _mapping(usage, "transfer")]
+        tokens = {
+            field: sum(int(part.get(field) or 0) for part in parts)
+            for field in (
+                "uncached_input_tokens",
+                "cache_read_input_tokens",
+                "cache_creation_input_tokens",
+                "output_tokens",
+            )
+        }
+        amount = _price_tokens(tokens, pricing)
+        if amount is None:
+            continue
+        currency = str(pricing["currency"])
+        estimates[model] = {
+            "currency": currency,
+            "amount": round(amount, 6),
+            "usd_amount": round(_to_usd(amount, currency), 6),
+            "tokens": tokens,
+            "rate": {
+                "uncached_input_per_million": pricing.get("input_per_million"),
+                "cache_read_per_million": pricing.get("input_cache_hit_per_million"),
+                "cache_write_per_million": pricing.get("input_cache_write_per_million"),
+                "output_per_million": pricing.get("output_per_million"),
+                "checked_at": pricing.get("checked_at"),
+                "source": pricing.get("source"),
+            },
+            "excluded_from_costs_because": (
+                "The protocol requires the pricing snapshot to be frozen at execution. The "
+                "snapshot taken for this run recorded no rate for this model, so its spend is "
+                "not part of the measurement record. This figure applies a rate published "
+                "afterwards to the token counts the run recorded."
+            ),
+        }
+    return estimates
+
+
+def _price_tokens(tokens: Mapping[str, int], pricing: Mapping[str, object]) -> float | None:
+    """Apply a frozen rate to aggregate token counts, or fail closed.
+
+    Same fail-closed rule as the per-run estimator: a token class the rate does
+    not cover leaves the estimate unavailable rather than priced at zero.
+    """
+    fields = (
+        ("uncached_input_tokens", "input_per_million"),
+        ("cache_read_input_tokens", "input_cache_hit_per_million"),
+        ("cache_creation_input_tokens", "input_cache_write_per_million"),
+        ("output_tokens", "output_per_million"),
+    )
+    total = 0.0
+    for token_field, rate_field in fields:
+        count = int(tokens.get(token_field) or 0)
+        if not count:
+            continue
+        rate = pricing.get(rate_field)
+        if not isinstance(rate, (int, float)):
+            return None
+        total += count * float(rate) / 1_000_000
+    return total
+
+
 def _cost_report(reports):
     totals = defaultdict(float)
     models = {}
@@ -1523,6 +1610,7 @@ def _cost_report(reports):
         "pricing_basis": pricing_basis,
         "known_totals_by_currency": dict(sorted(totals.items())),
         "models_with_unavailable_estimate": unavailable,
+        "post_hoc_estimates": _post_hoc_cost_estimates(reports, unavailable),
         # Only when every model could be priced. A total that silently omits a
         # model reads as the cost of the whole measurement and is not.
         "cross_currency_total": None

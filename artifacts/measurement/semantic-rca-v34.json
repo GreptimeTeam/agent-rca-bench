@@ -823,7 +823,7 @@
       },
       "eligible_models": 4,
       "mechanism_code": "workload_restart",
-      "models_with_estimable_cost": 4,
+      "models_with_estimable_cost": 3,
       "models_with_fewer_calls": 2,
       "models_with_fewer_input_tokens": 3,
       "models_with_fewer_output_tokens": 3,
@@ -854,13 +854,13 @@
       },
       "eligible_models": 4,
       "mechanism_code": "workload_restart",
-      "models_with_estimable_cost": 4,
+      "models_with_estimable_cost": 3,
       "models_with_fewer_calls": 1,
       "models_with_fewer_input_tokens": 2,
       "models_with_fewer_output_tokens": 2,
       "models_with_fewer_rows": 3,
       "models_with_fewer_tokens": 2,
-      "models_with_lower_estimated_cost": 2,
+      "models_with_lower_estimated_cost": 1,
       "oracle": {
         "abnormal_samples": 15,
         "allowed_operations": [],
@@ -885,7 +885,7 @@
       },
       "eligible_models": 4,
       "mechanism_code": "workload_restart",
-      "models_with_estimable_cost": 4,
+      "models_with_estimable_cost": 3,
       "models_with_fewer_calls": 2,
       "models_with_fewer_input_tokens": 2,
       "models_with_fewer_output_tokens": 3,
@@ -1715,103 +1715,100 @@
       },
       "glm-5.3": {
         "actual_cost_by_treatment": {
-          "raw": 83.279308,
-          "semantic_graph": 86.96501999999998
+          "raw": null,
+          "semantic_graph": null
         },
         "cases": {
           "semantic-rca-transfer-001": {
-            "actual_cost_raw": 3.295116,
-            "actual_cost_semantic_graph": 2.693288,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 1,
-            "estimated_cost": 0.19989600000000007,
             "estimated_cost_currency": "CNY",
             "output_tokens": -736,
             "provider_visible_input_tokens": 122171,
             "reasoning_output_tokens": -1119
           },
           "semantic-rca-transfer-002": {
-            "actual_cost_raw": 3.195176,
-            "actual_cost_semantic_graph": 2.70126,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 2,
-            "estimated_cost": -0.246958,
             "estimated_cost_currency": "CNY",
             "output_tokens": 444.5,
             "provider_visible_input_tokens": -101857.5,
             "reasoning_output_tokens": -494.5
           },
           "semantic-rca-transfer-003": {
-            "actual_cost_raw": 2.937232,
-            "actual_cost_semantic_graph": 2.756372,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 1,
-            "estimated_cost": 0.5713560000000002,
             "estimated_cost_currency": "CNY",
             "output_tokens": 5899,
             "provider_visible_input_tokens": 221125,
             "reasoning_output_tokens": 917
           },
           "semantic-rca-transfer-004": {
-            "actual_cost_raw": 4.07208,
-            "actual_cost_semantic_graph": 4.575436,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-005": {
-            "actual_cost_raw": 4.26798,
-            "actual_cost_semantic_graph": 4.073568,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-006": {
-            "actual_cost_raw": 4.5970320000000005,
-            "actual_cost_semantic_graph": 3.7584799999999996,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-007": {
-            "actual_cost_raw": 3.4850719999999997,
-            "actual_cost_semantic_graph": 3.093604,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-008": {
-            "actual_cost_raw": 3.7539359999999995,
-            "actual_cost_semantic_graph": 5.801052,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-009": {
-            "actual_cost_raw": 7.020892,
-            "actual_cost_semantic_graph": 6.189916,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-010": {
-            "actual_cost_raw": 3.742912,
-            "actual_cost_semantic_graph": 4.5863439999999995,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-011": {
-            "actual_cost_raw": 17.858212,
-            "actual_cost_semantic_graph": 21.984887999999998,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-012": {
-            "actual_cost_raw": 6.4520800000000005,
-            "actual_cost_semantic_graph": 8.606476,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-013": {
-            "actual_cost_raw": 7.475548,
-            "actual_cost_semantic_graph": 7.496980000000001,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-014": {
-            "actual_cost_raw": 11.12604,
-            "actual_cost_semantic_graph": 8.647356,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           }
@@ -1819,12 +1816,12 @@
         "cost_currency": "CNY",
         "summary": {
           "estimated_cost": {
-            "case_median_delta": 0.19989600000000007,
+            "case_median_delta": null,
             "currency": "CNY",
-            "eligible_cases": 3,
+            "eligible_cases": 0,
             "inference_role": "descriptive only",
-            "negative_cases": 1,
-            "positive_cases": 2,
+            "negative_cases": 0,
+            "positive_cases": 0,
             "tied_cases": 0
           },
           "output_tokens": {
@@ -2349,119 +2346,112 @@
       },
       "glm-5.3": {
         "actual_cost_by_treatment": {
-          "raw": 83.279308,
-          "split_pillars": 102.147288
+          "raw": null,
+          "split_pillars": null
         },
         "cases": {
           "semantic-rca-transfer-001": {
-            "actual_cost_raw": 3.295116,
-            "actual_cost_split_pillars": 3.82828,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 1,
-            "estimated_cost": -0.6634040000000001,
             "estimated_cost_currency": "CNY",
             "output_tokens": -3807,
             "provider_visible_input_tokens": -259201,
             "reasoning_output_tokens": -1113
           },
           "semantic-rca-transfer-002": {
-            "actual_cost_raw": 3.195176,
-            "actual_cost_split_pillars": 4.795748,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 1,
-            "estimated_cost": -0.22282000000000002,
             "estimated_cost_currency": "CNY",
             "output_tokens": -1769,
             "provider_visible_input_tokens": -54253,
             "reasoning_output_tokens": -169
           },
           "semantic-rca-transfer-003": {
-            "actual_cost_raw": 2.937232,
-            "actual_cost_split_pillars": 6.434852,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 2,
-            "estimated_cost": -1.7488100000000002,
             "estimated_cost_currency": "CNY",
             "output_tokens": -7934.5,
             "provider_visible_input_tokens": -706566.5,
             "reasoning_output_tokens": -5191.5
           },
           "semantic-rca-transfer-004": {
-            "actual_cost_raw": 4.07208,
-            "actual_cost_split_pillars": 10.355172,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 1,
-            "estimated_cost": -0.7181120000000001,
             "estimated_cost_currency": "CNY",
             "output_tokens": -1360,
             "provider_visible_input_tokens": -217676,
             "reasoning_output_tokens": 36
           },
           "semantic-rca-transfer-005": {
-            "actual_cost_raw": 4.26798,
-            "actual_cost_split_pillars": 3.987912,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 1,
-            "estimated_cost": -1.3005400000000003,
             "estimated_cost_currency": "CNY",
             "output_tokens": -13041,
             "provider_visible_input_tokens": -381068,
             "reasoning_output_tokens": -11147
           },
           "semantic-rca-transfer-006": {
-            "actual_cost_raw": 4.5970320000000005,
-            "actual_cost_split_pillars": 7.400195999999999,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 1,
-            "estimated_cost": -0.039899999999999824,
             "estimated_cost_currency": "CNY",
             "output_tokens": -4613,
             "provider_visible_input_tokens": 25558,
             "reasoning_output_tokens": -5799
           },
           "semantic-rca-transfer-007": {
-            "actual_cost_raw": 3.4850719999999997,
-            "actual_cost_split_pillars": 4.117628,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-008": {
-            "actual_cost_raw": 3.7539359999999995,
-            "actual_cost_split_pillars": 5.81418,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 1,
-            "estimated_cost": -0.05730000000000013,
             "estimated_cost_currency": "CNY",
             "output_tokens": 1129,
             "provider_visible_input_tokens": -12554,
             "reasoning_output_tokens": -522
           },
           "semantic-rca-transfer-009": {
-            "actual_cost_raw": 7.020892,
-            "actual_cost_split_pillars": 5.580096,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-010": {
-            "actual_cost_raw": 3.742912,
-            "actual_cost_split_pillars": 4.548288,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-011": {
-            "actual_cost_raw": 17.858212,
-            "actual_cost_split_pillars": 12.528532,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-012": {
-            "actual_cost_raw": 6.4520800000000005,
-            "actual_cost_split_pillars": 12.505612000000001,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-013": {
-            "actual_cost_raw": 7.475548,
-            "actual_cost_split_pillars": 5.746824,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-014": {
-            "actual_cost_raw": 11.12604,
-            "actual_cost_split_pillars": 14.503968,
+            "actual_cost_raw": null,
+            "actual_cost_split_pillars": null,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           }
@@ -2469,11 +2459,11 @@
         "cost_currency": "CNY",
         "summary": {
           "estimated_cost": {
-            "case_median_delta": -0.6634040000000001,
+            "case_median_delta": null,
             "currency": "CNY",
-            "eligible_cases": 7,
+            "eligible_cases": 0,
             "inference_role": "descriptive only",
-            "negative_cases": 7,
+            "negative_cases": 0,
             "positive_cases": 0,
             "tied_cases": 0
           },
@@ -2667,25 +2657,8 @@
   },
   "costs": {
     "aggregation_policy": "Only complete estimates are counted, and a partially priced model is rejected whole. Spend is kept in the currency it was billed in; a USD total is derived from those subtotals at the frozen rates published beside it, and only when every model is priced.",
-    "cross_currency_total": {
-      "amount": 331.422729,
-      "currency": "USD",
-      "exchange_rates": {
-        "CNY": {
-          "checked_at": "2026-09-03",
-          "per_unit_usd": 0.14885604132243707,
-          "source": "https://tradingeconomics.com/china/currency",
-          "units_per_usd": 6.7179
-        },
-        "USD": {
-          "checked_at": null,
-          "per_unit_usd": 1.0,
-          "source": null
-        }
-      }
-    },
+    "cross_currency_total": null,
     "known_totals_by_currency": {
-      "CNY": 274.949464,
       "USD": 290.494839896
     },
     "models": {
@@ -2705,10 +2678,10 @@
       },
       "glm-5.3": {
         "currency": "CNY",
-        "estimated_cost": 274.949464,
-        "status": "available",
-        "unavailable_reason": null,
-        "unavailable_reason_code": null
+        "estimated_cost": null,
+        "status": "not_estimable",
+        "unavailable_reason": "The provider usage cannot be priced under the frozen contract.",
+        "unavailable_reason_code": "usage_not_priceable"
       },
       "gpt-5.6-sol": {
         "currency": "USD",
@@ -2718,7 +2691,31 @@
         "unavailable_reason_code": null
       }
     },
-    "models_with_unavailable_estimate": [],
+    "models_with_unavailable_estimate": [
+      "glm-5.3"
+    ],
+    "post_hoc_estimates": {
+      "glm-5.3": {
+        "amount": 274.949464,
+        "currency": "CNY",
+        "excluded_from_costs_because": "The protocol requires the pricing snapshot to be frozen at execution. The snapshot taken for this run recorded no rate for this model, so its spend is not part of the measurement record. This figure applies a rate published afterwards to the token counts the run recorded.",
+        "rate": {
+          "cache_read_per_million": 2.0,
+          "cache_write_per_million": null,
+          "checked_at": "2026-09-04",
+          "output_per_million": 28.0,
+          "source": "https://bigmodel.cn/pricing",
+          "uncached_input_per_million": 8.0
+        },
+        "tokens": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 97322752,
+          "output_tokens": 1185652,
+          "uncached_input_tokens": 5888213
+        },
+        "usd_amount": 40.927889
+      }
+    },
     "pricing_basis": {
       "claude-fable-5-1": {
         "cache_read_per_million": 0.25,
@@ -2846,7 +2843,7 @@
   },
   "integrity": {
     "hash_scope": "all report fields except integrity",
-    "semantic_payload_sha256": "f1cf9345837c32a71f8363c024a9a360894d79a2b341015c6c1535c09d695e46"
+    "semantic_payload_sha256": "36d51c1c8d4d14ea495f7d357707e9b541951e4d50113180b9c1fd664d10f194"
   },
   "license": {
     "micro_source_terms": {
@@ -7079,61 +7076,56 @@
             },
             "resource_effects": {
               "actual_cost_by_treatment": {
-                "raw": 1.0640560000000001,
-                "semantic_graph": 1.0286719999999998
+                "raw": null,
+                "semantic_graph": null
               },
               "cases": {
                 "Bank/task_5@2021-03-04T20:00": {
-                  "actual_cost_raw": 0.240276,
-                  "actual_cost_semantic_graph": 0.223956,
+                  "actual_cost_raw": null,
+                  "actual_cost_semantic_graph": null,
                   "eligible_repetitions": 0,
                   "estimated_cost_currency": "CNY"
                 },
                 "Bank/task_6@2021-03-25T09:00": {
-                  "actual_cost_raw": 0.26338,
-                  "actual_cost_semantic_graph": 0.17259999999999998,
+                  "actual_cost_raw": null,
+                  "actual_cost_semantic_graph": null,
                   "eligible_repetitions": 1,
-                  "estimated_cost": -0.07098399999999999,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": -1038,
                   "provider_visible_input_tokens": -12344,
                   "reasoning_output_tokens": -756
                 },
                 "Market/cloudbed-1@2022-03-20T09:30": {
-                  "actual_cost_raw": 0.214524,
-                  "actual_cost_semantic_graph": 0.199188,
+                  "actual_cost_raw": null,
+                  "actual_cost_semantic_graph": null,
                   "eligible_repetitions": 2,
-                  "estimated_cost": -0.007667999999999994,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": -142,
                   "provider_visible_input_tokens": 282.5,
                   "reasoning_output_tokens": -104
                 },
                 "Market/cloudbed-2@2022-03-20T14:30": {
-                  "actual_cost_raw": 0.131684,
-                  "actual_cost_semantic_graph": 0.195824,
+                  "actual_cost_raw": null,
+                  "actual_cost_semantic_graph": null,
                   "eligible_repetitions": 2,
-                  "estimated_cost": 0.03207,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": 118.5,
                   "provider_visible_input_tokens": 15186,
                   "reasoning_output_tokens": 91
                 },
                 "Telecom@2020-05-23T04:30": {
-                  "actual_cost_raw": 0.09024,
-                  "actual_cost_semantic_graph": 0.11516,
+                  "actual_cost_raw": null,
+                  "actual_cost_semantic_graph": null,
                   "eligible_repetitions": 2,
-                  "estimated_cost": 0.012459999999999999,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": 3,
                   "provider_visible_input_tokens": 6923,
                   "reasoning_output_tokens": 18
                 },
                 "Telecom@2020-05-29T03:30": {
-                  "actual_cost_raw": 0.123952,
-                  "actual_cost_semantic_graph": 0.121944,
+                  "actual_cost_raw": null,
+                  "actual_cost_semantic_graph": null,
                   "eligible_repetitions": 2,
-                  "estimated_cost": -0.001003999999999998,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": -45,
                   "provider_visible_input_tokens": 3728,
@@ -7143,12 +7135,12 @@
               "cost_currency": "CNY",
               "summary": {
                 "estimated_cost": {
-                  "case_median_delta": -0.001003999999999998,
+                  "case_median_delta": null,
                   "currency": "CNY",
-                  "eligible_cases": 5,
+                  "eligible_cases": 0,
                   "inference_role": "descriptive only",
-                  "negative_cases": 3,
-                  "positive_cases": 2,
+                  "negative_cases": 0,
+                  "positive_cases": 0,
                   "tied_cases": 0
                 },
                 "output_tokens": {
@@ -7265,25 +7257,23 @@
             },
             "resource_effects": {
               "actual_cost_by_treatment": {
-                "raw": 0.356608,
-                "semantic_graph": 0.108512
+                "raw": null,
+                "semantic_graph": null
               },
               "cases": {
                 "hs1-rate-pod-failure-vmvtxr": {
-                  "actual_cost_raw": 0.15995199999999998,
-                  "actual_cost_semantic_graph": 0.046192,
+                  "actual_cost_raw": null,
+                  "actual_cost_semantic_graph": null,
                   "eligible_repetitions": 2,
-                  "estimated_cost": -0.05688,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": -652,
                   "provider_visible_input_tokens": -11668,
                   "reasoning_output_tokens": -79.5
                 },
                 "hs4-geo-pod-failure-pdt289": {
-                  "actual_cost_raw": 0.196656,
-                  "actual_cost_semantic_graph": 0.06232,
+                  "actual_cost_raw": null,
+                  "actual_cost_semantic_graph": null,
                   "eligible_repetitions": 2,
-                  "estimated_cost": -0.067168,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": -683,
                   "provider_visible_input_tokens": -16349.5,
@@ -7293,11 +7283,11 @@
               "cost_currency": "CNY",
               "summary": {
                 "estimated_cost": {
-                  "case_median_delta": -0.062024,
+                  "case_median_delta": null,
                   "currency": "CNY",
-                  "eligible_cases": 2,
+                  "eligible_cases": 0,
                   "inference_role": "descriptive only",
-                  "negative_cases": 2,
+                  "negative_cases": 0,
                   "positive_cases": 0,
                   "tied_cases": 0
                 },
@@ -7345,7 +7335,7 @@
           "cache_creation_input_tokens": 0,
           "cache_read_input_tokens": 514304,
           "cost_currency": "CNY",
-          "estimated_cost": 2.5578480000000003,
+          "estimated_cost": null,
           "output_tokens": 22736,
           "reasoning_output_tokens": 4564,
           "uncached_input_tokens": 111579
@@ -7359,20 +7349,19 @@
       },
       "transfer": {
         "actual_cost_by_treatment": {
-          "raw": 83.279308,
-          "semantic_graph": 86.96501999999998
+          "raw": null,
+          "semantic_graph": null
         },
         "case_effects": [
           {
-            "actual_cost_raw": 3.295116,
-            "actual_cost_semantic_graph": 2.693288,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-001",
             "causal_scope": "component",
             "correct_completion_tool_calls": 9,
             "correct_completion_tool_calls_relative": 0.3103448275862069,
             "dataset": "openrca2",
             "eligible_repetitions": 1,
-            "estimated_cost": 0.19989600000000007,
             "estimated_cost_currency": "CNY",
             "mechanism_code": "workload_restart",
             "oracle": {
@@ -7397,15 +7386,14 @@
             "target": "user"
           },
           {
-            "actual_cost_raw": 3.195176,
-            "actual_cost_semantic_graph": 2.70126,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-002",
             "causal_scope": "component",
             "correct_completion_tool_calls": 0,
             "correct_completion_tool_calls_relative": 0,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
-            "estimated_cost": -0.246958,
             "estimated_cost_currency": "CNY",
             "mechanism_code": "workload_restart",
             "oracle": {
@@ -7430,15 +7418,14 @@
             "target": "reservation"
           },
           {
-            "actual_cost_raw": 2.937232,
-            "actual_cost_semantic_graph": 2.756372,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-003",
             "causal_scope": "component",
             "correct_completion_tool_calls": 26,
             "correct_completion_tool_calls_relative": 1.5294117647058822,
             "dataset": "openrca2",
             "eligible_repetitions": 1,
-            "estimated_cost": 0.5713560000000002,
             "estimated_cost_currency": "CNY",
             "mechanism_code": "workload_restart",
             "oracle": {
@@ -7463,8 +7450,8 @@
             "target": "user"
           },
           {
-            "actual_cost_raw": 4.07208,
-            "actual_cost_semantic_graph": 4.575436,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-004",
             "causal_scope": "component",
             "correct_completion_tool_calls": null,
@@ -7493,8 +7480,8 @@
             "target": "product-catalog"
           },
           {
-            "actual_cost_raw": 4.26798,
-            "actual_cost_semantic_graph": 4.073568,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-005",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": null,
@@ -7525,8 +7512,8 @@
             "target": "search -> rate"
           },
           {
-            "actual_cost_raw": 4.5970320000000005,
-            "actual_cost_semantic_graph": 3.7584799999999996,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-006",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": null,
@@ -7557,8 +7544,8 @@
             "target": "search -> rate"
           },
           {
-            "actual_cost_raw": 3.4850719999999997,
-            "actual_cost_semantic_graph": 3.093604,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-007",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": null,
@@ -7590,8 +7577,8 @@
             "target": "shipping -> quote"
           },
           {
-            "actual_cost_raw": 3.7539359999999995,
-            "actual_cost_semantic_graph": 5.801052,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-008",
             "causal_scope": "component",
             "correct_completion_tool_calls": null,
@@ -7620,8 +7607,8 @@
             "target": "search"
           },
           {
-            "actual_cost_raw": 7.020892,
-            "actual_cost_semantic_graph": 6.189916,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-009",
             "causal_scope": "component",
             "correct_completion_tool_calls": null,
@@ -7650,8 +7637,8 @@
             "target": "reservation"
           },
           {
-            "actual_cost_raw": 3.742912,
-            "actual_cost_semantic_graph": 4.5863439999999995,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-010",
             "causal_scope": "component",
             "correct_completion_tool_calls": null,
@@ -7680,8 +7667,8 @@
             "target": "geo"
           },
           {
-            "actual_cost_raw": 17.858212,
-            "actual_cost_semantic_graph": 21.984887999999998,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-011",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
@@ -7710,8 +7697,8 @@
             "target": "cn-hongkong.10.0.1.49"
           },
           {
-            "actual_cost_raw": 6.4520800000000005,
-            "actual_cost_semantic_graph": 8.606476,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-012",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
@@ -7740,8 +7727,8 @@
             "target": "cn-hongkong.10.0.1.69"
           },
           {
-            "actual_cost_raw": 7.475548,
-            "actual_cost_semantic_graph": 7.496980000000001,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-013",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
@@ -7762,8 +7749,8 @@
             "target": "cn-hongkong.10.0.1.55"
           },
           {
-            "actual_cost_raw": 11.12604,
-            "actual_cost_semantic_graph": 8.647356,
+            "actual_cost_raw": null,
+            "actual_cost_semantic_graph": null,
             "case_id": "semantic-rca-transfer-014",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
@@ -8311,12 +8298,12 @@
         "cost_currency": "CNY",
         "descriptive_metrics": {
           "estimated_cost": {
-            "case_median_delta": 0.19989600000000007,
+            "case_median_delta": null,
             "currency": "CNY",
-            "eligible_cases": 3,
+            "eligible_cases": 0,
             "inference_role": "descriptive only",
-            "negative_cases": 1,
-            "positive_cases": 2,
+            "negative_cases": 0,
+            "positive_cases": 0,
             "tied_cases": 0
           },
           "output_tokens": {
@@ -8755,12 +8742,12 @@
                 "tied_cases": 1
               },
               "estimated_cost": {
-                "case_median_delta": 0.19989600000000007,
+                "case_median_delta": null,
                 "currency": "CNY",
-                "eligible_cases": 3,
+                "eligible_cases": 0,
                 "inference_role": "descriptive only",
-                "negative_cases": 1,
-                "positive_cases": 2,
+                "negative_cases": 0,
+                "positive_cases": 0,
                 "tied_cases": 0
               },
               "output_tokens": {
@@ -8839,7 +8826,7 @@
           "cache_creation_input_tokens": 0,
           "cache_read_input_tokens": 96808448,
           "cost_currency": "CNY",
-          "estimated_cost": 272.391616,
+          "estimated_cost": null,
           "output_tokens": 1162916,
           "provider_visible_input_tokens": 102585082,
           "reasoning_output_tokens": 632477,
@@ -8854,8 +8841,8 @@
       "usage": {
         "combined": {
           "actual_cost_by_treatment": {
-            "raw": 84.69997199999999,
-            "semantic_graph": 88.10220399999999
+            "raw": null,
+            "semantic_graph": null
           },
           "cache_creation_input_tokens": 0,
           "cache_read_input_tokens": 97322752,
@@ -8871,7 +8858,7 @@
           "cache_creation_input_tokens": 0,
           "cache_read_input_tokens": 514304,
           "cost_currency": "CNY",
-          "estimated_cost": 2.5578480000000003,
+          "estimated_cost": null,
           "output_tokens": 22736,
           "reasoning_output_tokens": 4564,
           "uncached_input_tokens": 111579
@@ -8881,7 +8868,7 @@
           "cache_creation_input_tokens": 0,
           "cache_read_input_tokens": 96808448,
           "cost_currency": "CNY",
-          "estimated_cost": 272.391616,
+          "estimated_cost": null,
           "output_tokens": 1162916,
           "provider_visible_input_tokens": 102585082,
           "reasoning_output_tokens": 632477,
@@ -11006,9 +10993,9 @@
       },
       "glm-5.3": {
         "currency": "CNY",
-        "delta": 3.685711999999981,
-        "raw": 83.279308,
-        "semantic_graph": 86.96501999999998
+        "delta": null,
+        "raw": null,
+        "semantic_graph": null
       },
       "gpt-5.6-sol": {
         "currency": "USD",
@@ -11144,13 +11131,13 @@
   "source_artifacts": {
     "micro": {
       "artifact_type": "semantic-rca-micro-measurement-result",
-      "semantic_payload_sha256": "cb943233d8d0963fbbd77ec7e4b60aa017c1be2e743e3a45566be9b4170a77bd",
-      "sha256": "d9544a3c93d1798ea78b48dd44698468a88c811d2c273404e0d0738abd4fb1d3"
+      "semantic_payload_sha256": "1e715ffbe5152adc45ca241df73e6584f081cce413195133137a44c459a28014",
+      "sha256": "b732439ef5000675a0dfc5ae5fd16c6bff844ab7b3f5445f2a9cf9ffde6f14bf"
     },
     "transfer": {
       "artifact_type": "semantic-rca-transfer-measurement",
-      "semantic_payload_sha256": "3493c870d1e74c32ca28b42c92148027d00817b1aa2a821dee99dc1c0f6c56e3",
-      "sha256": "71a73f4aa5b37fd4d3979796e0a745d3a078a5bf975acacfe4ce8b3636a2657b"
+      "semantic_payload_sha256": "2c0abfd787721f8e078e4c9b36030832c030c1138b24004139b51f0c52f3885a",
+      "sha256": "c4aaf4dcd97e9b47a69523536e6f0b1682992a938f72768ffa9a363efbe54f80"
     }
   },
   "tool_use_audit": {
@@ -11226,7 +11213,6 @@
     "by_treatment": {
       "raw": {
         "estimated_cost_by_currency": {
-          "CNY": 83.279308,
           "USD": 61.929391
         },
         "output_tokens": 1348496,
@@ -11234,7 +11220,6 @@
       },
       "semantic_graph": {
         "estimated_cost_by_currency": {
-          "CNY": 86.96502,
           "USD": 68.430571
         },
         "output_tokens": 1331418,
@@ -11242,26 +11227,19 @@
       },
       "split_pillars": {
         "estimated_cost_by_currency": {
-          "CNY": 102.147288,
           "USD": 148.919564
         },
         "output_tokens": 1590255,
         "provider_visible_input_tokens": 153559236
       }
     },
-    "comparable_currency": null,
+    "comparable_currency": "USD",
     "estimated_cost_usd": {
-      "raw": 74.326019,
-      "semantic_graph": 81.37584,
-      "split_pillars": 164.124804
+      "raw": 61.929391,
+      "semantic_graph": 68.430571,
+      "split_pillars": 148.919564
     },
     "exchange_rates": {
-      "CNY": {
-        "checked_at": "2026-09-03",
-        "per_unit_usd": 0.14885604132243707,
-        "source": "https://tradingeconomics.com/china/currency",
-        "units_per_usd": 6.7179
-      },
       "USD": {
         "checked_at": null,
         "per_unit_usd": 1.0,
@@ -11271,10 +11249,11 @@
     "priced_models": {
       "claude-fable-5-1": "USD",
       "deepseek-v4-pro": "USD",
-      "glm-5.3": "CNY",
       "gpt-5.6-sol": "USD"
     },
     "role": "descriptive; token totals cover every executed run and are not the pre-specified token endpoint. Spend counts only models priced in one currency across every arm, and currencies are never combined",
-    "unpriced_models": []
+    "unpriced_models": [
+      "glm-5.3"
+    ]
   }
 }
