@@ -94,12 +94,15 @@ MODEL_PRICING = {
     },
     "glm-5.3": {
         "currency": "CNY",
-        "cost_available": False,
-        "checked_at": "2026-08-30",
+        "input_per_million": 8.0,
+        "input_cache_hit_per_million": 2.0,
+        "output_per_million": 28.0,
+        "checked_at": "2026-09-04",
         "note": (
-            "The BigModel China pricing page did not yet list GLM-5.3 rates when the "
-            "protocol was prepared. Token usage remains auditable, but estimated cost is "
-            "unavailable until an official model-specific rate is frozen."
+            "BigModel China list price for the 1M-context text model. Cache storage is "
+            "billed per million tokens per hour and was a limited-time free promotion at "
+            "the check date, so it is not a frozen rate and no cache-write price is "
+            "recorded; cost fails closed if a cache-write field is nevertheless returned."
         ),
         "source": "https://bigmodel.cn/pricing",
     },

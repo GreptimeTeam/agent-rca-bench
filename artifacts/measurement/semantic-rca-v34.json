@@ -537,7 +537,7 @@
         }
       ]
     },
-    "role": "post-measurement descriptive capability index; not a pre-registered endpoint and not used for hypothesis testing",
+    "role": "post-measurement descriptive capability index; not a pre-specified endpoint and not used for hypothesis testing",
     "rubric": {
       "causal_locus_match": {
         "dimension": "location",
@@ -823,7 +823,7 @@
       },
       "eligible_models": 4,
       "mechanism_code": "workload_restart",
-      "models_with_estimable_cost": 3,
+      "models_with_estimable_cost": 4,
       "models_with_fewer_calls": 2,
       "models_with_fewer_input_tokens": 3,
       "models_with_fewer_output_tokens": 3,
@@ -854,13 +854,13 @@
       },
       "eligible_models": 4,
       "mechanism_code": "workload_restart",
-      "models_with_estimable_cost": 3,
+      "models_with_estimable_cost": 4,
       "models_with_fewer_calls": 1,
       "models_with_fewer_input_tokens": 2,
       "models_with_fewer_output_tokens": 2,
       "models_with_fewer_rows": 3,
       "models_with_fewer_tokens": 2,
-      "models_with_lower_estimated_cost": 1,
+      "models_with_lower_estimated_cost": 2,
       "oracle": {
         "abnormal_samples": 15,
         "allowed_operations": [],
@@ -885,7 +885,7 @@
       },
       "eligible_models": 4,
       "mechanism_code": "workload_restart",
-      "models_with_estimable_cost": 3,
+      "models_with_estimable_cost": 4,
       "models_with_fewer_calls": 2,
       "models_with_fewer_input_tokens": 2,
       "models_with_fewer_output_tokens": 3,
@@ -1715,100 +1715,103 @@
       },
       "glm-5.3": {
         "actual_cost_by_treatment": {
-          "raw": null,
-          "semantic_graph": null
+          "raw": 83.279308,
+          "semantic_graph": 86.96501999999998
         },
         "cases": {
           "semantic-rca-transfer-001": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 3.295116,
+            "actual_cost_semantic_graph": 2.693288,
             "eligible_repetitions": 1,
+            "estimated_cost": 0.19989600000000007,
             "estimated_cost_currency": "CNY",
             "output_tokens": -736,
             "provider_visible_input_tokens": 122171,
             "reasoning_output_tokens": -1119
           },
           "semantic-rca-transfer-002": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 3.195176,
+            "actual_cost_semantic_graph": 2.70126,
             "eligible_repetitions": 2,
+            "estimated_cost": -0.246958,
             "estimated_cost_currency": "CNY",
             "output_tokens": 444.5,
             "provider_visible_input_tokens": -101857.5,
             "reasoning_output_tokens": -494.5
           },
           "semantic-rca-transfer-003": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 2.937232,
+            "actual_cost_semantic_graph": 2.756372,
             "eligible_repetitions": 1,
+            "estimated_cost": 0.5713560000000002,
             "estimated_cost_currency": "CNY",
             "output_tokens": 5899,
             "provider_visible_input_tokens": 221125,
             "reasoning_output_tokens": 917
           },
           "semantic-rca-transfer-004": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 4.07208,
+            "actual_cost_semantic_graph": 4.575436,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-005": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 4.26798,
+            "actual_cost_semantic_graph": 4.073568,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-006": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 4.5970320000000005,
+            "actual_cost_semantic_graph": 3.7584799999999996,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-007": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 3.4850719999999997,
+            "actual_cost_semantic_graph": 3.093604,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-008": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 3.7539359999999995,
+            "actual_cost_semantic_graph": 5.801052,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-009": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 7.020892,
+            "actual_cost_semantic_graph": 6.189916,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-010": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 3.742912,
+            "actual_cost_semantic_graph": 4.5863439999999995,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-011": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 17.858212,
+            "actual_cost_semantic_graph": 21.984887999999998,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-012": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 6.4520800000000005,
+            "actual_cost_semantic_graph": 8.606476,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-013": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 7.475548,
+            "actual_cost_semantic_graph": 7.496980000000001,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-014": {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 11.12604,
+            "actual_cost_semantic_graph": 8.647356,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           }
@@ -1816,12 +1819,12 @@
         "cost_currency": "CNY",
         "summary": {
           "estimated_cost": {
-            "case_median_delta": null,
+            "case_median_delta": 0.19989600000000007,
             "currency": "CNY",
-            "eligible_cases": 0,
+            "eligible_cases": 3,
             "inference_role": "descriptive only",
-            "negative_cases": 0,
-            "positive_cases": 0,
+            "negative_cases": 1,
+            "positive_cases": 2,
             "tied_cases": 0
           },
           "output_tokens": {
@@ -2346,112 +2349,119 @@
       },
       "glm-5.3": {
         "actual_cost_by_treatment": {
-          "raw": null,
-          "split_pillars": null
+          "raw": 83.279308,
+          "split_pillars": 102.147288
         },
         "cases": {
           "semantic-rca-transfer-001": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 3.295116,
+            "actual_cost_split_pillars": 3.82828,
             "eligible_repetitions": 1,
+            "estimated_cost": -0.6634040000000001,
             "estimated_cost_currency": "CNY",
             "output_tokens": -3807,
             "provider_visible_input_tokens": -259201,
             "reasoning_output_tokens": -1113
           },
           "semantic-rca-transfer-002": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 3.195176,
+            "actual_cost_split_pillars": 4.795748,
             "eligible_repetitions": 1,
+            "estimated_cost": -0.22282000000000002,
             "estimated_cost_currency": "CNY",
             "output_tokens": -1769,
             "provider_visible_input_tokens": -54253,
             "reasoning_output_tokens": -169
           },
           "semantic-rca-transfer-003": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 2.937232,
+            "actual_cost_split_pillars": 6.434852,
             "eligible_repetitions": 2,
+            "estimated_cost": -1.7488100000000002,
             "estimated_cost_currency": "CNY",
             "output_tokens": -7934.5,
             "provider_visible_input_tokens": -706566.5,
             "reasoning_output_tokens": -5191.5
           },
           "semantic-rca-transfer-004": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 4.07208,
+            "actual_cost_split_pillars": 10.355172,
             "eligible_repetitions": 1,
+            "estimated_cost": -0.7181120000000001,
             "estimated_cost_currency": "CNY",
             "output_tokens": -1360,
             "provider_visible_input_tokens": -217676,
             "reasoning_output_tokens": 36
           },
           "semantic-rca-transfer-005": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 4.26798,
+            "actual_cost_split_pillars": 3.987912,
             "eligible_repetitions": 1,
+            "estimated_cost": -1.3005400000000003,
             "estimated_cost_currency": "CNY",
             "output_tokens": -13041,
             "provider_visible_input_tokens": -381068,
             "reasoning_output_tokens": -11147
           },
           "semantic-rca-transfer-006": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 4.5970320000000005,
+            "actual_cost_split_pillars": 7.400195999999999,
             "eligible_repetitions": 1,
+            "estimated_cost": -0.039899999999999824,
             "estimated_cost_currency": "CNY",
             "output_tokens": -4613,
             "provider_visible_input_tokens": 25558,
             "reasoning_output_tokens": -5799
           },
           "semantic-rca-transfer-007": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 3.4850719999999997,
+            "actual_cost_split_pillars": 4.117628,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-008": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 3.7539359999999995,
+            "actual_cost_split_pillars": 5.81418,
             "eligible_repetitions": 1,
+            "estimated_cost": -0.05730000000000013,
             "estimated_cost_currency": "CNY",
             "output_tokens": 1129,
             "provider_visible_input_tokens": -12554,
             "reasoning_output_tokens": -522
           },
           "semantic-rca-transfer-009": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 7.020892,
+            "actual_cost_split_pillars": 5.580096,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-010": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 3.742912,
+            "actual_cost_split_pillars": 4.548288,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-011": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 17.858212,
+            "actual_cost_split_pillars": 12.528532,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-012": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 6.4520800000000005,
+            "actual_cost_split_pillars": 12.505612000000001,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-013": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 7.475548,
+            "actual_cost_split_pillars": 5.746824,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           },
           "semantic-rca-transfer-014": {
-            "actual_cost_raw": null,
-            "actual_cost_split_pillars": null,
+            "actual_cost_raw": 11.12604,
+            "actual_cost_split_pillars": 14.503968,
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY"
           }
@@ -2459,11 +2469,11 @@
         "cost_currency": "CNY",
         "summary": {
           "estimated_cost": {
-            "case_median_delta": null,
+            "case_median_delta": -0.6634040000000001,
             "currency": "CNY",
-            "eligible_cases": 0,
+            "eligible_cases": 7,
             "inference_role": "descriptive only",
-            "negative_cases": 0,
+            "negative_cases": 7,
             "positive_cases": 0,
             "tied_cases": 0
           },
@@ -2656,9 +2666,26 @@
     }
   },
   "costs": {
-    "aggregation_policy": "Only complete estimates in the same currency are subtotaled. No cross-currency total is reported, and partial model estimates are rejected.",
-    "cross_currency_total": null,
+    "aggregation_policy": "Only complete estimates are counted, and a partially priced model is rejected whole. Spend is kept in the currency it was billed in; a USD total is derived from those subtotals at the frozen rates published beside it, and only when every model is priced.",
+    "cross_currency_total": {
+      "amount": 331.422729,
+      "currency": "USD",
+      "exchange_rates": {
+        "CNY": {
+          "checked_at": "2026-09-03",
+          "per_unit_usd": 0.14885604132243707,
+          "source": "https://tradingeconomics.com/china/currency",
+          "units_per_usd": 6.7179
+        },
+        "USD": {
+          "checked_at": null,
+          "per_unit_usd": 1.0,
+          "source": null
+        }
+      }
+    },
     "known_totals_by_currency": {
+      "CNY": 274.949464,
       "USD": 290.494839896
     },
     "models": {
@@ -2678,10 +2705,10 @@
       },
       "glm-5.3": {
         "currency": "CNY",
-        "estimated_cost": null,
-        "status": "not_estimable",
-        "unavailable_reason": "The BigModel China pricing page did not yet list GLM-5.3 rates when the protocol was prepared. Token usage remains auditable, but estimated cost is unavailable until an official model-specific rate is frozen.",
-        "unavailable_reason_code": "model_price_not_frozen"
+        "estimated_cost": 274.949464,
+        "status": "available",
+        "unavailable_reason": null,
+        "unavailable_reason_code": null
       },
       "gpt-5.6-sol": {
         "currency": "USD",
@@ -2691,9 +2718,7 @@
         "unavailable_reason_code": null
       }
     },
-    "models_with_unavailable_estimate": [
-      "glm-5.3"
-    ],
+    "models_with_unavailable_estimate": [],
     "pricing_basis": {
       "claude-fable-5-1": {
         "cache_read_per_million": 0.25,
@@ -2714,13 +2739,13 @@
         "uncached_input_per_million": 1.32
       },
       "glm-5.3": {
-        "cache_read_per_million": null,
+        "cache_read_per_million": 2.0,
         "cache_write_per_million": null,
-        "checked_at": "2026-08-30",
+        "checked_at": "2026-09-04",
         "currency": "CNY",
-        "output_per_million": null,
+        "output_per_million": 28.0,
         "source": "https://bigmodel.cn/pricing",
-        "uncached_input_per_million": null
+        "uncached_input_per_million": 8.0
       },
       "gpt-5.6-sol": {
         "cache_read_per_million": 0.4,
@@ -2821,7 +2846,7 @@
   },
   "integrity": {
     "hash_scope": "all report fields except integrity",
-    "semantic_payload_sha256": "8e8b3fbed2c82e981a298fb00183913546ee9901f6a3b1af67f20cb3f1654e1e"
+    "semantic_payload_sha256": "f1cf9345837c32a71f8363c024a9a360894d79a2b341015c6c1535c09d695e46"
   },
   "license": {
     "micro_source_terms": {
@@ -2845,11 +2870,12 @@
     "The 8-case micro cohort is fixed reference data; the 14-case end-to-end cohort is source-ranked. Ten of its cases carry over from the previously published measurement rather than being reselected.",
     "Case-level within-model estimates apply to these systems and mechanisms; they are not a universal observability-workload effect.",
     "Null is not estimable, zero means no observed reduction, and a non-significant test does not establish equivalence.",
+    "The study has 14 independent cases, and endpoint eligibility leaves only 3-13 cases for an individual test. Exact sign tests on that many cases have low and discrete power, so a non-significant result indicates insufficient evidence and does not establish equivalence.",
     "Provider reasoning settings are frozen configurations, not a common compute scale.",
     "Deterministic evidence sufficiency is reported as a secondary audit and does not control headline efficiency eligibility.",
-    "The 40/40/5 capability score is a post-measurement descriptive index. It is not a pre-registered endpoint and its evidence component inherits verifier coverage limits.",
+    "The 40/40/5 capability score is a post-measurement descriptive index. It is not a pre-specified endpoint and its evidence component inherits verifier coverage limits.",
     "Mechanism cohorts are unevenly sized: Workload restart 4, Call-path delay 3, CPU saturation 3, Memory pressure 2, Disk I/O degradation 1, Host unavailable 1. Mechanism-level summaries are descriptive and unevenly supported.",
-    "Costs retain provider currencies; currencies are not converted."
+    "Costs are estimates from frozen provider rates, not invoices, and are kept in the currency each provider billed in. A USD total is a derived figure, converted at the frozen rate published beside it; an exchange rate is a market quote, not a measurement."
   ],
   "model_order": [
     "gpt-5.6-sol",
@@ -3038,8 +3064,8 @@
             ],
             "metric_roles": {
               "reported_total_tokens": "exploratory provider-accounted metric",
-              "rows_returned_through_evidence": "pre-registered primary",
-              "tool_calls_through_evidence": "pre-registered primary"
+              "rows_returned_through_evidence": "pre-specified primary",
+              "tool_calls_through_evidence": "pre-specified primary"
             },
             "resource_effects": {
               "actual_cost_by_treatment": {
@@ -3228,8 +3254,8 @@
             ],
             "metric_roles": {
               "reported_total_tokens": "exploratory provider-accounted metric",
-              "rows_returned_through_evidence": "pre-registered primary",
-              "tool_calls_through_evidence": "pre-registered primary"
+              "rows_returned_through_evidence": "pre-specified primary",
+              "tool_calls_through_evidence": "pre-specified primary"
             },
             "resource_effects": {
               "actual_cost_by_treatment": {
@@ -3337,6 +3363,7 @@
             "case_id": "semantic-rca-transfer-001",
             "causal_scope": "component",
             "correct_completion_tool_calls": -13,
+            "correct_completion_tool_calls_relative": -0.512987012987013,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": 0.1389456249999999,
@@ -3353,9 +3380,12 @@
             },
             "output_tokens": -3244.5,
             "provider_visible_input_tokens": -91384.5,
+            "provider_visible_input_tokens_relative": -0.2849548080983654,
             "reasoning_output_tokens": -686.5,
             "reported_total_tokens": -94629,
+            "reported_total_tokens_relative": -0.28760988298239254,
             "rows_returned": -223.5,
+            "rows_returned_relative": -0.3404460564901991,
             "source_case": "hs8-user-pod-failure-q2q5tv",
             "system": "Hotel Reservation",
             "target": "user"
@@ -3366,6 +3396,7 @@
             "case_id": "semantic-rca-transfer-002",
             "causal_scope": "component",
             "correct_completion_tool_calls": 1,
+            "correct_completion_tool_calls_relative": 0.046218487394957986,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": 0.058810125000000046,
@@ -3382,9 +3413,12 @@
             },
             "output_tokens": -288.5,
             "provider_visible_input_tokens": 40938,
+            "provider_visible_input_tokens_relative": 0.17770201794227414,
             "reasoning_output_tokens": -290,
             "reported_total_tokens": 40649.5,
+            "reported_total_tokens_relative": 0.17083836751583836,
             "rows_returned": 3319,
+            "rows_returned_relative": 6.262775440025338,
             "source_case": "hs7-reservation-pod-failure-wv88wr",
             "system": "Hotel Reservation",
             "target": "reservation"
@@ -3395,6 +3429,7 @@
             "case_id": "semantic-rca-transfer-003",
             "causal_scope": "component",
             "correct_completion_tool_calls": 0.5,
+            "correct_completion_tool_calls_relative": 0.2366666666666667,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.06559249999999994,
@@ -3411,9 +3446,12 @@
             },
             "output_tokens": -153,
             "provider_visible_input_tokens": -14123,
+            "provider_visible_input_tokens_relative": -0.0198514546823554,
             "reasoning_output_tokens": -68.5,
             "reported_total_tokens": -14276,
+            "reported_total_tokens_relative": -0.023393691268175434,
             "rows_returned": -52.5,
+            "rows_returned_relative": -0.13566570921686238,
             "source_case": "hs5-user-pod-failure-7lghrl",
             "system": "Hotel Reservation",
             "target": "user"
@@ -3424,6 +3462,7 @@
             "case_id": "semantic-rca-transfer-004",
             "causal_scope": "component",
             "correct_completion_tool_calls": -2.5,
+            "correct_completion_tool_calls_relative": -0.08152173913043478,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.195322375,
@@ -3440,9 +3479,12 @@
             },
             "output_tokens": -1990.5,
             "provider_visible_input_tokens": -102372.5,
+            "provider_visible_input_tokens_relative": -0.21226630404157773,
             "reasoning_output_tokens": -420.5,
             "reported_total_tokens": -104363,
+            "reported_total_tokens_relative": -0.2112893570194807,
             "rows_returned": -227,
+            "rows_returned_relative": -0.1996052306933136,
             "source_case": "otel-demo14-product-catalog-pod-failure-nw4q7w",
             "system": "OpenTelemetry Demo",
             "target": "product-catalog"
@@ -3453,6 +3495,7 @@
             "case_id": "semantic-rca-transfer-005",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": 1.5,
+            "correct_completion_tool_calls_relative": 0.08263305322128851,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.325822625,
@@ -3471,9 +3514,12 @@
             },
             "output_tokens": -1455,
             "provider_visible_input_tokens": -179773.5,
+            "provider_visible_input_tokens_relative": -0.42853862668072257,
             "reasoning_output_tokens": -803,
             "reported_total_tokens": -181228.5,
+            "reported_total_tokens_relative": -0.4231382380363,
             "rows_returned": -371.5,
+            "rows_returned_relative": -0.5262300767525672,
             "source_case": "hs1-search-delay-bmhxp8",
             "system": "Hotel Reservation",
             "target": "search -> rate"
@@ -3484,6 +3530,7 @@
             "case_id": "semantic-rca-transfer-006",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": 1.5,
+            "correct_completion_tool_calls_relative": 0.11444444444444445,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.39581387500000004,
@@ -3502,9 +3549,12 @@
             },
             "output_tokens": -1688,
             "provider_visible_input_tokens": -211252,
+            "provider_visible_input_tokens_relative": -0.4577800224102471,
             "reasoning_output_tokens": -886,
             "reported_total_tokens": -212940,
+            "reported_total_tokens_relative": -0.4500280222404054,
             "rows_returned": -500.5,
+            "rows_returned_relative": -0.5911658194624406,
             "source_case": "hs12-search-delay-7l9ggr",
             "system": "Hotel Reservation",
             "target": "search -> rate"
@@ -3515,6 +3565,7 @@
             "case_id": "semantic-rca-transfer-007",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": -4,
+            "correct_completion_tool_calls_relative": -0.20657894736842103,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.23317674999999993,
@@ -3534,9 +3585,12 @@
             },
             "output_tokens": -3412.5,
             "provider_visible_input_tokens": -106556.5,
+            "provider_visible_input_tokens_relative": -0.2769230401622191,
             "reasoning_output_tokens": -1197.5,
             "reported_total_tokens": -109969,
+            "reported_total_tokens_relative": -0.2782946286931304,
             "rows_returned": 16,
+            "rows_returned_relative": 0.019376806938644395,
             "source_case": "otel-demo1-shipping-delay-sm2szn",
             "system": "OpenTelemetry Demo",
             "target": "shipping -> quote"
@@ -3547,6 +3601,7 @@
             "case_id": "semantic-rca-transfer-008",
             "causal_scope": "component",
             "correct_completion_tool_calls": -2,
+            "correct_completion_tool_calls_relative": -0.10964912280701754,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.10648075000000001,
@@ -3563,9 +3618,12 @@
             },
             "output_tokens": -902.5,
             "provider_visible_input_tokens": -76228,
+            "provider_visible_input_tokens_relative": -0.09955066140891214,
             "reasoning_output_tokens": -603.5,
             "reported_total_tokens": -77130.5,
+            "reported_total_tokens_relative": -0.10444233077576902,
             "rows_returned": -689,
+            "rows_returned_relative": -0.2599441508026482,
             "source_case": "hs10-search-cpu-exhaustion-9ptnql",
             "system": "Hotel Reservation",
             "target": "search"
@@ -3576,6 +3634,7 @@
             "case_id": "semantic-rca-transfer-009",
             "causal_scope": "component",
             "correct_completion_tool_calls": 3,
+            "correct_completion_tool_calls_relative": 0.1800595238095238,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": 0.09944462500000001,
@@ -3592,9 +3651,12 @@
             },
             "output_tokens": -728,
             "provider_visible_input_tokens": 44307,
+            "provider_visible_input_tokens_relative": 0.2547237000706663,
             "reasoning_output_tokens": -161.5,
             "reported_total_tokens": 43579,
+            "reported_total_tokens_relative": 0.24051092880922653,
             "rows_returned": 89,
+            "rows_returned_relative": 0.21535438748287547,
             "source_case": "hs10-reservation-cpu-exhaustion-rvn9j8",
             "system": "Hotel Reservation",
             "target": "reservation"
@@ -3605,6 +3667,7 @@
             "case_id": "semantic-rca-transfer-010",
             "causal_scope": "component",
             "correct_completion_tool_calls": -4.5,
+            "correct_completion_tool_calls_relative": -0.12683823529411764,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.07778500000000005,
@@ -3621,9 +3684,12 @@
             },
             "output_tokens": -2912,
             "provider_visible_input_tokens": -52373.5,
+            "provider_visible_input_tokens_relative": -0.0650716022571642,
             "reasoning_output_tokens": -1131.5,
             "reported_total_tokens": -55285.5,
+            "reported_total_tokens_relative": -0.07178846759250192,
             "rows_returned": 86,
+            "rows_returned_relative": 0.12045609257998638,
             "source_case": "hs10-geo-memory-exhaustion-pmtmcp",
             "system": "Hotel Reservation",
             "target": "geo"
@@ -3634,6 +3700,7 @@
             "case_id": "semantic-rca-transfer-011",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "USD",
@@ -3648,8 +3715,11 @@
               "value_column": "greptime_value"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t019",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.49"
@@ -3660,6 +3730,7 @@
             "case_id": "semantic-rca-transfer-012",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": -7,
+            "correct_completion_tool_calls_relative": -0.2,
             "dataset": "rca100",
             "eligible_repetitions": 1,
             "estimated_cost": 0.24964625000000007,
@@ -3676,9 +3747,12 @@
             },
             "output_tokens": -2906,
             "provider_visible_input_tokens": 55765,
+            "provider_visible_input_tokens_relative": 0.07791411214378727,
             "reasoning_output_tokens": 195,
             "reported_total_tokens": 52859,
+            "reported_total_tokens_relative": 0.07240790282966013,
             "rows_returned": 269,
+            "rows_returned_relative": 0.3581890812250333,
             "source_case": "t003",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.69"
@@ -3689,6 +3763,7 @@
             "case_id": "semantic-rca-transfer-013",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": 2,
+            "correct_completion_tool_calls_relative": 0.04878048780487805,
             "dataset": "rca100",
             "eligible_repetitions": 1,
             "estimated_cost": 0.6665969999999999,
@@ -3697,9 +3772,12 @@
             "oracle": null,
             "output_tokens": 2264,
             "provider_visible_input_tokens": 710495,
+            "provider_visible_input_tokens_relative": 0.3817511459331262,
             "reasoning_output_tokens": 977,
             "reported_total_tokens": 712759,
+            "reported_total_tokens_relative": 0.3794460237859478,
             "rows_returned": 613,
+            "rows_returned_relative": 0.33998890737659454,
             "source_case": "t022",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.55"
@@ -3710,6 +3788,7 @@
             "case_id": "semantic-rca-transfer-014",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": 1,
+            "correct_completion_tool_calls_relative": 0.02702702702702703,
             "dataset": "rca100",
             "eligible_repetitions": 1,
             "estimated_cost": 0.20989350000000018,
@@ -3718,9 +3797,12 @@
             "oracle": null,
             "output_tokens": 2709,
             "provider_visible_input_tokens": 263429,
+            "provider_visible_input_tokens_relative": 0.2886251058668592,
             "reasoning_output_tokens": 3143,
             "reported_total_tokens": 266138,
+            "reported_total_tokens_relative": 0.28773946484425256,
             "rows_returned": 93,
+            "rows_returned_relative": 0.12433155080213903,
             "source_case": "t073",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.65"
@@ -3732,114 +3814,170 @@
               {
                 "case_id": "semantic-rca-transfer-001",
                 "correct_completion_tool_calls": -13,
+                "correct_completion_tool_calls_relative": -0.512987012987013,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -91384.5,
+                "provider_visible_input_tokens_relative": -0.2849548080983654,
                 "reported_total_tokens": -94629,
-                "rows_returned": -223.5
+                "reported_total_tokens_relative": -0.28760988298239254,
+                "rows_returned": -223.5,
+                "rows_returned_relative": -0.3404460564901991
               },
               {
                 "case_id": "semantic-rca-transfer-002",
                 "correct_completion_tool_calls": 1,
+                "correct_completion_tool_calls_relative": 0.046218487394957986,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 40938,
+                "provider_visible_input_tokens_relative": 0.17770201794227414,
                 "reported_total_tokens": 40649.5,
-                "rows_returned": 3319
+                "reported_total_tokens_relative": 0.17083836751583836,
+                "rows_returned": 3319,
+                "rows_returned_relative": 6.262775440025338
               },
               {
                 "case_id": "semantic-rca-transfer-003",
                 "correct_completion_tool_calls": 0.5,
+                "correct_completion_tool_calls_relative": 0.2366666666666667,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -14123,
+                "provider_visible_input_tokens_relative": -0.0198514546823554,
                 "reported_total_tokens": -14276,
-                "rows_returned": -52.5
+                "reported_total_tokens_relative": -0.023393691268175434,
+                "rows_returned": -52.5,
+                "rows_returned_relative": -0.13566570921686238
               },
               {
                 "case_id": "semantic-rca-transfer-004",
                 "correct_completion_tool_calls": -2.5,
+                "correct_completion_tool_calls_relative": -0.08152173913043478,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -102372.5,
+                "provider_visible_input_tokens_relative": -0.21226630404157773,
                 "reported_total_tokens": -104363,
-                "rows_returned": -227
+                "reported_total_tokens_relative": -0.2112893570194807,
+                "rows_returned": -227,
+                "rows_returned_relative": -0.1996052306933136
               },
               {
                 "case_id": "semantic-rca-transfer-005",
                 "correct_completion_tool_calls": 1.5,
+                "correct_completion_tool_calls_relative": 0.08263305322128851,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -179773.5,
+                "provider_visible_input_tokens_relative": -0.42853862668072257,
                 "reported_total_tokens": -181228.5,
-                "rows_returned": -371.5
+                "reported_total_tokens_relative": -0.4231382380363,
+                "rows_returned": -371.5,
+                "rows_returned_relative": -0.5262300767525672
               },
               {
                 "case_id": "semantic-rca-transfer-006",
                 "correct_completion_tool_calls": 1.5,
+                "correct_completion_tool_calls_relative": 0.11444444444444445,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -211252,
+                "provider_visible_input_tokens_relative": -0.4577800224102471,
                 "reported_total_tokens": -212940,
-                "rows_returned": -500.5
+                "reported_total_tokens_relative": -0.4500280222404054,
+                "rows_returned": -500.5,
+                "rows_returned_relative": -0.5911658194624406
               },
               {
                 "case_id": "semantic-rca-transfer-007",
                 "correct_completion_tool_calls": -4,
+                "correct_completion_tool_calls_relative": -0.20657894736842103,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -106556.5,
+                "provider_visible_input_tokens_relative": -0.2769230401622191,
                 "reported_total_tokens": -109969,
-                "rows_returned": 16
+                "reported_total_tokens_relative": -0.2782946286931304,
+                "rows_returned": 16,
+                "rows_returned_relative": 0.019376806938644395
               },
               {
                 "case_id": "semantic-rca-transfer-008",
                 "correct_completion_tool_calls": -2,
+                "correct_completion_tool_calls_relative": -0.10964912280701754,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -76228,
+                "provider_visible_input_tokens_relative": -0.09955066140891214,
                 "reported_total_tokens": -77130.5,
-                "rows_returned": -689
+                "reported_total_tokens_relative": -0.10444233077576902,
+                "rows_returned": -689,
+                "rows_returned_relative": -0.2599441508026482
               },
               {
                 "case_id": "semantic-rca-transfer-009",
                 "correct_completion_tool_calls": 3,
+                "correct_completion_tool_calls_relative": 0.1800595238095238,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 44307,
+                "provider_visible_input_tokens_relative": 0.2547237000706663,
                 "reported_total_tokens": 43579,
-                "rows_returned": 89
+                "reported_total_tokens_relative": 0.24051092880922653,
+                "rows_returned": 89,
+                "rows_returned_relative": 0.21535438748287547
               },
               {
                 "case_id": "semantic-rca-transfer-010",
                 "correct_completion_tool_calls": -4.5,
+                "correct_completion_tool_calls_relative": -0.12683823529411764,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -52373.5,
+                "provider_visible_input_tokens_relative": -0.0650716022571642,
                 "reported_total_tokens": -55285.5,
-                "rows_returned": 86
+                "reported_total_tokens_relative": -0.07178846759250192,
+                "rows_returned": 86,
+                "rows_returned_relative": 0.12045609257998638
               },
               {
                 "case_id": "semantic-rca-transfer-011",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-012",
                 "correct_completion_tool_calls": -7,
+                "correct_completion_tool_calls_relative": -0.2,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": 55765,
+                "provider_visible_input_tokens_relative": 0.07791411214378727,
                 "reported_total_tokens": 52859,
-                "rows_returned": 269
+                "reported_total_tokens_relative": 0.07240790282966013,
+                "rows_returned": 269,
+                "rows_returned_relative": 0.3581890812250333
               },
               {
                 "case_id": "semantic-rca-transfer-013",
                 "correct_completion_tool_calls": 2,
+                "correct_completion_tool_calls_relative": 0.04878048780487805,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": 710495,
+                "provider_visible_input_tokens_relative": 0.3817511459331262,
                 "reported_total_tokens": 712759,
-                "rows_returned": 613
+                "reported_total_tokens_relative": 0.3794460237859478,
+                "rows_returned": 613,
+                "rows_returned_relative": 0.33998890737659454
               },
               {
                 "case_id": "semantic-rca-transfer-014",
                 "correct_completion_tool_calls": 1,
+                "correct_completion_tool_calls_relative": 0.02702702702702703,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": 263429,
+                "provider_visible_input_tokens_relative": 0.2886251058668592,
                 "reported_total_tokens": 266138,
-                "rows_returned": 93
+                "reported_total_tokens_relative": 0.28773946484425256,
+                "rows_returned": 93,
+                "rows_returned_relative": 0.12433155080213903
               }
             ],
             "comparison": "semantic_graph - raw",
@@ -3932,114 +4070,170 @@
               {
                 "case_id": "semantic-rca-transfer-001",
                 "correct_completion_tool_calls": -6,
+                "correct_completion_tool_calls_relative": -0.18803418803418803,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -1047839,
+                "provider_visible_input_tokens_relative": -0.7490861762128733,
                 "reported_total_tokens": -1050893.5,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.7448217677326211,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-002",
                 "correct_completion_tool_calls": -6,
+                "correct_completion_tool_calls_relative": -0.27065217391304347,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -424651.5,
+                "provider_visible_input_tokens_relative": -0.6264987227499649,
                 "reported_total_tokens": -427549,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.6215955458254863,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-003",
                 "correct_completion_tool_calls": -1,
+                "correct_completion_tool_calls_relative": -0.05921052631578946,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -446252.5,
+                "provider_visible_input_tokens_relative": -0.5780380188348012,
                 "reported_total_tokens": -448053.5,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.5740949310098993,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-004",
                 "correct_completion_tool_calls": 1,
+                "correct_completion_tool_calls_relative": 0.22348484848484848,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -329922,
+                "provider_visible_input_tokens_relative": -0.4200187875614445,
                 "reported_total_tokens": -330290.5,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.41509004797247634,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-005",
                 "correct_completion_tool_calls": -4.5,
+                "correct_completion_tool_calls_relative": -0.17307692307692307,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -551261,
+                "provider_visible_input_tokens_relative": -0.6131158819835348,
                 "reported_total_tokens": -553389.5,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.6075521704621578,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-006",
                 "correct_completion_tool_calls": -3,
+                "correct_completion_tool_calls_relative": -0.14285714285714285,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -386264,
+                "provider_visible_input_tokens_relative": -0.5305299475876012,
                 "reported_total_tokens": -388009,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.5246299957002972,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-007",
                 "correct_completion_tool_calls": -15,
+                "correct_completion_tool_calls_relative": -0.42857142857142855,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -923057,
+                "provider_visible_input_tokens_relative": -0.7061529434355165,
                 "reported_total_tokens": -926772,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.7012844911409838,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-008",
                 "correct_completion_tool_calls": -4,
+                "correct_completion_tool_calls_relative": -0.17559523809523808,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -152482.5,
+                "provider_visible_input_tokens_relative": -0.3414114226307795,
                 "reported_total_tokens": -153917,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.3371603230601738,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-009",
                 "correct_completion_tool_calls": -10.5,
+                "correct_completion_tool_calls_relative": -0.3620689655172414,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -344411.5,
+                "provider_visible_input_tokens_relative": -0.6526632651719942,
                 "reported_total_tokens": -346954.5,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.6453989918552521,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-010",
                 "correct_completion_tool_calls": -4,
+                "correct_completion_tool_calls_relative": -0.16,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -219970,
+                "provider_visible_input_tokens_relative": -0.3736877886029135,
                 "reported_total_tokens": -219269.5,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.3657154733069101,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-011",
                 "correct_completion_tool_calls": -1.5,
+                "correct_completion_tool_calls_relative": -0.044763513513513514,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -1285239,
+                "provider_visible_input_tokens_relative": -0.5177495322833425,
                 "reported_total_tokens": -1290942.5,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.5155141142510156,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-012",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-013",
                 "correct_completion_tool_calls": -2,
+                "correct_completion_tool_calls_relative": -0.046511627906976744,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -2100684,
+                "provider_visible_input_tokens_relative": -0.5302305928748602,
                 "reported_total_tokens": -2103736,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.5282907048342657,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-014",
                 "correct_completion_tool_calls": 5,
+                "correct_completion_tool_calls_relative": 0.16495806150978565,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -1044702.5,
+                "provider_visible_input_tokens_relative": -0.49343763891634884,
                 "reported_total_tokens": -1050143.5,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.4918968128886666,
+                "rows_returned": null,
+                "rows_returned_relative": null
               }
             ],
             "comparison": "raw - split_pillars",
@@ -4884,8 +5078,8 @@
             ],
             "metric_roles": {
               "reported_total_tokens": "exploratory provider-accounted metric",
-              "rows_returned_through_evidence": "pre-registered primary",
-              "tool_calls_through_evidence": "pre-registered primary"
+              "rows_returned_through_evidence": "pre-specified primary",
+              "tool_calls_through_evidence": "pre-specified primary"
             },
             "resource_effects": {
               "actual_cost_by_treatment": {
@@ -5068,8 +5262,8 @@
             ],
             "metric_roles": {
               "reported_total_tokens": "exploratory provider-accounted metric",
-              "rows_returned_through_evidence": "pre-registered primary",
-              "tool_calls_through_evidence": "pre-registered primary"
+              "rows_returned_through_evidence": "pre-specified primary",
+              "tool_calls_through_evidence": "pre-specified primary"
             },
             "resource_effects": {
               "actual_cost_by_treatment": {
@@ -5177,6 +5371,7 @@
             "case_id": "semantic-rca-transfer-001",
             "causal_scope": "component",
             "correct_completion_tool_calls": -10.5,
+            "correct_completion_tool_calls_relative": -0.2335630965005302,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.05645684000000002,
@@ -5193,9 +5388,12 @@
             },
             "output_tokens": 3681.5,
             "provider_visible_input_tokens": -557409.5,
+            "provider_visible_input_tokens_relative": -0.4725917972714594,
             "reasoning_output_tokens": 0,
             "reported_total_tokens": -553728,
+            "reported_total_tokens_relative": -0.46070144950957215,
             "rows_returned": -890.5,
+            "rows_returned_relative": -0.5580974235470533,
             "source_case": "hs8-user-pod-failure-q2q5tv",
             "system": "Hotel Reservation",
             "target": "user"
@@ -5206,6 +5404,7 @@
             "case_id": "semantic-rca-transfer-002",
             "causal_scope": "component",
             "correct_completion_tool_calls": 3.5,
+            "correct_completion_tool_calls_relative": 0.11066308243727599,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": 0.024661208000000004,
@@ -5222,9 +5421,12 @@
             },
             "output_tokens": 1869.5,
             "provider_visible_input_tokens": 135446.5,
+            "provider_visible_input_tokens_relative": 0.3103368016260105,
             "reasoning_output_tokens": 0,
             "reported_total_tokens": 137316,
+            "reported_total_tokens_relative": 0.3053113422148486,
             "rows_returned": -26,
+            "rows_returned_relative": -0.023591041908497777,
             "source_case": "hs7-reservation-pod-failure-wv88wr",
             "system": "Hotel Reservation",
             "target": "reservation"
@@ -5235,6 +5437,7 @@
             "case_id": "semantic-rca-transfer-003",
             "causal_scope": "component",
             "correct_completion_tool_calls": -6.5,
+            "correct_completion_tool_calls_relative": -0.2206896551724138,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.04190335599999998,
@@ -5251,9 +5454,12 @@
             },
             "output_tokens": -3984.5,
             "provider_visible_input_tokens": -188440,
+            "provider_visible_input_tokens_relative": -0.35633619412498974,
             "reasoning_output_tokens": 0,
             "reported_total_tokens": -192424.5,
+            "reported_total_tokens_relative": -0.35469762926000403,
             "rows_returned": -129,
+            "rows_returned_relative": -0.04586190953224936,
             "source_case": "hs5-user-pod-failure-7lghrl",
             "system": "Hotel Reservation",
             "target": "user"
@@ -5264,6 +5470,7 @@
             "case_id": "semantic-rca-transfer-004",
             "causal_scope": "component",
             "correct_completion_tool_calls": -12.5,
+            "correct_completion_tool_calls_relative": -0.27321083172147004,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.03347638800000002,
@@ -5280,9 +5487,12 @@
             },
             "output_tokens": -5010,
             "provider_visible_input_tokens": -439252.5,
+            "provider_visible_input_tokens_relative": -0.46195295980006734,
             "reasoning_output_tokens": 0,
             "reported_total_tokens": -444262.5,
+            "reported_total_tokens_relative": -0.4578933985315974,
             "rows_returned": -2101.5,
+            "rows_returned_relative": -0.5517621865932774,
             "source_case": "otel-demo14-product-catalog-pod-failure-nw4q7w",
             "system": "OpenTelemetry Demo",
             "target": "product-catalog"
@@ -5293,6 +5503,7 @@
             "case_id": "semantic-rca-transfer-005",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": -4,
+            "correct_completion_tool_calls_relative": -0.08695652173913043,
             "dataset": "openrca2",
             "eligible_repetitions": 1,
             "estimated_cost": -0.012104751999999996,
@@ -5311,9 +5522,12 @@
             },
             "output_tokens": 7807,
             "provider_visible_input_tokens": -222027,
+            "provider_visible_input_tokens_relative": -0.18938094462304553,
             "reasoning_output_tokens": 0,
             "reported_total_tokens": -214220,
+            "reported_total_tokens_relative": -0.17970632252176072,
             "rows_returned": -1527,
+            "rows_returned_relative": -0.6682713347921225,
             "source_case": "hs1-search-delay-bmhxp8",
             "system": "Hotel Reservation",
             "target": "search -> rate"
@@ -5324,6 +5538,7 @@
             "case_id": "semantic-rca-transfer-006",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": -3.5,
+            "correct_completion_tool_calls_relative": -0.06702127659574468,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.06933559600000003,
@@ -5342,9 +5557,12 @@
             },
             "output_tokens": -10831.5,
             "provider_visible_input_tokens": -419753,
+            "provider_visible_input_tokens_relative": -0.45014835382979895,
             "reasoning_output_tokens": 0,
             "reported_total_tokens": -430584.5,
+            "reported_total_tokens_relative": -0.4496806195171334,
             "rows_returned": -388,
+            "rows_returned_relative": -0.2765750925034214,
             "source_case": "hs12-search-delay-7l9ggr",
             "system": "Hotel Reservation",
             "target": "search -> rate"
@@ -5355,6 +5573,7 @@
             "case_id": "semantic-rca-transfer-007",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "openrca2",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "USD",
@@ -5372,8 +5591,11 @@
               "value_column": "server_start_minus_client_start_ns"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "otel-demo1-shipping-delay-sm2szn",
             "system": "OpenTelemetry Demo",
             "target": "shipping -> quote"
@@ -5384,6 +5606,7 @@
             "case_id": "semantic-rca-transfer-008",
             "causal_scope": "component",
             "correct_completion_tool_calls": -2,
+            "correct_completion_tool_calls_relative": -0.044444444444444446,
             "dataset": "openrca2",
             "eligible_repetitions": 1,
             "estimated_cost": 0.09282996800000003,
@@ -5400,9 +5623,12 @@
             },
             "output_tokens": 4286,
             "provider_visible_input_tokens": 666112,
+            "provider_visible_input_tokens_relative": 1.2794173291563988,
             "reasoning_output_tokens": 0,
             "reported_total_tokens": 670398,
+            "reported_total_tokens_relative": 1.2578413621652047,
             "rows_returned": 1407,
+            "rows_returned_relative": 1.3594202898550725,
             "source_case": "hs10-search-cpu-exhaustion-9ptnql",
             "system": "Hotel Reservation",
             "target": "search"
@@ -5413,6 +5639,7 @@
             "case_id": "semantic-rca-transfer-009",
             "causal_scope": "component",
             "correct_completion_tool_calls": 4,
+            "correct_completion_tool_calls_relative": 0.10526315789473684,
             "dataset": "openrca2",
             "eligible_repetitions": 1,
             "estimated_cost": -0.12604794400000002,
@@ -5429,9 +5656,12 @@
             },
             "output_tokens": 3082,
             "provider_visible_input_tokens": -87043,
+            "provider_visible_input_tokens_relative": -0.09547109258205087,
             "reasoning_output_tokens": 0,
             "reported_total_tokens": -83961,
+            "reported_total_tokens_relative": -0.09090761445063048,
             "rows_returned": -2489,
+            "rows_returned_relative": -0.6238095238095238,
             "source_case": "hs10-reservation-cpu-exhaustion-rvn9j8",
             "system": "Hotel Reservation",
             "target": "reservation"
@@ -5442,6 +5672,7 @@
             "case_id": "semantic-rca-transfer-010",
             "causal_scope": "component",
             "correct_completion_tool_calls": -1,
+            "correct_completion_tool_calls_relative": -0.02127659574468085,
             "dataset": "openrca2",
             "eligible_repetitions": 1,
             "estimated_cost": -0.0029600559999999887,
@@ -5458,9 +5689,12 @@
             },
             "output_tokens": -296,
             "provider_visible_input_tokens": -160723,
+            "provider_visible_input_tokens_relative": -0.17276971383669096,
             "reasoning_output_tokens": 0,
             "reported_total_tokens": -161019,
+            "reported_total_tokens_relative": -0.1704402555667052,
             "rows_returned": 687,
+            "rows_returned_relative": 0.4232902033271719,
             "source_case": "hs10-geo-memory-exhaustion-pmtmcp",
             "system": "Hotel Reservation",
             "target": "geo"
@@ -5471,6 +5705,7 @@
             "case_id": "semantic-rca-transfer-011",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "USD",
@@ -5485,8 +5720,11 @@
               "value_column": "greptime_value"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t019",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.49"
@@ -5497,6 +5735,7 @@
             "case_id": "semantic-rca-transfer-012",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": -8,
+            "correct_completion_tool_calls_relative": -0.1702127659574468,
             "dataset": "rca100",
             "eligible_repetitions": 1,
             "estimated_cost": 0.026641032000000064,
@@ -5513,9 +5752,12 @@
             },
             "output_tokens": -11777,
             "provider_visible_input_tokens": -101504,
+            "provider_visible_input_tokens_relative": -0.06386691037906507,
             "reasoning_output_tokens": 0,
             "reported_total_tokens": -113281,
+            "reported_total_tokens_relative": -0.07008570698518425,
             "rows_returned": 1044,
+            "rows_returned_relative": 1.0620549338758902,
             "source_case": "t003",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.69"
@@ -5526,14 +5768,18 @@
             "case_id": "semantic-rca-transfer-013",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "USD",
             "mechanism_code": "disk_io_degradation",
             "oracle": null,
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t022",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.55"
@@ -5544,14 +5790,18 @@
             "case_id": "semantic-rca-transfer-014",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "USD",
             "mechanism_code": "host_unavailable",
             "oracle": null,
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t073",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.65"
@@ -5563,114 +5813,170 @@
               {
                 "case_id": "semantic-rca-transfer-001",
                 "correct_completion_tool_calls": -10.5,
+                "correct_completion_tool_calls_relative": -0.2335630965005302,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -557409.5,
+                "provider_visible_input_tokens_relative": -0.4725917972714594,
                 "reported_total_tokens": -553728,
-                "rows_returned": -890.5
+                "reported_total_tokens_relative": -0.46070144950957215,
+                "rows_returned": -890.5,
+                "rows_returned_relative": -0.5580974235470533
               },
               {
                 "case_id": "semantic-rca-transfer-002",
                 "correct_completion_tool_calls": 3.5,
+                "correct_completion_tool_calls_relative": 0.11066308243727599,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 135446.5,
+                "provider_visible_input_tokens_relative": 0.3103368016260105,
                 "reported_total_tokens": 137316,
-                "rows_returned": -26
+                "reported_total_tokens_relative": 0.3053113422148486,
+                "rows_returned": -26,
+                "rows_returned_relative": -0.023591041908497777
               },
               {
                 "case_id": "semantic-rca-transfer-003",
                 "correct_completion_tool_calls": -6.5,
+                "correct_completion_tool_calls_relative": -0.2206896551724138,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -188440,
+                "provider_visible_input_tokens_relative": -0.35633619412498974,
                 "reported_total_tokens": -192424.5,
-                "rows_returned": -129
+                "reported_total_tokens_relative": -0.35469762926000403,
+                "rows_returned": -129,
+                "rows_returned_relative": -0.04586190953224936
               },
               {
                 "case_id": "semantic-rca-transfer-004",
                 "correct_completion_tool_calls": -12.5,
+                "correct_completion_tool_calls_relative": -0.27321083172147004,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -439252.5,
+                "provider_visible_input_tokens_relative": -0.46195295980006734,
                 "reported_total_tokens": -444262.5,
-                "rows_returned": -2101.5
+                "reported_total_tokens_relative": -0.4578933985315974,
+                "rows_returned": -2101.5,
+                "rows_returned_relative": -0.5517621865932774
               },
               {
                 "case_id": "semantic-rca-transfer-005",
                 "correct_completion_tool_calls": -4,
+                "correct_completion_tool_calls_relative": -0.08695652173913043,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -222027,
+                "provider_visible_input_tokens_relative": -0.18938094462304553,
                 "reported_total_tokens": -214220,
-                "rows_returned": -1527
+                "reported_total_tokens_relative": -0.17970632252176072,
+                "rows_returned": -1527,
+                "rows_returned_relative": -0.6682713347921225
               },
               {
                 "case_id": "semantic-rca-transfer-006",
                 "correct_completion_tool_calls": -3.5,
+                "correct_completion_tool_calls_relative": -0.06702127659574468,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -419753,
+                "provider_visible_input_tokens_relative": -0.45014835382979895,
                 "reported_total_tokens": -430584.5,
-                "rows_returned": -388
+                "reported_total_tokens_relative": -0.4496806195171334,
+                "rows_returned": -388,
+                "rows_returned_relative": -0.2765750925034214
               },
               {
                 "case_id": "semantic-rca-transfer-007",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-008",
                 "correct_completion_tool_calls": -2,
+                "correct_completion_tool_calls_relative": -0.044444444444444446,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": 666112,
+                "provider_visible_input_tokens_relative": 1.2794173291563988,
                 "reported_total_tokens": 670398,
-                "rows_returned": 1407
+                "reported_total_tokens_relative": 1.2578413621652047,
+                "rows_returned": 1407,
+                "rows_returned_relative": 1.3594202898550725
               },
               {
                 "case_id": "semantic-rca-transfer-009",
                 "correct_completion_tool_calls": 4,
+                "correct_completion_tool_calls_relative": 0.10526315789473684,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -87043,
+                "provider_visible_input_tokens_relative": -0.09547109258205087,
                 "reported_total_tokens": -83961,
-                "rows_returned": -2489
+                "reported_total_tokens_relative": -0.09090761445063048,
+                "rows_returned": -2489,
+                "rows_returned_relative": -0.6238095238095238
               },
               {
                 "case_id": "semantic-rca-transfer-010",
                 "correct_completion_tool_calls": -1,
+                "correct_completion_tool_calls_relative": -0.02127659574468085,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -160723,
+                "provider_visible_input_tokens_relative": -0.17276971383669096,
                 "reported_total_tokens": -161019,
-                "rows_returned": 687
+                "reported_total_tokens_relative": -0.1704402555667052,
+                "rows_returned": 687,
+                "rows_returned_relative": 0.4232902033271719
               },
               {
                 "case_id": "semantic-rca-transfer-011",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-012",
                 "correct_completion_tool_calls": -8,
+                "correct_completion_tool_calls_relative": -0.1702127659574468,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -101504,
+                "provider_visible_input_tokens_relative": -0.06386691037906507,
                 "reported_total_tokens": -113281,
-                "rows_returned": 1044
+                "reported_total_tokens_relative": -0.07008570698518425,
+                "rows_returned": 1044,
+                "rows_returned_relative": 1.0620549338758902
               },
               {
                 "case_id": "semantic-rca-transfer-013",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-014",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               }
             ],
             "comparison": "semantic_graph - raw",
@@ -5766,114 +6072,170 @@
               {
                 "case_id": "semantic-rca-transfer-001",
                 "correct_completion_tool_calls": -1,
+                "correct_completion_tool_calls_relative": -0.023255813953488372,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 75388.5,
+                "provider_visible_input_tokens_relative": 0.07917280936219293,
                 "reported_total_tokens": 75601.5,
-                "rows_returned": null
+                "reported_total_tokens_relative": 0.07906448346851713,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-002",
                 "correct_completion_tool_calls": -4,
+                "correct_completion_tool_calls_relative": -0.1,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -1517597,
+                "provider_visible_input_tokens_relative": -0.7684475111740571,
                 "reported_total_tokens": -1518239,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.762532595899245,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-003",
                 "correct_completion_tool_calls": -12.5,
+                "correct_completion_tool_calls_relative": -0.2965909090909091,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -482611,
+                "provider_visible_input_tokens_relative": -0.46109027237348765,
                 "reported_total_tokens": -484098,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.45551496284227927,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-004",
                 "correct_completion_tool_calls": -1,
+                "correct_completion_tool_calls_relative": -0.020833333333333332,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": 18043,
+                "provider_visible_input_tokens_relative": 0.019629708606043725,
                 "reported_total_tokens": 17564,
-                "rows_returned": null
+                "reported_total_tokens_relative": 0.018651335560506403,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-005",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-006",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-007",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-008",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-009",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-010",
                 "correct_completion_tool_calls": -3,
+                "correct_completion_tool_calls_relative": -0.06521739130434782,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": 467360,
+                "provider_visible_input_tokens_relative": 0.5445321912014522,
                 "reported_total_tokens": 461253,
-                "rows_returned": null
+                "reported_total_tokens_relative": 0.5261463070758091,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-011",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-012",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-013",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-014",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               }
             ],
             "comparison": "raw - split_pillars",
@@ -6712,61 +7074,66 @@
             ],
             "metric_roles": {
               "reported_total_tokens": "exploratory provider-accounted metric",
-              "rows_returned_through_evidence": "pre-registered primary",
-              "tool_calls_through_evidence": "pre-registered primary"
+              "rows_returned_through_evidence": "pre-specified primary",
+              "tool_calls_through_evidence": "pre-specified primary"
             },
             "resource_effects": {
               "actual_cost_by_treatment": {
-                "raw": null,
-                "semantic_graph": null
+                "raw": 1.0640560000000001,
+                "semantic_graph": 1.0286719999999998
               },
               "cases": {
                 "Bank/task_5@2021-03-04T20:00": {
-                  "actual_cost_raw": null,
-                  "actual_cost_semantic_graph": null,
+                  "actual_cost_raw": 0.240276,
+                  "actual_cost_semantic_graph": 0.223956,
                   "eligible_repetitions": 0,
                   "estimated_cost_currency": "CNY"
                 },
                 "Bank/task_6@2021-03-25T09:00": {
-                  "actual_cost_raw": null,
-                  "actual_cost_semantic_graph": null,
+                  "actual_cost_raw": 0.26338,
+                  "actual_cost_semantic_graph": 0.17259999999999998,
                   "eligible_repetitions": 1,
+                  "estimated_cost": -0.07098399999999999,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": -1038,
                   "provider_visible_input_tokens": -12344,
                   "reasoning_output_tokens": -756
                 },
                 "Market/cloudbed-1@2022-03-20T09:30": {
-                  "actual_cost_raw": null,
-                  "actual_cost_semantic_graph": null,
+                  "actual_cost_raw": 0.214524,
+                  "actual_cost_semantic_graph": 0.199188,
                   "eligible_repetitions": 2,
+                  "estimated_cost": -0.007667999999999994,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": -142,
                   "provider_visible_input_tokens": 282.5,
                   "reasoning_output_tokens": -104
                 },
                 "Market/cloudbed-2@2022-03-20T14:30": {
-                  "actual_cost_raw": null,
-                  "actual_cost_semantic_graph": null,
+                  "actual_cost_raw": 0.131684,
+                  "actual_cost_semantic_graph": 0.195824,
                   "eligible_repetitions": 2,
+                  "estimated_cost": 0.03207,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": 118.5,
                   "provider_visible_input_tokens": 15186,
                   "reasoning_output_tokens": 91
                 },
                 "Telecom@2020-05-23T04:30": {
-                  "actual_cost_raw": null,
-                  "actual_cost_semantic_graph": null,
+                  "actual_cost_raw": 0.09024,
+                  "actual_cost_semantic_graph": 0.11516,
                   "eligible_repetitions": 2,
+                  "estimated_cost": 0.012459999999999999,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": 3,
                   "provider_visible_input_tokens": 6923,
                   "reasoning_output_tokens": 18
                 },
                 "Telecom@2020-05-29T03:30": {
-                  "actual_cost_raw": null,
-                  "actual_cost_semantic_graph": null,
+                  "actual_cost_raw": 0.123952,
+                  "actual_cost_semantic_graph": 0.121944,
                   "eligible_repetitions": 2,
+                  "estimated_cost": -0.001003999999999998,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": -45,
                   "provider_visible_input_tokens": 3728,
@@ -6776,12 +7143,12 @@
               "cost_currency": "CNY",
               "summary": {
                 "estimated_cost": {
-                  "case_median_delta": null,
+                  "case_median_delta": -0.001003999999999998,
                   "currency": "CNY",
-                  "eligible_cases": 0,
+                  "eligible_cases": 5,
                   "inference_role": "descriptive only",
-                  "negative_cases": 0,
-                  "positive_cases": 0,
+                  "negative_cases": 3,
+                  "positive_cases": 2,
                   "tied_cases": 0
                 },
                 "output_tokens": {
@@ -6893,28 +7260,30 @@
             ],
             "metric_roles": {
               "reported_total_tokens": "exploratory provider-accounted metric",
-              "rows_returned_through_evidence": "pre-registered primary",
-              "tool_calls_through_evidence": "pre-registered primary"
+              "rows_returned_through_evidence": "pre-specified primary",
+              "tool_calls_through_evidence": "pre-specified primary"
             },
             "resource_effects": {
               "actual_cost_by_treatment": {
-                "raw": null,
-                "semantic_graph": null
+                "raw": 0.356608,
+                "semantic_graph": 0.108512
               },
               "cases": {
                 "hs1-rate-pod-failure-vmvtxr": {
-                  "actual_cost_raw": null,
-                  "actual_cost_semantic_graph": null,
+                  "actual_cost_raw": 0.15995199999999998,
+                  "actual_cost_semantic_graph": 0.046192,
                   "eligible_repetitions": 2,
+                  "estimated_cost": -0.05688,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": -652,
                   "provider_visible_input_tokens": -11668,
                   "reasoning_output_tokens": -79.5
                 },
                 "hs4-geo-pod-failure-pdt289": {
-                  "actual_cost_raw": null,
-                  "actual_cost_semantic_graph": null,
+                  "actual_cost_raw": 0.196656,
+                  "actual_cost_semantic_graph": 0.06232,
                   "eligible_repetitions": 2,
+                  "estimated_cost": -0.067168,
                   "estimated_cost_currency": "CNY",
                   "output_tokens": -683,
                   "provider_visible_input_tokens": -16349.5,
@@ -6924,11 +7293,11 @@
               "cost_currency": "CNY",
               "summary": {
                 "estimated_cost": {
-                  "case_median_delta": null,
+                  "case_median_delta": -0.062024,
                   "currency": "CNY",
-                  "eligible_cases": 0,
+                  "eligible_cases": 2,
                   "inference_role": "descriptive only",
-                  "negative_cases": 0,
+                  "negative_cases": 2,
                   "positive_cases": 0,
                   "tied_cases": 0
                 },
@@ -6976,7 +7345,7 @@
           "cache_creation_input_tokens": 0,
           "cache_read_input_tokens": 514304,
           "cost_currency": "CNY",
-          "estimated_cost": null,
+          "estimated_cost": 2.5578480000000003,
           "output_tokens": 22736,
           "reasoning_output_tokens": 4564,
           "uncached_input_tokens": 111579
@@ -6990,18 +7359,20 @@
       },
       "transfer": {
         "actual_cost_by_treatment": {
-          "raw": null,
-          "semantic_graph": null
+          "raw": 83.279308,
+          "semantic_graph": 86.96501999999998
         },
         "case_effects": [
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 3.295116,
+            "actual_cost_semantic_graph": 2.693288,
             "case_id": "semantic-rca-transfer-001",
             "causal_scope": "component",
             "correct_completion_tool_calls": 9,
+            "correct_completion_tool_calls_relative": 0.3103448275862069,
             "dataset": "openrca2",
             "eligible_repetitions": 1,
+            "estimated_cost": 0.19989600000000007,
             "estimated_cost_currency": "CNY",
             "mechanism_code": "workload_restart",
             "oracle": {
@@ -7015,21 +7386,26 @@
             },
             "output_tokens": -736,
             "provider_visible_input_tokens": 122171,
+            "provider_visible_input_tokens_relative": 0.368223397682234,
             "reasoning_output_tokens": -1119,
             "reported_total_tokens": 121435,
+            "reported_total_tokens_relative": 0.35770147310500844,
             "rows_returned": 9,
+            "rows_returned_relative": 0.022613065326633167,
             "source_case": "hs8-user-pod-failure-q2q5tv",
             "system": "Hotel Reservation",
             "target": "user"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 3.195176,
+            "actual_cost_semantic_graph": 2.70126,
             "case_id": "semantic-rca-transfer-002",
             "causal_scope": "component",
             "correct_completion_tool_calls": 0,
+            "correct_completion_tool_calls_relative": 0,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
+            "estimated_cost": -0.246958,
             "estimated_cost_currency": "CNY",
             "mechanism_code": "workload_restart",
             "oracle": {
@@ -7043,21 +7419,26 @@
             },
             "output_tokens": 444.5,
             "provider_visible_input_tokens": -101857.5,
+            "provider_visible_input_tokens_relative": -0.13465044398679077,
             "reasoning_output_tokens": -494.5,
             "reported_total_tokens": -101413,
+            "reported_total_tokens_relative": -0.1312047274608308,
             "rows_returned": -925,
+            "rows_returned_relative": 0.06760136053574728,
             "source_case": "hs7-reservation-pod-failure-wv88wr",
             "system": "Hotel Reservation",
             "target": "reservation"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 2.937232,
+            "actual_cost_semantic_graph": 2.756372,
             "case_id": "semantic-rca-transfer-003",
             "causal_scope": "component",
             "correct_completion_tool_calls": 26,
+            "correct_completion_tool_calls_relative": 1.5294117647058822,
             "dataset": "openrca2",
             "eligible_repetitions": 1,
+            "estimated_cost": 0.5713560000000002,
             "estimated_cost_currency": "CNY",
             "mechanism_code": "workload_restart",
             "oracle": {
@@ -7071,19 +7452,23 @@
             },
             "output_tokens": 5899,
             "provider_visible_input_tokens": 221125,
+            "provider_visible_input_tokens_relative": 0.6441196861036185,
             "reasoning_output_tokens": 917,
             "reported_total_tokens": 227024,
+            "reported_total_tokens_relative": 0.651047013816797,
             "rows_returned": -112,
+            "rows_returned_relative": -0.1723076923076923,
             "source_case": "hs5-user-pod-failure-7lghrl",
             "system": "Hotel Reservation",
             "target": "user"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 4.07208,
+            "actual_cost_semantic_graph": 4.575436,
             "case_id": "semantic-rca-transfer-004",
             "causal_scope": "component",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "openrca2",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY",
@@ -7098,18 +7483,22 @@
               "value_column": "greptime_value"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "otel-demo14-product-catalog-pod-failure-nw4q7w",
             "system": "OpenTelemetry Demo",
             "target": "product-catalog"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 4.26798,
+            "actual_cost_semantic_graph": 4.073568,
             "case_id": "semantic-rca-transfer-005",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "openrca2",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY",
@@ -7126,18 +7515,22 @@
               "value_column": "server_start_minus_client_start_ns"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "hs1-search-delay-bmhxp8",
             "system": "Hotel Reservation",
             "target": "search -> rate"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 4.5970320000000005,
+            "actual_cost_semantic_graph": 3.7584799999999996,
             "case_id": "semantic-rca-transfer-006",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "openrca2",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY",
@@ -7154,18 +7547,22 @@
               "value_column": "server_start_minus_client_start_ns"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "hs12-search-delay-7l9ggr",
             "system": "Hotel Reservation",
             "target": "search -> rate"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 3.4850719999999997,
+            "actual_cost_semantic_graph": 3.093604,
             "case_id": "semantic-rca-transfer-007",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "openrca2",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY",
@@ -7183,18 +7580,22 @@
               "value_column": "server_start_minus_client_start_ns"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "otel-demo1-shipping-delay-sm2szn",
             "system": "OpenTelemetry Demo",
             "target": "shipping -> quote"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 3.7539359999999995,
+            "actual_cost_semantic_graph": 5.801052,
             "case_id": "semantic-rca-transfer-008",
             "causal_scope": "component",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "openrca2",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY",
@@ -7209,18 +7610,22 @@
               "value_column": "greptime_value"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "hs10-search-cpu-exhaustion-9ptnql",
             "system": "Hotel Reservation",
             "target": "search"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 7.020892,
+            "actual_cost_semantic_graph": 6.189916,
             "case_id": "semantic-rca-transfer-009",
             "causal_scope": "component",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "openrca2",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY",
@@ -7235,18 +7640,22 @@
               "value_column": "greptime_value"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "hs10-reservation-cpu-exhaustion-rvn9j8",
             "system": "Hotel Reservation",
             "target": "reservation"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 3.742912,
+            "actual_cost_semantic_graph": 4.5863439999999995,
             "case_id": "semantic-rca-transfer-010",
             "causal_scope": "component",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "openrca2",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY",
@@ -7261,18 +7670,22 @@
               "value_column": "greptime_value"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "hs10-geo-memory-exhaustion-pmtmcp",
             "system": "Hotel Reservation",
             "target": "geo"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 17.858212,
+            "actual_cost_semantic_graph": 21.984887999999998,
             "case_id": "semantic-rca-transfer-011",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY",
@@ -7287,18 +7700,22 @@
               "value_column": "greptime_value"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t019",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.49"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 6.4520800000000005,
+            "actual_cost_semantic_graph": 8.606476,
             "case_id": "semantic-rca-transfer-012",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY",
@@ -7313,44 +7730,55 @@
               "value_column": "greptime_value"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t003",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.69"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 7.475548,
+            "actual_cost_semantic_graph": 7.496980000000001,
             "case_id": "semantic-rca-transfer-013",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY",
             "mechanism_code": "disk_io_degradation",
             "oracle": null,
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t022",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.55"
           },
           {
-            "actual_cost_raw": null,
-            "actual_cost_semantic_graph": null,
+            "actual_cost_raw": 11.12604,
+            "actual_cost_semantic_graph": 8.647356,
             "case_id": "semantic-rca-transfer-014",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "CNY",
             "mechanism_code": "host_unavailable",
             "oracle": null,
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t073",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.65"
@@ -7362,114 +7790,170 @@
               {
                 "case_id": "semantic-rca-transfer-001",
                 "correct_completion_tool_calls": 9,
+                "correct_completion_tool_calls_relative": 0.3103448275862069,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": 122171,
+                "provider_visible_input_tokens_relative": 0.368223397682234,
                 "reported_total_tokens": 121435,
-                "rows_returned": 9
+                "reported_total_tokens_relative": 0.35770147310500844,
+                "rows_returned": 9,
+                "rows_returned_relative": 0.022613065326633167
               },
               {
                 "case_id": "semantic-rca-transfer-002",
                 "correct_completion_tool_calls": 0,
+                "correct_completion_tool_calls_relative": 0,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -101857.5,
+                "provider_visible_input_tokens_relative": -0.13465044398679077,
                 "reported_total_tokens": -101413,
-                "rows_returned": -925
+                "reported_total_tokens_relative": -0.1312047274608308,
+                "rows_returned": -925,
+                "rows_returned_relative": 0.06760136053574728
               },
               {
                 "case_id": "semantic-rca-transfer-003",
                 "correct_completion_tool_calls": 26,
+                "correct_completion_tool_calls_relative": 1.5294117647058822,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": 221125,
+                "provider_visible_input_tokens_relative": 0.6441196861036185,
                 "reported_total_tokens": 227024,
-                "rows_returned": -112
+                "reported_total_tokens_relative": 0.651047013816797,
+                "rows_returned": -112,
+                "rows_returned_relative": -0.1723076923076923
               },
               {
                 "case_id": "semantic-rca-transfer-004",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-005",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-006",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-007",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-008",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-009",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-010",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-011",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-012",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-013",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-014",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               }
             ],
             "comparison": "semantic_graph - raw",
@@ -7567,114 +8051,170 @@
               {
                 "case_id": "semantic-rca-transfer-001",
                 "correct_completion_tool_calls": -13,
+                "correct_completion_tool_calls_relative": -0.30952380952380953,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -259201,
+                "provider_visible_input_tokens_relative": -0.4385907618793,
                 "reported_total_tokens": -263008,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.43653142349729046,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-002",
                 "correct_completion_tool_calls": -10,
+                "correct_completion_tool_calls_relative": -0.22727272727272727,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -54253,
+                "provider_visible_input_tokens_relative": -0.10790582778585507,
                 "reported_total_tokens": -56022,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.10944062637968016,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-003",
                 "correct_completion_tool_calls": -16,
+                "correct_completion_tool_calls_relative": -0.38359201773835916,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -706566.5,
+                "provider_visible_input_tokens_relative": -0.5805240054158771,
                 "reported_total_tokens": -714501,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.5809440273965071,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-004",
                 "correct_completion_tool_calls": 14,
+                "correct_completion_tool_calls_relative": 0.5,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -217676,
+                "provider_visible_input_tokens_relative": -0.2069415290073317,
                 "reported_total_tokens": -219036,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.20532443427885788,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-005",
                 "correct_completion_tool_calls": -11,
+                "correct_completion_tool_calls_relative": -0.2682926829268293,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -381068,
+                "provider_visible_input_tokens_relative": -0.4840606072923865,
                 "reported_total_tokens": -394109,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.48589745960707437,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-006",
                 "correct_completion_tool_calls": -16,
+                "correct_completion_tool_calls_relative": -0.34782608695652173,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": 25558,
+                "provider_visible_input_tokens_relative": 0.034414550037635445,
                 "reported_total_tokens": 20945,
-                "rows_returned": null
+                "reported_total_tokens_relative": 0.027531172200942724,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-007",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-008",
                 "correct_completion_tool_calls": -2,
+                "correct_completion_tool_calls_relative": -0.0425531914893617,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -12554,
+                "provider_visible_input_tokens_relative": -0.017499815299862415,
                 "reported_total_tokens": -11425,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.015657848933621685,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-009",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-010",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-011",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-012",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-013",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-014",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               }
             ],
             "comparison": "raw - split_pillars",
@@ -7771,12 +8311,12 @@
         "cost_currency": "CNY",
         "descriptive_metrics": {
           "estimated_cost": {
-            "case_median_delta": null,
+            "case_median_delta": 0.19989600000000007,
             "currency": "CNY",
-            "eligible_cases": 0,
+            "eligible_cases": 3,
             "inference_role": "descriptive only",
-            "negative_cases": 0,
-            "positive_cases": 0,
+            "negative_cases": 1,
+            "positive_cases": 2,
             "tied_cases": 0
           },
           "output_tokens": {
@@ -8215,12 +8755,12 @@
                 "tied_cases": 1
               },
               "estimated_cost": {
-                "case_median_delta": null,
+                "case_median_delta": 0.19989600000000007,
                 "currency": "CNY",
-                "eligible_cases": 0,
+                "eligible_cases": 3,
                 "inference_role": "descriptive only",
-                "negative_cases": 0,
-                "positive_cases": 0,
+                "negative_cases": 1,
+                "positive_cases": 2,
                 "tied_cases": 0
               },
               "output_tokens": {
@@ -8299,7 +8839,7 @@
           "cache_creation_input_tokens": 0,
           "cache_read_input_tokens": 96808448,
           "cost_currency": "CNY",
-          "estimated_cost": null,
+          "estimated_cost": 272.391616,
           "output_tokens": 1162916,
           "provider_visible_input_tokens": 102585082,
           "reasoning_output_tokens": 632477,
@@ -8314,8 +8854,8 @@
       "usage": {
         "combined": {
           "actual_cost_by_treatment": {
-            "raw": null,
-            "semantic_graph": null
+            "raw": 84.69997199999999,
+            "semantic_graph": 88.10220399999999
           },
           "cache_creation_input_tokens": 0,
           "cache_read_input_tokens": 97322752,
@@ -8331,7 +8871,7 @@
           "cache_creation_input_tokens": 0,
           "cache_read_input_tokens": 514304,
           "cost_currency": "CNY",
-          "estimated_cost": null,
+          "estimated_cost": 2.5578480000000003,
           "output_tokens": 22736,
           "reasoning_output_tokens": 4564,
           "uncached_input_tokens": 111579
@@ -8341,7 +8881,7 @@
           "cache_creation_input_tokens": 0,
           "cache_read_input_tokens": 96808448,
           "cost_currency": "CNY",
-          "estimated_cost": null,
+          "estimated_cost": 272.391616,
           "output_tokens": 1162916,
           "provider_visible_input_tokens": 102585082,
           "reasoning_output_tokens": 632477,
@@ -8529,8 +9069,8 @@
             ],
             "metric_roles": {
               "reported_total_tokens": "exploratory provider-accounted metric",
-              "rows_returned_through_evidence": "pre-registered primary",
-              "tool_calls_through_evidence": "pre-registered primary"
+              "rows_returned_through_evidence": "pre-specified primary",
+              "tool_calls_through_evidence": "pre-specified primary"
             },
             "resource_effects": {
               "actual_cost_by_treatment": {
@@ -8719,8 +9259,8 @@
             ],
             "metric_roles": {
               "reported_total_tokens": "exploratory provider-accounted metric",
-              "rows_returned_through_evidence": "pre-registered primary",
-              "tool_calls_through_evidence": "pre-registered primary"
+              "rows_returned_through_evidence": "pre-specified primary",
+              "tool_calls_through_evidence": "pre-specified primary"
             },
             "resource_effects": {
               "actual_cost_by_treatment": {
@@ -8828,6 +9368,7 @@
             "case_id": "semantic-rca-transfer-001",
             "causal_scope": "component",
             "correct_completion_tool_calls": 2.5,
+            "correct_completion_tool_calls_relative": 0.1278409090909091,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.013262000000000052,
@@ -8844,9 +9385,12 @@
             },
             "output_tokens": -173.5,
             "provider_visible_input_tokens": -39564,
+            "provider_visible_input_tokens_relative": -0.015115943427347261,
             "reasoning_output_tokens": -433.5,
             "reported_total_tokens": -39737.5,
+            "reported_total_tokens_relative": -0.015571003290500068,
             "rows_returned": 261,
+            "rows_returned_relative": 0.33011224182468596,
             "source_case": "hs8-user-pod-failure-q2q5tv",
             "system": "Hotel Reservation",
             "target": "user"
@@ -8857,6 +9401,7 @@
             "case_id": "semantic-rca-transfer-002",
             "causal_scope": "component",
             "correct_completion_tool_calls": -8.5,
+            "correct_completion_tool_calls_relative": -0.27875,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.3758922,
@@ -8873,9 +9418,12 @@
             },
             "output_tokens": -1380.5,
             "provider_visible_input_tokens": -273501,
+            "provider_visible_input_tokens_relative": -0.5849497155570983,
             "reasoning_output_tokens": -396,
             "reported_total_tokens": -274881.5,
+            "reported_total_tokens_relative": -0.5818195537705984,
             "rows_returned": -3984,
+            "rows_returned_relative": -0.827434398541949,
             "source_case": "hs7-reservation-pod-failure-wv88wr",
             "system": "Hotel Reservation",
             "target": "reservation"
@@ -8886,6 +9434,7 @@
             "case_id": "semantic-rca-transfer-003",
             "causal_scope": "component",
             "correct_completion_tool_calls": -5,
+            "correct_completion_tool_calls_relative": -0.20833333333333331,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": 0.11359880000000003,
@@ -8902,9 +9451,12 @@
             },
             "output_tokens": -737.5,
             "provider_visible_input_tokens": 119328.5,
+            "provider_visible_input_tokens_relative": 0.6707244311566491,
             "reasoning_output_tokens": -264,
             "reported_total_tokens": 118591,
+            "reported_total_tokens_relative": 0.6515851644813941,
             "rows_returned": 184,
+            "rows_returned_relative": 0.2556135784049184,
             "source_case": "hs5-user-pod-failure-7lghrl",
             "system": "Hotel Reservation",
             "target": "user"
@@ -8915,6 +9467,7 @@
             "case_id": "semantic-rca-transfer-004",
             "causal_scope": "component",
             "correct_completion_tool_calls": -4,
+            "correct_completion_tool_calls_relative": -0.13236929922135707,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.05032440000000002,
@@ -8931,9 +9484,12 @@
             },
             "output_tokens": -698.5,
             "provider_visible_input_tokens": 1315,
+            "provider_visible_input_tokens_relative": 0.03927060509770869,
             "reasoning_output_tokens": -252.5,
             "reported_total_tokens": 616.5,
+            "reported_total_tokens_relative": 0.0358897916563537,
             "rows_returned": -4071.5,
+            "rows_returned_relative": -0.7552032785819152,
             "source_case": "otel-demo14-product-catalog-pod-failure-nw4q7w",
             "system": "OpenTelemetry Demo",
             "target": "product-catalog"
@@ -8944,6 +9500,7 @@
             "case_id": "semantic-rca-transfer-005",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": -10,
+            "correct_completion_tool_calls_relative": -0.36764705882352944,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": 0.03770879999999999,
@@ -8962,9 +9519,12 @@
             },
             "output_tokens": -1384,
             "provider_visible_input_tokens": 31408.5,
+            "provider_visible_input_tokens_relative": 0.10627931812946007,
             "reasoning_output_tokens": -325,
             "reported_total_tokens": 30024.5,
+            "reported_total_tokens_relative": 0.10129174424539579,
             "rows_returned": 213,
+            "rows_returned_relative": 0.39960235623192525,
             "source_case": "hs1-search-delay-bmhxp8",
             "system": "Hotel Reservation",
             "target": "search -> rate"
@@ -8975,6 +9535,7 @@
             "case_id": "semantic-rca-transfer-006",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": 2.5,
+            "correct_completion_tool_calls_relative": 0.11904761904761905,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": 0.2789912,
@@ -8993,9 +9554,12 @@
             },
             "output_tokens": 148.5,
             "provider_visible_input_tokens": 449240,
+            "provider_visible_input_tokens_relative": 1.7068877528860062,
             "reasoning_output_tokens": -202.5,
             "reported_total_tokens": 449388.5,
+            "reported_total_tokens_relative": 1.670417605747884,
             "rows_returned": 22.5,
+            "rows_returned_relative": 0.04543667149909508,
             "source_case": "hs12-search-delay-7l9ggr",
             "system": "Hotel Reservation",
             "target": "search -> rate"
@@ -9006,6 +9570,7 @@
             "case_id": "semantic-rca-transfer-007",
             "causal_scope": "dependency_edge",
             "correct_completion_tool_calls": 6.5,
+            "correct_completion_tool_calls_relative": 0.30213903743315507,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": 0.01760429999999999,
@@ -9025,9 +9590,12 @@
             },
             "output_tokens": 1108,
             "provider_visible_input_tokens": 54362,
+            "provider_visible_input_tokens_relative": 0.16193335648556662,
             "reasoning_output_tokens": 86.5,
             "reported_total_tokens": 55470,
+            "reported_total_tokens_relative": 0.1630006160737476,
             "rows_returned": -750.5,
+            "rows_returned_relative": -0.48056917310903813,
             "source_case": "otel-demo1-shipping-delay-sm2szn",
             "system": "OpenTelemetry Demo",
             "target": "shipping -> quote"
@@ -9038,6 +9606,7 @@
             "case_id": "semantic-rca-transfer-008",
             "causal_scope": "component",
             "correct_completion_tool_calls": 3.5,
+            "correct_completion_tool_calls_relative": 0.09845559845559845,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": 0.31958739999999997,
@@ -9054,9 +9623,12 @@
             },
             "output_tokens": -587,
             "provider_visible_input_tokens": 207739,
+            "provider_visible_input_tokens_relative": 0.5109824737676392,
             "reasoning_output_tokens": -593,
             "reported_total_tokens": 207152,
+            "reported_total_tokens_relative": 0.5030999481767654,
             "rows_returned": 707,
+            "rows_returned_relative": 0.23164610081084266,
             "source_case": "hs10-search-cpu-exhaustion-9ptnql",
             "system": "Hotel Reservation",
             "target": "search"
@@ -9067,6 +9639,7 @@
             "case_id": "semantic-rca-transfer-009",
             "causal_scope": "component",
             "correct_completion_tool_calls": 5,
+            "correct_completion_tool_calls_relative": 0.1642614601018676,
             "dataset": "openrca2",
             "eligible_repetitions": 2,
             "estimated_cost": -0.26287580000000005,
@@ -9083,9 +9656,12 @@
             },
             "output_tokens": 102.5,
             "provider_visible_input_tokens": 40661.5,
+            "provider_visible_input_tokens_relative": 0.07285827046800304,
             "reasoning_output_tokens": 467,
             "reported_total_tokens": 40764,
+            "reported_total_tokens_relative": 0.07233978429116646,
             "rows_returned": -7298,
+            "rows_returned_relative": -0.8402660656606178,
             "source_case": "hs10-reservation-cpu-exhaustion-rvn9j8",
             "system": "Hotel Reservation",
             "target": "reservation"
@@ -9096,6 +9672,7 @@
             "case_id": "semantic-rca-transfer-010",
             "causal_scope": "component",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "openrca2",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "USD",
@@ -9110,8 +9687,11 @@
               "value_column": "greptime_value"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "hs10-geo-memory-exhaustion-pmtmcp",
             "system": "Hotel Reservation",
             "target": "geo"
@@ -9122,6 +9702,7 @@
             "case_id": "semantic-rca-transfer-011",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "USD",
@@ -9136,8 +9717,11 @@
               "value_column": "greptime_value"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t019",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.49"
@@ -9148,6 +9732,7 @@
             "case_id": "semantic-rca-transfer-012",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "USD",
@@ -9162,8 +9747,11 @@
               "value_column": "greptime_value"
             },
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t003",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.69"
@@ -9174,14 +9762,18 @@
             "case_id": "semantic-rca-transfer-013",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "USD",
             "mechanism_code": "disk_io_degradation",
             "oracle": null,
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t022",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.55"
@@ -9192,14 +9784,18 @@
             "case_id": "semantic-rca-transfer-014",
             "causal_scope": "infrastructure_node",
             "correct_completion_tool_calls": null,
+            "correct_completion_tool_calls_relative": null,
             "dataset": "rca100",
             "eligible_repetitions": 0,
             "estimated_cost_currency": "USD",
             "mechanism_code": "host_unavailable",
             "oracle": null,
             "provider_visible_input_tokens": null,
+            "provider_visible_input_tokens_relative": null,
             "reported_total_tokens": null,
+            "reported_total_tokens_relative": null,
             "rows_returned": null,
+            "rows_returned_relative": null,
             "source_case": "t073",
             "system": "OpenTelemetry Demo Store",
             "target": "cn-hongkong.10.0.1.65"
@@ -9211,114 +9807,170 @@
               {
                 "case_id": "semantic-rca-transfer-001",
                 "correct_completion_tool_calls": 2.5,
+                "correct_completion_tool_calls_relative": 0.1278409090909091,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -39564,
+                "provider_visible_input_tokens_relative": -0.015115943427347261,
                 "reported_total_tokens": -39737.5,
-                "rows_returned": 261
+                "reported_total_tokens_relative": -0.015571003290500068,
+                "rows_returned": 261,
+                "rows_returned_relative": 0.33011224182468596
               },
               {
                 "case_id": "semantic-rca-transfer-002",
                 "correct_completion_tool_calls": -8.5,
+                "correct_completion_tool_calls_relative": -0.27875,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -273501,
+                "provider_visible_input_tokens_relative": -0.5849497155570983,
                 "reported_total_tokens": -274881.5,
-                "rows_returned": -3984
+                "reported_total_tokens_relative": -0.5818195537705984,
+                "rows_returned": -3984,
+                "rows_returned_relative": -0.827434398541949
               },
               {
                 "case_id": "semantic-rca-transfer-003",
                 "correct_completion_tool_calls": -5,
+                "correct_completion_tool_calls_relative": -0.20833333333333331,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 119328.5,
+                "provider_visible_input_tokens_relative": 0.6707244311566491,
                 "reported_total_tokens": 118591,
-                "rows_returned": 184
+                "reported_total_tokens_relative": 0.6515851644813941,
+                "rows_returned": 184,
+                "rows_returned_relative": 0.2556135784049184
               },
               {
                 "case_id": "semantic-rca-transfer-004",
                 "correct_completion_tool_calls": -4,
+                "correct_completion_tool_calls_relative": -0.13236929922135707,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 1315,
+                "provider_visible_input_tokens_relative": 0.03927060509770869,
                 "reported_total_tokens": 616.5,
-                "rows_returned": -4071.5
+                "reported_total_tokens_relative": 0.0358897916563537,
+                "rows_returned": -4071.5,
+                "rows_returned_relative": -0.7552032785819152
               },
               {
                 "case_id": "semantic-rca-transfer-005",
                 "correct_completion_tool_calls": -10,
+                "correct_completion_tool_calls_relative": -0.36764705882352944,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 31408.5,
+                "provider_visible_input_tokens_relative": 0.10627931812946007,
                 "reported_total_tokens": 30024.5,
-                "rows_returned": 213
+                "reported_total_tokens_relative": 0.10129174424539579,
+                "rows_returned": 213,
+                "rows_returned_relative": 0.39960235623192525
               },
               {
                 "case_id": "semantic-rca-transfer-006",
                 "correct_completion_tool_calls": 2.5,
+                "correct_completion_tool_calls_relative": 0.11904761904761905,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 449240,
+                "provider_visible_input_tokens_relative": 1.7068877528860062,
                 "reported_total_tokens": 449388.5,
-                "rows_returned": 22.5
+                "reported_total_tokens_relative": 1.670417605747884,
+                "rows_returned": 22.5,
+                "rows_returned_relative": 0.04543667149909508
               },
               {
                 "case_id": "semantic-rca-transfer-007",
                 "correct_completion_tool_calls": 6.5,
+                "correct_completion_tool_calls_relative": 0.30213903743315507,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 54362,
+                "provider_visible_input_tokens_relative": 0.16193335648556662,
                 "reported_total_tokens": 55470,
-                "rows_returned": -750.5
+                "reported_total_tokens_relative": 0.1630006160737476,
+                "rows_returned": -750.5,
+                "rows_returned_relative": -0.48056917310903813
               },
               {
                 "case_id": "semantic-rca-transfer-008",
                 "correct_completion_tool_calls": 3.5,
+                "correct_completion_tool_calls_relative": 0.09845559845559845,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 207739,
+                "provider_visible_input_tokens_relative": 0.5109824737676392,
                 "reported_total_tokens": 207152,
-                "rows_returned": 707
+                "reported_total_tokens_relative": 0.5030999481767654,
+                "rows_returned": 707,
+                "rows_returned_relative": 0.23164610081084266
               },
               {
                 "case_id": "semantic-rca-transfer-009",
                 "correct_completion_tool_calls": 5,
+                "correct_completion_tool_calls_relative": 0.1642614601018676,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 40661.5,
+                "provider_visible_input_tokens_relative": 0.07285827046800304,
                 "reported_total_tokens": 40764,
-                "rows_returned": -7298
+                "reported_total_tokens_relative": 0.07233978429116646,
+                "rows_returned": -7298,
+                "rows_returned_relative": -0.8402660656606178
               },
               {
                 "case_id": "semantic-rca-transfer-010",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-011",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-012",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-013",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-014",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               }
             ],
             "comparison": "semantic_graph - raw",
@@ -9410,114 +10062,170 @@
               {
                 "case_id": "semantic-rca-transfer-001",
                 "correct_completion_tool_calls": -4.5,
+                "correct_completion_tool_calls_relative": -0.1142857142857143,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": -322672,
+                "provider_visible_input_tokens_relative": -0.30605594782779194,
                 "reported_total_tokens": -322124.5,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.3036651324876273,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-002",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-003",
                 "correct_completion_tool_calls": -11,
+                "correct_completion_tool_calls_relative": -0.3142857142857143,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -381615,
+                "provider_visible_input_tokens_relative": -0.6483953016975531,
                 "reported_total_tokens": -381505,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.643583981969763,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-004",
                 "correct_completion_tool_calls": -13,
+                "correct_completion_tool_calls_relative": -0.30952380952380953,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -821959,
+                "provider_visible_input_tokens_relative": -0.7417525545264955,
                 "reported_total_tokens": -822140,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.738503715693945,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-005",
                 "correct_completion_tool_calls": -5,
+                "correct_completion_tool_calls_relative": -0.1282051282051282,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -985386,
+                "provider_visible_input_tokens_relative": -0.7128303325407257,
                 "reported_total_tokens": -984055,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.708870178835645,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-006",
                 "correct_completion_tool_calls": -6,
+                "correct_completion_tool_calls_relative": -0.2,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -364948,
+                "provider_visible_input_tokens_relative": -0.5638605072995576,
                 "reported_total_tokens": -364719,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.5594012708959311,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-007",
                 "correct_completion_tool_calls": -6,
+                "correct_completion_tool_calls_relative": -0.21428571428571427,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -216125,
+                "provider_visible_input_tokens_relative": -0.40013070782173377,
                 "reported_total_tokens": -216093,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.3967076421474677,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-008",
                 "correct_completion_tool_calls": 0.5,
+                "correct_completion_tool_calls_relative": 0.014705882352941176,
                 "eligible_repetitions": 2,
                 "provider_visible_input_tokens": 58764,
+                "provider_visible_input_tokens_relative": 0.1062324734998697,
                 "reported_total_tokens": 60563,
-                "rows_returned": null
+                "reported_total_tokens_relative": 0.10878469856760686,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-009",
                 "correct_completion_tool_calls": -12,
+                "correct_completion_tool_calls_relative": -0.27906976744186046,
                 "eligible_repetitions": 1,
                 "provider_visible_input_tokens": -648095,
+                "provider_visible_input_tokens_relative": -0.5093897101069954,
                 "reported_total_tokens": -646535,
-                "rows_returned": null
+                "reported_total_tokens_relative": -0.506241347774068,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-010",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-011",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-012",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-013",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               },
               {
                 "case_id": "semantic-rca-transfer-014",
                 "correct_completion_tool_calls": null,
+                "correct_completion_tool_calls_relative": null,
                 "eligible_repetitions": 0,
                 "provider_visible_input_tokens": null,
+                "provider_visible_input_tokens_relative": null,
                 "reported_total_tokens": null,
-                "rows_returned": null
+                "reported_total_tokens_relative": null,
+                "rows_returned": null,
+                "rows_returned_relative": null
               }
             ],
             "comparison": "raw - split_pillars",
@@ -10210,7 +10918,7 @@
     "output_tokens": "all output reported by the provider",
     "provider_visible_input_tokens": "all input reported by the provider",
     "reasoning_output_tokens": "a subset of output_tokens; never added twice",
-    "role": "descriptive; not a pre-registered endpoint"
+    "role": "descriptive; not a pre-specified endpoint"
   },
   "scope": {
     "benchmark_protocol_version": 34,
@@ -10298,9 +11006,9 @@
       },
       "glm-5.3": {
         "currency": "CNY",
-        "delta": null,
-        "raw": null,
-        "semantic_graph": null
+        "delta": 3.685711999999981,
+        "raw": 83.279308,
+        "semantic_graph": 86.96501999999998
       },
       "gpt-5.6-sol": {
         "currency": "USD",
@@ -10436,13 +11144,13 @@
   "source_artifacts": {
     "micro": {
       "artifact_type": "semantic-rca-micro-measurement-result",
-      "semantic_payload_sha256": "d003c9fc7ffe99e83526e56c71660f932cd18f27ba1ef8bdedafdc2e1ed397b7",
-      "sha256": "4c1cf24c5ac99834152bba33e690d4123f55c86ad49172d70f23650ab5ba58cf"
+      "semantic_payload_sha256": "cb943233d8d0963fbbd77ec7e4b60aa017c1be2e743e3a45566be9b4170a77bd",
+      "sha256": "d9544a3c93d1798ea78b48dd44698468a88c811d2c273404e0d0738abd4fb1d3"
     },
     "transfer": {
       "artifact_type": "semantic-rca-transfer-measurement",
-      "semantic_payload_sha256": "51003357672f5c7fae734e33391ba60847511848c166e98c4a69720ebf76253c",
-      "sha256": "e767ea889639c82742f9e6170ac67897b022fa1d59c107aa64d17d160c260e2e"
+      "semantic_payload_sha256": "3493c870d1e74c32ca28b42c92148027d00817b1aa2a821dee99dc1c0f6c56e3",
+      "sha256": "71a73f4aa5b37fd4d3979796e0a745d3a078a5bf975acacfe4ce8b3636a2657b"
     }
   },
   "tool_use_audit": {
@@ -10517,29 +11225,56 @@
   "usage_by_treatment": {
     "by_treatment": {
       "raw": {
-        "estimated_cost": 61.929391,
+        "estimated_cost_by_currency": {
+          "CNY": 83.279308,
+          "USD": 61.929391
+        },
         "output_tokens": 1348496,
         "provider_visible_input_tokens": 99527877
       },
       "semantic_graph": {
-        "estimated_cost": 68.430571,
+        "estimated_cost_by_currency": {
+          "CNY": 86.96502,
+          "USD": 68.430571
+        },
         "output_tokens": 1331418,
         "provider_visible_input_tokens": 99581584
       },
       "split_pillars": {
-        "estimated_cost": 148.919564,
+        "estimated_cost_by_currency": {
+          "CNY": 102.147288,
+          "USD": 148.919564
+        },
         "output_tokens": 1590255,
         "provider_visible_input_tokens": 153559236
       }
     },
-    "priced_models": [
-      "claude-fable-5-1",
-      "deepseek-v4-pro",
-      "gpt-5.6-sol"
-    ],
-    "role": "descriptive; every executed run, including unsuccessful ones",
-    "unpriced_models": [
-      "glm-5.3"
-    ]
+    "comparable_currency": null,
+    "estimated_cost_usd": {
+      "raw": 74.326019,
+      "semantic_graph": 81.37584,
+      "split_pillars": 164.124804
+    },
+    "exchange_rates": {
+      "CNY": {
+        "checked_at": "2026-09-03",
+        "per_unit_usd": 0.14885604132243707,
+        "source": "https://tradingeconomics.com/china/currency",
+        "units_per_usd": 6.7179
+      },
+      "USD": {
+        "checked_at": null,
+        "per_unit_usd": 1.0,
+        "source": null
+      }
+    },
+    "priced_models": {
+      "claude-fable-5-1": "USD",
+      "deepseek-v4-pro": "USD",
+      "glm-5.3": "CNY",
+      "gpt-5.6-sol": "USD"
+    },
+    "role": "descriptive; token totals cover every executed run and are not the pre-specified token endpoint. Spend counts only models priced in one currency across every arm, and currencies are never combined",
+    "unpriced_models": []
   }
 }

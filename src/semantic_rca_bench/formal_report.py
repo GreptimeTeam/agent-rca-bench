@@ -205,7 +205,7 @@ def build_formal_measurement_report(
         "confirmatory_family_resource_effects": transfer_families,
         "semantic_layer_findings": _semantic_findings(model_reports),
         "resource_effect_contract": {
-            "role": "descriptive; not a pre-registered endpoint",
+            "role": "descriptive; not a pre-specified endpoint",
             "delta": "semantic_graph minus raw within the same model, case, and repetition",
             "eligibility": "the same paired eligibility used by the corresponding benchmark",
             "provider_visible_input_tokens": "all input reported by the provider",
@@ -237,6 +237,7 @@ def build_formal_measurement_report(
                 "Null is not estimable, zero means no observed reduction, and a "
                 "non-significant test does not establish equivalence."
             ),
+            _power_limitation(execution, transfer_reports),
             "Provider reasoning settings are frozen configurations, not a common compute scale.",
             (
                 "Deterministic evidence sufficiency is reported as a secondary audit and does "
@@ -245,7 +246,7 @@ def build_formal_measurement_report(
             (
                 f"The {capability_rubric_label()} capability score is a post-measurement "
                 "descriptive index. It is "
-                "not a pre-registered endpoint and its evidence component inherits verifier "
+                "not a pre-specified endpoint and its evidence component inherits verifier "
                 "coverage limits."
             ),
             (
@@ -253,7 +254,12 @@ def build_formal_measurement_report(
                 f"{_mechanism_cohort_phrase(_mechanism_cohort(case_context.values()), 'en')}. "
                 "Mechanism-level summaries are descriptive and unevenly supported."
             ),
-            "Costs retain provider currencies; currencies are not converted.",
+            (
+                "Costs are estimates from frozen provider rates, not invoices, and are kept in "
+                "the currency each provider billed in. A USD total is a derived figure, "
+                "converted at the frozen rate published beside it; an exchange rate is a market "
+                "quote, not a measurement."
+            ),
         ],
     }
     return {
@@ -750,7 +756,7 @@ def _capability_scores(
         }
     return {
         "role": (
-            "post-measurement descriptive capability index; not a pre-registered endpoint "
+            "post-measurement descriptive capability index; not a pre-specified endpoint "
             "and not used for hypothesis testing"
         ),
         "overall_formula": (
@@ -1147,43 +1153,152 @@ def _tool_use_audit(runs: list[Mapping[str, object]]) -> dict[str, object]:
     }
 
 
-def _usage_by_treatment(runs: list[Mapping[str, object]]) -> dict[str, object]:
-    """Tokens and priced spend per arm, summed over every executed run.
+def _power_limitation(
+    execution: Mapping[str, object],
+    transfer_reports: Mapping[str, object],
+) -> str:
+    """State the sample the tests actually ran on, not the cohort size.
 
-    Totals cover all runs, including unsuccessful ones, because that is what the
-    arm actually cost to operate. Spend is summed only where the provider rate is
-    frozen, so a model without a published price cannot silently drop out of one
-    arm's total while staying in another's.
+    Eligibility keeps only pairs where both arms answered correctly, so an
+    endpoint tests far fewer cases than the cohort holds. Reporting the cohort
+    size alone would make the tests look better powered than they are, and a
+    reader would then over-read a non-significant result.
     """
+    sizes = [
+        int(metric["eligible_cases"])
+        for report in transfer_reports.values()
+        for family in _mapping(report, "confirmatory_families").values()
+        for metric in _mapping(family, "primary_metrics").values()
+    ]
+    if not sizes:
+        raise ValueError("transfer artifact declares no endpoint eligible-case counts")
+    return (
+        f"The study has {execution['transfer_cases']} independent cases, and endpoint "
+        f"eligibility leaves only {min(sizes)}-{max(sizes)} cases for an individual test. "
+        "Exact sign tests on that many cases have low and discrete power, so a "
+        "non-significant result indicates insufficient evidence and does not establish "
+        "equivalence."
+    )
+
+
+def _usage_by_treatment(runs: list[Mapping[str, object]]) -> dict[str, object]:
+    """Tokens per arm, and spend per arm kept in the currency it was billed in.
+
+    Token totals cover every executed run, unsuccessful ones included, because
+    that is the workload the arm actually generated. They are not the registered
+    token endpoint, which is paired, eligibility-filtered and reduced to a case
+    median inside one family.
+
+    Spend is stricter. A model counts only when every one of its runs is priced
+    in one currency: a model priced in one arm and not another would make the
+    unpriced arm look cheap. Currencies are never added together, so a cohort
+    spanning two of them yields two subtotals and no single figure.
+    """
+    treatments = _treatments_present(runs)
     tokens: Counter[str] = Counter()
     output: Counter[str] = Counter()
-    spend: dict[str, float] = defaultdict(float)
-    priced: set[str] = set()
-    unpriced: set[str] = set()
+    per_model: dict[str, dict[str, object]] = defaultdict(
+        lambda: {"spend": Counter(), "currencies": set(), "missing": False, "runs": 0}
+    )
     for item in runs:
         treatment = str(item["visibility"])
+        model = str(item["model"])
         usage = _mapping(_mapping(item, "run"), "usage")
         tokens[treatment] += int(usage.get("provider_visible_input_tokens") or 0)
         output[treatment] += int(usage.get("output_tokens") or 0)
+        entry = per_model[model]
+        entry["runs"] = int(entry["runs"]) + 1
         cost = usage.get("estimated_cost")
-        if isinstance(cost, (int, float)):
+        currency = usage.get("cost_currency")
+        if isinstance(cost, (int, float)) and isinstance(currency, str) and currency:
+            spend = entry["spend"]
+            assert isinstance(spend, Counter)
             spend[treatment] += float(cost)
-            priced.add(str(item["model"]))
+            currencies = entry["currencies"]
+            assert isinstance(currencies, set)
+            currencies.add(currency)
         else:
-            unpriced.add(str(item["model"]))
+            entry["missing"] = True
+
+    priced: dict[str, str] = {}
+    unpriced: list[str] = []
+    for model, entry in per_model.items():
+        currencies = entry["currencies"]
+        assert isinstance(currencies, set)
+        if entry["missing"] or len(currencies) != 1:
+            unpriced.append(model)
+        else:
+            priced[model] = next(iter(currencies))
+
+    spend_by_currency: dict[str, dict[str, float]] = defaultdict(
+        lambda: dict.fromkeys(treatments, 0.0)
+    )
+    for model, currency in priced.items():
+        spend = per_model[model]["spend"]
+        assert isinstance(spend, Counter)
+        for treatment in treatments:
+            spend_by_currency[currency][treatment] += spend[treatment]
+    currencies_present = sorted(spend_by_currency)
     return {
-        "role": "descriptive; every executed run, including unsuccessful ones",
+        "role": (
+            "descriptive; token totals cover every executed run and are not the "
+            "pre-specified token endpoint. Spend counts only models priced in one "
+            "currency across every arm, and currencies are never combined"
+        ),
         "by_treatment": {
             treatment: {
                 "provider_visible_input_tokens": tokens[treatment],
                 "output_tokens": output[treatment],
-                "estimated_cost": round(spend[treatment], 6),
+                "estimated_cost_by_currency": {
+                    currency: round(spend_by_currency[currency][treatment], 6)
+                    for currency in currencies_present
+                },
             }
-            for treatment in _treatments_present(runs)
+            for treatment in treatments
         },
-        "priced_models": sorted(priced - unpriced),
+        "priced_models": {model: priced[model] for model in sorted(priced)},
         "unpriced_models": sorted(unpriced),
+        # Present only when the priced cohort shares one currency; a comparable
+        # cross-model total does not exist otherwise.
+        "comparable_currency": currencies_present[0] if len(currencies_present) == 1 else None,
+        "estimated_cost_usd": {
+            treatment: round(
+                sum(
+                    _to_usd(spend_by_currency[currency][treatment], currency)
+                    for currency in currencies_present
+                ),
+                6,
+            )
+            for treatment in treatments
+        },
+        "exchange_rates": {
+            currency: dict(EXCHANGE_RATES_TO_USD[currency])
+            for currency in currencies_present
+            if currency in EXCHANGE_RATES_TO_USD
+        },
     }
+
+
+# Frozen so the same artifact converts to the same figure on any day. A rate is
+# a market quote, not a measurement: spend stays recorded in the currency it was
+# billed in, and this only exists so one arm's total can be compared with
+# another's when the cohort spans two currencies.
+EXCHANGE_RATES_TO_USD = {
+    "USD": {"per_unit_usd": 1.0, "checked_at": None, "source": None},
+    "CNY": {
+        "per_unit_usd": 1.0 / 6.7179,
+        "units_per_usd": 6.7179,
+        "checked_at": "2026-09-03",
+        "source": "https://tradingeconomics.com/china/currency",
+    },
+}
+
+
+def _to_usd(amount: float, currency: str) -> float:
+    rate = EXCHANGE_RATES_TO_USD.get(currency)
+    if rate is None:
+        raise ValueError(f"no frozen exchange rate for currency: {currency}")
+    return amount * float(rate["per_unit_usd"])
 
 
 def _citation_submission(
@@ -1408,10 +1523,24 @@ def _cost_report(reports):
         "pricing_basis": pricing_basis,
         "known_totals_by_currency": dict(sorted(totals.items())),
         "models_with_unavailable_estimate": unavailable,
-        "cross_currency_total": None,
+        # Only when every model could be priced. A total that silently omits a
+        # model reads as the cost of the whole measurement and is not.
+        "cross_currency_total": None
+        if unavailable
+        else {
+            "currency": "USD",
+            "amount": round(
+                sum(_to_usd(amount, currency) for currency, amount in totals.items()), 6
+            ),
+            "exchange_rates": {
+                currency: dict(EXCHANGE_RATES_TO_USD[currency]) for currency in sorted(totals)
+            },
+        },
         "aggregation_policy": (
-            "Only complete estimates in the same currency are subtotaled. No cross-currency "
-            "total is reported, and partial model estimates are rejected."
+            "Only complete estimates are counted, and a partially priced model is rejected "
+            "whole. Spend is kept in the currency it was billed in; a USD total is derived "
+            "from those subtotals at the frozen rates published beside it, and only when "
+            "every model is priced."
         ),
     }
 

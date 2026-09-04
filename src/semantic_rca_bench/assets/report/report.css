@@ -523,7 +523,7 @@ footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--m
 /* A section's own finding, restated where its evidence begins. */
 .insight {
   max-width: 56ch;
-  margin: 0 0 20px;
+  margin: 24px 0 20px;
   padding-left: 14px;
   border-left: 3px solid var(--ink);
   font-size: clamp(16px, 1.8vw, 18px);
@@ -539,6 +539,59 @@ footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--m
   .strip-scale { grid-template-columns: 1fr; padding: 0 12px; }
   .strip-scale span { grid-column: 1; }
   .strip-scale .scale-right { grid-row: auto; justify-self: start; }
+}
+
+/* --- relative change: a zero line, and which side of it each model fell -- */
+
+.pct-rows { display: grid; gap: 10px; margin-top: 6px; }
+.pct-row {
+  display: grid;
+  grid-template-columns: 168px minmax(240px, 1fr) 150px;
+  align-items: center;
+  gap: 18px;
+  padding: 0 14px;
+}
+.pct-name { font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
+
+/* The track is the full span; the zero line is its midpoint, and a bar grows
+ * from that midpoint outward, so bar length reads as magnitude and side reads
+ * as direction without consulting the number. */
+.pct-track {
+  position: relative;
+  height: 24px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--rule) 40%, transparent);
+}
+.pct-zero {
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--ink);
+  opacity: 0.55;
+}
+.pct-fill { position: absolute; top: 3px; height: 18px; }
+.pct-fill[data-direction="down"] {
+  right: 50%;
+  border-radius: 4px 0 0 4px;
+  background: var(--favors-left);
+}
+.pct-fill[data-direction="up"] {
+  left: 50%;
+  border-radius: 0 4px 4px 0;
+  background: var(--favors-right);
+}
+
+.pct-value { display: flex; align-items: baseline; justify-content: flex-end; gap: 10px; }
+.pct-value strong { font-family: var(--font-mono); font-size: 15px; font-weight: 600; }
+.pct-row[data-direction="down"] .pct-value strong { color: var(--favors-left); }
+.pct-row[data-direction="up"] .pct-value strong { color: var(--favors-right); }
+.pct-cases { font-size: 11.5px; color: var(--muted); min-width: 58px; text-align: right; }
+
+@media (max-width: 900px) {
+  .pct-row { grid-template-columns: 1fr; gap: 6px; padding: 0 12px; }
+  .pct-value { justify-content: flex-start; }
 }
 
 /* --- headline bars: ratios you can see ----------------------------------- */
@@ -572,6 +625,11 @@ footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--m
 .bar-value strong { font-family: var(--font-mono); font-size: 14px; font-weight: 600; }
 .bar-ratio { font-family: var(--font-mono); font-size: 13px; color: var(--muted); min-width: 48px; text-align: right; }
 .bar-row[data-best="true"] .bar-ratio { color: var(--ink); }
+
+/* Cost reuses the headline bars; only the group spacing differs, because each
+ * group is one model rather than one metric. */
+.cost-groups { gap: 26px; }
+.cost-groups .headline-head h3 { font-family: var(--font-mono); font-size: 14px; }
 
 @media (max-width: 900px) {
   .bar-row { grid-template-columns: 60px minmax(0, 1fr); }

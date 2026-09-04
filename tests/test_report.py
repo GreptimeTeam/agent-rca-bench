@@ -200,22 +200,44 @@ def test_qwen_china_pricing_uses_provider_cache_breakdown() -> None:
     )
 
 
-def test_bigmodel_cost_fails_closed_until_glm_5_3_china_price_is_published() -> None:
-    run = {
-        "usage": {"input_tokens": 100, "output_tokens": 10},
-        "responses": [
-            {
-                "usage": {
-                    "prompt_tokens": 100,
-                    "prompt_tokens_details": {"cached_tokens": 80},
-                    "completion_tokens": 10,
-                }
-            }
-        ],
+def _bigmodel_run(cache_read: int, cache_write: int = 0) -> dict[str, object]:
+    prompt = 100 + cache_write
+    usage: dict[str, object] = {
+        "prompt_tokens": prompt,
+        "prompt_tokens_details": {
+            "cached_tokens": cache_read,
+            **({"cache_write_tokens": cache_write} if cache_write else {}),
+        },
+        "completion_tokens": 10,
+    }
+    return {
+        "usage": {"input_tokens": prompt, "output_tokens": 10},
+        "responses": [{"usage": usage}],
     }
 
+
+def test_glm_5_3_is_priced_at_the_published_bigmodel_rates() -> None:
+    """8 / 2 / 28 CNY per million, frozen 2026-09-04 from the BigModel page."""
+    run = _bigmodel_run(cache_read=80)
+    pricing = MODEL_PRICING["glm-5.3"]
+
     assert _raw_input_breakdown(run) == (20, 80, 0, True)
-    assert _estimated_api_cost(run, MODEL_PRICING["glm-5.3"]) is None
+    assert pricing["currency"] == "CNY"
+    assert _estimated_api_cost(run, pricing) == pytest.approx(
+        20 * 8.0 / 1e6 + 80 * 2.0 / 1e6 + 10 * 28.0 / 1e6
+    )
+
+
+def test_bigmodel_cost_still_fails_closed_on_cache_writes() -> None:
+    """Cache storage was a limited-time promotion, so no write rate is frozen.
+
+    Pricing a cache write at zero would understate spend the moment the
+    promotion ends, and the run would look cheaper than it was billed.
+    """
+    pricing = MODEL_PRICING["glm-5.3"]
+    assert "input_cache_write_per_million" not in pricing
+
+    assert _estimated_api_cost(_bigmodel_run(cache_read=80, cache_write=40), pricing) is None
 
 
 def test_render_report_embeds_data_and_escapes_script_end(tmp_path) -> None:

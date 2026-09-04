@@ -44,15 +44,23 @@ Raw / Graph 分别正确 `48 / 67 / 72` 次；4 个 RCA100 基础设施节点 ca
   查询工具。
 
 `raw - split_pillars` 比较完整的 agent-facing interface bundle。两臂同时改变存储、查询语言
-和工具接口，不能解释为只隔离了存储拓扑。注册指标是正确完成所需的工具调用和
+和工具接口，不能解释为只隔离了存储拓扑。指标是正确完成所需的工具调用和
 provider-visible input。
 
-`semantic_graph - raw` 隔离相同 GreptimeDB 遥测数据上的语义接口增量。注册指标是正确完成
+`semantic_graph - raw` 隔离相同 GreptimeDB 遥测数据上的语义接口增量。指标是正确完成
 所需的工具调用和返回行数。两个检验族的负差值都表示比较名称左侧的 treatment 更省资源。
+
+两个检验族、各自的指标和 Holm 族大小，在任何 run 开始前就已在
+`fixtures/reference/transfer-v34-protocol.json` 中指定并冻结，每份 artifact 都按哈希绑定
+该 fixture。本文中的「预先指定」仅指这一点，没有公开的第三方登记。这两个族之外的全部内容
+都是描述性的。
 
 主要效率样本要求诊断正确、至少一条 citation 对应成功且未截断的查询、无 runner error、无
 budget exhaustion。同一模型和 case 的重复差值先归并为一个中位数，再做跨 case 汇总。两个
 验证性检验族各自独立对 8 项检验做 Holm 校正。
+
+队列包含 14 个独立 case，端点合格性筛选后单项检验只剩 3 到 13 个 case。这个规模下的 exact
+sign test 检验效能低且取值离散，因此不显著只表示证据不足，不能据此认定两臂等价。
 
 ## 端到端结果
 
@@ -205,16 +213,23 @@ Reasoning 是 output 的子集，不能重复相加。DeepSeek 没有单列 reas
 | `gpt-5.6-sol` | USD 54.6501 | USD 18.2465 | USD 24.4954 | USD -36.4036 | USD +6.2489 |
 | `deepseek-v4-pro` | USD 8.6517 | USD 6.8193 | USD 5.6526 | USD -1.8324 | USD -1.1667 |
 | `claude-fable-5-1` | USD 85.6178 | USD 36.8636 | USD 38.2825 | USD -48.7542 | USD +1.4189 |
-| `glm-5.3` | N/A | N/A | N/A | N/A | N/A |
+| `glm-5.3` | CNY 102.1473 | CNY 83.2793 | CNY 86.9650 | CNY -18.8680 | CNY +3.6857 |
 
-Transfer 和 micro 的完整成本估算合计为 `USD 290.494839896`：
+Transfer 和 micro 的完整成本估算，按计费币种：
 
 - `gpt-5.6-sol`：`USD 98.5912992`
 - `deepseek-v4-pro`：`USD 21.875483696`
 - `claude-fable-5-1`：`USD 170.028057`
+- `glm-5.3`：`CNY 274.949464`
 
-GLM-5.3 没有冻结的官方模型级 CNY 价格，因此无法估算成本。币种不转换，不可估算项不计入
-小计。
+GLM-5.3 按 CNY 计费，输入、缓存命中、输出分别为每百万 token `8.0 / 2.0 / 28.0`，于 2026-09-04
+从 <https://bigmodel.cn/pricing> 冻结。协议准备时该页面尚未列出此模型，因此价格是在运行之后
+冻结的；它只换算已记录的 token 数，不改变任何模型行为。冻结时缓存存储为限时免费，因此没有
+冻结缓存写入费率，返回 cache-creation token 的 run 保持不计价。
+
+成本按计费币种记录。跨币种合计按 `6.7179` CNY 兑 1 USD 换算，汇率于 2026-09-03 从
+<https://tradingeconomics.com/china/currency> 冻结，四个模型合计 `USD 331.422729`。汇率是市场
+报价，不是测量值。
 
 ## Artifacts
 

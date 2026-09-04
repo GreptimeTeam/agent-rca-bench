@@ -48,17 +48,26 @@ The three end-to-end treatments are:
   and Semantic Graph query tools.
 
 `raw - split_pillars` compares complete agent-facing interface bundles. It changes the store,
-query languages, and tool surface together; it does not isolate storage topology. Its registered
-metrics are correct-completion tool calls and provider-visible input tokens.
+query languages, and tool surface together; it does not isolate storage topology. Its metrics are
+correct-completion tool calls and provider-visible input tokens.
 
 `semantic_graph - raw` isolates the added semantic interface over the same GreptimeDB telemetry.
-Its registered metrics are correct-completion tool calls and rows returned. In both families,
-negative deltas favor the first treatment named in the comparison.
+Its metrics are correct-completion tool calls and rows returned. In both families, negative deltas
+favor the first treatment named in the comparison.
+
+Both families, their metrics, and the Holm family size were specified and frozen in
+`fixtures/reference/transfer-v34-protocol.json` before any run, and every artifact binds that
+fixture by hash. "Pre-specified" here means exactly that; there is no public third-party
+registration. Everything outside these two families is descriptive.
 
 Headline efficiency requires a correct diagnosis, at least one citation to a successful,
 non-truncated query, no runner error, and no budget exhaustion. Repetition deltas are reduced to
 one median per model and case before cross-case summaries. Each confirmatory family applies Holm
 correction to eight tests independently.
+
+The cohort holds 14 independent cases, and endpoint eligibility leaves 3-13 cases for an
+individual test. Exact sign tests on that many cases have low and discrete power, so a
+non-significant result indicates insufficient evidence and does not establish equivalence.
 
 ## End-to-end results
 
@@ -225,16 +234,24 @@ End-to-end actual cost includes all 28 executed runs in each treatment, not only
 | `gpt-5.6-sol` | USD 54.6501 | USD 18.2465 | USD 24.4954 | USD -36.4036 | USD +6.2489 |
 | `deepseek-v4-pro` | USD 8.6517 | USD 6.8193 | USD 5.6526 | USD -1.8324 | USD -1.1667 |
 | `claude-fable-5-1` | USD 85.6178 | USD 36.8636 | USD 38.2825 | USD -48.7542 | USD +1.4189 |
-| `glm-5.3` | N/A | N/A | N/A | N/A | N/A |
+| `glm-5.3` | CNY 102.1473 | CNY 83.2793 | CNY 86.9650 | CNY -18.8680 | CNY +3.6857 |
 
-Across transfer and micro runs, complete estimates total `USD 290.494839896`:
+Across transfer and micro runs, complete estimates by billing currency:
 
 - `gpt-5.6-sol`: `USD 98.5912992`
 - `deepseek-v4-pro`: `USD 21.875483696`
 - `claude-fable-5-1`: `USD 170.028057`
+- `glm-5.3`: `CNY 274.949464`
 
-GLM-5.3 has no frozen official model-specific CNY rate, so its cost is not estimable. Currencies
-are not converted, and unavailable estimates are excluded from the subtotal.
+GLM-5.3 is billed in CNY at `8.0 / 2.0 / 28.0` per million input, cache-hit and output tokens,
+frozen on 2026-09-04 from <https://bigmodel.cn/pricing>. That page did not list the model when the
+protocol was prepared, so the rate was frozen after the run; it converts recorded token counts and
+changes no model behaviour. Cache storage was a limited-time free promotion at the check date, so
+no cache-write rate is frozen and a run reporting cache-creation tokens stays unpriced.
+
+Spend is recorded in the currency it was billed in. Cross-currency totals convert at `6.7179` CNY
+per USD, frozen on 2026-09-03 from <https://tradingeconomics.com/china/currency>, giving
+`USD 331.422729` across all four models. An exchange rate is a market quote, not a measurement.
 
 ## Artifacts
 

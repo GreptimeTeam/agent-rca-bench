@@ -1321,6 +1321,36 @@ def _metric_delta(
     raise ValueError(f"unknown paired metric: {metric}")
 
 
+def _metric_baseline(
+    metric: str,
+    baseline_run: Mapping[str, object],
+    baseline_eval: Mapping[str, object],
+) -> int | None:
+    """The baseline arm's own value, so a delta can be read as a proportion.
+
+    Same source fields and same null rules as `_metric_delta`, because a
+    percentage built from a differently-selected denominator would not describe
+    the delta it is dividing.
+    """
+    if metric == "rows_returned":
+        rows = _mapping(baseline_run, "database_load").get("rows_returned")
+        return None if rows is None else int(rows)
+    if metric == "correct_completion_tool_calls":
+        return int(baseline_eval["correct_completion_tool_calls"])
+    if metric == "provider_visible_input_tokens":
+        return int(_mapping(baseline_run, "usage").get("provider_visible_input_tokens", 0) or 0)
+    if metric == "reported_total_tokens":
+        return _reported_total_tokens(baseline_run)
+    raise ValueError(f"unknown paired metric: {metric}")
+
+
+def _relative_change(delta: int | float | None, baseline: int | None) -> float | None:
+    """`delta / baseline`, or None when the baseline gives no scale to divide by."""
+    if delta is None or baseline is None or baseline == 0:
+        return None
+    return delta / baseline
+
+
 def _effect_report(
     model_runs: list[Mapping[str, object]],
     *,
@@ -1377,6 +1407,17 @@ def _effect_report(
                     )
                     for metric in _ALL_PAIR_METRICS
                 },
+                **{
+                    f"{metric}_relative": (
+                        _relative_change(
+                            _metric_delta(metric, raw, graph, raw_eval, graph_eval),
+                            _metric_baseline(metric, raw, raw_eval),
+                        )
+                        if eligible
+                        else None
+                    )
+                    for metric in _ALL_PAIR_METRICS
+                },
             }
         )
     case_effects = []
@@ -1388,6 +1429,15 @@ def _effect_report(
                 "eligible_repetitions": len(eligible),
                 **{
                     metric: _median_or_none([item[metric] for item in eligible])
+                    for metric in _ALL_PAIR_METRICS
+                },
+                # The proportion is reduced per pair and then per case, never as
+                # a ratio of two separately-taken medians, which is a different
+                # quantity that no pair produced.
+                **{
+                    f"{metric}_relative": _median_or_none(
+                        [item[f"{metric}_relative"] for item in eligible]
+                    )
                     for metric in _ALL_PAIR_METRICS
                 },
             }

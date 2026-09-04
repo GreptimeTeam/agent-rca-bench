@@ -15,6 +15,7 @@ from __future__ import annotations
 import html
 import json
 import math
+import statistics
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from importlib.resources import files
@@ -32,6 +33,7 @@ from semantic_rca_bench.formal_report import _mapping as mapping
 from semantic_rca_bench.formal_report import _mapping_list as mapping_list
 from semantic_rca_bench.formal_report import _mechanism_cohort as mechanism_cohort
 from semantic_rca_bench.formal_report import _mechanism_label as mechanism_label
+from semantic_rca_bench.formal_report import _to_usd as to_usd
 
 REPORT_VIEW_SCHEMA_VERSION = 1
 
@@ -102,6 +104,9 @@ def build_report_view_model(report: Mapping[str, object]) -> dict[str, object]:
             str(code): {language: mechanism_label(code, language) for language in LANGUAGES}
             for code, _ in mechanism_cohort(mapping_list(report, "case_catalog"))
         },
+        # The table showed the raw keys "discovery" and "graph"; the reader sees
+        # the task names the section uses.
+        "benchmark_labels": {key: dict(value) for key, value in MICRO_BENCHMARK_LABELS.items()},
         "scope_labels": {
             key: dict(value)
             for key, value in CAUSAL_SCOPE_LABELS.items()
@@ -113,6 +118,7 @@ def build_report_view_model(report: Mapping[str, object]) -> dict[str, object]:
         "attribution_links": _attribution_links(report),
         "charts": {
             "delta_strips": _delta_strips(report),
+            "relative_change": _relative_change(report),
             "diagnosis_slope": _diagnosis_slope(report),
             "headline": _headline_bars(report),
             "accuracy_by_level": _accuracy_by_level(report),
@@ -176,11 +182,11 @@ def _tally_text(tally: Mapping[str, int], language: str) -> str:
     total, confirmed = tally["total"], tally["confirmed"]
     if language == "zh":
         if not confirmed:
-            return f"{total} 项注册端点均未通过 Holm 校正"
-        return f"{total} 项注册端点中 {confirmed} 项通过 Holm 校正"
+            return f"{total} 项预先指定端点均未通过 Holm 校正"
+        return f"{total} 项预先指定端点中 {confirmed} 项通过 Holm 校正"
     if not confirmed:
-        return f"No registered endpoint of {total} survived Holm correction"
-    return f"{confirmed} of {total} registered endpoints survived Holm correction"
+        return f"No pre-specified endpoint of {total} survived Holm correction"
+    return f"{confirmed} of {total} pre-specified endpoints survived Holm correction"
 
 
 def _interface_matrix(report: Mapping[str, object]) -> dict[str, object]:
@@ -247,6 +253,12 @@ def _takeaways(report: Mapping[str, object]) -> list[dict[str, object]]:
             "evidence": {
                 scope: {
                     "cases": int(mapping(scopes, scope)["cases"]),
+                    # The three levels hold different numbers of runs, so a count
+                    # without its denominator is not comparable across them.
+                    "runs": {
+                        treatment: int(value)
+                        for treatment, value in mapping(mapping(scopes, scope), "runs").items()
+                    },
                     **{
                         treatment: int(value)
                         for treatment, value in mapping(
@@ -379,6 +391,13 @@ def _narrative(report: Mapping[str, object], language: str) -> dict[str, object]
 
 
 def _significant_text(result: Mapping[str, object], language: str) -> str:
+    """The effect first, then the test that constrains what may be concluded from it.
+
+    Leading with "the only endpoint that passed correction" makes the threshold
+    the subject of the sentence. The reader needs the size of the effect and how
+    consistently the cases pointed that way before the p values, which say how
+    much of that pattern survives the multiplicity the protocol registered.
+    """
     effect = mapping(result, "effect")
     parts = str(result["comparison"]).split(" - ")
     if len(parts) != 2:
@@ -388,17 +407,24 @@ def _significant_text(result: Mapping[str, object], language: str) -> str:
         raise ValueError("significant primary result has no case median delta")
     left, right = (TREATMENT_LABELS.get(part, part) for part in parts)
     favored, other = (left, right) if delta < 0 else (right, left)
+    # The cases that moved the way the median points, not the total.
+    agreeing = int(effect["negative_cases"] if delta < 0 else effect["positive_cases"])
+    eligible = int(effect["eligible_cases"])
     metric = _metric_label(result["metric"], language)
     delta_text = f"{float(delta):+,.12g}"
-    p_text = f"{float(effect['holm_adjusted_p']):.8g}"
+    holm = f"{float(effect['holm_adjusted_p']):.8g}"
+    exact = f"{float(effect['sign_test_two_sided_p']):.8g}"
     if language == "zh":
         return (
-            f"{result['model']}：{favored} 使用的 {metric} 少于 {other}"
-            f"（case-median Δ {delta_text}；Holm p {p_text}）"
+            f"{result['model']}：{eligible} 个 eligible case 里有 {agreeing} 个是 {favored} "
+            f"使用的 {metric} 少于 {other}，case median {delta_text}。"
+            f"Exact sign p {exact}；在本族内通过 Holm 校正，adjusted p {holm}。"
         )
     return (
-        f"{result['model']}: {favored} used fewer {metric} than {other} "
-        f"(case-median Δ {delta_text}; Holm p {p_text})"
+        f"{result['model']}: {favored} used fewer {metric} than {other} in "
+        f"{agreeing} of {eligible} eligible cases, a case median of {delta_text}. "
+        f"Exact sign p {exact}; it passes Holm correction within its family at "
+        f"adjusted p {holm}."
     )
 
 
@@ -413,9 +439,9 @@ def _family_finding(report: Mapping[str, object], family: str, language: str) ->
         if language == "zh":
             return f"{comparison} 的 {size} 项检验，经 Holm 校正后没有一项显著。"
         return f"None of the {size} {comparison} tests is significant after Holm correction."
-    separator = "；" if language == "zh" else "; "
-    terminator = "。" if language == "zh" else "."
-    return separator.join(_significant_text(item, language) for item in significant) + terminator
+    # Each entry is already a pair of complete sentences ending in a full stop.
+    separator = "" if language == "zh" else " "
+    return separator.join(_significant_text(item, language) for item in significant)
 
 
 def _conclusion(report: Mapping[str, object], language: str) -> str:
@@ -431,12 +457,13 @@ def _conclusion(report: Mapping[str, object], language: str) -> str:
         storage_text = (
             "接口组合检验族没有主要指标通过 Holm 校正"
             if not storage
-            else "接口组合检验族的显著结果是"
-            + "；".join(_significant_text(item, language) for item in storage)
+            else "接口组合检验族中通过校正的结果——"
+            + "".join(_significant_text(item, language) for item in storage)
         )
+        terminator = "" if storage else "。"
         return (
             f"聚焦检索中 Graph 减少 rows 的合格结果为 {micro}；{semantic_text}。"
-            f"{storage_text}。其余端到端效果随模型和故障机制变化。"
+            f"{storage_text}{terminator}其余端到端效果随模型和故障机制变化。"
         )
     semantic_text = (
         "No end-to-end primary endpoint in the semantic-layer family passes Holm correction"
@@ -452,12 +479,13 @@ def _conclusion(report: Mapping[str, object], language: str) -> str:
             if len(storage) == 1
             else "The significant interface-bundle results are "
         )
-        + "; ".join(_significant_text(item, language) for item in storage)
+        + " ".join(_significant_text(item, language) for item in storage)
     )
+    terminator = "" if storage else "."
     return (
         f"Eligible focused-retrieval results where Graph reduced rows: {micro}. "
-        f"{semantic_text}. {storage_text}. Other end-to-end effects vary by model and fault "
-        "mechanism."
+        f"{semantic_text}. {storage_text}{terminator} Other end-to-end effects vary by model and "
+        "fault mechanism."
     )
 
 
@@ -473,7 +501,7 @@ def _headline(report: Mapping[str, object], language: str) -> str:
             f"endpoint{' is' if count == 1 else 's are'} significant; Graph E2E varies"
         )
     if language == "zh":
-        return "聚焦检索更省，端到端因场景而异"
+        return "聚焦检索用量下降，端到端结果随场景变化"
     return "Focused retrieval improves; E2E varies"
 
 
@@ -503,18 +531,14 @@ def _micro_summary_text(report: Mapping[str, object], language: str) -> str:
     """The focused-retrieval result as a sentence, not a bare ratio.
 
     `_micro_row_reduction` is a fragment built for embedding in the conclusion;
-    on its own it reads as a stray label.
+    on its own it reads as a stray label. The sentence stops at the measured
+    result: the section heading and the interpretation beside it already state
+    that the reduction did not reach the end-to-end totals.
     """
     parts = _micro_row_reduction(report, language)
     if language == "zh":
-        return (
-            f"在两端都合格的 case 上，加了 GreptimeDB 语义层之后读回的行数都变少了：{parts}。"
-            "这一层收益没有传导到端到端调查。"
-        )
-    return (
-        f"On every eligible case, the GreptimeDB Semantic Graph read back fewer rows: {parts}. "
-        "That saving did not carry through to the end-to-end investigations."
-    )
+        return f"在两侧都合格的 case 上，GreptimeDB 语义层返回的行数全部下降：{parts}。"
+    return f"On every eligible case, the GreptimeDB Semantic Graph read back fewer rows: {parts}."
 
 
 def _mechanism_row_effects(report: Mapping[str, object]) -> dict[str, dict[str, float | None]]:
@@ -543,15 +567,89 @@ def _mechanism_summary(report: Mapping[str, object], language: str) -> str:
         case_total += int(case.get("eligible_models", 0))
     if language == "zh":
         return (
-            f"每种机制下，返回行数变少的模型数：{_join(parts, language)}。"
-            f"逐 case 看是 {case_better}/{case_total} 个可估算的模型-case 组合。"
-            "表里的负数表示加了 GreptimeDB 语义层之后读回的行更少。"
+            f"每种机制下，返回行数下降的模型数：{_join(parts, language)}。"
+            f"按 case 统计为 {case_better}/{case_total} 个可估算的模型-case 组合。"
+            "表中的负数表示启用 GreptimeDB 语义层后返回的行数更少。"
         )
     return (
         f"Models that read back fewer rows with the GreptimeDB Semantic Graph, by mechanism: "
         f"{_join(parts, language)}. Case by case that is "
         f"{case_better} of {case_total} estimable model-case combinations. "
         "A negative number in the table means fewer rows with the layer."
+    )
+
+
+def _storage_headline(
+    significant: Sequence[Mapping[str, object]],
+    tally: Mapping[str, int],
+    language: str,
+) -> str:
+    """Lead with the effect, or with the direction count when none survived."""
+    if significant:
+        result = significant[0]
+        magnitude = f"{abs(float(mapping(result, 'effect')['case_median_delta'])):,.10g}"
+        metric = _metric_label(result["metric"], language)
+        if language == "zh":
+            return (
+                f"在同一批故障上，{result['model']} 通过 GreptimeDB 一体化接口调查，"
+                f"中位数 case 上少用 {magnitude} {metric}。"
+            )
+        return (
+            f"On the same incidents, {result['model']} used {magnitude} fewer {metric} on the "
+            "median case through the GreptimeDB all-in-one interface."
+        )
+    toward = int(tally["favouring_treatment"])
+    total = int(tally["total"])
+    if language == "zh":
+        return (
+            f"{total} 项预先指定端点中 {toward} 项的 case median 指向 GreptimeDB 一体化接口，"
+            "但没有一项通过校正。"
+        )
+    return (
+        f"{toward} of {total} pre-specified endpoints have a case median pointing to the "
+        "GreptimeDB all-in-one interface, and none passed correction."
+    )
+
+
+def _only_survivor_text(tally: Mapping[str, int], language: str) -> str:
+    """How the endpoints that did not survive sat relative to the one that did."""
+    total = int(tally["total"])
+    confirmed = int(tally["confirmed"])
+    rest = int(tally["favouring_treatment"]) - confirmed
+    if language == "zh":
+        lead = (
+            f"这是 {total} 项预先指定端点里唯一通过校正的一项；"
+            if confirmed == 1
+            else f"{total} 项预先指定端点中有 {confirmed} 项通过校正；"
+        )
+        return (
+            f"{lead}另有 {rest} 项的 case median 也指向一体化接口，"
+            "但都没有通过校正，只能作为方向记录。"
+        )
+    lead = (
+        f"It is the only one of {total} pre-specified endpoints to pass correction."
+        if confirmed == 1
+        else f"{confirmed} of {total} pre-specified endpoints pass correction."
+    )
+    return (
+        f"{lead} Another {rest} have a case median pointing the same way toward GreptimeDB but "
+        "did not pass, so they are recorded as a direction and nothing more."
+    )
+
+
+def _no_survivor_text(tally: Mapping[str, int], language: str) -> str:
+    total = int(tally["total"])
+    toward = int(tally["favouring_treatment"])
+    other = int(tally["favouring_baseline"])
+    if language == "zh":
+        return (
+            f"{total} 项预先指定端点没有一项通过 Holm 校正。case median 的方向："
+            f"{toward} 项指向一体化接口，{other} 项指向三后端组合；只能作为方向记录。"
+        )
+    return (
+        f"No endpoint of {total} passed Holm correction. The case medians point to the "
+        f"all-in-one interface on {toward} and to the three-backend bundle on {other}; they are "
+        "recorded as directions and nothing more."
     )
 
 
@@ -573,56 +671,72 @@ def _takeaway_text(report: Mapping[str, object], language: str) -> dict[str, dic
         int(diagnosis["raw"]),
         int(diagnosis["semantic_graph"]),
     )
-    significant = [item for item in _family_results(report, "storage_shape") if item["significant"]]
-    confirmed = _significant_text(significant[0], language) if len(significant) == 1 else None
+    # The largest surviving effect leads the storage-shape takeaway; with none
+    # surviving, the direction count leads instead. Both are written here rather
+    # than assuming this cohort's outcome, so a rerun that moves or loses the
+    # effect cannot leave the page crediting a model it no longer measured.
+    significant = sorted(
+        (item for item in _family_results(report, "storage_shape") if item["significant"]),
+        key=lambda item: -abs(float(mapping(item, "effect")["case_median_delta"])),
+    )
+    storage_headline = _storage_headline(significant, storage, language)
+    storage_detail = (
+        _significant_text(significant[0], language)
+        + ("" if language == "zh" else " ")
+        + _only_survivor_text(storage, language)
+        if significant
+        else _no_survivor_text(storage, language)
+    )
     reversal = takeaways["fault_dependent"]
     ahead, behind = [], []
     for scope in reversal:
         bucket = mapping(reversal, scope)
         label = CAUSAL_SCOPE_LABELS.get(scope, {}).get(language, scope)
         gap = int(bucket["semantic_graph"]) - int(bucket["raw"])
+        scope_runs = mapping(bucket, "runs")
+        graph_runs, raw_runs = int(scope_runs["semantic_graph"]), int(scope_runs["raw"])
+        # Semicolons between entries, because each entry already needs a comma.
         if language == "zh":
             part = (
-                f"{label}（{bucket['cases']} 个 case）{bucket['semantic_graph']} 比 {bucket['raw']}"
+                f"{label}（{bucket['cases']} 个 case）Graph {bucket['semantic_graph']}/{graph_runs}"
+                f"，Raw {bucket['raw']}/{raw_runs}"
             )
         else:
             part = (
-                f"{label} faults ({bucket['cases']} cases), "
-                f"{bucket['semantic_graph']} against {bucket['raw']}"
+                f"{label} faults ({bucket['cases']} cases): Graph "
+                f"{bucket['semantic_graph']}/{graph_runs}, Raw {bucket['raw']}/{raw_runs}"
             )
         (ahead if gap >= 0 else behind).append(part)
 
     if language == "zh":
         return {
             "one_store": {
-                "headline": (
-                    "唯一通过校正的结果：Fable 在 GreptimeDB 一体化接口下读的 token，"
-                    "每个 case 都更少。"
-                ),
+                "headline": storage_headline,
                 "support": (
-                    f"{storage['total']} 项注册端点里只有这一项通过 Holm 校正"
-                    f"（{confirmed}）。另有 "
-                    f"{storage['favouring_treatment'] - storage['confirmed']} "
-                    f"项的 case median 也指向一体化接口，但都没有通过校正，只能作为方向记录。"
+                    f"{storage_detail}"
                     f"同一批故障的诊断正确数：GreptimeDB {raw}，三后端组合 {split}，"
-                    f"各 {runs} 次 run；"
-                    "诊断正确率不是注册端点，只作描述。"
+                    f"各 {runs} 次 run；诊断正确率不是预先指定端点，只作描述。"
                 ),
             },
             "semantic_layer": {
-                "headline": "没有证据显示 GreptimeDB 语义层减少了调查工作量。",
+                "headline": "没有证据显示 GreptimeDB 语义层系统性地减少了调查工作量。",
                 "support": (
-                    f"{semantic['total']} 项注册端点中 {semantic['confirmed']} 项通过 Holm 校正。"
+                    f"{semantic['total']} 项预先指定端点中 {semantic['confirmed']} 项通过 Holm "
+                    "校正，"
                     f"case median 的方向也不一致：{semantic['favouring_treatment']} 项指向语义层，"
                     f"{semantic['favouring_baseline']} 项指向不加语义层。"
                     f"诊断正确数：加语义层 {graph} 次，不加 {raw} 次。"
+                    "这不证明语义层没有效果，也不证明两种接口等价——本队列的样本量"
+                    "不足以支持任何一种结论。"
                 ),
             },
             "fault_dependent": {
                 "headline": "Graph 与 Raw 的诊断差在两类故障上方向相反。",
                 "support": (
-                    f"按故障所在层级拆开——{_join(ahead, language)} 上 Graph 更高；"
-                    f"{_join(behind, language)} 上 Raw 更高。"
+                    "按故障所在层级拆分。Graph 正确数更高的层级："
+                    f"{_join_clauses(ahead, language)}。"
+                    f"Raw 正确数更高的层级：{_join_clauses(behind, language)}。"
+                    "这是测量之后才做的拆分，不是预先指定的比较。"
                     "本队列里节点故障全部来自同一个数据源，层级和数据源完全混杂，"
                     "因此无法判断是哪一个造成了这个反转。这是描述，不是解释。"
                 ),
@@ -630,42 +744,39 @@ def _takeaway_text(report: Mapping[str, object], language: str) -> dict[str, dic
         }
     return {
         "one_store": {
-            "headline": (
-                "One endpoint survived correction: Fable read fewer tokens through "
-                "the GreptimeDB interface in every eligible case."
-            ),
+            "headline": storage_headline,
             "support": (
-                f"It is the only one of {storage['total']} registered endpoints to pass Holm "
-                f"correction ({confirmed}). Another "
-                f"{storage['favouring_treatment'] - storage['confirmed']} endpoints have a case "
-                "median pointing the same way toward GreptimeDB but did not pass correction, so "
-                f"they are recorded as a direction and nothing more. On the same incidents the "
-                "models diagnosed "
-                f"{raw} correctly through GreptimeDB and {split} through the three-backend "
-                f"bundle, out of {runs} runs each; diagnosis accuracy is descriptive, not a "
-                "registered endpoint."
+                f"{storage_detail} On the same incidents the models diagnosed {raw} correctly "
+                f"through GreptimeDB and {split} through the three-backend bundle, out of "
+                f"{runs} runs each; diagnosis accuracy is descriptive, not a pre-specified "
+                "endpoint."
             ),
         },
         "semantic_layer": {
             "headline": (
-                "No evidence that the GreptimeDB Semantic Graph reduced investigation work."
+                "No evidence that the GreptimeDB Semantic Graph systematically reduced "
+                "investigation work."
             ),
             "support": (
-                f"{semantic['confirmed']} of {semantic['total']} registered endpoints pass Holm "
-                f"correction. The case medians do not agree either: "
+                f"{semantic['confirmed']} of {semantic['total']} pre-specified endpoints pass Holm "
+                f"correction, and the case medians do not agree either: "
                 f"{semantic['favouring_treatment']} point to the Semantic Graph and "
                 f"{semantic['favouring_baseline']} point the other way. Correct diagnoses came "
-                f"out at {graph} with the layer and {raw} without."
+                f"out at {graph} with the layer and {raw} without. This does not show the layer "
+                "has no effect, nor that the two interfaces are equivalent; this cohort is too "
+                "small to support either conclusion."
             ),
         },
         "fault_dependent": {
             "headline": "The Graph-to-Raw diagnosis gap runs opposite ways on the two cohorts.",
             "support": (
-                f"Split by the level the fault sat at, Graph is ahead on "
-                f"{_join(ahead, language)}, and behind on {_join(behind, language)}. "
-                "Every node-level case in this cohort comes from a single source, so level and "
-                "source are fully confounded and neither can be credited with the reversal. "
-                "This is a description, not an explanation."
+                "Split by the level the fault sat at. Graph is ahead on "
+                f"{_join_clauses(ahead, language)}. Graph is behind on "
+                f"{_join_clauses(behind, language)}. "
+                "This split was made after the measurement and was not a pre-specified "
+                "comparison. Every node-level case in this cohort comes from a single source, so "
+                "level and source are fully confounded and neither can be credited with the "
+                "reversal. This is a description, not an explanation."
             ),
         },
     }
@@ -697,8 +808,8 @@ def _cost_direction_text(report: Mapping[str, object], language: str) -> dict[st
         other_label = TREATMENT_LABELS[baseline]
         if language == "zh":
             text = (
-                f"{len(comparable)} 个可计价模型里，{cheaper} 个走 {cheaper_label} 比走 "
-                f"{other_label} 便宜。"
+                f"{len(comparable)} 个可计价模型中，{cheaper} 个使用 {cheaper_label} 的成本"
+                f"低于 {other_label}。"
             )
             if unpriced:
                 text += f"{_join(unpriced, language)} 没有冻结的官方价格，不参与比较。"
@@ -737,7 +848,7 @@ def _dataset_reversal_text(report: Mapping[str, object], language: str) -> str:
             parts.append(f"{graph} against {raw} over the {cases} {label} cases")
     if language == "zh":
         return (
-            f"同一批数据按来源拆分是：{_join(parts, language)}。"
+            f"同一批数据按来源拆分：{_join(parts, language)}。"
             "节点故障全部来自后一个来源，因此层级和来源在本队列里无法区分，"
             "两种拆法只是同一个分界的两种说法。"
         )
@@ -778,13 +889,13 @@ def _tool_use_text(report: Mapping[str, object], language: str) -> str:
     )
     if language == "zh":
         return (
-            f"GreptimeDB 语义层确实被用上了：{tool['runs']} 次 Graph run 里有 "
+            f"GreptimeDB 语义层在测量中被实际调用：{tool['runs']} 次 Graph run 中有 "
             f"{tool['runs_with_successful_call']} 次至少成功调用过一次 query_semantic_graph，"
-            f"合计 {tool['successful_calls']} 次。两个 GreptimeDB 接口一共发出 {join_calls} 次"
-            f"成功的 SQL JOIN，分布在 {join_runs} 次 run 里；其中真正跨信号的只有 "
-            f"{cross_calls} 次，出现在 {cross_runs} 次 run 里。用到 PromQL 求值的，"
-            f"GreptimeDB 侧是 {greptime_runs} 次里的 {greptime_promql} 次，"
-            f"三后端侧是 {split_runs} 次里的 {promql.get('split_pillars', 0)} 次。"
+            f"合计 {tool['successful_calls']} 次。两个 GreptimeDB 接口共执行 {join_calls} 次"
+            f"成功的 SQL JOIN，分布在 {join_runs} 次 run 中；其中跨信号的只有 "
+            f"{cross_calls} 次，出现在 {cross_runs} 次 run 中。执行 PromQL 求值的 run，"
+            f"GreptimeDB 侧为 {greptime_runs} 次中的 {greptime_promql} 次，"
+            f"三后端侧为 {split_runs} 次中的 {promql.get('split_pillars', 0)} 次。"
         )
     return (
         f"The GreptimeDB Semantic Graph was actually used: "
@@ -938,7 +1049,7 @@ def _metric_label(metric: object, language: str) -> str:
         ),
         "provider_visible_input_tokens": (
             "provider-visible input tokens",
-            "provider-visible input",
+            "provider-visible input token",
         ),
         "rows_returned": ("rows returned", "返回行数"),
     }
@@ -952,6 +1063,11 @@ def _join(items: Sequence[str], language: str) -> str:
     if len(items) < 3:
         return " and ".join(items)
     return f"{', '.join(items[:-1])}, and {items[-1]}"
+
+
+def _join_clauses(items: Sequence[str], language: str) -> str:
+    """Semicolons, for list entries that each already contain a comma."""
+    return "; ".join(items) if language == "en" else "；".join(items)
 
 
 # --- charts ---------------------------------------------------------------
@@ -1024,6 +1140,108 @@ def _delta_strips(report: Mapping[str, object]) -> list[dict[str, object]]:
     return strips
 
 
+# The work a correct answer cost, as a proportion of what the baseline arm spent
+# on the same incident. Absolute deltas answer "how much" but not "how much of
+# it", and a reader comparing models needs the second question answered.
+RELATIVE_METRICS = ("correct_completion_tool_calls", "provider_visible_input_tokens")
+
+
+def _relative_change(report: Mapping[str, object]) -> list[dict[str, object]]:
+    """Median per-case relative change per model, for each family and metric.
+
+    Each point is one case's paired change divided by that case's own baseline,
+    reduced to a case median exactly as the registered endpoints are. The median
+    of those proportions is reported, not the ratio of two medians, which is a
+    quantity no pair produced.
+    """
+    families = []
+    for family, (treatment, baseline) in FAMILY_COMPARISONS.items():
+        metrics = []
+        for metric in RELATIVE_METRICS:
+            rows = []
+            for model in _sequence(report, "model_order"):
+                case_effects = _family_case_effects(report, str(model), family)
+                values = [
+                    float(item[f"{metric}_relative"])
+                    for item in case_effects
+                    if isinstance(item.get(f"{metric}_relative"), (int, float))
+                ]
+                rows.append(
+                    {
+                        "model": str(model),
+                        "cases": len(values),
+                        "percent": (statistics.median(values) * 100.0 if values else None),
+                    }
+                )
+            widest = max(
+                (abs(float(row["percent"])) for row in rows if row["percent"] is not None),
+                default=0.0,
+            )
+            for row in rows:
+                percent = row["percent"]
+                row["fraction"] = (
+                    0.0 if percent is None or not widest else abs(float(percent)) / widest
+                )
+                row["direction"] = "none" if percent is None else "down" if percent < 0 else "up"
+            metrics.append(
+                {
+                    "metric": metric,
+                    "label": {
+                        language: _relative_metric_label(metric, language) for language in LANGUAGES
+                    },
+                    "rows": rows,
+                }
+            )
+        # Bar length is magnitude, not confidence. The widest bar in a family can
+        # be the model that qualified on the fewest incidents, so the spread in
+        # case counts is stated rather than left to the small print beside it.
+        counts = [int(row["cases"]) for metric in metrics for row in metric["rows"]]
+        families.append(
+            {
+                "family": family,
+                "comparison": _comparison_label(family),
+                "favors": {
+                    "down": TREATMENT_LABELS[treatment],
+                    "up": TREATMENT_LABELS[baseline],
+                },
+                "metrics": metrics,
+                "case_span": {
+                    language: _case_span_text(min(counts), max(counts), language)
+                    for language in LANGUAGES
+                },
+            }
+        )
+    return families
+
+
+def _case_span_text(fewest: int, most: int, language: str) -> str:
+    if fewest == most:
+        return (
+            f"Every model qualified on {most} incidents."
+            if language == "en"
+            else f"每个模型都在 {most} 个故障上入选。"
+        )
+    if language == "en":
+        return (
+            f"Models qualified on {fewest} to {most} incidents. A median over "
+            f"{fewest} cases moves more than one over {most}, and the bar does "
+            "not show that."
+        )
+    return (
+        f"各模型入选的故障数从 {fewest} 到 {most} 不等。{fewest} 个 case 的中位数比 "
+        f"{most} 个的波动大，条长看不出这一点。"
+    )
+
+
+def _relative_metric_label(metric: str, language: str) -> str:
+    labels = {
+        "correct_completion_tool_calls": ("Steps to a correct answer", "答对所用的步数"),
+        "provider_visible_input_tokens": ("Tokens read", "读入的 token"),
+    }
+    english, chinese = labels[metric]
+    return english if language == "en" else chinese
+
+
 def _strip_reading(
     effect: Mapping[str, object],
     treatment: str,
@@ -1036,12 +1254,12 @@ def _strip_reading(
     eligible = int(effect.get("eligible_cases") or 0)
     if negative == positive:
         if language == "zh":
-            return f"{eligible} 个故障里两侧没有一致的高下"
+            return f"{eligible} 个故障中两侧没有一致方向"
         return f"Neither side needed consistently less across {eligible} incidents"
     leading = negative if negative > positive else positive
     side = TREATMENT_LABELS[treatment if negative > positive else baseline]
     if language == "zh":
-        return f"{eligible} 个故障里 {leading} 个是 {side} 更省"
+        return f"{eligible} 个故障中 {leading} 个是 {side} 用量更低"
     return f"{side} needed less in {leading} of {eligible} incidents"
 
 
@@ -1118,11 +1336,16 @@ def _diagnosis_slope(report: Mapping[str, object]) -> dict[str, object]:
 
 
 def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
-    """The three arm-level contrasts, each as a bar with a ratio to the best arm.
+    """The arm-level contrasts, each as a bar with a ratio against the best arm.
 
-    Ratios are what make a 2.4x cost gap read as one. Each row states whether it
-    is a registered endpoint or a descriptive total so the size of a bar is never
-    mistaken for the strength of its evidence.
+    Every ratio is `arm / best`, whichever direction is better, so the number and
+    the bar always agree: 2.40 means this arm spent 2.40 times the cheapest, 0.75
+    means it got three quarters of the diagnoses the best arm did. Mixing the two
+    conventions made a shorter bar carry a larger number.
+
+    None of these rows is a registered endpoint. The registered token comparison
+    is paired, eligibility-filtered and confined to one family; a workload total
+    over every executed run is a different quantity and is labelled as one.
     """
     treatments = [str(item) for item in _sequence(mapping(report, "execution"), "treatments")]
     diagnosis = _diagnosis_slope(report)
@@ -1133,48 +1356,74 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
         )
         for treatment in treatments
     }
-    usage = mapping(mapping(report, "usage_by_treatment"), "by_treatment")
-    unpriced = [
-        str(item) for item in _sequence(mapping(report, "usage_by_treatment"), "unpriced_models")
-    ]
-    rows = [
+    usage = mapping(report, "usage_by_treatment")
+    by_treatment = mapping(usage, "by_treatment")
+    unpriced = [str(item) for item in _sequence(usage, "unpriced_models")]
+    priced = mapping(usage, "priced_models")
+
+    rows: list[dict[str, object]] = [
         {
             "id": "accuracy",
+            "label_key": "accuracy",
             "better": "higher",
-            "registered": False,
             "unit": "runs",
-            "values": {t: correct[t] for t in treatments},
+            "values": {treatment: correct[treatment] for treatment in treatments},
             "denominator": runs,
-        },
+        }
+    ]
+    # One row in USD, converted at the frozen rate the report publishes. Spend
+    # billed in another currency is still recorded in that currency; converting
+    # only makes the arms addable, which is what a single cost row requires.
+    usd = mapping(usage, "estimated_cost_usd")
+    rows.append(
         {
             "id": "cost",
+            "label_key": "cost",
             "better": "lower",
-            "registered": False,
-            "unit": "USD",
-            "values": {t: float(mapping(usage, t)["estimated_cost"]) for t in treatments},
+            "unit": "currency",
+            "currency": "USD",
+            "values": {treatment: float(usd[treatment]) for treatment in treatments},
+            "covered_models": sorted(str(model) for model in priced),
             "excluded_models": unpriced,
-        },
+            "converted_from": sorted(
+                {str(value) for value in priced.values() if str(value) != "USD"}
+            ),
+            "exchange_rates": {
+                currency: dict(rate)
+                for currency, rate in mapping(usage, "exchange_rates").items()
+                if isinstance(rate, Mapping) and currency != "USD"
+            },
+        }
+    )
+    rows.append(
         {
             "id": "input_tokens",
+            "label_key": "input_tokens",
             "better": "lower",
-            "registered": True,
             "unit": "tokens",
             "values": {
-                t: int(mapping(usage, t)["provider_visible_input_tokens"]) for t in treatments
+                treatment: int(mapping(by_treatment, treatment)["provider_visible_input_tokens"])
+                for treatment in treatments
             },
-        },
-    ]
+        }
+    )
+
     for row in rows:
         values = [value for value in row["values"].values() if value]
+        # A row where every arm is zero, or where nothing could be priced, has no
+        # best arm and no meaningful ratio. Say so instead of dividing.
+        if not values:
+            row["estimable"] = False
+            row["reference"] = None
+            row["ratios"] = dict.fromkeys(row["values"], None)
+            row["fractions"] = dict.fromkeys(row["values"], 0.0)
+            continue
+        row["estimable"] = True
         reference = max(values) if row["better"] == "higher" else min(values)
+        widest = max(values)
         row["reference"] = reference
-        widest = max(values) if values else 1
         row["ratios"] = {
-            treatment: (
-                None
-                if not value or not reference
-                else (reference / value if row["better"] == "higher" else value / reference)
-            )
+            treatment: (None if not value else value / reference)
             for treatment, value in row["values"].items()
         }
         row["fractions"] = {
@@ -1284,16 +1533,59 @@ def _cost_bars(report: Mapping[str, object]) -> dict[str, object]:
                     )
                 merged[treatment] = cost
         entry = mapping(costs, str(model))
+        currency = entry.get("currency")
+        # One chart, one currency. Bars billed in CNY beside bars billed in USD
+        # share an axis that means nothing, and the reader has no way to see it.
+        # The billed figure stays in `native` so the conversion is checkable.
         series.append(
             {
                 "model": str(model),
-                "currency": entry.get("currency"),
+                "currency": "USD",
+                "billed_currency": currency,
                 "estimable": entry.get("status") == "available",
                 "unavailable_reason_code": entry.get("unavailable_reason_code"),
-                "values": {treatment: merged.get(treatment) for treatment in treatments},
+                "values": {
+                    treatment: (
+                        None
+                        if merged.get(treatment) is None or not isinstance(currency, str)
+                        else round(to_usd(float(merged[treatment]), currency), 6)
+                    )
+                    for treatment in treatments
+                },
+                "native": {treatment: merged.get(treatment) for treatment in treatments},
             }
         )
-    return {"series": series}
+    # Ratios are within a model, against its own cheapest arm, on the same
+    # `arm / best` convention the headline uses. Across models they would only
+    # compare list prices, which is a fact about the providers rather than about
+    # the interfaces this page is comparing.
+    for item in series:
+        priced = [value for value in item["values"].values() if isinstance(value, (int, float))]
+        cheapest = min(priced) if priced else None
+        widest = max(priced) if priced else None
+        item["reference"] = cheapest
+        item["ratios"] = {
+            treatment: (
+                None if not isinstance(value, (int, float)) or not cheapest else value / cheapest
+            )
+            for treatment, value in item["values"].items()
+        }
+        item["fractions"] = {
+            treatment: (
+                0.0 if not isinstance(value, (int, float)) or not widest else value / widest
+            )
+            for treatment, value in item["values"].items()
+        }
+    return {
+        "series": series,
+        "exchange_rates": {
+            currency: dict(rate)
+            for currency, rate in mapping(
+                mapping(report, "usage_by_treatment"), "exchange_rates"
+            ).items()
+            if isinstance(rate, Mapping) and currency != "USD"
+        },
+    }
 
 
 def _pricing_basis(report: Mapping[str, object]) -> list[dict[str, object]]:

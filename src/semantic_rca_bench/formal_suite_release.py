@@ -609,8 +609,8 @@ def _benchmark_model_summary(runs: list[dict[str, object]]) -> dict[str, object]
         "cases": case_records,
         "treatment_success": treatment_success,
         "metric_roles": {
-            "tool_calls_through_evidence": "pre-registered primary",
-            "rows_returned_through_evidence": "pre-registered primary",
+            "tool_calls_through_evidence": "pre-specified primary",
+            "rows_returned_through_evidence": "pre-specified primary",
             "reported_total_tokens": "exploratory provider-accounted metric",
         },
         "case_level_effect": {

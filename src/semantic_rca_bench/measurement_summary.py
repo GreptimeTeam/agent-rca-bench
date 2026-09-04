@@ -289,8 +289,8 @@ def build_formal_measurement_summary(repo_root: Path) -> dict[str, object]:
             "case_aggregation": "median jointly-successful run-pair delta within each case",
         },
         "metric_status": {
-            "rows_returned_through_evidence": "pre-registered primary efficiency metric",
-            "tool_calls_through_evidence": "pre-registered primary efficiency metric",
+            "rows_returned_through_evidence": "pre-specified primary efficiency metric",
+            "tool_calls_through_evidence": "pre-specified primary efficiency metric",
             "discovery_calls_through_evidence": "exploratory trajectory metric",
             "reported_model_tokens": "post-hoc recorded efficiency metric",
         },

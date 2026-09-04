@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import statistics
 
 import pytest
 from test_transfer_scorer import (
@@ -647,3 +648,102 @@ def test_the_public_artifact_declares_every_contributing_dataset() -> None:
     assert set(licenses) == {"openrca2", "rca100"}
     assert "CC BY-NC-SA 4.0" in licenses["rca100"]
     assert "arXiv:2606.29193" in licenses["rca100"]
+
+
+def _uneven_baseline_runs(case_tokens: dict[str, tuple[int, int]]) -> list[dict[str, object]]:
+    """Three arms per case, with a baseline that differs case to case.
+
+    A constant baseline makes "median of the proportions" and "proportion of the
+    medians" agree, so the cohort that separates them has to vary it.
+    """
+
+    def run(visibility: str, split: int, raw: int) -> dict[str, object]:
+        return {
+            "run": {
+                "evaluation": {
+                    "diagnosis_correct": True,
+                    "efficiency_eligible": True,
+                    "auditable_completion": True,
+                    "correct_completion_tool_calls": 7,
+                    "required_evidence_covered": None if visibility == "split_pillars" else True,
+                },
+                "execution": {"runner_error": False, "tool_budget_exhausted": False},
+                "database_load": {"rows_returned": None if visibility == "split_pillars" else 100},
+                "usage": {
+                    "provider_visible_input_tokens": {
+                        "split_pillars": split,
+                        "raw": raw,
+                        "semantic_graph": raw,
+                    }[visibility],
+                    "output_tokens": 10,
+                    "reasoning_output_tokens": 1,
+                },
+                "citations": [],
+                "tool_calls": [],
+            }
+        }
+
+    return [
+        {
+            "model": "model-a",
+            "case_id": case,
+            "repetition": repetition,
+            "visibility": visibility,
+            **run(visibility, split, raw),
+        }
+        for case, (split, raw) in case_tokens.items()
+        for repetition in range(2)
+        for visibility in ("split_pillars", "raw", "semantic_graph")
+    ]
+
+
+def test_a_relative_change_is_the_median_proportion_not_a_proportion_of_medians() -> None:
+    """Each case is divided by its own baseline before any median is taken.
+
+    Dividing the median delta by the median baseline is the tempting
+    simplification, and it answers a different question: it is a quantity no
+    pair produced, and here it reports -30% where every case but one moved -50%.
+    """
+    from semantic_rca_bench.transfer_release import _model_reports
+
+    runs = _uneven_baseline_runs(
+        {
+            "case-0": (100, 50),  # delta -50 over baseline 100 -> -0.50
+            "case-1": (1000, 990),  # delta -10 over baseline 1000 -> -0.01
+            "case-2": (60, 30),  # delta -30 over baseline 60 -> -0.50
+        }
+    )
+
+    storage = _model_reports(runs, ["model-a"], family_size=8, families=_families())["model-a"][
+        "confirmatory_families"
+    ]["storage_shape"]
+    effects = {item["case_id"]: item for item in storage["case_effects"]}
+
+    assert effects["case-0"]["provider_visible_input_tokens_relative"] == pytest.approx(-0.50)
+    assert effects["case-1"]["provider_visible_input_tokens_relative"] == pytest.approx(-0.01)
+    assert effects["case-2"]["provider_visible_input_tokens_relative"] == pytest.approx(-0.50)
+
+    relatives = [item["provider_visible_input_tokens_relative"] for item in storage["case_effects"]]
+    assert statistics.median(relatives) == pytest.approx(-0.50)
+
+    # The delta and baseline medians land on different cases, which is what makes
+    # their ratio (-30%) disagree with the proportion every pair actually saw.
+    deltas = [item["provider_visible_input_tokens"] for item in storage["case_effects"]]
+    assert statistics.median(deltas) == -30
+    assert statistics.median(relatives) != pytest.approx(statistics.median(deltas) / 100)
+
+
+def test_a_zero_baseline_yields_no_proportion_rather_than_a_division() -> None:
+    """A baseline of zero gives no scale, so the case carries null, not infinity."""
+    from semantic_rca_bench.transfer_release import _model_reports
+
+    runs = _uneven_baseline_runs({"case-0": (0, 40), "case-1": (100, 50)})
+
+    storage = _model_reports(runs, ["model-a"], family_size=8, families=_families())["model-a"][
+        "confirmatory_families"
+    ]["storage_shape"]
+    effects = {item["case_id"]: item for item in storage["case_effects"]}
+
+    assert effects["case-0"]["provider_visible_input_tokens"] == 40
+    assert effects["case-0"]["provider_visible_input_tokens_relative"] is None
+    assert effects["case-1"]["provider_visible_input_tokens_relative"] == pytest.approx(-0.50)

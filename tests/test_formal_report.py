@@ -193,6 +193,8 @@ def _report(
     transfer_graph_run_cost: float = 0.08,
     drop_last_transfer_run: bool = False,
     storage_holm_adjusted_p: float = 1.0,
+    currency_by_model: dict[str, str] | None = None,
+    unpriced_cells: set[tuple[str, str]] | None = None,
 ) -> dict[str, object]:
     suite, protocol = load_formal_suite_protocol()
     names = [model.model for model in protocol.models]
@@ -351,8 +353,14 @@ def _report(
                         "provider_visible_input_tokens": 100 if visibility == "raw" else 90,
                         "output_tokens": 20 if visibility == "raw" else 15,
                         "reasoning_output_tokens": 3 if visibility == "raw" else 2,
-                        "estimated_cost": (0.1 if visibility == "raw" else transfer_graph_run_cost),
-                        "cost_currency": "USD",
+                        "estimated_cost": (
+                            None
+                            if (unpriced_cells or set()) & {(name, visibility)}
+                            else 0.1
+                            if visibility == "raw"
+                            else transfer_graph_run_cost
+                        ),
+                        "cost_currency": (currency_by_model or {}).get(name, "USD"),
                     },
                     "tool_calls": _tool_calls(visibility),
                 },
@@ -416,10 +424,21 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
         "source-ranked. Ten of its cases carry over from the previously published "
         "measurement rather than being reselected."
     )
-    assert report["limitations"][6] == (
+    # Located by content, so inserting a limitation does not silently move which
+    # sentence this test is checking.
+    limitations = report["limitations"]
+    assert next(item for item in limitations if item.startswith("Mechanism cohorts")) == (
         "Mechanism cohorts are unevenly sized: Workload restart 4, Call-path delay 3, "
         "CPU saturation 3, Memory pressure 2, Disk I/O degradation 1, Host unavailable 1. "
         "Mechanism-level summaries are descriptive and unevenly supported."
+    )
+    # The eligible-case span is the sample the tests ran on, not the cohort size,
+    # and it is derived so it cannot keep quoting a range the data no longer has.
+    assert next(item for item in limitations if "independent cases" in item) == (
+        "The study has 14 independent cases, and endpoint eligibility leaves only 8-8 cases "
+        "for an individual test. Exact sign tests on that many cases have low and discrete "
+        "power, so a non-significant result indicates insufficient evidence and does not "
+        "establish equivalence."
     )
     costs = report["costs"]
     assert costs["models"] == {
@@ -434,7 +453,12 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     }
     assert costs["known_totals_by_currency"] == {"USD": 16.0}
     assert costs["models_with_unavailable_estimate"] == []
-    assert costs["cross_currency_total"] is None
+    # Every model priced in one currency, so the total needs no conversion.
+    assert costs["cross_currency_total"] == {
+        "currency": "USD",
+        "amount": 16.0,
+        "exchange_rates": {"USD": {"per_unit_usd": 1.0, "checked_at": None, "source": None}},
+    }
     assert costs["pricing_basis"]["gpt-5.6-sol"]["output_per_million"] == 20.0
     assert report["case_catalog"][0]["mechanism_code"] == "workload_restart"
     assert report["case_outcomes"][0]["models_with_fewer_rows"] == 4
@@ -532,7 +556,7 @@ def test_view_model_states_the_verdict_and_the_strip_geometry() -> None:
         "family_size": 10,
     }
     assert verdicts["semantic_layer"]["tally_text"]["en"] == (
-        "No registered endpoint of 8 survived Holm correction"
+        "No pre-specified endpoint of 8 survived Holm correction"
     )
     assert verdicts["semantic_layer"]["comparison"] == "Graph − Raw"
     # Every storage endpoint is significant in this fixture, so the whole family
@@ -549,7 +573,11 @@ def test_view_model_states_the_verdict_and_the_strip_geometry() -> None:
         "None of the 10 Graph − Raw tests is significant after Holm correction."
     )
     assert "Raw used fewer" in narrative["families"]["storage_shape"]
-    assert "Holm p 0.01" in narrative["families"]["storage_shape"]
+    # Effect size and case counts come before the p values.
+    storage_finding = narrative["families"]["storage_shape"]
+    assert "in 6 of 8 eligible cases" in storage_finding
+    assert storage_finding.index("case median") < storage_finding.index("Exact sign p")
+    assert "adjusted p 0.01" in storage_finding
     assert view["narrative"]["zh"]["families"]["semantic_layer"] == (
         "Graph − Raw 的 10 项检验，经 Holm 校正后没有一项显著。"
     )
@@ -668,7 +696,7 @@ def test_cost_direction_counts_models_instead_of_claiming_a_reduction() -> None:
         "4 of 4 priced models spent less through Raw than through Split."
     )
     assert narrative["zh"]["cost_direction"]["semantic_layer"] == (
-        "4 个可计价模型里，0 个走 Graph 比走 Raw 便宜。"
+        "4 个可计价模型中，0 个使用 Graph 的成本低于 Raw。"
     )
 
     cheaper = build_report_view_model(_report(transfer_graph_run_cost=0.05))
@@ -687,7 +715,7 @@ def test_a_significant_interface_result_reaches_the_headline() -> None:
         "Raw used fewer provider-visible input tokens than Split"
         in view["narrative"]["en"]["conclusion"]
     )
-    assert "接口组合检验族的显著结果" in view["narrative"]["zh"]["conclusion"]
+    assert "接口组合检验族中通过校正的结果" in view["narrative"]["zh"]["conclusion"]
 
 
 def test_formal_measurement_report_rejects_tampered_summary() -> None:
@@ -796,3 +824,138 @@ def test_a_model_that_always_cites_produces_no_citation_warning() -> None:
     assert "24 of its 84 runs" in text
     assert "13 of which" in text
     assert _citation_submission_text(report, "zh").startswith("glm-5.3 的 84 次 run 里有 24 次")
+
+
+def test_spend_in_two_currencies_converts_at_the_published_rate() -> None:
+    """A single cost row requires conversion, and conversion requires a rate.
+
+    Adding USD to CNY at 1:1 silently produced a single number before. The fix
+    is not to refuse the total but to convert at a rate the page publishes, so a
+    reader can check the arithmetic and see it is a market quote, not a
+    measurement. The per-currency subtotals stay in the record either way.
+    """
+    from semantic_rca_bench.formal_report import EXCHANGE_RATES_TO_USD
+
+    report = _report(currency_by_model={"glm-5.3": "CNY"})
+    usage = report["usage_by_treatment"]
+    raw = usage["by_treatment"]["raw"]["estimated_cost_by_currency"]
+    assert set(raw) == {"USD", "CNY"}
+    assert usage["comparable_currency"] is None
+    assert usage["priced_models"]["glm-5.3"] == "CNY"
+
+    # The billed currency is what the record keeps; USD is derived from it.
+    rate = EXCHANGE_RATES_TO_USD["CNY"]["units_per_usd"]
+    assert usage["estimated_cost_usd"]["raw"] == pytest.approx(raw["USD"] + raw["CNY"] / rate)
+    assert usage["exchange_rates"]["CNY"]["checked_at"]
+    assert usage["exchange_rates"]["CNY"]["source"]
+
+    rows = {row["id"]: row for row in build_report_view_model(report)["charts"]["headline"]["rows"]}
+    assert set(rows) == {"accuracy", "cost", "input_tokens"}
+    cost = rows["cost"]
+    assert cost["currency"] == "USD"
+    assert cost["values"]["raw"] == pytest.approx(usage["estimated_cost_usd"]["raw"])
+    # The page has to say which currency was converted and at what rate.
+    assert cost["converted_from"] == ["CNY"]
+    assert cost["exchange_rates"]["CNY"]["units_per_usd"] == rate
+    assert "glm-5.3" in cost["covered_models"]
+
+
+def test_a_currency_without_a_frozen_rate_fails_rather_than_converting() -> None:
+    """An unknown currency has no rate, and guessing one would invent spend."""
+    from semantic_rca_bench.formal_report import _usage_by_treatment
+
+    runs = [
+        {
+            "model": "model-a",
+            "visibility": "raw",
+            "run": {
+                "usage": {
+                    "provider_visible_input_tokens": 10,
+                    "output_tokens": 1,
+                    "estimated_cost": 5.0,
+                    "cost_currency": "JPY",
+                }
+            },
+        }
+    ]
+
+    with pytest.raises(ValueError, match="no frozen exchange rate"):
+        _usage_by_treatment(runs)
+
+
+def test_a_model_priced_in_only_some_arms_is_excluded_entirely() -> None:
+    """Partial pricing would make the unpriced arm look cheap.
+
+    Keeping the model's other arms in the total is what creates that illusion,
+    so the whole model leaves the comparison.
+    """
+    priced = _report()["usage_by_treatment"]
+    partial = _report(unpriced_cells={("glm-5.3", "semantic_graph")})["usage_by_treatment"]
+
+    assert "glm-5.3" in priced["priced_models"]
+    assert "glm-5.3" in partial["unpriced_models"]
+    assert "glm-5.3" not in partial["priced_models"]
+    # Its raw spend must leave with it, not linger in the raw subtotal.
+    assert (
+        partial["by_treatment"]["raw"]["estimated_cost_by_currency"]["USD"]
+        < priced["by_treatment"]["raw"]["estimated_cost_by_currency"]["USD"]
+    )
+
+
+def test_every_headline_ratio_is_the_arm_over_the_best_arm() -> None:
+    """One convention, so the number and the bar cannot disagree.
+
+    Accuracy previously used best/arm while cost used arm/best, which put 1.33
+    beside a bar drawn at 75%.
+    """
+    chart = build_report_view_model(_report())["charts"]["headline"]
+    for row in chart["rows"]:
+        values = {t: v for t, v in row["values"].items() if v}
+        if not values:
+            continue
+        reference = max(values.values()) if row["better"] == "higher" else min(values.values())
+        for treatment, value in values.items():
+            assert row["ratios"][treatment] == pytest.approx(value / reference)
+        # The best arm sits at exactly 1, whichever direction is better.
+        best = (
+            max(values, key=values.get)
+            if row["better"] == "higher"
+            else min(values, key=values.get)
+        )
+        assert row["ratios"][best] == pytest.approx(1.0)
+        # A longer bar always carries a larger number.
+        ordered = sorted(values, key=lambda t: row["fractions"][t])
+        assert [values[t] for t in ordered] == sorted(values.values())
+
+
+def test_no_headline_row_claims_to_be_a_registered_endpoint() -> None:
+    """The registered token endpoint is paired and filtered; these totals are not.
+
+    Labelling the workload total as registered overstated what the page proves.
+    """
+    chart = build_report_view_model(_report())["charts"]["headline"]
+    assert all("registered" not in row for row in chart["rows"])
+    rendered = Path("src/semantic_rca_bench/assets/report/report.js").read_text()
+    assert "row.registered" not in rendered
+
+
+def test_an_all_zero_row_reports_no_ratio_instead_of_failing() -> None:
+    """A cohort where nothing was correct is legal input, not a crash."""
+    from semantic_rca_bench.formal_report_view import _headline_bars
+
+    report = copy.deepcopy(_report())
+    for model in report["model_reports"].values():
+        for treatment in model["transfer"]["diagnosis_correct"]:
+            model["transfer"]["diagnosis_correct"][treatment] = 0
+    for treatment in report["usage_by_treatment"]["by_treatment"].values():
+        treatment["estimated_cost_by_currency"] = {"USD": 0.0}
+    report["usage_by_treatment"]["estimated_cost_usd"] = dict.fromkeys(
+        report["usage_by_treatment"]["estimated_cost_usd"], 0.0
+    )
+
+    rows = {row["id"]: row for row in _headline_bars(report)["rows"]}
+    assert rows["accuracy"]["estimable"] is False
+    assert set(rows["accuracy"]["ratios"].values()) == {None}
+    assert rows["cost"]["estimable"] is False
+    # A row that still has values keeps working alongside the empty ones.
+    assert rows["input_tokens"]["estimable"] is True

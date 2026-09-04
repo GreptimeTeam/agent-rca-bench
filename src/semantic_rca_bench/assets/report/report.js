@@ -232,7 +232,7 @@
   /* Split, Raw and Graph are the names every later chart and table refers back
    * to, so the card leads with the name rather than tucking it underneath. */
   /* Ratios against the best arm. A 2.4x gap has to look like 2.4x; the badge on
-   * the row says whether the number is a registered endpoint or a total. */
+   * the row says whether the number is a pre-specified endpoint or a total. */
   const headlineBars = () => {
     const chart = view.charts.headline;
     return h(
@@ -240,18 +240,30 @@
       { class: "headline" },
       chart.rows.map((row) => {
         const best = Object.entries(row.ratios).find(([, r]) => r === 1)?.[0];
+        if (!row.estimable) {
+          return h(
+            "div",
+            { class: "headline-row" },
+            h(
+              "div",
+              { class: "headline-head" },
+              h("h3", { text: t(`headline.${row.label_key}`) }),
+              h("span", { class: "caption", text: t("headline.not_estimable") }),
+            ),
+          );
+        }
         return h(
           "div",
           { class: "headline-row" },
           h(
             "div",
             { class: "headline-head" },
-            h("h3", { text: t(`headline.${row.id}`) }),
-            h("span", { class: "caption", text: t(`headline.${row.id}.note`) }),
+            h("h3", { text: t(`headline.${row.label_key}`) }),
+            h("span", { class: "caption", text: t(`headline.${row.label_key}.note`) }),
             h("span", {
               class: "badge badge-sm",
-              "data-grade": row.registered ? "confirmed" : "descriptive",
-              text: t(row.registered ? "headline.registered" : "headline.descriptive"),
+              "data-grade": "descriptive",
+              text: t("headline.descriptive"),
             }),
           ),
           h(
@@ -285,6 +297,20 @@
               );
             }),
           ),
+          row.converted_from && row.converted_from.length
+            ? h("p", {
+                class: "caption",
+                text: row.converted_from
+                  .map((code) =>
+                    t("headline.converted", {
+                      currency: code,
+                      rate: row.exchange_rates[code].units_per_usd,
+                      date: row.exchange_rates[code].checked_at,
+                    }),
+                  )
+                  .join(" "),
+              })
+            : null,
           row.excluded_models && row.excluded_models.length
             ? h("p", {
                 class: "caption",
@@ -300,7 +326,7 @@
     if (row.unit === "runs") {
       return `${num(value)} / ${num(row.denominator)}  ${Math.round((value / row.denominator) * 100)}%`;
     }
-    if (row.unit === "USD") return `USD ${num(value, 2)}`;
+    if (row.unit === "currency") return `${row.currency} ${num(value, 2)}`;
     return compact(value).replace(/^\+/, "");
   };
 
@@ -460,7 +486,7 @@
     return h("div", { class: "board" }, rows);
   };
 
-  /* The registered questions and how each family's endpoints landed. This is the
+  /* The pre-specified questions and how each family's endpoints landed. This is the
    * formal statement behind the findings above, kept separate so the findings
    * can be read without it. */
   const questionsSection = () =>
@@ -570,6 +596,77 @@
         h("span", { class: "strip-p", text: t("strip.holm", { value: pval(strip.holm_adjusted_p) }) }),
       ),
     );
+  };
+
+  // --- relative change: how much of the baseline's work each arm spent -----
+
+  /* A zero line down the middle, one bar per model. Left of the line the arm
+   * needed less than the baseline on the same incidents; right of it, more. The
+   * absolute deltas behind these proportions stay in the strips panel below. */
+  const relativeBars = (family) => {
+    const group = view.charts.relative_change.find((item) => item.family === family);
+    if (!group) return [];
+    const blocks = [
+      h("p", { class: "strip-lede", text: t("relative.lede") }),
+      h("p", { class: "caption", text: group.case_span[language] || group.case_span.en }),
+    ];
+    for (const metric of group.metrics) {
+      blocks.push(
+        h(
+          "div",
+          { class: "family-head" },
+          h("h3", { text: metric.label[language] || metric.label.en }),
+          h("span", { class: "muted", text: t("relative.note") }),
+        ),
+        h(
+          "div",
+          { class: "strip-scale" },
+          h("span", {
+            class: "scale-left",
+            text: t("relative.axis_left", { treatment: group.favors.down }),
+          }),
+          h("span", {
+            class: "scale-right",
+            text: t("relative.axis_right", { treatment: group.favors.up }),
+          }),
+        ),
+        h(
+          "div",
+          { class: "pct-rows" },
+          metric.rows.map((row) =>
+            h(
+              "div",
+              { class: "pct-row", "data-direction": row.direction },
+              h("span", { class: "pct-name", text: row.model }),
+              h(
+                "div",
+                { class: "pct-track" },
+                h("div", { class: "pct-zero" }),
+                row.percent === null
+                  ? null
+                  : h("div", {
+                      class: "pct-fill",
+                      "data-direction": row.direction,
+                      style: `width:${(row.fraction * 50).toFixed(3)}%`,
+                    }),
+              ),
+              h(
+                "div",
+                { class: "pct-value" },
+                h("strong", {
+                  text: row.percent === null ? NA() : `${signed(row.percent, 1)}%`,
+                }),
+                h("span", {
+                  class: "pct-cases",
+                  text: t("relative.cases", { cases: row.cases }),
+                }),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return blocks;
   };
 
   const stripReading = (strip) => strip.reading[language] || strip.reading.en;
@@ -700,41 +797,84 @@
     return h("div", { class: "chart" }, svg);
   };
 
+  /* Spend per model, on the same bars and the same arm/best ratio the headline
+   * uses. Ratios are within a model: across models they would compare provider
+   * list prices rather than the interfaces. */
   const costChart = () => {
-    const series = view.charts.cost_bars.series;
-    const treatments = view.treatments;
-    const width = 720;
-    const barHeight = 16;
-    const groupGap = 26;
-    const rowHeight = treatments.length * (barHeight + 5);
-    const height = series.length * (rowHeight + groupGap) + 20;
-    const pad = { left: 150, right: 110 };
-    const max = Math.max(
-      ...series.flatMap((item) => treatments.map((key) => (isNum(item.values[key]) ? item.values[key] : 0))),
-      1,
+    const chart = view.charts.cost_bars;
+    const rates = chart.exchange_rates || {};
+    const converted = chart.series.filter((item) => item.billed_currency && item.billed_currency !== "USD");
+    return h(
+      "div",
+      { class: "headline cost-groups" },
+      chart.series.map((item) => {
+        const best = Object.entries(item.ratios).find(([, r]) => r === 1)?.[0];
+        return h(
+          "div",
+          { class: "headline-row" },
+          h(
+            "div",
+            { class: "headline-head" },
+            h("h3", { text: item.model }),
+            item.billed_currency && item.billed_currency !== "USD"
+              ? h("span", { class: "caption", text: t("cost.billed_in", { currency: item.billed_currency }) })
+              : null,
+          ),
+          h(
+            "div",
+            { class: "bars" },
+            view.treatments.map((key) => {
+              const value = item.values[key];
+              const ratio = item.ratios[key];
+              return h(
+                "div",
+                { class: "bar-row", "data-best": String(key === best) },
+                h("span", { class: "bar-name", text: treatment(key) }),
+                h(
+                  "div",
+                  { class: "bar-track" },
+                  isNum(value)
+                    ? h("div", {
+                        class: "bar-fill",
+                        "data-arm": key,
+                        style: `width:${Math.max(1, (item.fractions[key] || 0) * 100)}%`,
+                      })
+                    : null,
+                ),
+                h(
+                  "div",
+                  { class: "bar-value" },
+                  // Two decimals, as in the headline; the exact figure is in the table below.
+                  h("strong", { text: isNum(value) ? `${item.currency} ${num(value, 2)}` : NA() }),
+                  h("span", {
+                    class: "bar-ratio",
+                    text: isNum(ratio) ? `\u00d7${ratio.toFixed(2)}` : NA(),
+                  }),
+                ),
+              );
+            }),
+          ),
+          item.estimable
+            ? null
+            : h("p", { class: "caption", text: t("cost.not_estimable") }),
+        );
+      }),
+      converted.length
+        ? h("p", {
+            class: "caption",
+            text: converted
+              .map((item) =>
+                t("cost.converted", {
+                  model: item.model,
+                  currency: item.billed_currency,
+                  rate: rates[item.billed_currency].units_per_usd,
+                  date: rates[item.billed_currency].checked_at,
+                }),
+              )
+              .join(" "),
+          })
+        : null,
     );
-    const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, role: "img" });
-    let cursor = 10;
-    for (const item of series) {
-      svg.append(svgEl("text", { class: "value", x: 0, y: cursor + 12, text: item.model }));
-      treatments.forEach((key, index) => {
-        const y = cursor + index * (barHeight + 5);
-        const value = item.values[key];
-        svg.append(svgEl("text", { class: "label", x: pad.left - 8, y: y + 12, "text-anchor": "end", text: treatment(key) }));
-        if (isNum(value)) {
-          const barWidth = ((width - pad.left - pad.right) * value) / max;
-          svg.append(svgEl("rect", { class: "bar", x: pad.left, y, width: Math.max(barWidth, 1), height: barHeight, rx: 2 }));
-          svg.append(
-            svgEl("text", { class: "value", x: pad.left + barWidth + 8, y: y + 12, text: money(value, item.currency) }),
-          );
-        } else {
-          svg.append(svgEl("rect", { class: "bar-na", x: pad.left, y, width: 60, height: barHeight, rx: 2 }));
-          svg.append(svgEl("text", { class: "label", x: pad.left + 68, y: y + 12, text: t("cost.not_estimable") }));
-        }
-      });
-      cursor += rowHeight + groupGap;
-    }
-    return h("div", { class: "chart" }, svg);
   };
 
   const capabilityChart = () => {
@@ -785,8 +925,9 @@
       t("interface.title"),
       t("interface.lede"),
       sectionInsight("one_store"),
-      ...strips("storage_shape"),
+      ...relativeBars("storage_shape"),
       h("p", { class: "note", text: t("interface.rows_note") }),
+      panel(t("panel.strips"), ...strips("storage_shape")),
       h("h3", { style: "margin-top:28px", text: t("diagnosis.title") }),
       h("p", { class: "caption", text: t("diagnosis.lede", { runs: view.charts.diagnosis_slope.runs_per_treatment }) }),
       slopeChart(),
@@ -803,8 +944,9 @@
       t("semantic.title"),
       t("semantic.lede"),
       sectionInsight("semantic_layer"),
-      ...strips("semantic_layer"),
+      ...relativeBars("semantic_layer"),
       h("p", { class: "note", text: narrative().cost_direction.semantic_layer }),
+      panel(t("panel.strips"), ...strips("semantic_layer")),
       h("h3", { style: "margin-top:28px", text: t("semantic.reversal_title") }),
       h("p", { class: "caption", text: t("semantic.reversal_lede") }),
       sectionInsight("fault_dependent"),
@@ -911,9 +1053,10 @@
       const benchmarks = data.model_reports[model].micro.benchmarks;
       for (const [name, summary] of Object.entries(benchmarks)) {
         const effect = summary.case_level_effect;
+        const label = view.benchmark_labels[name];
         rows.push([
           model,
-          name,
+          (label && (label[language] || label.en)) || name,
           { value: effect.rows_returned_through_evidence.eligible_cases, numeric: true },
           deltaCell(effect.rows_returned_through_evidence.median_delta, 2),
           {
@@ -925,15 +1068,24 @@
         ]);
       }
     }
+    const task = (key) =>
+      h(
+        "div",
+        { class: "card" },
+        h("h3", { text: t(`retrieval.${key}.title`) }),
+        h("p", { text: t(`retrieval.${key}.body`) }),
+      );
     return section(
       "retrieval",
       t("retrieval.title"),
       t("retrieval.lede"),
-      h("p", { class: "note", text: narrative().micro_summary }),
+      h("div", { class: "grid-2" }, task("discovery"), task("graph")),
+      h("p", { class: "insight", text: narrative().micro_summary }),
+      h("p", { class: "section-lede", text: t("retrieval.interpretation") }),
       table(
         [
           t("th.model"),
-          t("th.metric"),
+          t("th.task"),
           { label: t("th.eligible_cases"), numeric: true },
           { label: t("th.rows"), numeric: true },
           { label: t("th.direction"), numeric: true },
@@ -942,6 +1094,7 @@
         ],
         rows,
       ),
+      h("p", { class: "caption", text: t("retrieval.metric_note") }),
     );
   };
 

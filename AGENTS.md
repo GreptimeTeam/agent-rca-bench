@@ -53,7 +53,15 @@ the database or benchmark.
   the number of models times the number of endpoints in that family. Pooling
   them would make one question's significance depend on how many tests the other
   question ran.
-- The registered end-to-end efficiency metrics are
+- The two families, their metrics, and the Holm family size are frozen in the
+  protocol fixture before any run, and every artifact binds that fixture by
+  hash. Machine fields keep the names `confirmatory_families` and
+  `primary_metrics`. Published prose calls them **pre-specified**, never
+  "registered" or "pre-registered": those words imply a public third-party
+  registry entry with a timestamp, and this benchmark has a hashed fixture in a
+  Git repository instead. State that difference where the page first uses the
+  term.
+- The end-to-end efficiency metrics frozen in the protocol are
   `evaluation.correct_completion_tool_calls` for both families,
   `database_load.rows_returned` for `semantic_graph - raw`, and
   `usage.provider_visible_input_tokens` for `raw - split_pillars`.
@@ -81,8 +89,12 @@ the database or benchmark.
 - Report input, cache read, cache write, output, and reasoning tokens according
   to the frozen provider contract. Reasoning that is included in output must
   not be counted twice.
-- Preserve provider currencies. Do not aggregate currencies without a frozen
-  exchange-rate policy.
+- Preserve provider currencies. Spend is recorded in the currency it was billed
+  in, and that subtotal is never overwritten. A cross-currency total is derived
+  from those subtotals at the rates frozen in `EXCHANGE_RATES_TO_USD`, published
+  with their date and source beside every figure they produce, and only when
+  every model in the cohort could be priced. A currency with no frozen rate
+  raises rather than converting at a guess.
 - Provider reasoning settings define complete model configurations, not a
   common cross-provider compute scale.
 
@@ -183,13 +195,32 @@ side a string belongs to is fixed:
   arrive from the view model already written. Mapping a value the view model
   already signed to a colour or a bar length is layout, not judgement.
 
-No grading tier may sit beside the registered test. An endpoint either survives
-Holm correction or it does not, and the page says so with the registered
+No grading tier may sit beside the pre-specified test. An endpoint either
+survives Holm correction or it does not, and the page says so with the frozen
 numbers. A softer tier invented after the run - "directional", "near
 significant" - reads as a weaker result while being a threshold chosen once its
-effect on the conclusion is already visible, which is the reading the
-registration exists to prevent. Report the case medians and their signs as
+effect on the conclusion is already visible, which is the reading the frozen
+protocol exists to prevent. Report the case medians and their signs as
 description instead; they are the same evidence without the borrowed authority.
+
+The reverse move is also barred: do not restate the two frozen families as
+exploratory, drop the binary outcome, or remove the endpoint tally once the
+results are known. The tally is what shows how many comparisons were run, so
+without it a reader cannot tell whether the one surviving endpoint was selected
+after the fact. Relabelling a comparison that was frozen before the run is the
+same post-hoc adjustment as adding a softer tier, in the other direction.
+
+Lead each endpoint sentence with the effect: how many eligible cases moved which
+way, and the case median. The exact sign p and then the Holm-adjusted p follow
+it. The test constrains what may be concluded; it is not the subject of the
+sentence. State the power limit alongside, because eligibility leaves far fewer
+cases than the cohort holds and a non-significant result on that sample means
+insufficient evidence, never equivalence.
+
+Post-hoc breakdowns - by fault level, dataset, or mechanism - are published as
+descriptions and labelled as made after the measurement. Where two splits are
+collinear, as fault level and source dataset are in this cohort, say so in the
+same sentence that reports the split; neither may be credited with the effect.
 
 Rendering client-side means the page needs a no-JavaScript path. Python emits a
 static summary of the verdicts and headline numbers from the same view model, so
