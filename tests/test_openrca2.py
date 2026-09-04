@@ -4,8 +4,8 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from semantic_rca_bench.contracts import IngestCounts, QueryResult
-from semantic_rca_bench.datasets.openrca2 import (
+from agent_rca_bench.contracts import IngestCounts, QueryResult
+from agent_rca_bench.datasets.openrca2 import (
     _iter_histograms,
     _iter_traces,
     _load_case,

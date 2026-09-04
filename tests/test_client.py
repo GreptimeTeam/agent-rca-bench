@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from semantic_rca_bench.greptimedb.client import GreptimeClient, GreptimeError
+from agent_rca_bench.greptimedb.client import GreptimeClient, GreptimeError
 
 
 def test_query_load_measures_database_rows_and_failures() -> None:

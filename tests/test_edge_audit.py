@@ -1,9 +1,9 @@
 import pytest
 
-from semantic_rca_bench.contracts import QueryResult
-from semantic_rca_bench.datasets.openrca2 import OpenRCA2Error
-from semantic_rca_bench.datasets.openrca2_transfer import _source_edge_period
-from semantic_rca_bench.edge_audit import (
+from agent_rca_bench.contracts import QueryResult
+from agent_rca_bench.datasets.openrca2 import OpenRCA2Error
+from agent_rca_bench.datasets.openrca2_transfer import _source_edge_period
+from agent_rca_bench.edge_audit import (
     graph_audit_window,
     normalize_edge_result,
 )

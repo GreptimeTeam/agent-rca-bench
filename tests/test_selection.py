@@ -1,4 +1,4 @@
-from semantic_rca_bench.selection import deterministic_rank
+from agent_rca_bench.selection import deterministic_rank
 
 
 def test_deterministic_rank_is_reproducible_and_deduplicates() -> None:

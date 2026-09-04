@@ -5,15 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from semantic_rca_bench.formal_report import (
+from agent_rca_bench.formal_report import (
     build_formal_measurement_report,
     validate_formal_measurement_report,
 )
-from semantic_rca_bench.formal_report_view import (
+from agent_rca_bench.formal_report_view import (
     build_report_view_model,
     render_formal_measurement_report,
 )
-from semantic_rca_bench.formal_suite_protocol import (
+from agent_rca_bench.formal_suite_protocol import (
     DEFAULT_SUITE_PROTOCOL_FIXTURE,
     load_formal_suite_protocol,
 )
@@ -624,7 +624,7 @@ def test_rendered_page_inlines_every_payload_and_leaks_nothing(tmp_path: Path) -
     assert "__REPORT_" not in document
     assert "/Users/" not in document
     assert "private/tmp" not in document
-    assert 'href="semantic-rca-v34.json"' not in document  # emitted by the renderer, not the shell
+    assert 'href="agent-rca-v34.json"' not in document  # emitted by the renderer, not the shell
 
     payloads = {
         name: json.loads(
@@ -639,7 +639,7 @@ def test_rendered_page_inlines_every_payload_and_leaks_nothing(tmp_path: Path) -
         for name in ("semantic-rca-report", "semantic-rca-view", "semantic-rca-i18n")
     }
     assert payloads["semantic-rca-report"]["report_schema_version"] == 7
-    assert payloads["semantic-rca-view"]["report_json_filename"] == "semantic-rca-v34.json"
+    assert payloads["semantic-rca-view"]["report_json_filename"] == "agent-rca-v34.json"
     assert set(payloads["semantic-rca-i18n"]["en"]) == set(payloads["semantic-rca-i18n"]["zh"])
 
     # Every key the renderer asks for must exist, or the page prints the key.
@@ -658,7 +658,7 @@ def test_rendered_page_inlines_every_payload_and_leaks_nothing(tmp_path: Path) -
 
 
 def test_rendered_page_reports_missing_i18n_keys(tmp_path: Path, monkeypatch) -> None:
-    import semantic_rca_bench.formal_report_view as view_module
+    import agent_rca_bench.formal_report_view as view_module
 
     monkeypatch.setattr(
         view_module, "_load_i18n", lambda assets: (_ for _ in ()).throw(ValueError("boom"))
@@ -673,7 +673,7 @@ def test_incomplete_artifacts_fail_before_pair_aggregation() -> None:
 
 
 def test_treatment_ranking_omits_a_model_without_a_score() -> None:
-    from semantic_rca_bench.formal_report import _score_ranking
+    from agent_rca_bench.formal_report import _score_ranking
 
     reports = {
         "measured": {"by_treatment": {"split_pillars": {"normalized_score": 50.0}}},
@@ -728,7 +728,7 @@ def test_formal_measurement_report_rejects_tampered_summary() -> None:
 
 
 def test_an_unmeasurable_evidence_dimension_does_not_cap_a_treatment() -> None:
-    from semantic_rca_bench.formal_report import _score_runs
+    from agent_rca_bench.formal_report import _score_runs
 
     def run(required_evidence_covered):
         return {
@@ -768,7 +768,7 @@ def test_no_post_hoc_grade_survives_beside_the_registered_test() -> None:
     seeing how the endpoints landed. This pins the vocabulary so that tier cannot
     come back through the view model.
     """
-    import semantic_rca_bench.formal_report_view as view_module
+    import agent_rca_bench.formal_report_view as view_module
 
     assert not hasattr(view_module, "_evidence_grade")
     assert not hasattr(view_module, "DIRECTIONAL_MINIMUM_CASES")
@@ -809,7 +809,7 @@ def test_rejection_codes_separate_claiming_citations_from_the_rest() -> None:
 
 
 def test_a_model_that_always_cites_produces_no_citation_warning() -> None:
-    from semantic_rca_bench.formal_report_view import _citation_submission_text
+    from agent_rca_bench.formal_report_view import _citation_submission_text
 
     report = copy.deepcopy(_report())
     for counts in report["citation_submission"]["by_model"].values():
@@ -834,7 +834,7 @@ def test_spend_in_two_currencies_converts_at_the_published_rate() -> None:
     reader can check the arithmetic and see it is a market quote, not a
     measurement. The per-currency subtotals stay in the record either way.
     """
-    from semantic_rca_bench.formal_report import EXCHANGE_RATES_TO_USD
+    from agent_rca_bench.formal_report import EXCHANGE_RATES_TO_USD
 
     report = _report(currency_by_model={"glm-5.3": "CNY"})
     usage = report["usage_by_treatment"]
@@ -862,7 +862,7 @@ def test_spend_in_two_currencies_converts_at_the_published_rate() -> None:
 
 def test_a_currency_without_a_frozen_rate_fails_rather_than_converting() -> None:
     """An unknown currency has no rate, and guessing one would invent spend."""
-    from semantic_rca_bench.formal_report import _usage_by_treatment
+    from agent_rca_bench.formal_report import _usage_by_treatment
 
     runs = [
         {
@@ -935,13 +935,13 @@ def test_no_headline_row_claims_to_be_a_registered_endpoint() -> None:
     """
     chart = build_report_view_model(_report())["charts"]["headline"]
     assert all("registered" not in row for row in chart["rows"])
-    rendered = Path("src/semantic_rca_bench/assets/report/report.js").read_text()
+    rendered = Path("src/agent_rca_bench/assets/report/report.js").read_text()
     assert "row.registered" not in rendered
 
 
 def test_an_all_zero_row_reports_no_ratio_instead_of_failing() -> None:
     """A cohort where nothing was correct is legal input, not a crash."""
-    from semantic_rca_bench.formal_report_view import _headline_bars
+    from agent_rca_bench.formal_report_view import _headline_bars
 
     report = copy.deepcopy(_report())
     for model in report["model_reports"].values():
@@ -974,7 +974,7 @@ def test_a_zero_arm_is_measured_not_missing() -> None:
     out of the reference either: on a lower-is-better row a zero arm is the
     cheapest one, and skipping it would crown the second-cheapest.
     """
-    from semantic_rca_bench.formal_report_view import _headline_bars
+    from agent_rca_bench.formal_report_view import _headline_bars
 
     report = copy.deepcopy(_report())
     for model in report["model_reports"].values():
@@ -992,7 +992,7 @@ def test_a_zero_arm_is_measured_not_missing() -> None:
 
 def test_a_zero_reference_names_the_best_arm_without_dividing() -> None:
     """A free arm is the cheapest arm, and no other arm has a multiple of it."""
-    from semantic_rca_bench.formal_report_view import _headline_bars
+    from agent_rca_bench.formal_report_view import _headline_bars
 
     report = copy.deepcopy(_report())
     report["usage_by_treatment"]["estimated_cost_usd"]["raw"] = 0.0

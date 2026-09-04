@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from semantic_rca_bench.contracts import (
+from agent_rca_bench.contracts import (
     AgentRunner,
     AgentUsage,
     ApiTransport,
@@ -13,7 +13,7 @@ from semantic_rca_bench.contracts import (
     ToolTrace,
     Visibility,
 )
-from semantic_rca_bench.discovery import (
+from agent_rca_bench.discovery import (
     DiscoveryAgentRun,
     DiscoveryAnswer,
     DiscoveryAudit,
@@ -21,23 +21,23 @@ from semantic_rca_bench.discovery import (
     canonical_evidence_query,
     evaluate_discovery_run,
 )
-from semantic_rca_bench.formal_suite import (
+from agent_rca_bench.formal_suite import (
     build_micro_preflight_report,
     canonical_sha256,
     micro_source_semantic_sha256,
     validate_micro_report,
 )
-from semantic_rca_bench.formal_suite_protocol import (
+from agent_rca_bench.formal_suite_protocol import (
     DEFAULT_SUITE_PROTOCOL_FIXTURE,
     load_formal_suite_protocol,
     micro_schedule,
 )
-from semantic_rca_bench.formal_suite_release import (
+from agent_rca_bench.formal_suite_release import (
     build_micro_measurement_artifact,
     score_public_micro_run,
     validate_micro_measurement_artifact,
 )
-from semantic_rca_bench.graph_benchmark import (
+from agent_rca_bench.graph_benchmark import (
     GraphAgentRun,
     GraphAnswer,
     GraphAudit,

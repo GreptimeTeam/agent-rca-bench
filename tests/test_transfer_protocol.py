@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from semantic_rca_bench.transfer_protocol import (
+from agent_rca_bench.transfer_protocol import (
     DEFAULT_PROTOCOL_FIXTURE,
     formal_schedule,
     load_transfer_protocol,

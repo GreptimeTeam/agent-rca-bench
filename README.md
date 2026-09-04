@@ -1,11 +1,11 @@
-# Semantic RCA Bench
+# Agent RCA Bench
 
-[![CI](https://github.com/GreptimeTeam/semantic-rca-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/GreptimeTeam/semantic-rca-bench/actions/workflows/ci.yml)
+[![CI](https://github.com/GreptimeTeam/agent-rca-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/GreptimeTeam/agent-rca-bench/actions/workflows/ci.yml)
 [![Report](https://img.shields.io/badge/report-2026-0c7259)](https://semantic-rca.greptime.com)
 [![Python](https://img.shields.io/badge/python-3.11-3776ab)](https://www.python.org/downloads/release/python-3110/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-Semantic RCA Bench measures how the observability interface behind a large
+Agent RCA Bench measures how the observability interface behind a large
 language model agent changes root cause analysis (RCA). It compares the native
 Prometheus, Loki, and Tempo interface bundle with GreptimeDB's all-in-one query
 surface, then compares raw GreptimeDB telemetry with the complete GreptimeDB
@@ -99,7 +99,7 @@ validation.
 artifacts/measurement/   Sanitized public measurement artifacts
 fixtures/measurement/    Fixed micro-benchmark case fixtures and selection manifests
 fixtures/reference/      Active source-selection and formal protocol fixtures
-src/semantic_rca_bench/  Adapters, runners, scorers, exporters, and report code
+src/agent_rca_bench/  Adapters, runners, scorers, exporters, and report code
 tests/                   Protocol and regression tests
 REPORT.md                Canonical English report
 REPORT.zh-CN.md          Maintained Chinese translation
@@ -113,17 +113,25 @@ credentials, and private trajectories are not part of the repository.
 Use Python 3.11 and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/GreptimeTeam/semantic-rca-bench.git
-cd semantic-rca-bench
+git clone https://github.com/GreptimeTeam/agent-rca-bench.git
+cd agent-rca-bench
 uv sync --extra dev --frozen
-uv run semantic-rca doctor
+uv run pytest -q
 ```
 
-Reproducing the published report needs neither Docker nor a GreptimeDB build.
-Running the provider measurement needs both: a GreptimeDB checkout at the
+That is everything needed to rescore the published artifacts and regenerate the
+report. It calls no model provider, and needs neither Docker nor a GreptimeDB
+build.
+
+Running the measurement yourself needs both: a GreptimeDB checkout at the
 protocol revision built in release mode, and Docker for the digest-pinned
 Prometheus, Loki, and Tempo images that back the `split_pillars` treatment. Each
 case starts its own four stores on loopback ports and removes them afterwards.
+Check that environment with:
+
+```bash
+uv run agent-rca doctor --greptimedb-repo /path/to/greptimedb
+```
 
 Build the wheel and source distribution with:
 
@@ -143,18 +151,18 @@ protocol or source bindings differ from the checked-out fixtures.
 ```bash
 output_dir=$(mktemp -d)
 
-uv run semantic-rca formal-suite-report \
-  --micro-artifact artifacts/measurement/semantic-rca-v34-micro.json \
-  --transfer-artifact artifacts/measurement/semantic-rca-v34-transfer.json \
-  --suite-protocol fixtures/reference/semantic-rca-v34-four-model-suite.json \
+uv run agent-rca formal-suite-report \
+  --micro-artifact artifacts/measurement/agent-rca-v34-micro.json \
+  --transfer-artifact artifacts/measurement/agent-rca-v34-transfer.json \
+  --suite-protocol fixtures/reference/agent-rca-v34-four-model-suite.json \
   --transfer-protocol fixtures/reference/transfer-v34-protocol.json \
-  --output-json "$output_dir/semantic-rca.json" \
-  --output-html "$output_dir/semantic-rca.html"
+  --output-json "$output_dir/agent-rca.json" \
+  --output-html "$output_dir/agent-rca.html"
 
-cmp artifacts/measurement/semantic-rca-v34.json \
-  "$output_dir/semantic-rca.json"
-cmp artifacts/measurement/semantic-rca-v34.html \
-  "$output_dir/semantic-rca.html"
+cmp artifacts/measurement/agent-rca-v34.json \
+  "$output_dir/agent-rca.json"
+cmp artifacts/measurement/agent-rca-v34.html \
+  "$output_dir/agent-rca.html"
 ```
 
 Run the complete provider-free repository validation with:
@@ -165,7 +173,7 @@ uv run ruff check src tests
 uv run ruff format --check src tests
 uv lock --check
 uv build
-shasum -a 256 -c artifacts/measurement/semantic-rca-v34-SHA256SUMS
+shasum -a 256 -c artifacts/measurement/agent-rca-v34-SHA256SUMS
 ```
 
 ## Reproduce source and Semantic Graph audits
@@ -178,10 +186,10 @@ batch is released. The command stops only the processes and containers it
 started and retains the run directories for inspection.
 
 ```bash
-uv run semantic-rca transfer-selection-audit \
+uv run agent-rca transfer-selection-audit \
   --output .reports/openrca2-transfer-selection-audit.json
 
-uv run semantic-rca transfer-preflight \
+uv run agent-rca transfer-preflight \
   --greptimedb-repo /path/to/greptimedb \
   --run-root .instances/openrca2-transfer-preflight \
   --output .reports/openrca2-transfer-preflight.json
@@ -204,28 +212,28 @@ The runner reads credentials from environment variables or macOS Keychain:
 
 | Provider | Environment variable | Keychain service |
 | --- | --- | --- |
-| OpenAI | `OPENAI_API_KEY` | `semantic-rca-bench-openai` |
-| Anthropic | `ANTHROPIC_API_KEY` | `semantic-rca-bench-anthropic` |
-| DeepSeek | `DEEPSEEK_API_KEY` | `semantic-rca-bench-deepseek` |
-| BigModel | `BIGMODEL_API_KEY` | `semantic-rca-bench-bigmodel` |
-| DashScope | `DASHSCOPE_API_KEY` | `semantic-rca-bench-dashscope` |
+| OpenAI | `OPENAI_API_KEY` | `agent-rca-bench-openai` |
+| Anthropic | `ANTHROPIC_API_KEY` | `agent-rca-bench-anthropic` |
+| DeepSeek | `DEEPSEEK_API_KEY` | `agent-rca-bench-deepseek` |
+| BigModel | `BIGMODEL_API_KEY` | `agent-rca-bench-bigmodel` |
+| DashScope | `DASHSCOPE_API_KEY` | `agent-rca-bench-dashscope` |
 
 DashScope also requires a caller-owned Beijing workspace Responses endpoint in
-`DASHSCOPE_BASE_URL` or the `semantic-rca-bench-dashscope-base-url` Keychain
+`DASHSCOPE_BASE_URL` or the `agent-rca-bench-dashscope-base-url` Keychain
 service. Tenant hostnames remain local runtime configuration.
 
 Add a key without placing it in shell history:
 
 ```bash
 security add-generic-password -U -a "$USER" \
-  -s semantic-rca-bench-openai -w
+  -s agent-rca-bench-openai -w
 ```
 
 Run pending end-to-end cells with the concurrency limits frozen in the transfer
 protocol:
 
 ```bash
-uv run semantic-rca transfer-run \
+uv run agent-rca transfer-run \
   --report .reports/openrca2-transfer-measurement.json \
   --run-root .instances/openrca2-transfer-measurement \
   --confirm-paid-api
@@ -241,7 +249,7 @@ report. A run-root lock rejects a second runner invocation. If an invocation
 stops with an active cell and no recorded result, the next invocation refuses
 to retry that cell automatically.
 
-Run `uv run semantic-rca --help` for the micro-benchmark, export, and
+Run `uv run agent-rca --help` for the micro-benchmark, export, and
 render commands. A runner failure is persisted as a failed cell. It does not
 silently fall back to another provider or abort the complete schedule.
 

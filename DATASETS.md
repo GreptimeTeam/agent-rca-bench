@@ -1,6 +1,6 @@
 # Dataset provenance and selection
 
-Semantic RCA Bench downloads upstream telemetry for local execution and does not
+Agent RCA Bench downloads upstream telemetry for local execution and does not
 redistribute source rows, labels, causal graphs, or archives. Public artifacts
 contain sanitized trajectories, derived facts, and source hashes.
 
@@ -190,7 +190,7 @@ source, identity, time scope, lineage, and result completeness. See
 RCAEval RE2-OB, Aegis, OpenRCA Market, and OpenRCA Telecom adapters remain
 available for smoke tests and source-fidelity audits. They are not part of the
 2026 report unless listed in the release cohort. Run
-`uv run semantic-rca --help` for their commands.
+`uv run agent-rca --help` for their commands.
 
 RCA100 supplies the four infrastructure-node cases of the v34 end-to-end cohort,
 alongside the ten OpenRCA2 service and edge cases. It is distributed inside

@@ -1,7 +1,7 @@
 import pytest
 
-from semantic_rca_bench.contracts import QueryResult, Visibility
-from semantic_rca_bench.greptimedb.profile import (
+from agent_rca_bench.contracts import QueryResult, Visibility
+from agent_rca_bench.greptimedb.profile import (
     TableProfileError,
     TableProfiler,
     _matched_search_terms,

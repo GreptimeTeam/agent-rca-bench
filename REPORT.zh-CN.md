@@ -1,4 +1,4 @@
-# Semantic RCA Bench — 2026 年报告
+# Agent RCA Bench — 2026 年报告
 
 [交互式报告](https://semantic-rca.greptime.com) · [English](REPORT.md)
 
@@ -234,10 +234,10 @@ GLM-5.3 按 CNY 计费，输入、缓存命中、输出分别为每百万 token 
 
 ## Artifacts
 
-- [Combined JSON](artifacts/measurement/semantic-rca-v34.json)
-- [中英文自包含 HTML](artifacts/measurement/semantic-rca-v34.html)
-- [Micro artifact](artifacts/measurement/semantic-rca-v34-micro.json)
-- [Transfer artifact](artifacts/measurement/semantic-rca-v34-transfer.json)
+- [Combined JSON](artifacts/measurement/agent-rca-v34.json)
+- [中英文自包含 HTML](artifacts/measurement/agent-rca-v34.html)
+- [Micro artifact](artifacts/measurement/agent-rca-v34-micro.json)
+- [Transfer artifact](artifacts/measurement/agent-rca-v34-transfer.json)
 
 Provider trajectory 在公开 release tag 之前执行。对应 tag 的代码可以验证脱敏 artifact，并确定性
 重建评分、聚合、JSON 和 HTML。重新调用 provider 属于 replication，不是报告复现的一部分。

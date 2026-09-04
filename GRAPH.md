@@ -82,7 +82,7 @@ first reduce repeated pairs to one median per case.
 ## Provider-free audit
 
 ```bash
-uv run semantic-rca graph-audit \
+uv run agent-rca graph-audit \
   --report .reports/smoke-openrca2-<run-id>.json
 ```
 

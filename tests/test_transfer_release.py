@@ -15,7 +15,7 @@ from test_transfer_scorer import (
     _run,
 )
 
-from semantic_rca_bench.contracts import (
+from agent_rca_bench.contracts import (
     AgentRun,
     AgentRunner,
     AgentUsage,
@@ -26,9 +26,9 @@ from semantic_rca_bench.contracts import (
     ToolTrace,
     Visibility,
 )
-from semantic_rca_bench.datasets.openrca2_transfer import TransferCaseSpec
-from semantic_rca_bench.transfer_adjudication import apply_semantic_adjudication
-from semantic_rca_bench.transfer_release import (
+from agent_rca_bench.datasets.openrca2_transfer import TransferCaseSpec
+from agent_rca_bench.transfer_adjudication import apply_semantic_adjudication
+from agent_rca_bench.transfer_release import (
     _apply_holm,
     _median_or_none,
     _model_reports,
@@ -432,7 +432,7 @@ def test_holm_refuses_more_tests_than_the_declared_family_size() -> None:
 
 
 def _families():
-    from semantic_rca_bench.transfer_protocol import load_transfer_protocol
+    from agent_rca_bench.transfer_protocol import load_transfer_protocol
 
     protocol, _ = load_transfer_protocol()
     return protocol.inference.confirmatory_families
@@ -489,7 +489,7 @@ def _three_arm_runs(models: list[str], cases: list[str]) -> list[dict[str, objec
 
 
 def test_three_arm_runs_produce_a_delta_for_each_confirmatory_family() -> None:
-    from semantic_rca_bench.transfer_release import _model_reports
+    from agent_rca_bench.transfer_release import _model_reports
 
     models = ["model-a", "model-b"]
     cases = [f"case-{index}" for index in range(14)]
@@ -517,7 +517,7 @@ def test_three_arm_runs_produce_a_delta_for_each_confirmatory_family() -> None:
 
 
 def test_a_missing_pair_member_fails_instead_of_reporting_no_effect() -> None:
-    from semantic_rca_bench.transfer_release import _model_reports
+    from agent_rca_bench.transfer_release import _model_reports
 
     runs = _three_arm_runs(["model-a"], ["case-0", "case-1"])
     # One cell loses its baseline. Every treatment is still present overall, so
@@ -635,8 +635,8 @@ def test_a_failed_native_call_may_omit_the_required_operation() -> None:
 
 
 def test_the_public_artifact_declares_every_contributing_dataset() -> None:
-    from semantic_rca_bench.transfer_protocol import load_transfer_protocol
-    from semantic_rca_bench.transfer_release import _source_dataset_licenses
+    from agent_rca_bench.transfer_protocol import load_transfer_protocol
+    from agent_rca_bench.transfer_release import _source_dataset_licenses
 
     _, cohort = load_transfer_protocol()
 
@@ -704,7 +704,7 @@ def test_a_relative_change_is_the_median_proportion_not_a_proportion_of_medians(
     simplification, and it answers a different question: it is a quantity no
     pair produced, and here it reports -30% where every case but one moved -50%.
     """
-    from semantic_rca_bench.transfer_release import _model_reports
+    from agent_rca_bench.transfer_release import _model_reports
 
     runs = _uneven_baseline_runs(
         {
@@ -735,7 +735,7 @@ def test_a_relative_change_is_the_median_proportion_not_a_proportion_of_medians(
 
 def test_a_zero_baseline_yields_no_proportion_rather_than_a_division() -> None:
     """A baseline of zero gives no scale, so the case carries null, not infinity."""
-    from semantic_rca_bench.transfer_release import _model_reports
+    from agent_rca_bench.transfer_release import _model_reports
 
     runs = _uneven_baseline_runs({"case-0": (0, 40), "case-1": (100, 50)})
 

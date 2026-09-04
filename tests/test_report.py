@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from semantic_rca_bench.protocol import benchmark_protocol
-from semantic_rca_bench.report import (
+from agent_rca_bench.protocol import benchmark_protocol
+from agent_rca_bench.report import (
     CASE_REPORT_SCHEMA_VERSION,
     MODEL_PRICING,
     TOKEN_ACCOUNTING,

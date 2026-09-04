@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from semantic_rca_bench.datasets.rca100 import (
+from agent_rca_bench.datasets.rca100 import (
     _component_contract,
     _fault_taxonomy,
     _iso_to_nanoseconds,

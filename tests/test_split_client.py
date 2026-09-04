@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from semantic_rca_bench.split_client import FanoutIngestClient, SplitBackendError
+from agent_rca_bench.split_client import FanoutIngestClient, SplitBackendError
 
 
 @dataclass

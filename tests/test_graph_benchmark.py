@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import semantic_rca_bench.graph_benchmark as graph_module
-from semantic_rca_bench.agent import StructuredAgentResult
-from semantic_rca_bench.contracts import (
+import agent_rca_bench.graph_benchmark as graph_module
+from agent_rca_bench.agent import StructuredAgentResult
+from agent_rca_bench.contracts import (
     AgentRunner,
     AgentUsage,
     ApiTransport,
@@ -13,7 +13,7 @@ from semantic_rca_bench.contracts import (
     ToolTrace,
     Visibility,
 )
-from semantic_rca_bench.graph_benchmark import (
+from agent_rca_bench.graph_benchmark import (
     DEVELOPMENT_GRAPH_FIXTURES,
     GraphAgentRun,
     GraphAnswer,

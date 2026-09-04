@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-import semantic_rca_bench.agent as agent_module
-from semantic_rca_bench.agent import (
+import agent_rca_bench.agent as agent_module
+from agent_rca_bench.agent import (
     SUBMIT_TOOL,
     AgentError,
     _agent_tools,
@@ -27,7 +27,7 @@ from semantic_rca_bench.agent import (
     _system_prompt,
     run_agent,
 )
-from semantic_rca_bench.contracts import (
+from agent_rca_bench.contracts import (
     ApiTransport,
     CaseInput,
     CausalScope,
@@ -38,8 +38,8 @@ from semantic_rca_bench.contracts import (
     QueryResult,
     Visibility,
 )
-from semantic_rca_bench.greptimedb.visibility import MAX_QUERY_MAX_ROWS
-from semantic_rca_bench.inspect import summarize_semantic_surfaces
+from agent_rca_bench.greptimedb.visibility import MAX_QUERY_MAX_ROWS
+from agent_rca_bench.inspect import summarize_semantic_surfaces
 
 
 def test_deepseek_model_uses_compatible_anthropic_endpoint(monkeypatch) -> None:
@@ -1817,7 +1817,7 @@ def test_the_end_to_end_arms_expose_promql_and_the_micro_benchmarks_do_not() -> 
 
 
 def test_the_promql_tool_offers_the_same_operations_in_every_arm() -> None:
-    from semantic_rca_bench.split_query import metrics_query_tool
+    from agent_rca_bench.split_query import metrics_query_tool
 
     greptimedb = metrics_query_tool(native_stack=False)
     split = metrics_query_tool(native_stack=True)
@@ -1839,7 +1839,7 @@ def test_the_raw_arm_cannot_read_metric_semantics_through_promql_metadata() -> N
 
 
 def test_the_raw_gateway_rejects_metric_metadata_even_if_the_model_asks() -> None:
-    from semantic_rca_bench.greptimedb.visibility import QueryGateway, QueryRejected
+    from agent_rca_bench.greptimedb.visibility import QueryGateway, QueryRejected
 
     class _Client:
         database = "case_001"
@@ -1864,7 +1864,7 @@ def test_a_split_tool_call_records_load_without_subtracting_a_null_row_count() -
     """
     import httpx
 
-    from semantic_rca_bench.split_query import SplitQueryGateway, split_investigation_tools
+    from agent_rca_bench.split_query import SplitQueryGateway, split_investigation_tools
 
     gateway = SplitQueryGateway(
         prometheus_endpoint="http://prometheus",

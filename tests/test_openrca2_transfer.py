@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from semantic_rca_bench.contracts import MechanismCode
-from semantic_rca_bench.datasets.openrca2_transfer import (
+from agent_rca_bench.contracts import MechanismCode
+from agent_rca_bench.datasets.openrca2_transfer import (
     MECHANISM_QUOTAS,
     SYSTEM_QUOTAS,
     deterministic_rank,

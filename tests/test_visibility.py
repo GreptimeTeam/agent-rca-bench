@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from semantic_rca_bench.contracts import QueryResult, Visibility
-from semantic_rca_bench.greptimedb.visibility import QueryGateway, QueryRejected
+from agent_rca_bench.contracts import QueryResult, Visibility
+from agent_rca_bench.greptimedb.visibility import QueryGateway, QueryRejected
 
 
 class StubClient:

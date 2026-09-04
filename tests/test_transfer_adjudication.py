@@ -1,6 +1,6 @@
 import pytest
 
-from semantic_rca_bench.contracts import (
+from agent_rca_bench.contracts import (
     AgentRun,
     AgentRunner,
     AgentUsage,
@@ -12,15 +12,15 @@ from semantic_rca_bench.contracts import (
     ToolTrace,
     Visibility,
 )
-from semantic_rca_bench.transfer_adjudication import (
+from agent_rca_bench.transfer_adjudication import (
     HumanAdjudicationDecision,
     SemanticJudgeDecision,
     apply_semantic_adjudication,
     build_semantic_adjudication_queue,
     resolve_semantic_adjudication,
 )
-from semantic_rca_bench.transfer_protocol import load_transfer_protocol
-from semantic_rca_bench.transfer_scorer import evaluate_transfer_run
+from agent_rca_bench.transfer_protocol import load_transfer_protocol
+from agent_rca_bench.transfer_scorer import evaluate_transfer_run
 
 
 def test_adjudication_queue_preserves_evidence_but_blinds_run_identity() -> None:

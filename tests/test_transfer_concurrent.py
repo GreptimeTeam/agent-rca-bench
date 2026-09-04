@@ -6,26 +6,26 @@ from types import SimpleNamespace
 
 import pytest
 
-from semantic_rca_bench.contracts import DatabaseLoad, Visibility
-from semantic_rca_bench.transfer_concurrent import (
+from agent_rca_bench.contracts import DatabaseLoad, Visibility
+from agent_rca_bench.transfer_concurrent import (
     TransferRunState,
     _case_execution_order,
     _exclusive_invocation,
     collect_source_audits_concurrently,
     execute_pending_runs_concurrently,
 )
-from semantic_rca_bench.transfer_formal import (
+from agent_rca_bench.transfer_formal import (
     PreparedTransferEnvironment,
     _failed_run,
     build_preflight_report,
 )
-from semantic_rca_bench.transfer_protocol import (
+from agent_rca_bench.transfer_protocol import (
     DEFAULT_PROTOCOL_FIXTURE,
     formal_schedule,
     load_transfer_protocol,
     sha256_file,
 )
-from semantic_rca_bench.transfer_scorer import evaluate_transfer_run
+from agent_rca_bench.transfer_scorer import evaluate_transfer_run
 
 
 def _source_audit(case_id: str) -> dict[str, object]:

@@ -1,8 +1,8 @@
 import httpx
 
-import semantic_rca_bench.split_audit as split_audit
-from semantic_rca_bench.protocols.otlp import TraceSpan
-from semantic_rca_bench.split_audit import tempo_search_visibility
+import agent_rca_bench.split_audit as split_audit
+from agent_rca_bench.protocols.otlp import TraceSpan
+from agent_rca_bench.split_audit import tempo_search_visibility
 
 
 def _span() -> TraceSpan:

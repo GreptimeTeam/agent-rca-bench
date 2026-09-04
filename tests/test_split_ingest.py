@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from semantic_rca_bench.protocols.otlp import HistogramMetricPoint, NumberMetricPoint
-from semantic_rca_bench.split_ingest import SplitIngestError, openrca2_prometheus_series
+from agent_rca_bench.protocols.otlp import HistogramMetricPoint, NumberMetricPoint
+from agent_rca_bench.split_ingest import SplitIngestError, openrca2_prometheus_series
 
 
 def _gauge(**overrides: object) -> NumberMetricPoint:

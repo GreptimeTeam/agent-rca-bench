@@ -6,11 +6,11 @@ payloads, reasoning text, credentials, endpoints, and machine-local paths.
 
 The active report uses:
 
-- `semantic-rca-v34-micro.json`: 128 fixed-cohort Discovery and Graph cells.
-- `semantic-rca-v34-transfer.json`: 336 end-to-end RCA cells.
-- `semantic-rca-v34.json`: deterministic combined report data.
-- `semantic-rca-v34.html`: self-contained bilingual report.
-- `semantic-rca-v34-SHA256SUMS`: hashes for the public artifacts and narrative
+- `agent-rca-v34-micro.json`: 128 fixed-cohort Discovery and Graph cells.
+- `agent-rca-v34-transfer.json`: 336 end-to-end RCA cells.
+- `agent-rca-v34.json`: deterministic combined report data.
+- `agent-rca-v34.html`: self-contained bilingual report.
+- `agent-rca-v34-SHA256SUMS`: hashes for the public artifacts and narrative
   reports, listed as paths relative to the repository root.
 
 Regenerate the combined JSON and HTML with:
@@ -18,24 +18,24 @@ Regenerate the combined JSON and HTML with:
 ```bash
 output_dir=$(mktemp -d)
 
-uv run semantic-rca formal-suite-report \
-  --micro-artifact artifacts/measurement/semantic-rca-v34-micro.json \
-  --transfer-artifact artifacts/measurement/semantic-rca-v34-transfer.json \
-  --suite-protocol fixtures/reference/semantic-rca-v34-four-model-suite.json \
+uv run agent-rca formal-suite-report \
+  --micro-artifact artifacts/measurement/agent-rca-v34-micro.json \
+  --transfer-artifact artifacts/measurement/agent-rca-v34-transfer.json \
+  --suite-protocol fixtures/reference/agent-rca-v34-four-model-suite.json \
   --transfer-protocol fixtures/reference/transfer-v34-protocol.json \
-  --output-json "$output_dir/semantic-rca.json" \
-  --output-html "$output_dir/semantic-rca.html"
+  --output-json "$output_dir/agent-rca.json" \
+  --output-html "$output_dir/agent-rca.html"
 
-cmp artifacts/measurement/semantic-rca-v34.json \
-  "$output_dir/semantic-rca.json"
-cmp artifacts/measurement/semantic-rca-v34.html \
-  "$output_dir/semantic-rca.html"
+cmp artifacts/measurement/agent-rca-v34.json \
+  "$output_dir/agent-rca.json"
+cmp artifacts/measurement/agent-rca-v34.html \
+  "$output_dir/agent-rca.html"
 ```
 
 Verify the published hashes from the repository root:
 
 ```bash
-shasum -a 256 -c artifacts/measurement/semantic-rca-v34-SHA256SUMS
+shasum -a 256 -c artifacts/measurement/agent-rca-v34-SHA256SUMS
 ```
 
 The exporter validates source artifact hashes before generating either output.

@@ -1,6 +1,6 @@
 import pytest
 
-from semantic_rca_bench.contracts import (
+from agent_rca_bench.contracts import (
     AgentRun,
     AgentUsage,
     Diagnosis,
@@ -12,7 +12,7 @@ from semantic_rca_bench.contracts import (
     ToolTrace,
     Visibility,
 )
-from semantic_rca_bench.evaluation import (
+from agent_rca_bench.evaluation import (
     component_matches,
     evaluate,
     fault_type_matches,

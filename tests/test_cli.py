@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-import semantic_rca_bench.cli as cli_module
-from semantic_rca_bench.cli import (
+import agent_rca_bench.cli as cli_module
+from agent_rca_bench.cli import (
     _assert_neutral_database_name,
     _batch_output,
     _discovery_output,
@@ -18,15 +18,15 @@ from semantic_rca_bench.cli import (
     _validate_microbenchmark_fixture_args,
     discovery_run,
 )
-from semantic_rca_bench.contracts import (
+from agent_rca_bench.contracts import (
     AgentRunner,
     DatabaseLoad,
     GroundTruth,
     QueryResult,
     Visibility,
 )
-from semantic_rca_bench.discovery import DiscoveryAudit
-from semantic_rca_bench.protocol import (
+from agent_rca_bench.discovery import DiscoveryAudit
+from agent_rca_bench.protocol import (
     benchmark_protocol,
     discovery_protocol,
     graph_protocol,
@@ -121,7 +121,7 @@ def test_formal_suite_separates_micro_preflight_from_paid_execution() -> None:
     ]
 
     assert not hasattr(preflight, "confirm_paid_api")
-    assert str(preflight.protocol) == ("fixtures/reference/semantic-rca-v34-four-model-suite.json")
+    assert str(preflight.protocol) == ("fixtures/reference/agent-rca-v34-four-model-suite.json")
     with pytest.raises(SystemExit):
         _parser().parse_args(execution)
     paid = _parser().parse_args([*execution, "--max-new-runs", "1", "--confirm-paid-api"])
@@ -144,7 +144,7 @@ def test_formal_suite_report_uses_current_public_fixtures() -> None:
         ]
     )
 
-    assert str(args.suite_protocol) == ("fixtures/reference/semantic-rca-v34-four-model-suite.json")
+    assert str(args.suite_protocol) == ("fixtures/reference/agent-rca-v34-four-model-suite.json")
     assert str(args.transfer_protocol) == ("fixtures/reference/transfer-v34-protocol.json")
 
 

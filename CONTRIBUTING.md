@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for looking at Semantic RCA Bench. This file covers what a change has to
+Thanks for looking at Agent RCA Bench. This file covers what a change has to
 satisfy before it can land.
 
 Read [AGENTS.md](AGENTS.md) first. It is the working contract for this
@@ -13,8 +13,8 @@ contributors alike.
 Python 3.11 and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/GreptimeTeam/semantic-rca-bench.git
-cd semantic-rca-bench
+git clone https://github.com/GreptimeTeam/agent-rca-bench.git
+cd agent-rca-bench
 uv sync --extra dev --frozen
 uv run pytest -q
 ```
@@ -32,7 +32,7 @@ uv run ruff check src tests
 uv run ruff format --check src tests
 uv lock --check
 uv build
-shasum -a 256 -c artifacts/measurement/semantic-rca-v34-SHA256SUMS
+shasum -a 256 -c artifacts/measurement/agent-rca-v34-SHA256SUMS
 ```
 
 If your change touches report generation, confirm the published artifacts still

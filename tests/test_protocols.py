@@ -10,15 +10,15 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
 )
 
-from semantic_rca_bench.protocols.loki import LogRecord, to_nanoseconds, write_logs
-from semantic_rca_bench.protocols.otlp import (
+from agent_rca_bench.protocols.loki import LogRecord, to_nanoseconds, write_logs
+from agent_rca_bench.protocols.otlp import (
     HistogramMetricPoint,
     NumberMetricPoint,
     OtlpMetricWriter,
     OtlpTraceWriter,
     TraceSpan,
 )
-from semantic_rca_bench.protocols.prometheus import (
+from agent_rca_bench.protocols.prometheus import (
     encode_write_request,
     prometheus_metric_name,
     read_series,

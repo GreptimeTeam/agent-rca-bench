@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-import semantic_rca_bench.datasets.openrca as openrca_module
-from semantic_rca_bench.contracts import IngestCounts, QueryResult
-from semantic_rca_bench.datasets.openrca import (
+import agent_rca_bench.datasets.openrca as openrca_module
+from agent_rca_bench.contracts import IngestCounts, QueryResult
+from agent_rca_bench.datasets.openrca import (
     DEFAULT_MARKET_CASE,
     DEFAULT_TELECOM_CASE,
     MARKET_LOG_FILES,

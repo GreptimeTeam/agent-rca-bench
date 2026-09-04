@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from semantic_rca_bench.contracts import (
+from agent_rca_bench.contracts import (
     AgentRun,
     AgentRunner,
     AgentUsage,
@@ -20,11 +20,11 @@ from semantic_rca_bench.contracts import (
     ToolTrace,
     Visibility,
 )
-from semantic_rca_bench.datasets.openrca2_transfer import (
+from agent_rca_bench.datasets.openrca2_transfer import (
     TransferCaseSpec,
     load_selection_fixture,
 )
-from semantic_rca_bench.transfer_scorer import evaluate_transfer_run
+from agent_rca_bench.transfer_scorer import evaluate_transfer_run
 
 SELECTION = Path("fixtures/reference/openrca2-transfer-v32-selection.json")
 
@@ -2333,7 +2333,7 @@ def test_cross_signal_detection_ignores_subquery_and_cte_aliases() -> None:
     Counting alias names as tables inflated this figure fourfold in an earlier
     draft, which is why the check parses the statement instead of matching text.
     """
-    from semantic_rca_bench.formal_report import _signal_kinds
+    from agent_rca_bench.formal_report import _signal_kinds
 
     assert _signal_kinds("SELECT * FROM traces t JOIN logs l ON t.trace_id = l.trace_id") == {
         "trace",

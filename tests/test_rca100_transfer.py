@@ -4,28 +4,28 @@ from types import SimpleNamespace
 
 import pytest
 
-from semantic_rca_bench.contracts import CausalScope, MechanismCode
-from semantic_rca_bench.datasets import rca100_audit
-from semantic_rca_bench.datasets.openrca2 import OpenRCA2Error
-from semantic_rca_bench.datasets.openrca2_transfer import canonical_mechanism_evidence_query
-from semantic_rca_bench.datasets.rca100_transfer import (
+from agent_rca_bench.contracts import CausalScope, MechanismCode
+from agent_rca_bench.datasets import rca100_audit
+from agent_rca_bench.datasets.openrca2 import OpenRCA2Error
+from agent_rca_bench.datasets.openrca2_transfer import canonical_mechanism_evidence_query
+from agent_rca_bench.datasets.rca100_transfer import (
     MECHANISM_QUOTAS,
     CandidateProfile,
     load_selection_fixture,
     mark_duplicate_incidents,
     typical_case_per_fault_type,
 )
-from semantic_rca_bench.edge_audit import (
+from agent_rca_bench.edge_audit import (
     canonical_graph_edge_query,
     virtual_peer_edge_query,
 )
-from semantic_rca_bench.protocols.otlp import TraceSpan
-from semantic_rca_bench.transfer_formal import (
+from agent_rca_bench.protocols.otlp import TraceSpan
+from agent_rca_bench.transfer_formal import (
     _CASE_ADAPTERS,
     OPENRCA2_ADAPTER,
     RCA100_ADAPTER,
 )
-from semantic_rca_bench.transfer_release import _valid_public_locus_shape
+from agent_rca_bench.transfer_release import _valid_public_locus_shape
 
 SELECTION = Path("fixtures/reference/rca100-transfer-node-selection.json")
 

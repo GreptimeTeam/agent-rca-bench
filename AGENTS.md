@@ -1,4 +1,4 @@
-# Semantic RCA Bench contributor guide
+# Agent RCA Bench contributor guide
 
 This guide applies to the entire repository. Read any more specific `AGENTS.md`
 on the path you edit. If `.local/AGENTS.md` exists, read it as well. Files under
@@ -6,7 +6,7 @@ on the path you edit. If `.local/AGENTS.md` exists, read it as well. Files under
 
 ## Purpose
 
-Semantic RCA Bench measures how the observability stack behind an LLM changes
+Agent RCA Bench measures how the observability stack behind an LLM changes
 the accuracy, investigation work, and cost of root cause analysis (RCA). One
 measurement answers three questions:
 
@@ -106,7 +106,7 @@ the database or benchmark.
   common cross-provider compute scale.
 
 `SCORING.md` defines diagnosis, citation, claim grounding, reliability, and
-eligibility. `src/semantic_rca_bench/protocol.py` and the active reference
+eligibility. `src/agent_rca_bench/protocol.py` and the active reference
 fixtures are the machine-readable protocol sources.
 
 ## Source fidelity
@@ -250,16 +250,16 @@ the fallback cannot state a different result from the page.
 - `fixtures/reference/`: active source-selection and formal protocol fixtures.
 - `fixtures/measurement/`: frozen micro-benchmark case fixtures and selection
   manifests.
-- `src/semantic_rca_bench/agent.py`: provider runners and tool loop.
-- `src/semantic_rca_bench/formal_suite*.py`: micro schedule, execution, export,
+- `src/agent_rca_bench/agent.py`: provider runners and tool loop.
+- `src/agent_rca_bench/formal_suite*.py`: micro schedule, execution, export,
   and protocol binding.
-- `src/semantic_rca_bench/transfer_*.py`: end-to-end schedule, scorer, export,
+- `src/agent_rca_bench/transfer_*.py`: end-to-end schedule, scorer, export,
   and report aggregation.
-- `src/semantic_rca_bench/datasets/`: source adapters and provider-free audits.
-- `src/semantic_rca_bench/greptimedb/`: GreptimeDB process and query boundary.
-- `src/semantic_rca_bench/formal_report.py`: deterministic combined report.
-- `src/semantic_rca_bench/formal_report_view.py`: view model and HTML renderer.
-- `src/semantic_rca_bench/assets/report/`: page skeleton, stylesheet, renderer,
+- `src/agent_rca_bench/datasets/`: source adapters and provider-free audits.
+- `src/agent_rca_bench/greptimedb/`: GreptimeDB process and query boundary.
+- `src/agent_rca_bench/formal_report.py`: deterministic combined report.
+- `src/agent_rca_bench/formal_report_view.py`: view model and HTML renderer.
+- `src/agent_rca_bench/assets/report/`: page skeleton, stylesheet, renderer,
   and static interface strings, inlined into one self-contained HTML file.
 - `tests/`: protocol, scorer, runner, adapter, and regression tests.
 

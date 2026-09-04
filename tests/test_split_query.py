@@ -1,9 +1,9 @@
 import httpx
 import pytest
 
-from semantic_rca_bench.contracts import ToolTrace
-from semantic_rca_bench.evidence import is_valid_evidence_trace
-from semantic_rca_bench.split_query import (
+from agent_rca_bench.contracts import ToolTrace
+from agent_rca_bench.evidence import is_valid_evidence_trace
+from agent_rca_bench.split_query import (
     NativeQueryError,
     NativeQueryResult,
     SplitQueryGateway,

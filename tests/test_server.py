@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-import semantic_rca_bench.greptimedb.server as server_module
-from semantic_rca_bench.greptimedb.server import inspect_checkout, write_json
+import agent_rca_bench.greptimedb.server as server_module
+from agent_rca_bench.greptimedb.server import inspect_checkout, write_json
 
 
 def test_inspect_checkout_selects_bound_release_binary(tmp_path, monkeypatch) -> None:

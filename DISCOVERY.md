@@ -65,7 +65,7 @@ top-five catalog result, and isolated ingestion into an empty GreptimeDB
 instance.
 
 ```bash
-uv run semantic-rca discovery-audit \
+uv run agent-rca discovery-audit \
   --report .reports/smoke-openrca-<run-id>.json
 ```
 

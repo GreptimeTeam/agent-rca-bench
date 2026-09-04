@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import semantic_rca_bench.discovery as discovery_module
-from semantic_rca_bench.agent import StructuredAgentResult
-from semantic_rca_bench.contracts import (
+import agent_rca_bench.discovery as discovery_module
+from agent_rca_bench.agent import StructuredAgentResult
+from agent_rca_bench.contracts import (
     AgentRunner,
     AgentUsage,
     ApiTransport,
@@ -13,7 +13,7 @@ from semantic_rca_bench.contracts import (
     ToolTrace,
     Visibility,
 )
-from semantic_rca_bench.discovery import (
+from agent_rca_bench.discovery import (
     DEVELOPMENT_FIXTURES,
     DiscoveryAgentRun,
     DiscoveryAnswer,

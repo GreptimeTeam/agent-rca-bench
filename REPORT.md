@@ -1,4 +1,4 @@
-# Semantic RCA Bench — 2026 report
+# Agent RCA Bench — 2026 report
 
 [Interactive report](https://semantic-rca.greptime.com) · [中文](REPORT.zh-CN.md)
 
@@ -257,10 +257,10 @@ CNY per USD, verified on 2026-09-03 at <https://tradingeconomics.com/china/curre
 
 ## Artifacts
 
-- [Combined JSON](artifacts/measurement/semantic-rca-v34.json)
-- [Self-contained HTML](artifacts/measurement/semantic-rca-v34.html)
-- [Micro artifact](artifacts/measurement/semantic-rca-v34-micro.json)
-- [Transfer artifact](artifacts/measurement/semantic-rca-v34-transfer.json)
+- [Combined JSON](artifacts/measurement/agent-rca-v34.json)
+- [Self-contained HTML](artifacts/measurement/agent-rca-v34.html)
+- [Micro artifact](artifacts/measurement/agent-rca-v34-micro.json)
+- [Transfer artifact](artifacts/measurement/agent-rca-v34-transfer.json)
 
 The provider trajectories were executed before the public release tag. The tagged tree validates
 the sanitized artifacts and deterministically regenerates scoring, aggregates, JSON, and HTML.

@@ -8,7 +8,7 @@ This repository publishes a measurement, not a deployed service. Fixes land on
 ## Reporting a vulnerability
 
 Report privately through
-[GitHub security advisories](https://github.com/GreptimeTeam/semantic-rca-bench/security/advisories/new),
+[GitHub security advisories](https://github.com/GreptimeTeam/agent-rca-bench/security/advisories/new),
 or email `security@greptime.com` if you cannot use that form. Do not open a
 public issue for a vulnerability.
 

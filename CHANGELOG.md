@@ -14,6 +14,13 @@ protocol.
 
 ## [0.1.0] - 2026-09-04
 
+Published as `agent-rca-bench`. The project was developed under the name
+`semantic-rca-bench`, which named one of the three interfaces it compares
+rather than the comparison itself. Identifiers frozen inside the v34
+measurement keep the earlier prefix: case ids, artifact types, and the suite
+protocol revision belong to that measurement's identity and are not rewritten
+to match a later name.
+
 First public release, carrying benchmark protocol v34.
 
 ### Measurement
@@ -62,5 +69,5 @@ First public release, carrying benchmark protocol v34.
 - Costs are estimates from frozen provider rates, not invoices, and are kept in
   the currency each provider billed.
 
-[Unreleased]: https://github.com/GreptimeTeam/semantic-rca-bench/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/GreptimeTeam/semantic-rca-bench/releases/tag/v0.1.0
+[Unreleased]: https://github.com/GreptimeTeam/agent-rca-bench/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/GreptimeTeam/agent-rca-bench/releases/tag/v0.1.0

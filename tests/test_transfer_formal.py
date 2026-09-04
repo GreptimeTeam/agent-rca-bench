@@ -5,16 +5,16 @@ from types import SimpleNamespace
 
 import pytest
 
-import semantic_rca_bench.transfer_formal as transfer_formal
-from semantic_rca_bench.contracts import DatabaseLoad, Visibility
-from semantic_rca_bench.transfer_formal import (
+import agent_rca_bench.transfer_formal as transfer_formal
+from agent_rca_bench.contracts import DatabaseLoad, Visibility
+from agent_rca_bench.transfer_formal import (
     PreparedTransferEnvironment,
     build_preflight_report,
     execute_case_runs,
     source_semantic_sha256,
     validate_private_report,
 )
-from semantic_rca_bench.transfer_protocol import (
+from agent_rca_bench.transfer_protocol import (
     DEFAULT_PROTOCOL_FIXTURE,
     load_transfer_protocol,
 )
@@ -161,7 +161,7 @@ GATE_PRODUCERS = {
 
 
 def _module_ast(dotted: str) -> ast.Module:
-    return ast.parse((Path("src/semantic_rca_bench") / f"{dotted}.py").read_text())
+    return ast.parse((Path("src/agent_rca_bench") / f"{dotted}.py").read_text())
 
 
 def _function(tree: ast.Module, name: str) -> ast.FunctionDef:
@@ -278,7 +278,7 @@ def test_a_split_cell_records_no_greptimedb_rows_and_survives_a_runner_failure()
 
 
 def test_every_arm_gets_the_same_agent_facing_query_timeout() -> None:
-    source = Path("src/semantic_rca_bench/transfer_formal.py").read_text()
+    source = Path("src/agent_rca_bench/transfer_formal.py").read_text()
 
     # A shorter budget on one store turns a slow query into a tool failure
     # there and a citable result elsewhere, which moves headline eligibility.

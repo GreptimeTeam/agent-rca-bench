@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import semantic_rca_bench.split_stack as split_stack_module
-from semantic_rca_bench.split_stack import ManagedSplitStack, SplitStackError
-from semantic_rca_bench.transfer_protocol import SplitStackImages, load_transfer_protocol
+import agent_rca_bench.split_stack as split_stack_module
+from agent_rca_bench.split_stack import ManagedSplitStack, SplitStackError
+from agent_rca_bench.transfer_protocol import SplitStackImages, load_transfer_protocol
 
 
 def test_the_protocol_pins_every_split_stack_image_by_digest() -> None:
@@ -37,7 +37,7 @@ def test_the_running_stack_uses_the_images_the_protocol_bound() -> None:
     # A digest changed in code but not in the fixture would otherwise run
     # unnoticed, because nothing else compares the two.
     assert fixture["split_stack_images"] == protocol.split_stack_images.model_dump()
-    source = Path("src/semantic_rca_bench/transfer_formal.py").read_text()
+    source = Path("src/agent_rca_bench/transfer_formal.py").read_text()
     assert "images=SplitStackImages(**protocol.split_stack_images.model_dump())" in source
 
 

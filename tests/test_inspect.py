@@ -1,7 +1,7 @@
 import pytest
 
-from semantic_rca_bench.contracts import CaseInput, QueryResult
-from semantic_rca_bench.inspect import (
+from agent_rca_bench.contracts import CaseInput, QueryResult
+from agent_rca_bench.inspect import (
     GraphIsolationError,
     assert_semantic_graph_isolated,
     assert_semantic_graph_window_empty,
