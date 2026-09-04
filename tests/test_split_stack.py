@@ -77,3 +77,12 @@ def test_failed_docker_run_removes_its_created_container(tmp_path, monkeypatch) 
         stack._start_loki()
 
     assert commands[-1] == ["docker", "rm", "--force", stack._names["loki"]]
+
+
+def test_loki_disables_automatic_stream_sharding(tmp_path) -> None:
+    stack = ManagedSplitStack(tmp_path / "split")
+
+    stack._write_configs()
+
+    config = (stack.run_dir / "loki" / "loki.yml").read_text()
+    assert "shard_streams:\n    enabled: false" in config

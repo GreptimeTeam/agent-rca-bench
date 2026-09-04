@@ -91,6 +91,7 @@ def audit_split_storage(
         "prometheus_preserves_the_frozen_mechanism": metrics["mechanism_preserved"],
         "loki_stores_every_source_log": logs["equal"],
         "loki_keeps_the_log_tables_apart": logs["tables_distinguishable"],
+        "loki_adds_no_generated_labels": not logs["loki_generated_labels"],
         "tempo_sampled_spans_match_the_source": traces["sample_equal"],
         "tempo_search_answers_in_the_source_window": traces["source_window_traceql_search"],
         "tempo_service_names_are_source_declared": traces["service_names_declared"],

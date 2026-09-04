@@ -602,6 +602,37 @@ def test_a_split_run_publishes_and_rescores_from_the_public_artifact() -> None:
     assert payload["database_load"]["rows_returned"] is None
 
 
+def test_a_failed_native_call_may_omit_the_required_operation() -> None:
+    case = _case(0)
+    run = _split_run(case)
+    failed = ToolTrace(
+        tool_name="query_metrics",
+        input={},
+        query_id=None,
+        output=None,
+        error="unsupported Prometheus operation: ",
+        database_load=DatabaseLoad(query_count=0, rows_returned=None),
+    )
+    run = run.model_copy(
+        update={
+            "tool_calls": [*run.tool_calls, failed],
+            "tool_calls_requested": 2,
+        }
+    )
+    evaluation = _evaluate(run, case)
+
+    payload = sanitize_transfer_run(
+        run, evaluation, case, DatabaseLoad(query_count=1, rows_returned=None)
+    )
+    public_evaluation = _validate(payload, index=0)
+
+    summary = payload["tool_calls"][1]
+    assert summary["input"] == {}
+    assert summary["error"] is True
+    assert summary["result"] is None
+    assert public_evaluation["citations_execution_valid"] is True
+
+
 def test_the_public_artifact_declares_every_contributing_dataset() -> None:
     from semantic_rca_bench.transfer_protocol import load_transfer_protocol
     from semantic_rca_bench.transfer_release import _source_dataset_licenses

@@ -352,6 +352,11 @@ ingester:
     dir: /loki/wal
     disk_full_threshold: 0
 limits_config:
+  # Automatic stream sharding is reactive and exposes `__stream_shard__` to
+  # queries. The benchmark requires the agent-visible labels to come from the
+  # source rather than Loki's ingestion timing.
+  shard_streams:
+    enabled: false
   ingestion_rate_strategy: local
   ingestion_rate_mb: 1000
   ingestion_burst_size_mb: 1000

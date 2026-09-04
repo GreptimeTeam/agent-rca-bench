@@ -119,6 +119,55 @@ def test_loki_extra_records_are_reported_as_a_gate_failure() -> None:
     assert audit["tables"]["events"]["extra_records"] == 1
 
 
+def test_loki_generated_labels_fail_the_storage_audit(monkeypatch) -> None:
+    monkeypatch.setattr(
+        split_audit,
+        "_audit_metrics",
+        lambda *_args, **_kwargs: {"equal": True, "mechanism_preserved": True},
+    )
+    monkeypatch.setattr(
+        split_audit,
+        "_audit_logs",
+        lambda *_args, **_kwargs: {
+            "equal": True,
+            "tables_distinguishable": True,
+            "loki_generated_labels": {"__stream_shard__": 1},
+        },
+    )
+    monkeypatch.setattr(
+        split_audit,
+        "_audit_traces",
+        lambda *_args, **_kwargs: {
+            "sample_equal": True,
+            "source_window_traceql_search": True,
+            "service_names_declared": True,
+            "causal_traces_sampled": 0,
+            "causal_traces_in_source": 0,
+            "causal_service_search": {"reachable": True},
+        },
+    )
+
+    audit = split_audit.audit_split_storage(
+        prometheus_endpoint="http://prometheus",
+        loki_endpoint="http://loki",
+        tempo_endpoint="http://tempo",
+        window=(0, 1),
+        expected_metrics=[],
+        expected_logs={},
+        expected_spans=[],
+        trace_scope_name="scope",
+        ingestion_audit={
+            "targets": {
+                "greptimedb": {"traces": {"rejected_items": 0}},
+                "split": {"traces": {"rejected_items": 0}},
+            }
+        },
+    )
+
+    assert audit["gates"]["loki_adds_no_generated_labels"] is False
+    assert audit["pass"] is False
+
+
 def test_mechanism_facts_replay_the_frozen_oracle_against_stored_samples() -> None:
     mechanism = {
         "source_table": "k8s_container_restarts",

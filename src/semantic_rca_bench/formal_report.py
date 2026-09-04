@@ -1199,7 +1199,7 @@ def _localized_report_body(report, language):
     )
     if language == "zh":
         eyebrow = "GreptimeDB Semantic Graph · 配对 Agent Benchmark"
-        lede = "LLM agent 使用 Raw telemetry 或完整 Semantic Graph 调查真实故障的开放评测。"
+        lede = "LLM agent 通过 Split、Raw 或完整 Semantic Graph 接口调查真实故障的开放评测。"
         actions = (
             f'<a href="{report_json}" download>下载报告 JSON</a>'
             '<a href="https://github.com/GreptimeTeam/semantic-rca-bench#reproduce-the-published-report">复现报告</a>'
@@ -1227,18 +1227,14 @@ def _localized_report_body(report, language):
         glossary = (
             ("Run", "一个模型 × 一个故障 × 一个 treatment × 一次重复。"),
             ("Raw / Graph", "Raw 只含遥测与 SQL；Graph 额外包含完整 Semantic Graph 能力。"),
-            ("合格 case", "Raw 和 Graph 均诊断正确、引用有效且执行可靠的配对 case。"),
+            ("合格 case", "参与比较的两个 treatment 均诊断正确、引用有效且执行可靠的配对 case。"),
             ("Case median", "同一模型与 case 的重复差值先取中位数。"),
-            ("Δ", "Graph − Raw；负数表示 Graph 使用的资源更少。"),
+            ("Δ", "按表头计算 Graph − Raw 或 Raw − Split；负数表示左侧 treatment 使用的资源更少。"),
             ("Holm p", "对同一检验族做多重比较校正后的 p 值。"),
         )
         attribution_title = "数据来源与致谢"
         conclusion = "结论"
-        conclusion_text = (
-            "Semantic Graph 在多数聚焦任务中明显压缩检索数据，依赖导航场景最稳定；"
-            "但本轮没有证明它能普遍改善端到端 RCA 效率或成本。模型和故障机制决定"
-            "语义能力能否转化为更少的 rows、calls、input、output 或成本。"
-        )
+        conclusion_text = _conclusion_text(report, language)
         sections = {
             "cards": "模型结果",
             "scores": "模型能力评分",
@@ -1329,8 +1325,8 @@ def _localized_report_body(report, language):
     else:
         eyebrow = "GreptimeDB Semantic Graph · paired agent benchmark"
         lede = (
-            "An open evaluation of LLM agents investigating real incidents with raw telemetry "
-            "or the complete Semantic Graph."
+            "An open evaluation of LLM agents investigating real incidents through Split, "
+            "Raw, or complete Semantic Graph interfaces."
         )
         actions = (
             f'<a href="{report_json}" download>Download report JSON</a>'
@@ -1365,20 +1361,19 @@ def _localized_report_body(report, language):
             ("Raw / Graph", "Raw provides telemetry and SQL; Graph adds the full Semantic Graph."),
             (
                 "Eligible case",
-                "A paired case where Raw and Graph are correct, cited, and reliable.",
+                "A paired case where both compared treatments are correct, cited, and reliable.",
             ),
             ("Case median", "The median paired-run difference within one model and case."),
-            ("Δ", "Graph − Raw; a negative value means Graph used fewer resources."),
+            (
+                "Δ",
+                "Graph − Raw or Raw − Split, as labeled; a negative value favors the "
+                "left-hand treatment.",
+            ),
             ("Holm p", "A p value adjusted for multiple comparisons in the same test family."),
         )
         attribution_title = "Datasets and acknowledgements"
         conclusion = "Conclusion"
-        conclusion_text = (
-            "Semantic Graph compresses retrieval in most focused tasks, with the most stable "
-            "effect in dependency navigation. This measurement does not show a general "
-            "end-to-end RCA efficiency or cost improvement. The model and fault mechanism "
-            "determine whether semantic capabilities reduce rows, calls, input, output, or cost."
-        )
+        conclusion_text = _conclusion_text(report, language)
         sections = {
             "cards": "Model results",
             "scores": "Model capability score",
@@ -1473,11 +1468,7 @@ def _localized_report_body(report, language):
         else f"Across all {model_count} models: Raw {diagnosis_raw}/{runs_per_treatment}; "
         f"Graph {diagnosis_graph}/{runs_per_treatment}."
     )
-    primary_result = (
-        "聚焦检索更省，端到端因场景而异"
-        if language == "zh"
-        else "Focused retrieval improves; E2E varies"
-    )
+    primary_result = _primary_result(report, language)
     capability_details = _details(
         (
             f"查看 {capability_rubric_label()} 评分细则和精确分数"
@@ -2146,20 +2137,209 @@ def _mechanism_row_direction(report: Mapping[str, object]) -> tuple[int, int, in
     return improved, regressed, estimable
 
 
+def _confirmatory_primary_results(report: Mapping[str, object]) -> list[dict[str, object]]:
+    results = []
+    reports = _mapping(report, "model_reports")
+    for model in report["model_order"]:
+        transfer = _mapping(_mapping(reports, model), "transfer")
+        raw_families = transfer.get("confirmatory_families")
+        if isinstance(raw_families, Mapping):
+            families = raw_families
+        else:
+            families = {
+                "semantic_layer": {
+                    "comparison": "semantic_graph - raw",
+                    "primary_metrics": _mapping(transfer, "primary_metrics"),
+                }
+            }
+        for family_name, raw_family in families.items():
+            if not isinstance(raw_family, Mapping):
+                raise ValueError("confirmatory family result is not an object")
+            metrics = raw_family.get("primary_metrics")
+            if not isinstance(metrics, Mapping):
+                raise ValueError("confirmatory family primary metrics are not an object")
+            comparison = raw_family.get("comparison")
+            if not isinstance(comparison, str):
+                raise ValueError("confirmatory family comparison is malformed")
+            for metric_name, raw_metric in metrics.items():
+                if not isinstance(raw_metric, Mapping):
+                    raise ValueError("confirmatory primary metric is not an object")
+                results.append(
+                    {
+                        "family": str(family_name),
+                        "model": str(model),
+                        "metric_name": str(metric_name),
+                        "comparison": comparison,
+                        "effect": dict(raw_metric),
+                    }
+                )
+    return results
+
+
+def _significant_primary_results(
+    report: Mapping[str, object], family: str | None = None
+) -> list[dict[str, object]]:
+    return [
+        result
+        for result in _confirmatory_primary_results(report)
+        if (family is None or result["family"] == family)
+        and isinstance(_mapping(result, "effect").get("holm_adjusted_p"), (int, float))
+        and float(_mapping(result, "effect")["holm_adjusted_p"]) < 0.05
+    ]
+
+
+def _primary_metric_label(metric_name: object, language: str) -> str:
+    labels = {
+        "correct_completion_tool_calls": (
+            "correct-completion tool calls",
+            "正确完成所需的工具调用",
+        ),
+        "provider_visible_input_tokens": (
+            "provider-visible input tokens",
+            "provider-visible input",
+        ),
+        "rows_returned": ("rows returned", "返回行数"),
+    }
+    english, chinese = labels.get(str(metric_name), (str(metric_name), str(metric_name)))
+    return chinese if language == "zh" else english
+
+
+def _treatment_label(value: str) -> str:
+    return {
+        "raw": "Raw",
+        "semantic_graph": "Graph",
+        "split_pillars": "Split",
+    }.get(value, value)
+
+
+def _significant_result_text(result: Mapping[str, object], language: str) -> str:
+    effect = _mapping(result, "effect")
+    comparison = str(result["comparison"])
+    parts = comparison.split(" - ")
+    if len(parts) != 2:
+        raise ValueError("confirmatory family comparison is malformed")
+    delta = effect.get("case_median_delta")
+    if not isinstance(delta, (int, float)):
+        raise ValueError("significant primary result has no case median delta")
+    left, right = map(_treatment_label, parts)
+    favored, other = (left, right) if delta < 0 else (right, left)
+    metric = _primary_metric_label(result["metric_name"], language)
+    p_value = effect["holm_adjusted_p"]
+    delta_text = f"{float(delta):+,.12g}"
+    p_text = f"{float(p_value):.8g}"
+    if language == "zh":
+        return (
+            f"{result['model']}：{favored} 使用的 {metric} 少于 {other}"
+            f"（case-median Δ {delta_text}；Holm p {p_text}）"
+        )
+    return (
+        f"{result['model']}: {favored} used fewer {metric} than {other} "
+        f"(case-median Δ {delta_text}; Holm p {p_text})"
+    )
+
+
+def _family_finding(report: Mapping[str, object], family: str, language: str) -> tuple[str, str]:
+    results = [item for item in _confirmatory_primary_results(report) if item["family"] == family]
+    if not results:
+        raise ValueError(f"formal report has no primary results for confirmatory family: {family}")
+    significant = _significant_primary_results(report, family)
+    family_sizes = {
+        int(_mapping(item, "effect")["multiplicity_family_size"])
+        for item in results
+        if isinstance(_mapping(item, "effect").get("multiplicity_family_size"), int)
+    }
+    if len(family_sizes) != 1:
+        raise ValueError("confirmatory family multiplicity size is inconsistent")
+    family_size = family_sizes.pop()
+    if language == "zh":
+        title = "语义层结果" if family == "semantic_layer" else "接口组合结果"
+        if not significant:
+            comparison = "Graph − Raw" if family == "semantic_layer" else "Raw − Split"
+            return title, f"{comparison} 的 {family_size} 项检验经 Holm 校正后均不显著。"
+        return title, "；".join(
+            _significant_result_text(item, language) for item in significant
+        ) + "。"
+    title = "Semantic-layer result" if family == "semantic_layer" else "Interface-bundle result"
+    if not significant:
+        comparison = "Graph − Raw" if family == "semantic_layer" else "Raw − Split"
+        return (
+            title,
+            f"No {comparison} endpoint is significant after Holm correction "
+            f"over {family_size} tests.",
+        )
+    return title, "; ".join(_significant_result_text(item, language) for item in significant) + "."
+
+
+def _conclusion_text(report: Mapping[str, object], language: str) -> str:
+    semantic = _significant_primary_results(report, "semantic_layer")
+    storage = _significant_primary_results(report, "storage_shape")
+    micro_reduction = _micro_row_reduction(report, language)
+    if language == "zh":
+        semantic_text = (
+            "语义层检验族没有端到端主要指标通过 Holm 校正"
+            if not semantic
+            else f"语义层检验族有 {len(semantic)} 项端到端主要指标通过 Holm 校正"
+        )
+        storage_text = (
+            "接口组合检验族没有主要指标通过 Holm 校正"
+            if not storage
+            else "接口组合检验族的显著结果是"
+            + "；".join(_significant_result_text(item, language) for item in storage)
+        )
+        return (
+            f"聚焦检索中 Graph 减少 rows 的合格结果为 {micro_reduction}；{semantic_text}。"
+            f"{storage_text}。其余端到端效果随模型和故障机制变化。"
+        )
+    semantic_text = (
+        "No end-to-end primary endpoint in the semantic-layer family passes Holm correction"
+        if not semantic
+        else f"{len(semantic)} end-to-end primary endpoints in the semantic-layer family "
+        "pass Holm correction"
+    )
+    storage_text = (
+        "No primary endpoint in the interface-bundle family passes Holm correction"
+        if not storage
+        else (
+            "The significant interface-bundle result is "
+            if len(storage) == 1
+            else "The significant interface-bundle results are "
+        )
+        + "; ".join(_significant_result_text(item, language) for item in storage)
+    )
+    return (
+        f"Eligible focused-retrieval results where Graph reduced rows: {micro_reduction}. "
+        f"{semantic_text}. {storage_text}. Other end-to-end effects vary by model and fault "
+        "mechanism."
+    )
+
+
+def _primary_result(report: Mapping[str, object], language: str) -> str:
+    storage = _significant_primary_results(report, "storage_shape")
+    semantic = _significant_primary_results(report, "semantic_layer")
+    if storage and not semantic:
+        count = len(storage)
+        return (
+            f"接口组合 {count} 项显著；Graph 端到端不稳定"
+            if language == "zh"
+            else (
+                f"{'One' if count == 1 else count} interface "
+                f"endpoint{' is' if count == 1 else 's are'} significant; "
+                "Graph E2E varies"
+            )
+        )
+    return (
+        "聚焦检索更省，端到端因场景而异"
+        if language == "zh"
+        else ("Focused retrieval improves; E2E varies")
+    )
+
+
 def _finding_grid(report, language):
     reports = _mapping(report, "model_reports")
-    significant = []
     comparable_cost_models = []
     lower_cost_models = []
     for model in report["model_order"]:
         transfer = _mapping(_mapping(reports, model), "transfer")
-        for metric in _mapping(transfer, "primary_metrics").values():
-            if (
-                isinstance(metric, Mapping)
-                and isinstance(metric.get("holm_adjusted_p"), (int, float))
-                and float(metric["holm_adjusted_p"]) < 0.05
-            ):
-                significant.append((model, metric))
         actual_cost = _mapping(transfer, "actual_cost_by_treatment")
         raw_cost = actual_cost.get("raw")
         graph_cost = actual_cost.get("semantic_graph")
@@ -2169,8 +2349,9 @@ def _finding_grid(report, language):
                 lower_cost_models.append(model)
     micro_reduction = _micro_row_reduction(report, language)
     improved, regressed, estimable = _mechanism_row_direction(report)
-    family_size = _mapping(_mapping(report, "scope"), "inference")["holm_family_size"]
     comparable = len(comparable_cost_models)
+    semantic_finding = _family_finding(report, "semantic_layer", language)
+    storage_finding = _family_finding(report, "storage_shape", language)
     if language == "zh":
         cost_text = (
             f"{comparable} 个可完整比较的模型中，没有模型降低端到端实际成本。"
@@ -2189,11 +2370,10 @@ def _finding_grid(report, language):
                 f"{regressed} 个在全部模型上增加 rows。",
             ),
             (
-                "端到端结论",
-                f"按预注册的 {family_size} 检验族做 Holm 多重比较校正后，"
-                "没有主要指标达到统计显著。"
-                "不能声称 Semantic Graph 普遍降低 RCA 的 rows 或 calls。",
+                semantic_finding[0],
+                semantic_finding[1],
             ),
+            storage_finding,
             ("成本结果", f"{cost_text}Rows 压缩不能替代成本核算。"),
         )
     else:
@@ -2214,18 +2394,15 @@ def _finding_grid(report, language):
                 f"and {regressed} increase rows for every model.",
             ),
             (
-                "End-to-end result",
-                f"After Holm correction over the pre-registered family of {family_size} tests, "
-                "no primary endpoint is statistically significant. The data does not support a "
-                "general reduction in RCA rows or calls.",
+                semantic_finding[0],
+                semantic_finding[1],
             ),
+            storage_finding,
             (
                 "Cost result",
                 f"{cost_text} Row compression is not a substitute for cost accounting.",
             ),
         )
-    if significant:
-        raise ValueError("formal report conclusion must be updated for a significant endpoint")
     return (
         '<div class="finding-grid">'
         + "".join(
@@ -2726,14 +2903,31 @@ def _cost_table(report, language):
 def _treatment_cost_table(report, language):
     rows = []
     treatments: list[str] = []
+    family_effects = _mapping(report, "confirmatory_family_resource_effects")
     for model in report["model_order"]:
         model_report = _mapping(_mapping(report, "model_reports"), model)
         transfer = _mapping(model_report, "transfer")
-        costs = _mapping(transfer, "actual_cost_by_treatment")
+        costs = {}
+        for raw_family in family_effects.values():
+            if not isinstance(raw_family, Mapping):
+                raise ValueError("confirmatory family resource effects are malformed")
+            model_effect = _mapping(raw_family, model)
+            for treatment, value in _mapping(model_effect, "actual_cost_by_treatment").items():
+                if treatment in costs and costs[treatment] != value:
+                    raise ValueError("treatment cost differs between confirmatory families")
+                costs[treatment] = value
         currency = transfer.get("cost_currency")
         treatments = [key for key in ("split_pillars", "raw", "semantic_graph") if key in costs]
         per_treatment = [_absolute_cost(costs.get(key), currency) for key in treatments]
-        delta = (
+        storage_delta = (
+            _absolute_cost(
+                float(costs["raw"]) - float(costs["split_pillars"]), currency, signed=True
+            )
+            if isinstance(costs.get("split_pillars"), (int, float))
+            and isinstance(costs.get("raw"), (int, float))
+            else "n/a"
+        )
+        semantic_delta = (
             _absolute_cost(
                 float(costs["semantic_graph"]) - float(costs["raw"]), currency, signed=True
             )
@@ -2748,7 +2942,8 @@ def _treatment_cost_table(report, language):
             (
                 model,
                 *per_treatment,
-                delta,
+                storage_delta,
+                semantic_delta,
                 _absolute_cost(combined.get("raw"), currency),
                 _absolute_cost(combined.get("semantic_graph"), currency),
             )
@@ -2759,6 +2954,7 @@ def _treatment_cost_table(report, language):
         (
             "模型",
             *(f"端到端 {name}" for name in treatment_headers),
+            "端到端 Raw − Split",
             "端到端 Graph − Raw",
             "全部 Raw",
             "全部 Graph",
@@ -2767,6 +2963,7 @@ def _treatment_cost_table(report, language):
         else (
             "Model",
             *(f"End-to-end {name}" for name in treatment_headers),
+            "End-to-end Raw − Split",
             "End-to-end Graph − Raw",
             "All Raw",
             "All Graph",

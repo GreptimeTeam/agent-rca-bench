@@ -32,7 +32,9 @@ _COHORT = (
 )
 
 
-def _model_report(case_ids: list[str]) -> dict[str, object]:
+def _model_report(
+    case_ids: list[str], *, storage_holm_adjusted_p: float = 1.0
+) -> dict[str, object]:
     metric = {
         "eligible_cases": 8,
         "case_median_delta": -10,
@@ -75,6 +77,26 @@ def _model_report(case_ids: list[str]) -> dict[str, object]:
         },
         "descriptive_metrics": {"reported_total_tokens": {**metric, "case_median_delta": -1000}},
     }
+    analysis["confirmatory_families"] = {
+        "semantic_layer": {
+            "comparison": "semantic_graph - raw",
+            "primary_metrics": analysis["primary_metrics"],
+        },
+        "storage_shape": {
+            "comparison": "raw - split_pillars",
+            "primary_metrics": {
+                "correct_completion_tool_calls": {
+                    **metric,
+                    "holm_adjusted_p": storage_holm_adjusted_p,
+                },
+                "provider_visible_input_tokens": {
+                    **metric,
+                    "case_median_delta": -100,
+                    "holm_adjusted_p": storage_holm_adjusted_p,
+                },
+            },
+        },
+    }
     return {
         # 14 cases x 2 repetitions x 2 treatments
         "runs": 56,
@@ -112,6 +134,7 @@ def _report(
     *,
     transfer_graph_run_cost: float = 0.08,
     drop_last_transfer_run: bool = False,
+    storage_holm_adjusted_p: float = 1.0,
 ) -> dict[str, object]:
     suite, protocol = load_formal_suite_protocol()
     names = [model.model for model in protocol.models]
@@ -280,7 +303,13 @@ def _report(
             for repetition in range(2)
             for visibility in ("split_pillars", "raw", "semantic_graph")
         ],
-        "model_reports": {name: _model_report(case_ids) for name in names},
+        "model_reports": {
+            name: _model_report(
+                case_ids,
+                storage_holm_adjusted_p=storage_holm_adjusted_p,
+            )
+            for name in names
+        },
     }
     if drop_last_transfer_run:
         transfer["runs"].pop()
@@ -402,6 +431,8 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     assert "gpt-5.6-sol" in document
     assert "Focused retrieval micro-benchmarks" in document
     assert "End-to-end case effects" in document
+    assert "End-to-end Split" in document
+    assert "End-to-end Raw − Split" in document
     assert "Fault mechanism changes the effect" in document
     assert "What this is" in document
     assert "这是什么" in document
@@ -417,7 +448,8 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
         "Eligible micro cases where Graph returned fewer rows: Discovery 12/16 and "
         "Graph-retrieval 12/16." in document
     )
-    assert "the pre-registered family of 14 tests" in document
+    assert "No Graph − Raw endpoint is significant after Holm correction over 10 tests." in document
+    assert "No Raw − Split endpoint is significant after Holm correction over 10 tests." in document
     assert "18/28 Raw · 19/28 Graph" in document
     assert "Across all 4 models: Raw 72/112; Graph 76/112." in document
     assert "Open all 14 cases and 56 case-model combinations" in document
@@ -503,6 +535,19 @@ def test_formal_measurement_report_states_a_cost_result_without_improved_models(
     document = output.read_text()
     assert "No model reduced actual end-to-end cost among 4 fully comparable models." in document
     assert "4 个可完整比较的模型中，没有模型降低端到端实际成本。" in document
+
+
+def test_formal_measurement_report_publishes_a_significant_interface_result(
+    tmp_path: Path,
+) -> None:
+    report = _report(storage_holm_adjusted_p=0.01)
+
+    output = tmp_path / "report.html"
+    render_formal_measurement_report(report, output)
+    document = output.read_text()
+    assert "8 interface endpoints are significant; Graph E2E varies" in document
+    assert "Raw used fewer provider-visible input tokens than Split" in document
+    assert "接口组合检验族的显著结果" in document
 
 
 def test_formal_measurement_report_rejects_tampered_summary() -> None:

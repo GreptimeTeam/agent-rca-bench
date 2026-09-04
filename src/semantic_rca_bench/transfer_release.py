@@ -1913,7 +1913,11 @@ def _validate_query_summary(
         raise ValueError("public query summary exposes an unsupported tool")
     if not isinstance(summary.get("input"), Mapping) or not isinstance(summary.get("error"), bool):
         raise ValueError("public query summary input or error flag is malformed")
-    _validate_public_input(str(summary["tool_name"]), summary["input"])
+    _validate_public_input(
+        str(summary["tool_name"]),
+        summary["input"],
+        errored=summary["error"] is True,
+    )
     result = summary.get("result")
     if result is not None:
         if not isinstance(result, Mapping) or set(result) != {
@@ -1947,12 +1951,19 @@ def _validate_query_summary(
             raise ValueError("public causal locus projection is malformed")
 
 
-def _validate_public_input(tool_name: str, value: Mapping[str, object]) -> None:
+def _validate_public_input(
+    tool_name: str,
+    value: Mapping[str, object],
+    *,
+    errored: bool,
+) -> None:
     if tool_name in NATIVE_EVIDENCE_OPERATIONS:
         if (
-            not value
-            or not set(value) <= set(NATIVE_QUERY_INPUT_KEYS)
-            or not isinstance(value.get("operation"), str)
+            not set(value) <= set(NATIVE_QUERY_INPUT_KEYS)
+            or not all(
+                isinstance(item, str) or _strict_int(item) is not None for item in value.values()
+            )
+            or (not errored and not isinstance(value.get("operation"), str))
         ):
             raise ValueError("public native query input is malformed")
         return
