@@ -14,6 +14,8 @@ prompt, runner, telemetry, and resource budget constant.
 
 Read the [interactive report](https://semantic-rca.greptime.com), the
 [English report](REPORT.md), or the [Chinese report](REPORT.zh-CN.md).
+[CHANGELOG.md](CHANGELOG.md) records what each release measured, and
+[CONTRIBUTING.md](CONTRIBUTING.md) covers how to work on it.
 
 ## Results in one paragraph
 
@@ -95,7 +97,7 @@ validation.
 
 ```text
 artifacts/measurement/   Sanitized public measurement artifacts
-fixtures/measurement/    Fixed micro-benchmark fixtures and summaries
+fixtures/measurement/    Fixed micro-benchmark case fixtures and selection manifests
 fixtures/reference/      Active source-selection and formal protocol fixtures
 src/semantic_rca_bench/  Adapters, runners, scorers, exporters, and report code
 tests/                   Protocol and regression tests

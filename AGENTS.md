@@ -248,7 +248,8 @@ the fallback cannot state a different result from the page.
 - `DISCOVERY.md`: schema-discovery micro-benchmark.
 - `GRAPH.md`: dependency-retrieval micro-benchmark and exact-edge audit.
 - `fixtures/reference/`: active source-selection and formal protocol fixtures.
-- `fixtures/measurement/`: frozen micro-benchmark fixtures and summaries.
+- `fixtures/measurement/`: frozen micro-benchmark case fixtures and selection
+  manifests.
 - `src/semantic_rca_bench/agent.py`: provider runners and tool loop.
 - `src/semantic_rca_bench/formal_suite*.py`: micro schedule, execution, export,
   and protocol binding.
