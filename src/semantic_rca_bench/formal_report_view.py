@@ -424,7 +424,7 @@ def _conclusion(report: Mapping[str, object], language: str) -> str:
     micro = _micro_row_reduction(report, language)
     if language == "zh":
         semantic_text = (
-            "语义层检验族没有端到端主要指标通过 Holm 校正"
+            "GreptimeDB 语义层检验族没有端到端主要指标通过 Holm 校正"
             if not semantic
             else f"语义层检验族有 {len(semantic)} 项端到端主要指标通过 Holm 校正"
         )
@@ -508,11 +508,11 @@ def _micro_summary_text(report: Mapping[str, object], language: str) -> str:
     parts = _micro_row_reduction(report, language)
     if language == "zh":
         return (
-            f"在两端都合格的 case 上，加了语义层之后读回的行数都变少了：{parts}。"
+            f"在两端都合格的 case 上，加了 GreptimeDB 语义层之后读回的行数都变少了：{parts}。"
             "这一层收益没有传导到端到端调查。"
         )
     return (
-        f"On every eligible case, the semantic layer read back fewer rows: {parts}. "
+        f"On every eligible case, the GreptimeDB Semantic Graph read back fewer rows: {parts}. "
         "That saving did not carry through to the end-to-end investigations."
     )
 
@@ -545,10 +545,10 @@ def _mechanism_summary(report: Mapping[str, object], language: str) -> str:
         return (
             f"每种机制下，返回行数变少的模型数：{_join(parts, language)}。"
             f"逐 case 看是 {case_better}/{case_total} 个可估算的模型-case 组合。"
-            "表里的负数表示加了语义层之后读回的行更少。"
+            "表里的负数表示加了 GreptimeDB 语义层之后读回的行更少。"
         )
     return (
-        f"Models that read back fewer rows with the semantic layer, by mechanism: "
+        f"Models that read back fewer rows with the GreptimeDB Semantic Graph, by mechanism: "
         f"{_join(parts, language)}. Case by case that is "
         f"{case_better} of {case_total} estimable model-case combinations. "
         "A negative number in the table means fewer rows with the layer."
@@ -596,20 +596,21 @@ def _takeaway_text(report: Mapping[str, object], language: str) -> dict[str, dic
         return {
             "one_store": {
                 "headline": (
-                    "唯一通过校正的结果：Fable 在一体化接口下读的 token 每个 case 都更少。"
+                    "唯一通过校正的结果：Fable 在 GreptimeDB 一体化接口下读的 token，"
+                    "每个 case 都更少。"
                 ),
                 "support": (
                     f"{storage['total']} 项注册端点里只有这一项通过 Holm 校正"
                     f"（{confirmed}）。另有 "
                     f"{storage['favouring_treatment'] - storage['confirmed']} "
                     f"项的 case median 也指向一体化接口，但都没有通过校正，只能作为方向记录。"
-                    f"同一批故障的诊断正确数：一体化接口 {raw}，三后端组合 {split}，"
+                    f"同一批故障的诊断正确数：GreptimeDB {raw}，三后端组合 {split}，"
                     f"各 {runs} 次 run；"
                     "诊断正确率不是注册端点，只作描述。"
                 ),
             },
             "semantic_layer": {
-                "headline": "没有证据显示语义层减少了调查工作量。",
+                "headline": "没有证据显示 GreptimeDB 语义层减少了调查工作量。",
                 "support": (
                     f"{semantic['total']} 项注册端点中 {semantic['confirmed']} 项通过 Holm 校正。"
                     f"case median 的方向也不一致：{semantic['favouring_treatment']} 项指向语义层，"
@@ -631,25 +632,28 @@ def _takeaway_text(report: Mapping[str, object], language: str) -> dict[str, dic
         "one_store": {
             "headline": (
                 "One endpoint survived correction: Fable read fewer tokens through "
-                "the single interface in every eligible case."
+                "the GreptimeDB interface in every eligible case."
             ),
             "support": (
                 f"It is the only one of {storage['total']} registered endpoints to pass Holm "
                 f"correction ({confirmed}). Another "
                 f"{storage['favouring_treatment'] - storage['confirmed']} endpoints have a case "
-                "median pointing the same way but did not pass correction, so they are recorded "
-                f"as a direction and nothing more. On the same incidents the models diagnosed "
-                f"{raw} correctly through one database and {split} through the three-backend "
+                "median pointing the same way toward GreptimeDB but did not pass correction, so "
+                f"they are recorded as a direction and nothing more. On the same incidents the "
+                "models diagnosed "
+                f"{raw} correctly through GreptimeDB and {split} through the three-backend "
                 f"bundle, out of {runs} runs each; diagnosis accuracy is descriptive, not a "
                 "registered endpoint."
             ),
         },
         "semantic_layer": {
-            "headline": "No evidence that the semantic layer reduced investigation work.",
+            "headline": (
+                "No evidence that the GreptimeDB Semantic Graph reduced investigation work."
+            ),
             "support": (
                 f"{semantic['confirmed']} of {semantic['total']} registered endpoints pass Holm "
                 f"correction. The case medians do not agree either: "
-                f"{semantic['favouring_treatment']} point to the semantic layer and "
+                f"{semantic['favouring_treatment']} point to the Semantic Graph and "
                 f"{semantic['favouring_baseline']} point the other way. Correct diagnoses came "
                 f"out at {graph} with the layer and {raw} without."
             ),
@@ -774,7 +778,7 @@ def _tool_use_text(report: Mapping[str, object], language: str) -> str:
     )
     if language == "zh":
         return (
-            f"语义层确实被用上了：{tool['runs']} 次 Graph run 里有 "
+            f"GreptimeDB 语义层确实被用上了：{tool['runs']} 次 Graph run 里有 "
             f"{tool['runs_with_successful_call']} 次至少成功调用过一次 query_semantic_graph，"
             f"合计 {tool['successful_calls']} 次。两个 GreptimeDB 接口一共发出 {join_calls} 次"
             f"成功的 SQL JOIN，分布在 {join_runs} 次 run 里；其中真正跨信号的只有 "
@@ -783,7 +787,8 @@ def _tool_use_text(report: Mapping[str, object], language: str) -> str:
             f"三后端侧是 {split_runs} 次里的 {promql.get('split_pillars', 0)} 次。"
         )
     return (
-        f"The semantic layer was actually used: {tool['runs_with_successful_call']} of "
+        f"The GreptimeDB Semantic Graph was actually used: "
+        f"{tool['runs_with_successful_call']} of "
         f"{tool['runs']} runs that had it made at least one successful query_semantic_graph "
         f"call, {tool['successful_calls']} calls in all. The two GreptimeDB interfaces issued "
         f"{join_calls} successful SQL JOIN calls across {join_runs} runs, of which only "
