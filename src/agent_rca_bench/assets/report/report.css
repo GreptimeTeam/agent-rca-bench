@@ -172,6 +172,18 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
   color: var(--ink-2);
 }
 .hero-board table { width: 100%; border-collapse: collapse; }
+/* The global `th` rule styles data-table column headers: sticky, uppercase and
+ * letterspaced. These tables use `th` for row headers too, and a model id is an
+ * exact identifier that must not be recased. */
+.hero-board th,
+.hero-board td { border-bottom: 0; }
+.hero-board th {
+  position: static;
+  background: none;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: normal;
+}
 .hero-board thead th {
   padding: 0 0 9px;
   font-size: 11px;
@@ -219,6 +231,41 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
   color: var(--muted);
 }
 .hero-board-note + .hero-board-note { margin-top: 5px; }
+.hero-board-sub {
+  margin: 18px 0 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.hero-models { width: 100%; border-collapse: collapse; }
+.hero-models thead th {
+  padding: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--muted);
+}
+.hero-models thead th:first-child { text-align: left; }
+.hero-models tbody th {
+  padding: 6px 8px 6px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.hero-models tbody td {
+  padding: 6px 0 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: right;
+}
+.hero-models tbody tr + tr th,
+.hero-models tbody tr + tr td { border-top: 1px solid var(--rule); }
 
 /* --- overview: the arms, then the findings ------------------------------- */
 
@@ -262,14 +309,29 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
 
 .findings-title { margin-top: clamp(44px, 6vw, 68px); }
 .findings { display: grid; gap: 2px; margin-top: 20px; border-top: 1px solid var(--rule-strong); }
+/* The verdict sits beside the claim it grades rather than in its own far-right
+ * column, which left a gap the width of the badge between the two. */
 .finding {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 190px;
+  grid-template-columns: 40px minmax(0, 1fr);
   gap: 20px;
   align-items: start;
   padding: 24px 0;
   border-bottom: 1px solid var(--rule);
 }
+/* The verdict spans both rows so a two-line gloss cannot push the supporting
+ * paragraph away from the claim it supports. */
+.finding-body {
+  display: grid;
+  /* Content-sized, not 1fr: the text columns are capped for line length, and a
+   * stretched track would park the verdict against the far margin again. */
+  grid-template-columns: minmax(0, auto) 190px;
+  justify-content: start;
+  column-gap: 28px;
+  align-items: start;
+}
+.finding-body > h3 { grid-area: 1 / 1; }
+.finding-support { grid-area: 2 / 1; }
 .finding-index {
   font-family: var(--font-mono);
   font-size: 26px;
@@ -279,7 +341,14 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
 }
 .finding h3 { font-size: clamp(17px, 2vw, 21px); line-height: 1.35; max-width: 46ch; }
 .finding-support { margin: 10px 0 0; font-size: 14px; color: var(--ink-2); max-width: 62ch; }
-.finding-grade { display: grid; gap: 6px; justify-items: start; }
+.finding-grade {
+  grid-area: 1 / 2 / span 2 / auto;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  justify-items: start;
+  padding-top: 3px;
+}
 
 .board-title { margin-top: clamp(44px, 6vw, 68px); }
 .board { border-top: 1px solid var(--rule-strong); }
@@ -611,8 +680,18 @@ footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--m
 
 @media (max-width: 900px) {
   .arms { grid-template-columns: 1fr; }
+  /* The labels no longer overflow on a desktop width, but they still do here,
+   * and the scrollbar is hidden. Fade the trailing edge so the reader can see
+   * the row continues. */
+  .topbar nav {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
   .finding { grid-template-columns: 28px minmax(0, 1fr); }
-  .finding-grade { grid-column: 2; justify-items: start; }
+  .finding-body { grid-template-columns: minmax(0, 1fr); }
+  .finding-body > h3 { grid-area: auto; }
+  .finding-grade { grid-area: auto; padding-top: 10px; }
+  .finding-support { grid-area: auto; }
   .strip-scale { grid-template-columns: 1fr; padding: 0 12px; }
   .strip-scale span { grid-column: 1; }
   .strip-scale .scale-right { grid-row: auto; justify-self: start; }

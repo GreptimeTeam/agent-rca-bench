@@ -222,7 +222,46 @@
         ),
       ),
       h("p", { class: "hero-board-note", text: t("hero.board.note") }),
+      h("h3", { class: "hero-board-sub", text: t("hero.models.title") }),
+      heroModelTable(),
+      h("p", {
+        class: "hero-board-note",
+        text: t("hero.models.note", { runs: view.charts.diagnosis_slope.runs_per_treatment }),
+      }),
       h("p", { class: "hero-board-note", text: t("hero.board.caveat") }),
+    );
+  };
+
+  /* Correct diagnoses per model, the measured count rather than the 40/40/5
+   * index, which is a post-measurement construction and does not belong on the
+   * first screen next to the pre-specified work. */
+  const heroModelTable = () => {
+    const chart = view.charts.diagnosis_slope;
+    return h(
+      "table",
+      { class: "hero-models" },
+      h(
+        "thead",
+        null,
+        h(
+          "tr",
+          null,
+          h("th", { scope: "col" }),
+          chart.treatments.map((key) => h("th", { scope: "col", text: treatment(key) })),
+        ),
+      ),
+      h(
+        "tbody",
+        null,
+        chart.series.map((row) =>
+          h(
+            "tr",
+            null,
+            h("th", { scope: "row", text: row.model }),
+            chart.treatments.map((key) => h("td", { text: num(row.values[key]) })),
+          ),
+        ),
+      ),
     );
   };
 
@@ -497,15 +536,19 @@
       h("span", { class: "finding-index", text: index + 1 }),
       h(
         "div",
-        {},
+        { class: "finding-body" },
         h("h3", { text: copy.headline }),
+        h(
+          "div",
+          { class: "finding-grade" },
+          h("span", {
+            class: "badge",
+            "data-grade": takeaway.grade,
+            text: t(`grade.${takeaway.grade}`),
+          }),
+          h("span", { class: "caption", text: t(`grade.${takeaway.grade}.gloss`) }),
+        ),
         h("p", { class: "finding-support", text: copy.support }),
-      ),
-      h(
-        "div",
-        { class: "finding-grade" },
-        h("span", { class: "badge", "data-grade": takeaway.grade, text: t(`grade.${takeaway.grade}`) }),
-        h("span", { class: "caption", text: t(`grade.${takeaway.grade}.gloss`) }),
       ),
     );
   };
