@@ -413,12 +413,6 @@
           row.unit === "currency"
             ? h("p", { class: "caption" }, h("a", { href: `#${language}-resources`, text: t("pricing.title") }))
             : null,
-          row.excluded_models && row.excluded_models.length
-            ? h("p", {
-                class: "caption",
-                text: t("headline.excluded", { models: row.excluded_models.join(", ") }),
-              })
-            : null,
         );
       }),
     );

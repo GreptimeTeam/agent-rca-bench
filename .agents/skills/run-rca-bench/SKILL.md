@@ -107,7 +107,10 @@ Do not treat a credential check or a smoke test as free if it calls a provider.
   proxy configuration to every provider.
 - Check model availability, account quotas, and rates applicable to the planned
   run. Freeze the required pricing snapshot before execution. Keep native
-  currencies and dated exchange rates; do not reprice historical artifacts.
+  currencies and dated exchange rates. Correcting a rate the snapshot missed
+  is a fix if the rate was in force during the run; retain the correction note
+  and verification date wherever the cost appears. Do not apply a rate that
+  only took effect after the run. Keep token counts unchanged in either case.
   Separate input, cache read/write, output, and reasoning according to the
   provider contract. Missing cache detail is not zero, and an ordinary-token
   estimate must remain separate from confirmed cache-aware cost.
@@ -143,7 +146,7 @@ Keep split-stack row counts as N/A and unknown costs distinct from zero.
 
 Verify sanitized exports contain no raw telemetry, provider payloads, reasoning
 text, credentials, tenant endpoints, labels, or machine-local paths. For a new
-measurement, record its actual test-update and report-generation times in UTC;
+measurement, record its actual measurement-update and report-generation times in UTC;
 do not reuse historical publication timestamps. Regenerate from the exported
 artifacts and compare the outputs before delivery.
 

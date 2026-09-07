@@ -70,7 +70,7 @@ def merge_formal_reports(
             raise ValueError("merged measurement timestamp predates a source cohort")
     merged["model_order"] = models
     merged["model_reports"] = {
-        model: deepcopy(report["model_reports"][model])
+        model: report["model_reports"][model]
         for report in reports
         for model in report["model_order"]
     }
@@ -222,19 +222,21 @@ def merge_formal_reports(
     deviations = [item for report in reports for item in report.get("execution_deviations", [])]
     if deviations:
         merged["execution_deviations"] = deviations
+    source_power_limits = [
+        report_core._power_limitation(
+            report["execution"],
+            {model: values["transfer"] for model, values in report["model_reports"].items()},
+        )
+        for report in reports
+    ]
+    merged_power_limit = report_core._power_limitation(
+        merged["execution"],
+        {model: values["transfer"] for model, values in merged["model_reports"].items()},
+    )
     merged["limitations"] = list(
         dict.fromkeys(
-            report_core._power_limitation(
-                merged["execution"],
-                {model: values["transfer"] for model, values in merged["model_reports"].items()},
-            )
-            if text
-            == report_core._power_limitation(
-                report["execution"],
-                {model: values["transfer"] for model, values in report["model_reports"].items()},
-            )
-            else text
-            for report in reports
+            merged_power_limit if text == power_limit else text
+            for report, power_limit in zip(reports, source_power_limits, strict=True)
             for text in report["limitations"]
         )
     )

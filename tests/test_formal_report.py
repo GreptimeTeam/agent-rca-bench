@@ -556,7 +556,6 @@ def test_view_model_states_the_verdict_and_the_strip_geometry() -> None:
         "significant": 0,
         "favouring_treatment": 8,
         "favouring_baseline": 0,
-        "family_size": 10,
         "family_sizes": [10],
     }
     assert verdicts["semantic_layer"]["tally_text"]["en"] == (
@@ -573,17 +572,19 @@ def test_view_model_states_the_verdict_and_the_strip_geometry() -> None:
     assert "no significance is claimed" in ranking["tally_text"]["en"]
 
     narrative = view["narrative"]["en"]
-    assert narrative["families"]["semantic_layer"] == (
-        "None of the 10 Graph − Raw tests is significant after Holm correction."
+    assert (
+        "No efficiency endpoint passed Holm correction"
+        in (narrative["family_summaries"]["semantic_layer"][0])
     )
-    assert "Raw used fewer" in narrative["families"]["storage_shape"]
+    assert any("Raw used fewer" in text for text in narrative["family_summaries"]["storage_shape"])
     # Effect size and case counts come before the p values.
-    storage_finding = narrative["families"]["storage_shape"]
+    storage_finding = narrative["conclusion"]
     assert "in 6 of 8 eligible cases" in storage_finding
     assert storage_finding.index("case median") < storage_finding.index("Exact sign p")
     assert "adjusted p 0.01" in storage_finding
-    assert view["narrative"]["zh"]["families"]["semantic_layer"] == (
-        "Graph − Raw 的 10 项检验，经 Holm 校正后没有一项显著。"
+    assert (
+        "没有效率指标通过 Holm 校正"
+        in (view["narrative"]["zh"]["family_summaries"]["semantic_layer"][0])
     )
     assert "Discovery 12/16" in narrative["micro_row_reduction"]
 
@@ -924,10 +925,6 @@ def test_spend_in_two_currencies_converts_at_the_published_rate() -> None:
     cost = rows["cost"]
     assert cost["currency"] == "USD"
     assert cost["values"]["raw"] == pytest.approx(usage["estimated_cost_usd"]["raw"])
-    # The page has to say which currency was converted and at what rate.
-    assert cost["converted_from"] == ["CNY"]
-    assert cost["exchange_rates"]["CNY"]["units_per_usd"] == rate
-    assert "glm-5.3" in cost["covered_models"]
 
 
 def test_two_model_extension_uses_its_pre_execution_exchange_rate() -> None:
@@ -1098,7 +1095,8 @@ def test_a_zero_reference_names_the_best_arm_without_dividing() -> None:
     assert cost["fractions"]["split_pillars"] == 1.0
 
 
-def test_every_lookup_the_renderer_makes_resolves_in_the_view_model() -> None:
+@pytest.mark.parametrize("merged", [False, True], ids=["single-cohort", "merged-cohorts"])
+def test_every_lookup_the_renderer_makes_resolves_in_the_view_model(merged: bool) -> None:
     """The renderer indexes into the view model; a missing key blanks the page.
 
     A cost chart entry once pointed at an exchange rate that was not in the
@@ -1106,17 +1104,31 @@ def test_every_lookup_the_renderer_makes_resolves_in_the_view_model() -> None:
     suite stayed green. These are the cross-references the renderer follows
     without checking, so the view model has to close them.
     """
-    view = build_report_view_model(_report(currency_by_model={"glm-5.3": "CNY"}))
+    report = (
+        json.loads(Path("artifacts/measurement/agent-rca-v34-six-model.json").read_text())
+        if merged
+        else _report(currency_by_model={"glm-5.3": "CNY"})
+    )
+    view = build_report_view_model(report)
     charts = view["charts"]
 
-    rates = charts["cost_bars"]["exchange_rates"]
+    groups = view["inference_groups"]
+    assert isinstance(groups, list) and groups
+    assert len(groups) == (2 if merged else 1)
+    for group in groups:
+        assert isinstance(group["protocol_revision"], str) and group["protocol_revision"]
+        assert isinstance(group["models"], list) and group["models"]
+        assert all(model in view["models"] for model in group["models"])
+        assert isinstance(group["family_size"], int) and group["family_size"] > 0
+    assert sorted(model for group in groups for model in group["models"]) == sorted(view["models"])
+
     for entry in charts["cost_bars"]["converted"]:
-        assert entry["currency"] in rates
+        assert entry["model"] in view["models"]
+        assert isinstance(entry["currency"], str) and entry["currency"]
         assert entry["units_per_usd"] and entry["checked_at"]
+        assert isinstance(entry["source"], str) and entry["source"].startswith("https://")
 
     for row in charts["headline"]["rows"]:
-        for currency in row.get("converted_from", []):
-            assert currency in row["exchange_rates"]
         # `best` indexes the same treatment map the bars iterate.
         if row["best"] is not None:
             assert row["best"] in row["values"]
@@ -1130,7 +1142,6 @@ def test_every_lookup_the_renderer_makes_resolves_in_the_view_model() -> None:
 
     # The retrieval table reads benchmark_labels[name] for every benchmark the
     # report carries; a name missing there would print a raw key.
-    report = _report(currency_by_model={"glm-5.3": "CNY"})
     labels = view["benchmark_labels"]
     for model in view["models"]:
         for benchmark in report["model_reports"][model]["micro"]["benchmarks"]:

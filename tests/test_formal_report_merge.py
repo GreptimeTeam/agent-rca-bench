@@ -33,7 +33,6 @@ def test_merge_preserves_models_and_independent_correction_scopes(merged_report)
     assert merged_report["execution"]["completed_cells"] == 696
     view = build_report_view_model(merged_report)
     storage = next(item for item in view["verdicts"] if item["goal"] == "storage_shape")
-    assert storage["endpoints"]["family_size"] is None
     assert storage["endpoints"]["significant"] == 2
     assert "2 of 12" in storage["tally_text"]["en"]
     assert "m = 8, m = 4" in storage["tally_text"]["en"]
@@ -139,11 +138,12 @@ def test_cost_chart_uses_model_cohort_rate_and_transfer_only_eligibility(merged_
     )
     cost = next(row for row in view["charts"]["headline"]["rows"] if row["id"] == "cost")
     assert cost["estimable"] is True
-    assert cost["converted_from"] == []
     assert "gemini-3.8-flash" in cost["estimate_note"]["en"]
     assert "without cache discounts" in cost["estimate_note"]["en"]
-    assert cost["excluded_models"] == []
-    assert {entry["units_per_usd"] for entry in cost["conversions"]} == {6.7179, 6.7787}
+    assert {entry["units_per_usd"] for entry in view["charts"]["cost_bars"]["converted"]} == {
+        6.7179,
+        6.7787,
+    }
     for treatment in expected:
         assert cost["values"][treatment] == pytest.approx(
             sum(row["values"][treatment] for row in series.values()), abs=0.00001

@@ -225,9 +225,6 @@ def _verdicts(report: Mapping[str, object]) -> list[dict[str, object]]:
                     "favouring_treatment": tally["favouring_treatment"],
                     "favouring_baseline": tally["favouring_baseline"],
                     "family_sizes": family_sizes,
-                    "family_size": None
-                    if report.get("inference_cohorts")
-                    else _family_size(results),
                 },
                 "tally_text": {
                     language: _tally_text(tally, language)
@@ -443,9 +440,6 @@ def _narrative(report: Mapping[str, object], language: str) -> dict[str, object]
     return {
         "conclusion": _conclusion(report, language),
         "headline": _headline(report, language),
-        "families": {
-            family: _family_finding(report, family, language) for family in FAMILY_COMPARISONS
-        },
         "family_summaries": {
             family: _family_summary(report, family, language) for family in FAMILY_COMPARISONS
         },
@@ -528,29 +522,6 @@ def _family_summary(report: Mapping[str, object], family: str, language: str) ->
         else "No efficiency endpoint passed Holm correction. "
         "The small sample does not establish equivalence."
     ]
-
-
-def _family_finding(report: Mapping[str, object], family: str, language: str) -> str:
-    if report.get("inference_cohorts"):
-        parts = [
-            _significant_text(item, language)
-            for item in _family_results(report, family)
-            if item["significant"]
-        ]
-        return " ".join(parts) or _tally_text(_family_tally(report, family), language)
-    results = _family_results(report, family)
-    if not results:
-        raise ValueError(f"formal report has no primary results for confirmatory family: {family}")
-    significant = [item for item in results if item["significant"]]
-    comparison = _comparison_label(family)
-    if not significant:
-        size = _family_size(results)
-        if language == "zh":
-            return f"{comparison} 的 {size} 项检验，经 Holm 校正后没有一项显著。"
-        return f"None of the {size} {comparison} tests is significant after Holm correction."
-    # Each entry is already a pair of complete sentences ending in a full stop.
-    separator = "" if language == "zh" else " "
-    return separator.join(_significant_text(item, language) for item in significant)
 
 
 def _conclusion(report: Mapping[str, object], language: str) -> str:
@@ -1440,14 +1411,6 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
                 treatment: (None if usd[treatment] is None else float(usd[treatment]))
                 for treatment in treatments
             },
-            "covered_models": sorted(
-                [str(model) for model in priced]
-                + (unpriced if usage.get("conservative_estimated_cost_usd") else [])
-            ),
-            "excluded_models": [] if usage.get("conservative_estimated_cost_usd") else unpriced,
-            "conversions": _cost_bars(report)["converted"]
-            if usage.get("conservative_estimated_cost_usd")
-            else [],
             "unavailable_text": {
                 language: (
                     f"{_join(unpriced, language)} 的端到端用量无法完整计价，因此不提供全模型合计。"
@@ -1463,17 +1426,6 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
             }
             if unpriced and not usage.get("conservative_estimated_cost_usd")
             else None,
-            "converted_from": sorted(
-                {str(value) for value in priced.values() if str(value) != "USD"}
-            )
-            if any(value is not None for value in usd.values())
-            and not report.get("inference_cohorts")
-            else [],
-            "exchange_rates": {
-                currency: dict(rate)
-                for currency, rate in mapping(usage, "exchange_rates").items()
-                if isinstance(rate, Mapping) and currency != "USD"
-            },
         }
     )
     rows.append(
