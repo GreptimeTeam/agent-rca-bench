@@ -23,6 +23,8 @@ jobs:
       - run: uv lock --check
       - run: uv build
       - run: sha256sum --check artifacts/measurement/agent-rca-v34-SHA256SUMS
+      - run: sha256sum --check artifacts/measurement/agent-rca-v34-two-model-extension-SHA256SUMS
+      - run: sha256sum --check artifacts/measurement/agent-rca-v34-six-model-SHA256SUMS
       - name: Reproduce the public report
         run: |
           output_dir=$(mktemp -d)
@@ -31,18 +33,50 @@ jobs:
             --transfer-artifact artifacts/measurement/agent-rca-v34-transfer.json \
             --suite-protocol fixtures/reference/agent-rca-v34-four-model-suite.json \
             --transfer-protocol fixtures/reference/transfer-v34-protocol.json \
-            --output-json "$output_dir/agent-rca.json" \
-            --output-html "$output_dir/agent-rca.html"
+            --output-json "$output_dir/agent-rca-v34.json" \
+            --output-html "$output_dir/agent-rca-v34.html"
           cmp artifacts/measurement/agent-rca-v34.json \
-            "$output_dir/agent-rca.json"
+            "$output_dir/agent-rca-v34.json"
           cmp artifacts/measurement/agent-rca-v34.html \
-            "$output_dir/agent-rca.html"
+            "$output_dir/agent-rca-v34.html"
+      - name: Reproduce the two-model extension
+        run: |
+          output_dir=$(mktemp -d)
+          uv run agent-rca formal-suite-report \
+            --micro-artifact artifacts/measurement/agent-rca-v34-two-model-extension-micro.json \
+            --transfer-artifact artifacts/measurement/agent-rca-v34-two-model-extension-transfer.json \
+            --suite-protocol fixtures/reference/agent-rca-v34-two-model-extension-suite.json \
+            --transfer-protocol fixtures/reference/transfer-v34-two-model-extension-protocol.json \
+            --publication-metadata artifacts/measurement/agent-rca-v34-two-model-extension-publication.json \
+            --output-json "$output_dir/agent-rca-v34-two-model-extension.json" \
+            --output-html "$output_dir/agent-rca-v34-two-model-extension.html"
+          cmp artifacts/measurement/agent-rca-v34-two-model-extension.json \
+            "$output_dir/agent-rca-v34-two-model-extension.json"
+          cmp artifacts/measurement/agent-rca-v34-two-model-extension.html \
+            "$output_dir/agent-rca-v34-two-model-extension.html"
+      - name: Reproduce the unified six-model report
+        run: |
+          output_dir=$(mktemp -d)
+          uv run agent-rca formal-report-merge \
+            --reports artifacts/measurement/agent-rca-v34.json \
+              artifacts/measurement/agent-rca-v34-two-model-extension.json \
+            --transfer-artifacts artifacts/measurement/agent-rca-v34-transfer.json \
+              artifacts/measurement/agent-rca-v34-two-model-extension-transfer.json \
+            --publication-metadata artifacts/measurement/agent-rca-v34-six-model-publication.json \
+            --output-json "$output_dir/agent-rca-v34-six-model.json" \
+            --output-html "$output_dir/agent-rca-v34-six-model.html"
+          cmp artifacts/measurement/agent-rca-v34-six-model.json \
+            "$output_dir/agent-rca-v34-six-model.json"
+          cmp artifacts/measurement/agent-rca-v34-six-model.html \
+            "$output_dir/agent-rca-v34-six-model.html"
       - name: Validate the citation metadata
         run: uvx --from cffconvert cffconvert --validate -i CITATION.cff
       - name: Reject machine-local paths in the published page
         run: |
           if grep -q '/Users/\|/home/runner/' \
-            artifacts/measurement/agent-rca-v34.html; then
+            artifacts/measurement/agent-rca-v34.html \
+            artifacts/measurement/agent-rca-v34-six-model.html \
+            artifacts/measurement/agent-rca-v34-two-model-extension.html; then
             echo "published HTML contains a machine-local path" >&2
             exit 1
           fi

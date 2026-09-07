@@ -783,6 +783,7 @@ def validate_private_report(
     selection: TransferCohort,
     *,
     require_complete: bool = False,
+    allow_recorded_concurrency_deviation: bool = False,
 ) -> None:
     if (
         report.get("report_schema_version") != REPORT_SCHEMA_VERSION
@@ -830,6 +831,7 @@ def validate_private_report(
             protocol,
             specs[str(item.get("case_id"))],
             expected_source_hashes[str(item.get("case_id"))],
+            allow_recorded_concurrency_deviation=allow_recorded_concurrency_deviation,
         )
     if report.get("execution") != _execution_summary(runs, len(expected_schedule)):
         raise ValueError("transfer execution summary drifted")
@@ -843,9 +845,20 @@ def validate_transfer_run_item(
     protocol: TransferProtocolFixture,
     spec: TransferCaseSpec,
     expected_source_hash: str,
+    *,
+    allow_recorded_concurrency_deviation: bool = False,
 ) -> None:
     if any(item.get(key) != value for key, value in expected.items()):
         raise ValueError("transfer completed run does not match its scheduled cell")
+    concurrency = item.get("provider_concurrency_limit", protocol.max_parallel_runs_per_provider)
+    limit = (
+        # Historical exports retain deviations; execution uses the frozen limit.
+        protocol.parallel_runs
+        if allow_recorded_concurrency_deviation
+        else protocol.max_parallel_runs_per_provider
+    )
+    if type(concurrency) is not int or not 1 <= concurrency <= limit:
+        raise ValueError("transfer provider concurrency override is invalid")
     run = AgentRun.model_validate(item.get("run"))
     models = {model.model: model for model in protocol.models}
     model = models[str(item["model"])]

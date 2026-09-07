@@ -39,7 +39,11 @@ from agent_rca_bench.graph_benchmark import (
     canonical_edge_set,
     evaluate_graph_run,
 )
-from agent_rca_bench.report import _estimated_api_cost, _raw_input_breakdown
+from agent_rca_bench.report import (
+    _cache_creation_breakdown_available,
+    _estimated_api_cost,
+    _raw_input_breakdown,
+)
 
 MICRO_ARTIFACT_SCHEMA_VERSION = 1
 
@@ -286,6 +290,8 @@ def _public_run(
         )
     uncached, cache_read, cache_creation, cache_complete = _raw_input_breakdown(run)
     model_pricing = _mapping(pricing, str(item["model"]))
+    if model_pricing.get("cache_creation_breakdown_required") is True:
+        cache_complete = cache_complete and _cache_creation_breakdown_available(run)
     public = {
         key: item[key]
         for key in (
@@ -334,9 +340,14 @@ def _public_run(
                 )
             },
             "usage": {
-                "uncached_input_tokens": uncached,
-                "cache_read_input_tokens": cache_read,
-                "cache_creation_input_tokens": cache_creation,
+                **(
+                    {"provider_visible_input_tokens": _mapping(run, "usage")["input_tokens"]}
+                    if not cache_complete
+                    else {}
+                ),
+                "uncached_input_tokens": uncached if cache_complete else None,
+                "cache_read_input_tokens": cache_read if cache_complete else None,
+                "cache_creation_input_tokens": cache_creation if cache_complete else None,
                 "cache_breakdown_complete": cache_complete,
                 "output_tokens": _mapping(run, "usage").get("output_tokens"),
                 "reasoning_output_tokens": _mapping(run, "usage").get("reasoning_tokens"),
@@ -524,9 +535,21 @@ def _model_summary(runs: list[dict[str, object]]) -> dict[str, object]:
         "reasoning_output_tokens",
     )
     usage = {
-        field: sum(int(_mapping(run, "usage").get(field, 0) or 0) for run in runs)
+        field: (
+            sum(int(_mapping(run, "usage").get(field, 0) or 0) for run in runs)
+            if all(_mapping(run, "usage").get(field) is not None for run in runs)
+            else None
+        )
         for field in usage_fields
     }
+    if any("provider_visible_input_tokens" in _mapping(run, "usage") for run in runs):
+        usage["provider_visible_input_tokens"] = sum(
+            _reported_tokens(run) - int(_mapping(run, "usage").get("output_tokens", 0) or 0)
+            for run in runs
+        )
+        usage["cache_breakdown_complete"] = all(
+            _mapping(run, "usage").get("cache_breakdown_complete") is True for run in runs
+        )
     costs = [_mapping(run, "usage").get("estimated_cost") for run in runs]
     currencies = {_mapping(run, "usage").get("cost_currency") for run in runs}
     return {
@@ -621,6 +644,8 @@ def _benchmark_model_summary(runs: list[dict[str, object]]) -> dict[str, object]
 
 def _reported_tokens(run: Mapping[str, object]) -> int:
     usage = _mapping(run, "usage")
+    if isinstance(usage.get("provider_visible_input_tokens"), int):
+        return int(usage["provider_visible_input_tokens"]) + int(usage.get("output_tokens", 0) or 0)
     return sum(
         int(usage.get(field, 0) or 0)
         for field in (

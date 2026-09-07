@@ -12,24 +12,31 @@ surface, then compares raw GreptimeDB telemetry with the complete GreptimeDB
 Semantic Graph interface. Each paired comparison holds the model, incident,
 prompt, runner, telemetry, and resource budget constant.
 
-Read the [interactive report](https://rca-bench.greptime.com), the
-[English report](REPORT.md), or the [Chinese report](REPORT.zh-CN.md).
+Read the six-model [English report](REPORT.md) or [Chinese report](REPORT.zh-CN.md).
+The [interactive report](artifacts/measurement/agent-rca-v34-six-model.html) compares all six models.
 
 ## Results
 
-Protocol v34 produced one confirmatory result. With `claude-fable-5-1`, the
+Protocol v34 supports two model-specific input reductions. With `claude-fable-5-1`, the
 GreptimeDB all-in-one interface used fewer provider-visible input tokens than
 the Prometheus, Loki, and Tempo interface bundle in all 13 eligible cases. The
-case-median difference was `-446,252.5` tokens (Holm-adjusted p `0.001953125`).
+case-median difference was `-446,252.5` tokens (exact p `0.000244140625`, Holm p `0.001953125`).
+Gemini 3.8 Flash reduced input in 10 of 11 eligible cases, with a median difference of
+`-1,575,917` tokens (exact p `0.01171875`, Holm p `0.046875`). These were the only passing
+endpoints: two of twelve passed their frozen Holm tests.
 
 No endpoint in the `semantic_graph - raw` family passed Holm correction. The
-Semantic Graph reduced rows in every eligible Discovery result (`23/23`) and
-Graph-retrieval result (`8/8`), but the end-to-end case medians point in both
-directions.
+Semantic Graph reduced rows in every eligible Discovery result (`35/35`), and both rows
+and calls in 11/12 Graph-retrieval results. One Qwen case increased both. End-to-end
+case medians point in both directions.
 
-Across 112 runs per treatment, Split, Raw, and Graph produced 60, 80, and 77
+Across 168 runs per treatment, Split, Raw, and Graph produced 97, 130, and 124
 correct diagnoses. These totals are descriptive. The direction also changes
-between the OpenRCA2 service cases and the RCA-100 infrastructure-node cases.
+between the OpenRCA2 service cases and the RCA-100 infrastructure-node cases; this
+post-measurement split confounds dataset with fault level.
+Across all 28 runs per arm, Raw reduced Gemini input by 54.35% and Qwen input by 22.06%.
+Qwen's estimated Raw cost was 25.52% lower than Split. Gemini's displayed end-to-end
+cost uses ordinary input rates without cache discounts because its cache breakdown is incomplete.
 [REPORT.md](REPORT.md) has the complete results and power limits.
 
 ## What the benchmark measures
@@ -52,9 +59,10 @@ The shared system prompt does not contain case-specific query recipes or hidden
 answers. Ground truth, injection metadata, publisher causal graphs, and
 label-bearing case names are excluded from the agent surface.
 
-The measurement contains 128 fixed-cohort micro-benchmark cells and 336
-end-to-end cells over ten OpenRCA2 and four RCA-100 incidents. It covers four
-model configurations and two repetitions per model, case, and treatment.
+The measurement combines 192 fixed-cohort micro-benchmark cells and 504
+end-to-end cells over ten OpenRCA2 and four RCA-100 incidents. It covers six
+model configurations and two repetitions per model, case, and treatment. The
+artifacts bind the model configurations and protocols by hash.
 
 Each paired comparison has its own two efficiency metrics, specified and frozen
 in the protocol before any run:
@@ -68,6 +76,9 @@ Rows returned does not apply across the split stack and reports N/A there. Cache
 use, output, reasoning, and cost are reported separately and are descriptive.
 
 ## Reproduce the published report
+
+For agent-assisted setup, reproduction, and model execution, use the repository
+skill [run-rca-bench](.agents/skills/run-rca-bench/SKILL.md).
 
 Report reproduction uses Python 3.11 and [`uv`](https://docs.astral.sh/uv/). It
 does not call a model provider, download source telemetry, or require Docker or
@@ -90,17 +101,58 @@ uv run agent-rca formal-suite-report \
   --transfer-artifact artifacts/measurement/agent-rca-v34-transfer.json \
   --suite-protocol fixtures/reference/agent-rca-v34-four-model-suite.json \
   --transfer-protocol fixtures/reference/transfer-v34-protocol.json \
-  --output-json "$output_dir/agent-rca.json" \
-  --output-html "$output_dir/agent-rca.html"
+  --output-json "$output_dir/agent-rca-v34.json" \
+  --output-html "$output_dir/agent-rca-v34.html"
 
 cmp artifacts/measurement/agent-rca-v34.json \
-  "$output_dir/agent-rca.json"
+  "$output_dir/agent-rca-v34.json"
 cmp artifacts/measurement/agent-rca-v34.html \
-  "$output_dir/agent-rca.html"
+  "$output_dir/agent-rca-v34.html"
 ```
 
-Both `cmp` commands exit with status 0 when the release reproduces byte for
-byte. Run the complete provider-free validation before publishing a change:
+Both `cmp` commands exit with status 0 when the original four-model report reproduces
+byte for byte. The Gemini and Qwen extension is reproduced separately:
+
+```bash
+uv run agent-rca formal-suite-report \
+  --micro-artifact artifacts/measurement/agent-rca-v34-two-model-extension-micro.json \
+  --transfer-artifact artifacts/measurement/agent-rca-v34-two-model-extension-transfer.json \
+  --suite-protocol fixtures/reference/agent-rca-v34-two-model-extension-suite.json \
+  --transfer-protocol fixtures/reference/transfer-v34-two-model-extension-protocol.json \
+  --publication-metadata artifacts/measurement/agent-rca-v34-two-model-extension-publication.json \
+  --output-json "$output_dir/agent-rca-v34-two-model-extension.json" \
+  --output-html "$output_dir/agent-rca-v34-two-model-extension.html"
+
+cmp artifacts/measurement/agent-rca-v34-two-model-extension.json \
+  "$output_dir/agent-rca-v34-two-model-extension.json"
+cmp artifacts/measurement/agent-rca-v34-two-model-extension.html \
+  "$output_dir/agent-rca-v34-two-model-extension.html"
+```
+
+The publication metadata fixes both UTC timestamps for deterministic reproduction.
+The original cohort retains eight tests per confirmatory family; the extension has
+four per family. The six-model page combines descriptive results and reports
+the two cohorts' corrected tests separately.
+
+Generate the unified page from the two reproduced reports and their bound transfer artifacts:
+
+```bash
+uv run agent-rca formal-report-merge \
+  --reports "$output_dir/agent-rca-v34.json" \
+    "$output_dir/agent-rca-v34-two-model-extension.json" \
+  --transfer-artifacts artifacts/measurement/agent-rca-v34-transfer.json \
+    artifacts/measurement/agent-rca-v34-two-model-extension-transfer.json \
+  --publication-metadata artifacts/measurement/agent-rca-v34-six-model-publication.json \
+  --output-json "$output_dir/agent-rca-v34-six-model.json" \
+  --output-html "$output_dir/agent-rca-v34-six-model.html"
+
+cmp artifacts/measurement/agent-rca-v34-six-model.json \
+  "$output_dir/agent-rca-v34-six-model.json"
+cmp artifacts/measurement/agent-rca-v34-six-model.html \
+  "$output_dir/agent-rca-v34-six-model.html"
+```
+
+Run the complete provider-free validation before publishing a change:
 
 ```bash
 uv run pytest -q
@@ -109,6 +161,8 @@ uv run ruff format --check src tests
 uv lock --check
 uv build
 shasum -a 256 -c artifacts/measurement/agent-rca-v34-SHA256SUMS
+shasum -a 256 -c artifacts/measurement/agent-rca-v34-two-model-extension-SHA256SUMS
+shasum -a 256 -c artifacts/measurement/agent-rca-v34-six-model-SHA256SUMS
 ```
 
 Source replay, Semantic Graph preflight, credential setup, paid model execution,

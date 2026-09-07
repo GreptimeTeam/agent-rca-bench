@@ -29,6 +29,7 @@ from agent_rca_bench.formal_suite import (
 )
 from agent_rca_bench.formal_suite_protocol import (
     DEFAULT_SUITE_PROTOCOL_FIXTURE,
+    EXTENSION_SUITE_PROTOCOL_FIXTURE,
     load_formal_suite_protocol,
     micro_schedule,
 )
@@ -171,6 +172,19 @@ def test_formal_suite_freezes_every_micro_and_transfer_cell() -> None:
                 "semantic_graph",
                 "raw",
             ]
+
+
+def test_extension_suite_schedules_only_new_model_micro_cells() -> None:
+    suite, transfer = load_formal_suite_protocol(EXTENSION_SUITE_PROTOCOL_FIXTURE)
+    schedule = micro_schedule(suite, transfer)
+
+    assert len(schedule) == suite.expected_micro_cells == 64
+    assert suite.expected_transfer_cells == 168
+    assert suite.expected_total_cells == 232
+    assert {cell["model"] for cell in schedule} == {
+        "gemini-3.8-flash",
+        "qwen3.8-max-0902",
+    }
 
 
 def test_micro_preflight_has_no_provider_calls_and_validates() -> None:
@@ -630,7 +644,10 @@ def _successful_private_run(
     return run.model_dump(mode="json"), evaluation.model_dump(mode="json")
 
 
-def test_complete_micro_artifact_sanitizes_and_deterministically_rescores() -> None:
+@pytest.mark.parametrize("missing_cache_breakdown", [None, "input", "creation"])
+def test_complete_micro_artifact_sanitizes_and_deterministically_rescores(
+    missing_cache_breakdown: str | None,
+) -> None:
     suite, transfer = load_formal_suite_protocol()
     sources = _source_audits()
     report = build_micro_preflight_report(
@@ -659,6 +676,11 @@ def test_complete_micro_artifact_sanitizes_and_deterministically_rescores() -> N
             }
         )
     report["runs"] = runs
+    if missing_cache_breakdown == "input":
+        runs[0]["run"]["responses"][0]["usage"].pop("input_tokens_details")
+    elif missing_cache_breakdown == "creation":
+        report["pricing_snapshot"][runs[0]["model"]]["cache_creation_breakdown_required"] = True
+        report["bindings"]["pricing_snapshot_sha256"] = canonical_sha256(report["pricing_snapshot"])
     report["execution"] = {
         "completed_runs": 128,
         "expected_runs": 128,
@@ -681,3 +703,11 @@ def test_complete_micro_artifact_sanitizes_and_deterministically_rescores() -> N
     assert "private-run-id-must-not-leak" not in encoded
     assert "private free-form claim must not leak" not in encoded
     assert "private-evidence-query-id" not in encoded
+    if missing_cache_breakdown:
+        usage = artifact["runs"][0]["usage"]
+        assert usage["provider_visible_input_tokens"] == 100
+        assert usage["uncached_input_tokens"] is None
+        summary = artifact["model_reports"][runs[0]["model"]]["usage"]
+        assert summary["provider_visible_input_tokens"] == 3200
+        assert summary["cache_read_input_tokens"] is None
+        assert summary["cache_breakdown_complete"] is False

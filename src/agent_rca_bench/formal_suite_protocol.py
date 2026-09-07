@@ -23,7 +23,11 @@ from agent_rca_bench.transfer_protocol import (
 )
 
 SUITE_PROTOCOL_REVISION = "semantic-rca-four-model-three-arm-suite-v21"
+EXTENSION_SUITE_PROTOCOL_REVISION = "semantic-rca-two-model-v34-extension-suite-v2"
 DEFAULT_SUITE_PROTOCOL_FIXTURE = Path("fixtures/reference/agent-rca-v34-four-model-suite.json")
+EXTENSION_SUITE_PROTOCOL_FIXTURE = Path(
+    "fixtures/reference/agent-rca-v34-two-model-extension-suite.json"
+)
 
 
 class MicroCaseContract(BaseModel):
@@ -75,7 +79,10 @@ def load_formal_suite_protocol(
     path: Path = DEFAULT_SUITE_PROTOCOL_FIXTURE,
 ) -> tuple[FormalSuiteProtocolFixture, TransferProtocolFixture]:
     fixture = FormalSuiteProtocolFixture.model_validate_json(path.read_text())
-    if fixture.version != 1 or fixture.protocol_revision != SUITE_PROTOCOL_REVISION:
+    if fixture.version != 1 or fixture.protocol_revision not in {
+        SUITE_PROTOCOL_REVISION,
+        EXTENSION_SUITE_PROTOCOL_REVISION,
+    }:
         raise ValueError("unsupported formal suite protocol revision")
     if fixture.benchmark_protocol_version != benchmark_protocol()["version"]:
         raise ValueError("formal suite benchmark protocol drifted")

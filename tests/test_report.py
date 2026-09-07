@@ -165,14 +165,14 @@ def test_openai_cache_breakdown_drives_usage_and_cost() -> None:
 
 
 def test_qwen_china_pricing_uses_provider_cache_breakdown() -> None:
-    pricing = MODEL_PRICING["qwen3.8-max"]
+    pricing = MODEL_PRICING["qwen3.8-max-0902"]
     uncached_run = {
         "usage": {"input_tokens": 100, "output_tokens": 20},
         "responses": [
             {
                 "usage": {
                     "input_tokens": 100,
-                    "input_tokens_details": {"cached_tokens": 0},
+                    "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
                     "output_tokens": 20,
                 }
             }
@@ -184,7 +184,22 @@ def test_qwen_china_pricing_uses_provider_cache_breakdown() -> None:
             {
                 "usage": {
                     "input_tokens": 100,
-                    "input_tokens_details": {"cached_tokens": 80},
+                    "input_tokens_details": {"cached_tokens": 80, "cache_write_tokens": 0},
+                    "output_tokens": 20,
+                }
+            }
+        ],
+    }
+    session_cached_run = {
+        "usage": {"input_tokens": 100, "output_tokens": 20},
+        "responses": [
+            {
+                "usage": {
+                    "input_tokens": 100,
+                    "input_tokens_details": {
+                        "cached_tokens": 20,
+                        "cache_creation_input_tokens": 60,
+                    },
                     "output_tokens": 20,
                 }
             }
@@ -196,7 +211,76 @@ def test_qwen_china_pricing_uses_provider_cache_breakdown() -> None:
         (100 * 12 + 20 * 36) / 1_000_000
     )
     assert _estimated_api_cost(cached_run, pricing) == pytest.approx(
-        (20 * 12 + 80 * 1.5 + 20 * 36) / 1_000_000
+        (20 * 12 + 80 + 20 * 36) / 1_000_000
+    )
+    assert _estimated_api_cost(session_cached_run, pricing) == pytest.approx(
+        (20 * 12 + 60 * 15 + 20 + 20 * 36) / 1_000_000
+    )
+
+    missing_creation_breakdown = {
+        "responses": [
+            {
+                "usage": {
+                    "input_tokens": 100,
+                    "input_tokens_details": {
+                        "cached_tokens": 80,
+                        "cache_write_tokens": None,
+                    },
+                    "output_tokens": 20,
+                }
+            }
+        ]
+    }
+    assert _estimated_api_cost(missing_creation_breakdown, pricing) is None
+
+    responses_session_shape = {
+        "usage": {"input_tokens": 100, "output_tokens": 20},
+        "responses": [
+            {
+                "usage": {
+                    "input_tokens": 100,
+                    "input_tokens_details": {
+                        "cached_tokens": 80,
+                        "cache_write_tokens": None,
+                    },
+                    "output_tokens": 20,
+                    "x_details": [
+                        {
+                            "input_tokens": 100,
+                            "prompt_tokens_details": {
+                                "cached_tokens": 80,
+                                "cache_creation_input_tokens": 15,
+                            },
+                        }
+                    ],
+                }
+            }
+        ],
+    }
+    assert _raw_input_breakdown(responses_session_shape) == (5, 80, 15, True)
+    assert _estimated_api_cost(responses_session_shape, pricing) == pytest.approx(
+        (5 * 12 + 15 * 15 + 80 + 20 * 36) / 1_000_000
+    )
+
+
+def test_gemini_3_8_flash_uses_introductory_standard_rates() -> None:
+    pricing = MODEL_PRICING["gemini-3.8-flash"]
+    run = {
+        "usage": {"input_tokens": 100, "output_tokens": 20},
+        "responses": [
+            {
+                "usage": {
+                    "prompt_tokens": 100,
+                    "prompt_tokens_details": {"cached_tokens": 80},
+                    "completion_tokens": 10,
+                    "total_tokens": 120,
+                }
+            }
+        ],
+    }
+
+    assert _estimated_api_cost(run, pricing) == pytest.approx(
+        (20 * 0.75 + 80 * 0.075 + 20 * 3.75) / 1_000_000
     )
 
 

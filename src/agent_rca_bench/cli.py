@@ -84,6 +84,7 @@ from agent_rca_bench.formal_report import (
     build_formal_measurement_report_from_files,
     validate_formal_measurement_report,
 )
+from agent_rca_bench.formal_report_merge import merge_formal_reports
 from agent_rca_bench.formal_report_view import render_formal_measurement_report
 from agent_rca_bench.formal_suite import (
     MicroEnvironmentConfig,
@@ -268,6 +269,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     suite_report.add_argument("--output-json", type=Path, required=True)
     suite_report.add_argument("--output-html", type=Path, required=True)
+    suite_report.add_argument("--publication-metadata", type=Path)
+
+    merge_report = subparsers.add_parser("formal-report-merge")
+    merge_report.add_argument("--reports", type=Path, nargs="+", required=True)
+    merge_report.add_argument("--transfer-artifacts", type=Path, nargs="+", required=True)
+    merge_report.add_argument("--publication-metadata", type=Path, required=True)
+    merge_report.add_argument("--output-json", type=Path, required=True)
+    merge_report.add_argument("--output-html", type=Path, required=True)
 
     transfer_selection = subparsers.add_parser("transfer-selection-audit")
     transfer_selection.add_argument("--cache-dir", type=Path, default=Path(".data/openrca2"))
@@ -302,6 +311,11 @@ def _parser() -> argparse.ArgumentParser:
     transfer_run.add_argument("--protocol", type=Path, default=DEFAULT_OPENRCA2_TRANSFER_PROTOCOL)
     transfer_run.add_argument("--confirm-paid-api", action="store_true", required=True)
     transfer_run.add_argument("--max-new-runs", type=int)
+    transfer_run.add_argument(
+        "--provider-concurrency-limit",
+        type=int,
+        help="Provider scheduling limit, from 1 to the frozen per-provider maximum",
+    )
 
     transfer_export = subparsers.add_parser("transfer-export")
     transfer_export.add_argument("--run-report", type=Path, required=True)
@@ -542,10 +556,29 @@ def formal_suite_report(args: argparse.Namespace) -> int:
         args.transfer_artifact,
         args.suite_protocol,
         args.transfer_protocol,
+        args.publication_metadata,
     )
     validate_formal_measurement_report(report)
     write_json(args.output_json, report)
-    render_formal_measurement_report(report, args.output_html)
+    render_formal_measurement_report(
+        report,
+        args.output_html,
+        report_json_filename=args.output_json.name,
+    )
+    print(args.output_json)
+    print(args.output_html)
+    return 0
+
+
+def formal_report_merge(args: argparse.Namespace) -> int:
+    for output in (args.output_json, args.output_html):
+        if output.exists():
+            raise ValueError(f"refusing to overwrite formal measurement report: {output}")
+    report = merge_formal_reports(args.reports, args.transfer_artifacts, args.publication_metadata)
+    write_json(args.output_json, report)
+    render_formal_measurement_report(
+        report, args.output_html, report_json_filename=args.output_json.name
+    )
     print(args.output_json)
     print(args.output_html)
     return 0
@@ -625,6 +658,7 @@ def transfer_run(args: argparse.Namespace) -> int:
             run_root=args.run_root,
             paid_api_confirmed=True,
             max_new_runs=args.max_new_runs,
+            provider_concurrency_limit=args.provider_concurrency_limit,
             on_update=lambda value: write_json(args.report, value),
         )
         validate_private_report(report, protocol, args.protocol, selection)
@@ -1709,6 +1743,8 @@ def main() -> None:
             code = formal_suite_micro_export(args)
         elif args.command == "formal-suite-report":
             code = formal_suite_report(args)
+        elif args.command == "formal-report-merge":
+            code = formal_report_merge(args)
         elif args.command == "transfer-selection-audit":
             code = transfer_selection_audit(args)
         elif args.command == "transfer-preflight":

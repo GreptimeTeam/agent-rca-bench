@@ -4,9 +4,15 @@ on:
   push:
     branches: [main]
     paths:
+      - artifacts/measurement/agent-rca-v34-six-model.html
+      - artifacts/measurement/agent-rca-v34-six-model.json
+      - artifacts/measurement/agent-rca-v34-six-model-SHA256SUMS
       - artifacts/measurement/agent-rca-v34.html
       - artifacts/measurement/agent-rca-v34.json
       - artifacts/measurement/agent-rca-v34-SHA256SUMS
+      - artifacts/measurement/agent-rca-v34-two-model-extension.html
+      - artifacts/measurement/agent-rca-v34-two-model-extension.json
+      - artifacts/measurement/agent-rca-v34-two-model-extension-SHA256SUMS
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -29,11 +35,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
       - run: sha256sum --check artifacts/measurement/agent-rca-v34-SHA256SUMS
+      - run: sha256sum --check artifacts/measurement/agent-rca-v34-two-model-extension-SHA256SUMS
+      - run: sha256sum --check artifacts/measurement/agent-rca-v34-six-model-SHA256SUMS
       - name: Prepare site
         run: |
           mkdir _site
-          cp artifacts/measurement/agent-rca-v34.html _site/index.html
+          cp artifacts/measurement/agent-rca-v34-six-model.html _site/index.html
+          cp artifacts/measurement/agent-rca-v34-six-model.json _site/
+          cp artifacts/measurement/agent-rca-v34.html _site/
           cp artifacts/measurement/agent-rca-v34.json _site/
+          cp artifacts/measurement/agent-rca-v34-two-model-extension.html _site/
+          cp artifacts/measurement/agent-rca-v34-two-model-extension.json _site/
           # Keeps the custom domain with the deployment rather than only in the
           # repository settings, where a redeploy can silently drop it.
           echo rca-bench.greptime.com > _site/CNAME

@@ -22,7 +22,66 @@ from agent_rca_bench.protocol import (
 from agent_rca_bench.report import MODEL_PRICING
 
 PROTOCOL_REVISION = "transfer-four-model-three-arm-service-edge-node-v20"
+EXTENSION_PROTOCOL_REVISION = "transfer-two-model-v34-extension-v2"
 DEFAULT_PROTOCOL_FIXTURE = Path("fixtures/reference/transfer-v34-protocol.json")
+EXTENSION_PROTOCOL_FIXTURE = Path(
+    "fixtures/reference/transfer-v34-two-model-extension-protocol.json"
+)
+
+EXPECTED_MODELS_BY_REVISION = {
+    PROTOCOL_REVISION: (
+        (
+            "gpt-5.6-sol",
+            "openai",
+            ApiTransport.OPENAI_RESPONSES,
+            "implicit-prefix-30m",
+            16384,
+            "medium",
+        ),
+        (
+            "deepseek-v4-pro",
+            "deepseek",
+            ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
+            "provider-automatic-prefix",
+            16384,
+            "high",
+        ),
+        (
+            "claude-fable-5-1",
+            "anthropic",
+            ApiTransport.ANTHROPIC_MESSAGES,
+            "ephemeral-request-cache-control",
+            16384,
+            "high",
+        ),
+        (
+            "glm-5.3",
+            "zhipu-bigmodel",
+            ApiTransport.BIGMODEL_CHAT_COMPLETIONS,
+            "provider-automatic-prefix",
+            16384,
+            "high",
+        ),
+    ),
+    EXTENSION_PROTOCOL_REVISION: (
+        (
+            "gemini-3.8-flash",
+            "google",
+            ApiTransport.GEMINI_OPENAI_CHAT_COMPLETIONS,
+            "provider-implicit-prefix",
+            16384,
+            "high",
+        ),
+        (
+            "qwen3.8-max-0902",
+            "alibaba-cloud-model-studio",
+            ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES,
+            "provider-session-prefix",
+            16384,
+            "high",
+        ),
+    ),
+}
 
 
 class ModelContract(BaseModel):
@@ -173,40 +232,7 @@ def load_transfer_protocol(
     path: Path = DEFAULT_PROTOCOL_FIXTURE,
 ) -> tuple[TransferProtocolFixture, TransferCohort]:
     fixture = TransferProtocolFixture.model_validate_json(path.read_text())
-    expected_models = (
-        (
-            "gpt-5.6-sol",
-            "openai",
-            ApiTransport.OPENAI_RESPONSES,
-            "implicit-prefix-30m",
-            16384,
-            "medium",
-        ),
-        (
-            "deepseek-v4-pro",
-            "deepseek",
-            ApiTransport.ANTHROPIC_COMPATIBLE_MESSAGES,
-            "provider-automatic-prefix",
-            16384,
-            "high",
-        ),
-        (
-            "claude-fable-5-1",
-            "anthropic",
-            ApiTransport.ANTHROPIC_MESSAGES,
-            "ephemeral-request-cache-control",
-            16384,
-            "high",
-        ),
-        (
-            "glm-5.3",
-            "zhipu-bigmodel",
-            ApiTransport.BIGMODEL_CHAT_COMPLETIONS,
-            "provider-automatic-prefix",
-            16384,
-            "high",
-        ),
-    )
+    expected_models = EXPECTED_MODELS_BY_REVISION.get(fixture.protocol_revision)
     observed_models = tuple(
         (
             model.model,
@@ -220,7 +246,7 @@ def load_transfer_protocol(
     )
     if (
         fixture.version != 1
-        or fixture.protocol_revision != PROTOCOL_REVISION
+        or expected_models is None
         or fixture.benchmark_protocol_version != benchmark_protocol()["version"]
         or fixture.case_role != "measurement"
         or fixture.greptimedb_build_profile != "release"

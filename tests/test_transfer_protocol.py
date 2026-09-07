@@ -6,6 +6,7 @@ import pytest
 
 from agent_rca_bench.transfer_protocol import (
     DEFAULT_PROTOCOL_FIXTURE,
+    EXTENSION_PROTOCOL_FIXTURE,
     formal_schedule,
     load_transfer_protocol,
 )
@@ -40,6 +41,23 @@ def test_transfer_protocol_freezes_a_balanced_cell_per_case_model_and_treatment(
                 order = [cell for cell in cells if cell["repetition"] == repetition]
                 assert [cell["position"] for cell in order] == list(range(len(levels)))
                 assert len({cell["visibility"] for cell in order}) == len(levels)
+
+
+def test_extension_protocol_schedules_only_the_two_new_models() -> None:
+    protocol, selection = load_transfer_protocol(EXTENSION_PROTOCOL_FIXTURE)
+
+    schedule = formal_schedule(protocol, selection)
+
+    assert [model.model for model in protocol.models] == [
+        "gemini-3.8-flash",
+        "qwen3.8-max-0902",
+    ]
+    assert protocol.inference.holm_family_size == 4
+    assert len(schedule) == protocol.expected_cells == 168
+    assert {cell["model"] for cell in schedule} == {
+        "gemini-3.8-flash",
+        "qwen3.8-max-0902",
+    }
 
 
 def test_the_schedule_spreads_every_treatment_across_every_position_per_model() -> None:
