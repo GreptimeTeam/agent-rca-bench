@@ -22,6 +22,7 @@ class ApiTransport(StrEnum):
     ANTHROPIC_COMPATIBLE_MESSAGES = "anthropic-compatible-messages"
     OPENAI_RESPONSES = "openai-responses"
     BIGMODEL_CHAT_COMPLETIONS = "bigmodel-chat-completions"
+    GEMINI_OPENAI_CHAT_COMPLETIONS = "gemini-openai-chat-completions"
     DASHSCOPE_CN_BEIJING_RESPONSES = "dashscope-cn-beijing-responses"
 
 

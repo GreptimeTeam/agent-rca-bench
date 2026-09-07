@@ -631,6 +631,7 @@ def build_measurement_artifact(
         protocol_path,
         selection,
         require_complete=True,
+        allow_recorded_concurrency_deviation=True,
     )
     source_by_case = {
         str(_mapping(source, "case")["opaque_case_id"]): source
@@ -754,6 +755,11 @@ def build_measurement_artifact(
                     )
                 },
                 "run": public,
+                **(
+                    {"provider_concurrency_limit": item["provider_concurrency_limit"]}
+                    if "provider_concurrency_limit" in item
+                    else {}
+                ),
             }
         )
     public_sources = [
@@ -882,6 +888,11 @@ def validate_measurement_artifact(
     for expected, item in zip(schedule, runs, strict=True):
         if any(item.get(key) != value for key, value in expected.items()):
             raise ValueError("public transfer schedule drifted")
+        concurrency = item.get(
+            "provider_concurrency_limit", protocol.max_parallel_runs_per_provider
+        )
+        if type(concurrency) is not int or not 1 <= concurrency <= protocol.parallel_runs:
+            raise ValueError("public transfer recorded provider concurrency is invalid")
         model = models[str(item["model"])]
         deterministic = validate_public_transfer_run(
             _mapping(item, "run"),

@@ -106,18 +106,36 @@ MODEL_PRICING = {
         ),
         "source": "https://bigmodel.cn/pricing",
     },
-    "qwen3.8-max": {
+    "qwen3.8-max-0902": {
         "currency": "CNY",
         "input_per_million": 12.0,
-        "input_cache_hit_per_million": 1.5,
+        "input_cache_write_per_million": 15.0,
+        "input_cache_hit_per_million": 1.0,
         "output_per_million": 36.0,
-        "checked_at": "2026-08-31",
+        "cache_creation_breakdown_required": True,
+        "checked_at": "2026-09-06",
         "note": (
             "Alibaba Cloud Model Studio China (Beijing) workspace deployment. Automatic "
-            "cache hits cost CNY 1.5 per million tokens. Explicit cache creation is not used "
-            "by this runner; cost fails closed if a cache-write field is nevertheless returned."
+            "cache hits cost CNY 1.5 per million tokens. The Responses session cache uses "
+            "explicit caching at CNY 15 per million tokens created and CNY 1 per million "
+            "tokens read. Cost is unavailable when the Responses usage omits the cache-creation "
+            "breakdown."
         ),
         "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-max",
+    },
+    "gemini-3.8-flash": {
+        "currency": "USD",
+        "input_per_million": 0.75,
+        "input_cache_hit_per_million": 0.075,
+        "output_per_million": 3.75,
+        "checked_at": "2026-09-06",
+        "note": (
+            "Google AI Developer API standard paid tier introductory pricing through "
+            "2026-12-31. Standard pricing doubles on 2027-01-01. Implicit caching is "
+            "enabled by the provider; explicit cache creation and storage are not used "
+            "by this runner."
+        ),
+        "source": "https://ai.google.dev/gemini-api/docs/pricing",
     },
 }
 
@@ -133,12 +151,13 @@ TOKEN_ACCOUNTING = {
         "context": "system prompt, tool schemas, and prior tool results are sent to the provider",
         "output_tokens": (
             "normalized provider-reported output_tokens or completion_tokens, including "
-            "reasoning where the provider includes it"
+            "reasoning where the provider includes it; Gemini OpenAI-compatible usage is "
+            "reconstructed from total minus prompt tokens when completion_tokens omits thinking"
         ),
         "reasoning_tokens": (
             "reasoning_tokens or thinking_tokens is recorded as a subset of output tokens when "
-            "the provider returns an output-token breakdown; providers without that breakdown "
-            "still include reasoning in output tokens"
+            "the provider returns an output-token breakdown; Gemini's unreported remainder is "
+            "reconstructed from total minus prompt and visible completion tokens"
         ),
         "comparability": "paired comparisons only within the same provider and runner contract",
     },
@@ -172,13 +191,17 @@ def _raw_input_breakdown(run: Mapping[str, object]) -> tuple[int, int, int, bool
             input_tokens = int(usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0)
             details = usage.get("input_tokens_details", usage.get("prompt_tokens_details"))
             if isinstance(details, Mapping):
-                cached = int(details.get("cached_tokens", 0) or 0)
-                cache_write = int(
-                    details.get("cache_write_tokens", 0)
-                    or details.get("cache_creation_input_tokens", 0)
-                    or usage.get("cache_creation_input_tokens", 0)
-                    or 0
-                )
+                nested_breakdown = _x_details_cache_breakdown(usage)
+                if nested_breakdown is None:
+                    cached = int(details.get("cached_tokens", 0) or 0)
+                    cache_write = int(
+                        details.get("cache_write_tokens", 0)
+                        or details.get("cache_creation_input_tokens", 0)
+                        or usage.get("cache_creation_input_tokens", 0)
+                        or 0
+                    )
+                else:
+                    cached, cache_write = nested_breakdown
                 if (
                     input_tokens >= 0
                     and cached >= 0
@@ -195,6 +218,27 @@ def _raw_input_breakdown(run: Mapping[str, object]) -> tuple[int, int, int, bool
         cache_creation,
         usage_responses > 0 and breakdown_responses == usage_responses,
     )
+
+
+def _x_details_cache_breakdown(usage: Mapping[str, object]) -> tuple[int, int] | None:
+    x_details = usage.get("x_details")
+    if not isinstance(x_details, list) or not x_details:
+        return None
+    cached = 0
+    cache_creation = 0
+    for detail in x_details:
+        if not isinstance(detail, Mapping):
+            return None
+        prompt_details = detail.get("prompt_tokens_details")
+        if not isinstance(prompt_details, Mapping):
+            return None
+        cached_value = prompt_details.get("cached_tokens")
+        creation_value = prompt_details.get("cache_creation_input_tokens")
+        if cached_value is None or creation_value is None:
+            return None
+        cached += int(cached_value)
+        cache_creation += int(creation_value)
+    return cached, cache_creation
 
 
 def _raw_cached_input(run: Mapping[str, object]) -> tuple[int, int]:
@@ -221,6 +265,10 @@ def _runner_reported_token_total(
 def _estimated_api_cost(run: Mapping[str, object], pricing: Mapping[str, object]) -> float | None:
     if pricing.get("cost_available") is False:
         return None
+    if pricing.get("cache_creation_breakdown_required") is True and not (
+        _cache_creation_breakdown_available(run)
+    ):
+        return None
     usage = run.get("usage")
     usage = usage if isinstance(usage, Mapping) else {}
     uncached_input, cache_read, cache_creation, cache_breakdown_available = _raw_input_breakdown(
@@ -243,6 +291,28 @@ def _estimated_api_cost(run: Mapping[str, object], pricing: Mapping[str, object]
         + cache_read * float(cache_read_rate or 0)
         + output * float(pricing["output_per_million"])
     ) / 1_000_000
+
+
+def _cache_creation_breakdown_available(run: Mapping[str, object]) -> bool:
+    responses = run.get("responses")
+    if not isinstance(responses, list) or not responses:
+        return False
+    for response in responses:
+        if not isinstance(response, Mapping):
+            return False
+        usage = response.get("usage")
+        if not isinstance(usage, Mapping):
+            return False
+        details = usage.get("input_tokens_details", usage.get("prompt_tokens_details"))
+        if not isinstance(details, Mapping):
+            return False
+        cache_creation = details.get(
+            "cache_write_tokens",
+            details.get("cache_creation_input_tokens", usage.get("cache_creation_input_tokens")),
+        )
+        if cache_creation is None and _x_details_cache_breakdown(usage) is None:
+            return False
+    return True
 
 
 def _strip_signatures(value: object) -> object:

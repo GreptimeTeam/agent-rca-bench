@@ -1,7 +1,7 @@
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from threading import Barrier, Lock
+from threading import Barrier, Event, Lock, Timer
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +18,7 @@ from agent_rca_bench.transfer_formal import (
     PreparedTransferEnvironment,
     _failed_run,
     build_preflight_report,
+    validate_transfer_run_item,
 )
 from agent_rca_bench.transfer_protocol import (
     DEFAULT_PROTOCOL_FIXTURE,
@@ -26,6 +27,64 @@ from agent_rca_bench.transfer_protocol import (
     sha256_file,
 )
 from agent_rca_bench.transfer_scorer import evaluate_transfer_run
+
+
+def test_interrupt_drains_active_cells_before_exiting(tmp_path: Path, monkeypatch) -> None:
+    import agent_rca_bench.transfer_concurrent as concurrent
+
+    protocol, cohort, report, audits = _preflight()
+    started = Event()
+    release = Event()
+    lock = Lock()
+    executing = []
+    closed = []
+
+    @contextmanager
+    def prepare(_protocol, spec, _config):
+        try:
+            yield SimpleNamespace(spec=spec, source_audit=_source_audit(spec.opaque_case_id))
+        finally:
+            closed.append(spec.opaque_case_id)
+
+    def execute(*args, **kwargs):
+        with lock:
+            executing.append(args[2]["cell_index"])
+            if len(executing) == protocol.parallel_runs:
+                started.set()
+        assert release.wait(5)
+        return _failed_item(*args, **kwargs)
+
+    def interrupt(*_args, **_kwargs):
+        assert started.wait(5)
+        Timer(0.05, release.set).start()
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(concurrent, "wait", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        execute_pending_runs_concurrently(
+            report,
+            protocol,
+            DEFAULT_PROTOCOL_FIXTURE,
+            cohort,
+            cache_dir=tmp_path / "cache",
+            manifest_path=tmp_path / "manifest.jsonl",
+            greptimedb_repo=tmp_path / "greptimedb",
+            run_root=tmp_path / "runs",
+            paid_api_confirmed=True,
+            prepare_environment_fn=prepare,
+            execute_cell_fn=execute,
+        )
+    state = TransferRunState(
+        tmp_path / "runs" / ".transfer-run-state",
+        protocol_fixture_sha256=sha256_file(DEFAULT_PROTOCOL_FIXTURE),
+        schedule=formal_schedule(protocol, cohort),
+    )
+    complete = {item["cell_index"] for item in report["runs"]}
+    complete.update(state.completed_indexes(report, protocol, cohort))
+    assert complete == set(executing)
+    assert len(complete) == protocol.parallel_runs
+    assert len(closed) == protocol.parallel_runs
+    assert not list(state.root.glob("*.active.json"))
 
 
 def _source_audit(case_id: str) -> dict[str, object]:
@@ -87,6 +146,100 @@ def test_case_execution_rotates_models_without_reordering_each_model() -> None:
     for model_index in range(len(protocol.models)):
         expected = [cell for cell in case_cells if cell["model_index"] == model_index]
         assert [cell for cell in ordered if cell["model_index"] == model_index] == expected
+
+
+def test_provider_limit_runs_pending_cells_and_preserves_reused_results(
+    tmp_path: Path,
+) -> None:
+    protocol, cohort, report, _audits = _preflight()
+    schedule = formal_schedule(protocol, cohort)
+    pending = {0, 24, 48, 72}
+    specs = {spec.opaque_case_id: spec for spec in cohort.selected_cases}
+    run_root = tmp_path / "runs"
+    state = TransferRunState(
+        run_root / ".transfer-run-state",
+        protocol_fixture_sha256=sha256_file(DEFAULT_PROTOCOL_FIXTURE),
+        schedule=schedule,
+    )
+    reused = {}
+    for cell in schedule:
+        if cell["cell_index"] in pending:
+            continue
+        item = _failed_item(
+            protocol,
+            SimpleNamespace(spec=specs[cell["case_id"]]),
+            cell,
+            source_semantic_hash=report["bindings"]["source_semantic_sha256"][cell["case_id"]],
+        )
+        state.mark_active(cell)
+        state.mark_complete(item)
+        reused[cell["cell_index"]] = item
+    active = Barrier(2)
+
+    @contextmanager
+    def prepare(_protocol, spec, _config):
+        yield SimpleNamespace(spec=spec, source_audit=_source_audit(spec.opaque_case_id))
+
+    def execute(*args, **kwargs):
+        assert args[2]["cell_index"] in pending
+        active.wait(timeout=5)
+        return _failed_item(*args, **kwargs)
+
+    execute_pending_runs_concurrently(
+        report,
+        protocol,
+        DEFAULT_PROTOCOL_FIXTURE,
+        cohort,
+        cache_dir=tmp_path / "cache",
+        manifest_path=tmp_path / "manifest.jsonl",
+        greptimedb_repo=tmp_path / "greptimedb",
+        run_root=run_root,
+        paid_api_confirmed=True,
+        provider_concurrency_limit=2,
+        prepare_environment_fn=prepare,
+        execute_cell_fn=execute,
+    )
+    assert len(report["runs"]) == len(schedule)
+    for item in report["runs"]:
+        if item["cell_index"] in pending:
+            assert item.get("provider_concurrency_limit", 2) == 2
+        else:
+            assert item == reused[item["cell_index"]]
+
+
+@pytest.mark.parametrize("limit", [3, 4, True])
+def test_provider_limit_cannot_exceed_frozen_contract(tmp_path, limit):
+    protocol, cohort, report, _ = _preflight()
+    with pytest.raises(ValueError, match="frozen provider limit"):
+        execute_pending_runs_concurrently(
+            report,
+            protocol,
+            DEFAULT_PROTOCOL_FIXTURE,
+            cohort,
+            cache_dir=tmp_path / "cache",
+            manifest_path=tmp_path / "manifest.jsonl",
+            greptimedb_repo=tmp_path / "db",
+            run_root=tmp_path / "runs",
+            paid_api_confirmed=True,
+            provider_concurrency_limit=limit,
+        )
+    assert not (tmp_path / "runs").exists()
+
+
+def test_historical_concurrency_deviation_requires_audit_mode():
+    protocol, cohort, report, _ = _preflight()
+    cell = formal_schedule(protocol, cohort)[0]
+    spec = cohort.selected_cases[0]
+    source_hash = report["bindings"]["source_semantic_sha256"][cell["case_id"]]
+    item = _failed_item(
+        protocol, SimpleNamespace(spec=spec), cell, source_semantic_hash=source_hash
+    )
+    item["provider_concurrency_limit"] = 4
+    with pytest.raises(ValueError, match="concurrency"):
+        validate_transfer_run_item(item, cell, protocol, spec, source_hash)
+    validate_transfer_run_item(
+        item, cell, protocol, spec, source_hash, allow_recorded_concurrency_deviation=True
+    )
 
 
 def test_preflight_uses_the_paid_runner_environment_concurrency(tmp_path: Path) -> None:

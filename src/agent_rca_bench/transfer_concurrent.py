@@ -303,6 +303,7 @@ def execute_pending_runs_concurrently(
     node_cache_dir: Path = Path(".data/rca100"),
     paid_api_confirmed: bool,
     max_new_runs: int | None = None,
+    provider_concurrency_limit: int | None = None,
     run_agent_fn: RunAgent = run_agent,
     run_split_agent_fn: RunAgent = run_split_agent,
     prepare_environment_fn: PrepareEnvironment = prepare_transfer_environment,
@@ -314,6 +315,11 @@ def execute_pending_runs_concurrently(
         raise ValueError("transfer paid API execution has not been explicitly confirmed")
     if max_new_runs is not None and max_new_runs < 1:
         raise ValueError("max_new_runs must be positive")
+    if provider_concurrency_limit is not None and not (
+        type(provider_concurrency_limit) is int
+        and 1 <= provider_concurrency_limit <= protocol.max_parallel_runs_per_provider
+    ):
+        raise ValueError("provider concurrency must be between 1 and the frozen provider limit")
     with _exclusive_invocation(run_root):
         return _execute_pending_runs_concurrently_locked(
             report,
@@ -327,6 +333,7 @@ def execute_pending_runs_concurrently(
             node_cache_dir=node_cache_dir,
             paid_api_confirmed=paid_api_confirmed,
             max_new_runs=max_new_runs,
+            provider_concurrency_limit=provider_concurrency_limit,
             run_agent_fn=run_agent_fn,
             run_split_agent_fn=run_split_agent_fn,
             prepare_environment_fn=prepare_environment_fn,
@@ -348,6 +355,7 @@ def _execute_pending_runs_concurrently_locked(
     node_cache_dir: Path,
     paid_api_confirmed: bool,
     max_new_runs: int | None,
+    provider_concurrency_limit: int | None,
     run_agent_fn: RunAgent,
     run_split_agent_fn: RunAgent,
     prepare_environment_fn: PrepareEnvironment,
@@ -388,9 +396,9 @@ def _execute_pending_runs_concurrently_locked(
     source_hashes = _source_hashes(report)
     abort = Event()
     preparation_slots = BoundedSemaphore(protocol.max_parallel_environment_preparations)
+    effective_provider_limit = provider_concurrency_limit or protocol.max_parallel_runs_per_provider
     provider_slots = {
-        model.provider: BoundedSemaphore(protocol.max_parallel_runs_per_provider)
-        for model in protocol.models
+        model.provider: BoundedSemaphore(effective_provider_limit) for model in protocol.models
     }
 
     def run_case(
@@ -455,6 +463,8 @@ def _execute_pending_runs_concurrently_locked(
                         run_agent_fn=run_agent_fn,
                         run_split_agent_fn=run_split_agent_fn,
                     )
+                    if effective_provider_limit != protocol.max_parallel_runs_per_provider:
+                        item["provider_concurrency_limit"] = effective_provider_limit
                     state.mark_complete(item)
                     reconcile(reject_ambiguous_active=False)
                 finally:

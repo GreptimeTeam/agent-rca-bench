@@ -4,6 +4,7 @@ import json
 import re
 from collections import Counter, defaultdict
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 
 import sqlglot
@@ -11,6 +12,7 @@ from sqlglot import exp as sqlglot_exp
 
 from agent_rca_bench.formal_suite import canonical_sha256
 from agent_rca_bench.formal_suite_protocol import (
+    EXTENSION_SUITE_PROTOCOL_REVISION,
     load_formal_suite_protocol,
     load_transfer_cohort,
     sha256_file,
@@ -83,11 +85,17 @@ def build_formal_measurement_report_from_files(
     transfer_artifact_path: Path,
     suite_protocol_path: Path,
     transfer_protocol_path: Path,
+    publication_metadata_path: Path | None = None,
 ) -> dict[str, object]:
     micro = _load_object(micro_artifact_path)
     transfer = _load_object(transfer_artifact_path)
     validate_micro_measurement_artifact(micro, suite_protocol_path)
     validate_measurement_artifact(transfer, transfer_protocol_path)
+    publication = (
+        _load_publication_metadata(publication_metadata_path)
+        if publication_metadata_path is not None
+        else None
+    )
     return build_formal_measurement_report(
         micro,
         transfer,
@@ -96,6 +104,7 @@ def build_formal_measurement_report_from_files(
             "micro": _artifact_binding(micro, micro_artifact_path),
             "transfer": _artifact_binding(transfer, transfer_artifact_path),
         },
+        publication=publication,
     )
 
 
@@ -105,8 +114,12 @@ def build_formal_measurement_report(
     suite_protocol_path: Path,
     *,
     source_artifacts: dict[str, object],
+    publication: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    if publication is not None:
+        _validate_publication_metadata(publication)
     suite, protocol = load_formal_suite_protocol(suite_protocol_path)
+    exchange_rates = _exchange_rates_for_suite(suite.protocol_revision)
     if (
         _mapping(transfer, "bindings").get("protocol_fixture_sha256")
         != suite.transfer_protocol_fixture_sha256
@@ -220,7 +233,7 @@ def build_formal_measurement_report(
         "tool_use_audit": _tool_use_audit(transfer_runs),
         "claim_rejection_audit": _claim_rejection_audit(transfer_runs),
         "citation_submission": _citation_submission(transfer_runs, names),
-        "usage_by_treatment": _usage_by_treatment(transfer_runs),
+        "usage_by_treatment": _usage_by_treatment(transfer_runs, exchange_rates=exchange_rates),
         "capability_scores": _capability_scores(transfer_runs, names),
         "confirmatory_family_resource_effects": transfer_families,
         "semantic_layer_findings": _semantic_findings(model_reports),
@@ -240,7 +253,7 @@ def build_formal_measurement_report(
             ),
             "missing_cost": "not estimated when either side of a pair is not priceable",
         },
-        "costs": _cost_report(model_reports),
+        "costs": _cost_report(model_reports, exchange_rates=exchange_rates),
         "audit": _audit(micro, transfer),
         "limitations": [
             (
@@ -282,6 +295,22 @@ def build_formal_measurement_report(
             ),
         ],
     }
+    if publication is not None:
+        payload["publication"] = publication
+    deviations = [
+        {
+            "cell_index": item["cell_index"],
+            "model": item["model"],
+            "protocol_revision": suite.protocol_revision,
+            "frozen_provider_concurrency_limit": protocol.max_parallel_runs_per_provider,
+            "actual_provider_concurrency_limit": item["provider_concurrency_limit"],
+        }
+        for item in transfer_runs
+        if item.get("provider_concurrency_limit", protocol.max_parallel_runs_per_provider)
+        > protocol.max_parallel_runs_per_provider
+    ]
+    if deviations:
+        payload["execution_deviations"] = deviations
     return {
         **payload,
         "integrity": {
@@ -304,9 +333,55 @@ def validate_formal_measurement_report(report: dict[str, object]) -> None:
     models = _mapping(report, "model_reports")
     if not isinstance(order, list) or set(order) != set(models):
         raise ValueError("formal measurement report model roster drifted")
+    if report.get("inference_cohorts"):
+        cohort_models = []
+        for cohort in _mapping_list(report, "inference_cohorts"):
+            roster = cohort["models"]
+            cohort_models.extend(roster)
+            sizes = {}
+            counts = Counter()
+            for model in roster:
+                for family, result in models[model]["transfer"]["confirmatory_families"].items():
+                    metrics = result["primary_metrics"]
+                    counts[family] += len(metrics)
+                    sizes.setdefault(family, set()).update(
+                        metric["multiplicity_family_size"] for metric in metrics.values()
+                    )
+            if any(sizes[family] != {count} for family, count in counts.items()):
+                raise ValueError("merged report changed a cohort's frozen multiplicity scope")
+        if len(cohort_models) != len(set(cohort_models)) or set(cohort_models) != set(order):
+            raise ValueError("merged report inference cohorts do not partition its models")
+    publication = report.get("publication")
+    if publication is not None:
+        _validate_publication_metadata(publication)
     payload = {key: value for key, value in report.items() if key != "integrity"}
     if _mapping(report, "integrity").get("semantic_payload_sha256") != canonical_sha256(payload):
         raise ValueError("formal measurement report semantic payload hash drifted")
+
+
+def _load_publication_metadata(path: Path) -> dict[str, object]:
+    publication = _load_object(path)
+    _validate_publication_metadata(publication)
+    return publication
+
+
+def _validate_publication_metadata(publication: object) -> None:
+    if not isinstance(publication, dict) or publication.get("schema_version") != 1:
+        raise ValueError("unsupported publication metadata")
+    measurement = _utc_timestamp(publication.get("measurement_updated_at"))
+    generated = _utc_timestamp(publication.get("report_generated_at"))
+    if generated < measurement:
+        raise ValueError("report_generated_at predates measurement_updated_at")
+
+
+def _utc_timestamp(value: object) -> datetime:
+    utc_pattern = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
+    if not isinstance(value, str) or not re.fullmatch(utc_pattern, value):
+        raise ValueError("publication timestamps must use UTC ISO 8601 with second precision")
+    parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    if parsed.strftime("%Y-%m-%dT%H:%M:%SZ") != value:
+        raise ValueError("publication timestamp is not a valid UTC instant")
+    return parsed
 
 
 def _execution(suite, protocol, micro, transfer, micro_runs, transfer_runs):
@@ -1201,7 +1276,11 @@ def _power_limitation(
     )
 
 
-def _usage_by_treatment(runs: list[Mapping[str, object]]) -> dict[str, object]:
+def _usage_by_treatment(
+    runs: list[Mapping[str, object]],
+    *,
+    exchange_rates: Mapping[str, Mapping[str, object]] | None = None,
+) -> dict[str, object]:
     """Tokens per arm, and spend per arm kept in the currency it was billed in.
 
     Token totals cover every executed run, unsuccessful ones included, because
@@ -1214,6 +1293,7 @@ def _usage_by_treatment(runs: list[Mapping[str, object]]) -> dict[str, object]:
     unpriced arm look cheap. Currencies are never added together, so a cohort
     spanning two of them yields two subtotals and no single figure.
     """
+    exchange_rates = exchange_rates or EXCHANGE_RATES_TO_USD
     treatments = _treatments_present(runs)
     tokens: Counter[str] = Counter()
     output: Counter[str] = Counter()
@@ -1290,7 +1370,11 @@ def _usage_by_treatment(runs: list[Mapping[str, object]]) -> dict[str, object]:
                 if not currencies_present
                 else round(
                     sum(
-                        _to_usd(spend_by_currency[currency][treatment], currency)
+                        _to_usd(
+                            spend_by_currency[currency][treatment],
+                            currency,
+                            exchange_rates=exchange_rates,
+                        )
                         for currency in currencies_present
                     ),
                     6,
@@ -1299,9 +1383,9 @@ def _usage_by_treatment(runs: list[Mapping[str, object]]) -> dict[str, object]:
             for treatment in treatments
         },
         "exchange_rates": {
-            currency: dict(EXCHANGE_RATES_TO_USD[currency])
+            currency: dict(exchange_rates[currency])
             for currency in currencies_present
-            if currency in EXCHANGE_RATES_TO_USD
+            if currency in exchange_rates
         },
     }
 
@@ -1320,9 +1404,32 @@ EXCHANGE_RATES_TO_USD = {
     },
 }
 
+EXTENSION_EXCHANGE_RATES_TO_USD = {
+    "USD": {"per_unit_usd": 1.0, "checked_at": None, "source": None},
+    "CNY": {
+        "per_unit_usd": 1.0 / 6.7787,
+        "units_per_usd": 6.7787,
+        "checked_at": "2026-09-04",
+        "source": "https://www.safe.gov.cn/AppStructured/hlw/RMBQuery.do",
+    },
+}
 
-def _to_usd(amount: float, currency: str) -> float:
-    rate = EXCHANGE_RATES_TO_USD.get(currency)
+
+def _exchange_rates_for_suite(
+    protocol_revision: str,
+) -> Mapping[str, Mapping[str, object]]:
+    if protocol_revision == EXTENSION_SUITE_PROTOCOL_REVISION:
+        return EXTENSION_EXCHANGE_RATES_TO_USD
+    return EXCHANGE_RATES_TO_USD
+
+
+def _to_usd(
+    amount: float,
+    currency: str,
+    *,
+    exchange_rates: Mapping[str, Mapping[str, object]] | None = None,
+) -> float:
+    rate = (exchange_rates or EXCHANGE_RATES_TO_USD).get(currency)
     if rate is None:
         raise ValueError(f"no frozen exchange rate for currency: {currency}")
     return amount * float(rate["per_unit_usd"])
@@ -1487,7 +1594,12 @@ def _semantic_findings(reports):
     }
 
 
-def _cost_report(reports):
+def _cost_report(
+    reports,
+    *,
+    exchange_rates: Mapping[str, Mapping[str, object]] | None = None,
+):
+    exchange_rates = exchange_rates or EXCHANGE_RATES_TO_USD
     totals = defaultdict(float)
     models = {}
     unavailable = []
@@ -1536,7 +1648,7 @@ def _cost_report(reports):
     pricing_basis = {}
     for model in reports:
         pricing = MODEL_PRICING.get(model, {})
-        pricing_basis[model] = {
+        basis = {
             "currency": pricing.get("currency"),
             "uncached_input_per_million": pricing.get("input_per_million"),
             "cache_read_per_million": pricing.get("input_cache_hit_per_million"),
@@ -1545,6 +1657,7 @@ def _cost_report(reports):
             "checked_at": pricing.get("checked_at"),
             "source": pricing.get("source"),
         }
+        pricing_basis[model] = basis
     return {
         "models": models,
         "pricing_basis": pricing_basis,
@@ -1557,10 +1670,14 @@ def _cost_report(reports):
         else {
             "currency": "USD",
             "amount": round(
-                sum(_to_usd(amount, currency) for currency, amount in totals.items()), 6
+                sum(
+                    _to_usd(amount, currency, exchange_rates=exchange_rates)
+                    for currency, amount in totals.items()
+                ),
+                6,
             ),
             "exchange_rates": {
-                currency: dict(EXCHANGE_RATES_TO_USD[currency]) for currency in sorted(totals)
+                currency: dict(exchange_rates[currency]) for currency in sorted(totals)
             },
         },
         "aggregation_policy": (

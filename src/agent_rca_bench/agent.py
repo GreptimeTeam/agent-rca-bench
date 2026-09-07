@@ -79,10 +79,13 @@ ANTHROPIC_KEYCHAIN_SERVICE = "agent-rca-bench-anthropic"
 DEEPSEEK_KEYCHAIN_SERVICE = "agent-rca-bench-deepseek"
 OPENAI_KEYCHAIN_SERVICE = "agent-rca-bench-openai"
 BIGMODEL_KEYCHAIN_SERVICE = "agent-rca-bench-bigmodel"
+GEMINI_KEYCHAIN_SERVICE = "agent-rca-bench-gemini"
 DASHSCOPE_KEYCHAIN_SERVICE = "agent-rca-bench-dashscope"
 DASHSCOPE_BASE_URL_KEYCHAIN_SERVICE = "agent-rca-bench-dashscope-base-url"
 DEEPSEEK_ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
 BIGMODEL_CHAT_COMPLETIONS_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+GEMINI_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+GEMINI_MAX_RETRIES = 10
 DASHSCOPE_BASE_URL_ENV = "DASHSCOPE_BASE_URL"
 
 RESPONSES_TRANSPORTS = frozenset(
@@ -91,7 +94,12 @@ RESPONSES_TRANSPORTS = frozenset(
         ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES,
     }
 )
-CHAT_COMPLETIONS_TRANSPORTS = frozenset({ApiTransport.BIGMODEL_CHAT_COMPLETIONS})
+CHAT_COMPLETIONS_TRANSPORTS = frozenset(
+    {
+        ApiTransport.BIGMODEL_CHAT_COMPLETIONS,
+        ApiTransport.GEMINI_OPENAI_CHAT_COMPLETIONS,
+    }
+)
 
 TABLE_SEMANTICS_GUIDE = """
 Semantic profile usage: signal_type says whether the table contains metrics, logs, traces, or
@@ -909,8 +917,17 @@ def _run_chat_completions_structured_api_agent(
             raw_response = response.model_dump(mode="json")
             responses.append(raw_response)
             usage.input_tokens += _provider_total_input_tokens(raw_response)
-            usage.output_tokens += _provider_output_tokens(raw_response)
-            usage.reasoning_tokens += _reasoning_tokens(raw_response)
+            infer_reasoning_from_total = (
+                api_transport is ApiTransport.GEMINI_OPENAI_CHAT_COMPLETIONS
+            )
+            usage.output_tokens += _provider_output_tokens(
+                raw_response,
+                infer_reasoning_from_total=infer_reasoning_from_total,
+            )
+            usage.reasoning_tokens += _reasoning_tokens(
+                raw_response,
+                infer_reasoning_from_total=infer_reasoning_from_total,
+            )
             if len(response.choices) != 1:
                 raise AgentError("Chat Completions response must contain exactly one choice")
             choice = response.choices[0]
@@ -1219,13 +1236,23 @@ def _anthropic_client(api_transport: ApiTransport) -> anthropic.Anthropic:
 
 
 def _chat_completions_client(api_transport: ApiTransport) -> openai.OpenAI:
-    if api_transport is not ApiTransport.BIGMODEL_CHAT_COMPLETIONS:
+    client_options: dict[str, object] = {}
+    if api_transport is ApiTransport.BIGMODEL_CHAT_COMPLETIONS:
+        api_key = _api_credential("BIGMODEL_API_KEY", BIGMODEL_KEYCHAIN_SERVICE)
+        base_url = BIGMODEL_CHAT_COMPLETIONS_BASE_URL
+        trust_env = False
+    elif api_transport is ApiTransport.GEMINI_OPENAI_CHAT_COMPLETIONS:
+        api_key = _api_credential("GEMINI_API_KEY", GEMINI_KEYCHAIN_SERVICE)
+        base_url = GEMINI_OPENAI_BASE_URL
+        trust_env = True
+        client_options["max_retries"] = GEMINI_MAX_RETRIES
+    else:
         raise AgentError(f"unsupported Chat Completions transport: {api_transport.value}")
-    api_key = _api_credential("BIGMODEL_API_KEY", BIGMODEL_KEYCHAIN_SERVICE)
     return openai.OpenAI(
         api_key=api_key,
-        base_url=BIGMODEL_CHAT_COMPLETIONS_BASE_URL,
-        http_client=openai.DefaultHttpxClient(trust_env=False),
+        base_url=base_url,
+        http_client=openai.DefaultHttpxClient(trust_env=trust_env),
+        **client_options,
     )
 
 
@@ -1249,18 +1276,22 @@ def _chat_completions_request(
     max_output_tokens: int,
     reasoning_effort: str,
 ) -> dict[str, object]:
-    if api_transport is not ApiTransport.BIGMODEL_CHAT_COMPLETIONS:
-        raise AgentError(f"unsupported Chat Completions transport: {api_transport.value}")
-    return {
+    request: dict[str, object] = {
         "model": model,
         "messages": deepcopy(messages),
         "tools": tools,
         "max_tokens": max_output_tokens,
-        "extra_body": {
+    }
+    if api_transport is ApiTransport.BIGMODEL_CHAT_COMPLETIONS:
+        request["extra_body"] = {
             "thinking": {"type": "enabled"},
             "reasoning_effort": reasoning_effort,
-        },
-    }
+        }
+    elif api_transport is ApiTransport.GEMINI_OPENAI_CHAT_COMPLETIONS:
+        request["reasoning_effort"] = reasoning_effort
+    else:
+        raise AgentError(f"unsupported Chat Completions transport: {api_transport.value}")
+    return request
 
 
 def _chat_completions_function_call(
@@ -1454,21 +1485,32 @@ def _validate_responses_status(response: dict[str, object]) -> None:
     raise AgentError(f"Responses API status is {status!r}: {detail}")
 
 
-def _reasoning_tokens(response: dict[str, object]) -> int:
+def _reasoning_tokens(
+    response: dict[str, object],
+    *,
+    infer_reasoning_from_total: bool = False,
+) -> int:
     raw_usage = response.get("usage")
     if not isinstance(raw_usage, dict):
         raise AgentError("provider response has no usage object")
     output_tokens = int(raw_usage.get("output_tokens", raw_usage.get("completion_tokens", 0)) or 0)
+    total_output_tokens = output_tokens
     details = raw_usage.get("output_tokens_details", raw_usage.get("completion_tokens_details"))
     reasoning_tokens = 0
-    if isinstance(details, dict):
+    if infer_reasoning_from_total:
+        total_output_tokens = _output_tokens_including_unreported_reasoning(raw_usage)
+    if isinstance(details, dict) and any(
+        details.get(key) is not None for key in ("reasoning_tokens", "thinking_tokens")
+    ):
         raw_reasoning = (
             details["reasoning_tokens"]
-            if "reasoning_tokens" in details
+            if details.get("reasoning_tokens") is not None
             else details.get("thinking_tokens", 0)
         )
         reasoning_tokens = int(raw_reasoning or 0)
-    if reasoning_tokens < 0 or reasoning_tokens > output_tokens:
+    elif infer_reasoning_from_total:
+        reasoning_tokens = total_output_tokens - output_tokens
+    if reasoning_tokens < 0 or reasoning_tokens > total_output_tokens:
         raise AgentError("provider reasoning token breakdown exceeds output_tokens")
     return reasoning_tokens
 
@@ -1505,11 +1547,27 @@ def _provider_total_input_tokens(response: dict[str, object]) -> int:
     return input_tokens
 
 
-def _provider_output_tokens(response: dict[str, object]) -> int:
+def _provider_output_tokens(
+    response: dict[str, object],
+    *,
+    infer_reasoning_from_total: bool = False,
+) -> int:
     raw_usage = response.get("usage")
     if not isinstance(raw_usage, dict):
         raise AgentError("provider response has no usage object")
+    if infer_reasoning_from_total:
+        return _output_tokens_including_unreported_reasoning(raw_usage)
     return int(raw_usage.get("output_tokens", raw_usage.get("completion_tokens", 0)) or 0)
+
+
+def _output_tokens_including_unreported_reasoning(raw_usage: dict[str, object]) -> int:
+    input_tokens = int(raw_usage.get("input_tokens", raw_usage.get("prompt_tokens", 0)) or 0)
+    visible_output = int(raw_usage.get("output_tokens", raw_usage.get("completion_tokens", 0)) or 0)
+    total_tokens = int(raw_usage.get("total_tokens", 0) or 0)
+    output_tokens = total_tokens - input_tokens
+    if total_tokens <= 0 or output_tokens < visible_output:
+        raise AgentError("provider total_tokens cannot account for output and reasoning tokens")
+    return output_tokens
 
 
 def _api_credential(environment_variable: str, keychain_service: str) -> str:

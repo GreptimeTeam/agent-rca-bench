@@ -253,7 +253,7 @@
       h(
         "tbody",
         null,
-        chart.series.map((row) =>
+        chart.ranked_series.map((row) =>
           h(
             "tr",
             null,
@@ -273,6 +273,12 @@
       t("hero.meta.cases", { n: facts.transfer_cases }),
       t("hero.meta.micro", { n: facts.micro_cases }),
     ];
+    if (facts.publication) {
+      meta.push(
+        t("hero.meta.measurement_updated", { timestamp: facts.publication.measurement_updated_at }),
+        t("hero.meta.report_generated", { timestamp: facts.publication.report_generated_at }),
+      );
+    }
     const repo = "https://github.com/GreptimeTeam/agent-rca-bench";
     return h(
       "header",
@@ -352,7 +358,10 @@
               "div",
               { class: "headline-head" },
               h("h3", { text: t(`headline.${row.label_key}`) }),
-              h("span", { class: "caption", text: t("headline.not_estimable") }),
+              h("span", {
+                class: "caption",
+                text: row.unavailable_text ? row.unavailable_text[language] : t("headline.not_estimable"),
+              }),
             ),
           );
         }
@@ -363,7 +372,7 @@
             "div",
             { class: "headline-head" },
             h("h3", { text: t(`headline.${row.label_key}`) }),
-            h("span", { class: "caption", text: t(`headline.${row.label_key}.note`) }),
+            h("span", { class: "caption", text: row.estimate_note ? t("cost.conservative_total") : t(`headline.${row.label_key}.note`) }),
             h("span", {
               class: "badge badge-sm",
               "data-grade": "descriptive",
@@ -401,19 +410,8 @@
               );
             }),
           ),
-          row.converted_from && row.converted_from.length
-            ? h("p", {
-                class: "caption",
-                text: row.converted_from
-                  .map((code) =>
-                    t("headline.converted", {
-                      currency: code,
-                      rate: row.exchange_rates[code].units_per_usd,
-                      date: row.exchange_rates[code].checked_at,
-                    }),
-                  )
-                  .join(" "),
-              })
+          row.unit === "currency"
+            ? h("p", { class: "caption" }, h("a", { href: `#${language}-resources`, text: t("pricing.title") }))
             : null,
           row.excluded_models && row.excluded_models.length
             ? h("p", {
@@ -548,7 +546,7 @@
           }),
           h("span", { class: "caption", text: t(`grade.${takeaway.grade}.gloss`) }),
         ),
-        h("p", { class: "finding-support", text: copy.support }),
+        h("ul", { class: "finding-support plain" }, copy.support.map((text) => h("li", { text }))),
       ),
     );
   };
@@ -571,15 +569,15 @@
         h(
           "div",
           {},
-          h("p", { class: "eyebrow", text: t(`role.${verdict.role}`) }),
+          h("p", { class: "eyebrow", text: t(verdict.endpoints ? "role.confirmatory" : "role.descriptive") }),
           verdict.comparison ? h("p", { class: "caption", text: verdict.comparison }) : null,
         ),
         h(
           "div",
           {},
           h("p", { class: "verdict-question", text: t(`question.${verdict.goal}`) }),
-          verdict.goal in narrative().families
-            ? h("p", { class: "verdict-detail", text: narrative().families[verdict.goal] })
+          verdict.goal in narrative().family_summaries
+            ? h("ul", { class: "verdict-detail plain" }, narrative().family_summaries[verdict.goal].map((text) => h("li", { text })))
             : null,
         ),
         h(
@@ -790,6 +788,7 @@
         { label: t("th.direction"), numeric: true },
         { label: t("th.unadjusted_p"), numeric: true },
         { label: t("th.holm_p"), numeric: true },
+        { label: "m", numeric: true },
       ],
       items.map((strip) => [
         strip.model,
@@ -799,6 +798,7 @@
         { value: `${strip.counts.negative} / ${strip.counts.tied} / ${strip.counts.positive}`, numeric: true },
         { value: pval(strip.unadjusted_p), numeric: true },
         { value: pval(strip.holm_adjusted_p), numeric: true, class: strip.significant ? "neg" : null },
+        { value: strip.multiplicity_family_size, numeric: true },
       ]),
     );
   };
@@ -910,7 +910,6 @@
    * list prices rather than the interfaces. */
   const costChart = () => {
     const chart = view.charts.cost_bars;
-    const converted = chart.converted || [];
     return h(
       "div",
       { class: "headline cost-groups" },
@@ -961,26 +960,13 @@
               );
             }),
           ),
-          item.estimable
+          item.estimate_note
+            ? h("p", { class: "caption" }, h("a", { href: `#${language}-resources`, text: t("cost.conservative") }))
+            : item.estimable
             ? null
             : h("p", { class: "caption", text: t("cost.not_estimable") }),
         );
       }),
-      converted.length
-        ? h("p", {
-            class: "caption",
-            text: converted
-              .map((item) =>
-                t("cost.converted", {
-                  model: item.model,
-                  currency: item.currency,
-                  rate: item.units_per_usd,
-                  date: item.checked_at,
-                }),
-              )
-              .join(" "),
-          })
-        : null,
     );
   };
 
@@ -1042,7 +1028,7 @@
       h("p", { class: "caption", text: t("cost.lede") }),
       costChart(),
       h("p", { class: "note", text: narrative().cost_direction.storage_shape }),
-      panel(t("panel.cost"), treatmentCostTable(), pricingTable()),
+      panel(t("panel.cost"), treatmentCostTable()),
     );
 
   const semanticSection = () =>
@@ -1062,7 +1048,7 @@
       // collinear here and the reader has to be able to see that.
       panel(
         t("panel.confound"),
-        h("p", { class: "caption", text: narrative().dataset_reversal }),
+        h("ul", { class: "caption plain" }, narrative().dataset_reversal.map((text) => h("li", { text }))),
         reversalChart(view.charts.diagnosis_by_dataset),
       ),
       h("h3", { style: "margin-top:28px", text: t("semantic.mechanism_title") }),
@@ -1349,6 +1335,21 @@
           ];
         }),
       ),
+      h("div", {},
+        h("h3", { text: t("pricing.title") }),
+        ...view.charts.cost_bars.series.filter((item) => item.estimate_note).map((item) =>
+          h("p", { class: "caption", text: `${item.model}: ${item.estimate_note[language]}` }),
+        ),
+        pricingTable(),
+        h("h4", { text: t("pricing.exchange_rates") }),
+        table(
+          [t("th.model"), t("th.currency"), t("pricing.units_per_usd"), t("pricing.verified")],
+          view.charts.cost_bars.converted.map((item) => [
+            item.model, item.currency, item.units_per_usd,
+            h("a", { href: item.source, text: item.checked_at }),
+          ]),
+        ),
+      ),
       panel(
         t("panel.reliability"),
         h("h4", { text: t("th.runs") }),
@@ -1475,9 +1476,8 @@
     ["cache_write_per_million", "th.cache_write"],
     ["output_per_million", "th.output"],
   ];
-
-  const pricingTable = () =>
-    table(
+  const pricingTable = () => {
+    return table(
       [
         t("th.model"),
         t("th.currency"),
@@ -1495,6 +1495,7 @@
         h("a", { href: basis.source, text: basis.checked_at }),
       ]),
     );
+  };
 
   const methodSection = () => {
     const scope = data.scope;
@@ -1561,12 +1562,24 @@
       ),
       panel(t("panel.evidence"), evidenceQualityTable(), rejectionCodeTable()),
       h("h3", { style: "margin-top:24px", text: t("method.inference") }),
+      table(
+        ["Protocol", t("th.model"), "m (Holm)"],
+        view.inference_groups.map((group) => [
+          group.protocol_revision, group.models.join(", "), group.family_size,
+        ]),
+      ),
+      definitions(view.verdicts.filter((item) => item.endpoints).map((item) => [
+        item.comparison, t(`role.${item.role}`),
+      ])),
       definitions(
         Object.entries(scope.inference)
-          .filter(([, value]) => typeof value !== "object")
+          .filter(([key, value]) => key !== "policy" && typeof value !== "object")
           .map(([key, value]) => [key.split("_").join(" "), String(value)]),
       ),
       h("h3", { style: "margin-top:24px", text: t("method.audit") }),
+      view.execution_deviation_note
+        ? h("p", { class: "caption", text: view.execution_deviation_note[language] })
+        : null,
       definitions(Object.entries(audit).map(([key, value]) => [key.split("_").join(" "), String(value)])),
       h("h3", { style: "margin-top:24px", text: t("method.limits") }),
       h("ul", { class: "plain" }, data.limitations.map((item) => h("li", { text: item }))),
@@ -1634,6 +1647,10 @@
         "div",
         { class: "wrap" },
         h("p", { text: t("footer.text") }),
+        view.facts.publication ? h("p", { text: [
+          t("hero.meta.measurement_updated", { timestamp: view.facts.publication.measurement_updated_at }),
+          t("hero.meta.report_generated", { timestamp: view.facts.publication.report_generated_at }),
+        ].join(" · ") }) : null,
         h("p", {}, h("a", {
           href: "https://github.com/GreptimeTeam/agent-rca-bench/blob/main/REPORT.md",
           text: t("footer.report"),

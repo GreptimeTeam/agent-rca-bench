@@ -129,29 +129,51 @@ def test_responses_clients_use_transport_bound_credentials_and_endpoints(
     assert calls == [client]
 
 
-def test_bigmodel_client_uses_china_endpoint_and_dedicated_credential(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("transport", "environment_variable", "expected_base_url", "expected_trust_env"),
+    [
+        (
+            ApiTransport.BIGMODEL_CHAT_COMPLETIONS,
+            "BIGMODEL_API_KEY",
+            "https://open.bigmodel.cn/api/paas/v4",
+            False,
+        ),
+        (
+            ApiTransport.GEMINI_OPENAI_CHAT_COMPLETIONS,
+            "GEMINI_API_KEY",
+            "https://generativelanguage.googleapis.com/v1beta/openai/",
+            True,
+        ),
+    ],
+)
+def test_chat_completions_clients_use_transport_bound_credentials_and_endpoints(
+    monkeypatch, transport, environment_variable, expected_base_url, expected_trust_env
+) -> None:
     calls = []
-    direct_client = object()
+    http_clients = {False: object(), True: object()}
 
     def fake_client(**kwargs):
         calls.append(kwargs)
         return kwargs
 
-    monkeypatch.setenv("BIGMODEL_API_KEY", "test-key")
+    monkeypatch.setenv(environment_variable, "test-key")
     monkeypatch.setattr(
         agent_module.openai,
         "DefaultHttpxClient",
-        lambda **kwargs: direct_client if kwargs == {"trust_env": False} else None,
+        lambda **kwargs: http_clients[kwargs["trust_env"]],
     )
     monkeypatch.setattr(agent_module.openai, "OpenAI", fake_client)
 
-    client = _chat_completions_client(ApiTransport.BIGMODEL_CHAT_COMPLETIONS)
+    client = _chat_completions_client(transport)
 
-    assert client == {
+    expected = {
         "api_key": "test-key",
-        "base_url": "https://open.bigmodel.cn/api/paas/v4",
-        "http_client": direct_client,
+        "base_url": expected_base_url,
+        "http_client": http_clients[expected_trust_env],
     }
+    if transport is ApiTransport.GEMINI_OPENAI_CHAT_COMPLETIONS:
+        expected["max_retries"] = 10
+    assert client == expected
     assert calls == [client]
 
 
@@ -203,14 +225,14 @@ def test_responses_request_keeps_provider_specific_options_separate() -> None:
     dashscope_request = _responses_request(
         ApiTransport.DASHSCOPE_CN_BEIJING_RESPONSES,
         Visibility.RAW,
-        reasoning_effort="xhigh",
+        reasoning_effort="high",
         **common,
     )
 
     assert openai_request["include"] == ["reasoning.encrypted_content"]
     assert openai_request["prompt_cache_options"] == {"mode": "implicit", "ttl": "30m"}
     assert openai_request["reasoning"] == {"effort": "medium"}
-    assert dashscope_request["reasoning"] == {"effort": "xhigh"}
+    assert dashscope_request["reasoning"] == {"effort": "high"}
     assert dashscope_request["store"] is False
     assert dashscope_request["parallel_tool_calls"] is False
     assert dashscope_request["extra_headers"] == {"x-dashscope-session-cache": "enable"}
@@ -233,6 +255,25 @@ def test_bigmodel_request_freezes_reasoning_and_output_budget() -> None:
     assert request["extra_body"] == {
         "thinking": {"type": "enabled"},
         "reasoning_effort": "max",
+    }
+
+
+def test_gemini_request_uses_openai_reasoning_effort() -> None:
+    request = _chat_completions_request(
+        ApiTransport.GEMINI_OPENAI_CHAT_COMPLETIONS,
+        model="gemini-3.8-flash",
+        messages=[{"role": "user", "content": "incident"}],
+        tools=[],
+        max_output_tokens=16_384,
+        reasoning_effort="high",
+    )
+
+    assert request == {
+        "model": "gemini-3.8-flash",
+        "messages": [{"role": "user", "content": "incident"}],
+        "tools": [],
+        "max_tokens": 16_384,
+        "reasoning_effort": "high",
     }
 
 
@@ -695,6 +736,37 @@ def test_reasoning_usage_normalizes_provider_breakdown_names() -> None:
             }
         )
         == 0
+    )
+
+
+@pytest.mark.parametrize("details", [None, {}, {"audio_tokens": 0}, {"reasoning_tokens": None}])
+def test_gemini_usage_recovers_unreported_reasoning_from_total_tokens(details) -> None:
+    response = {
+        "usage": {
+            "prompt_tokens": 886,
+            "completion_tokens": 18,
+            "total_tokens": 1096,
+            "completion_tokens_details": details,
+        }
+    }
+
+    assert agent_module._provider_output_tokens(response, infer_reasoning_from_total=True) == 210
+    assert agent_module._reasoning_tokens(response, infer_reasoning_from_total=True) == 192
+
+
+@pytest.mark.parametrize("details", [{"reasoning_tokens": 0}, {"thinking_tokens": 192}])
+def test_gemini_usage_preserves_explicit_reasoning(details) -> None:
+    response = {
+        "usage": {
+            "prompt_tokens": 886,
+            "completion_tokens": 18,
+            "total_tokens": 1096,
+            "completion_tokens_details": details,
+        }
+    }
+    assert agent_module._provider_output_tokens(response, infer_reasoning_from_total=True) == 210
+    assert agent_module._reasoning_tokens(response, infer_reasoning_from_total=True) == next(
+        iter(details.values())
     )
 
 

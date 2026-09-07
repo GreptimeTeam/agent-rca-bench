@@ -196,6 +196,7 @@ def _report(
     storage_holm_adjusted_p: float = 1.0,
     currency_by_model: dict[str, str] | None = None,
     unpriced_cells: set[tuple[str, str]] | None = None,
+    publication: dict[str, object] | None = None,
 ) -> dict[str, object]:
     suite, protocol = load_formal_suite_protocol()
     names = [model.model for model in protocol.models]
@@ -389,6 +390,7 @@ def _report(
             "micro": {"sha256": "a" * 64},
             "transfer": {"sha256": "b" * 64},
         },
+        publication=publication,
     )
 
 
@@ -555,6 +557,7 @@ def test_view_model_states_the_verdict_and_the_strip_geometry() -> None:
         "favouring_treatment": 8,
         "favouring_baseline": 0,
         "family_size": 10,
+        "family_sizes": [10],
     }
     assert verdicts["semantic_layer"]["tally_text"]["en"] == (
         "No pre-specified endpoint of 8 survived Holm correction"
@@ -656,6 +659,58 @@ def test_rendered_page_inlines_every_payload_and_leaks_nothing(tmp_path: Path) -
         assert headline in summary
     assert "REPORT.md" in summary
     assert str(report["execution"]["completed_cells"]) in summary
+
+
+def test_html_reproduces_after_sorted_json_round_trip(tmp_path: Path) -> None:
+    report = _report()
+    original = tmp_path / "original.html"
+    reloaded = tmp_path / "reloaded.html"
+    render_formal_measurement_report(report, original)
+    render_formal_measurement_report(json.loads(json.dumps(report, sort_keys=True)), reloaded)
+    assert original.read_bytes() == reloaded.read_bytes()
+
+
+def test_publication_timestamps_are_validated_and_rendered(tmp_path: Path) -> None:
+    publication = {
+        "schema_version": 1,
+        "measurement_updated_at": "2026-09-07T01:02:03Z",
+        "report_generated_at": "2026-09-07T02:03:04Z",
+    }
+    report = _report(publication=publication)
+    output = tmp_path / "extension.html"
+    render_formal_measurement_report(
+        report,
+        output,
+        report_json_filename="agent-rca-v34-two-model-extension.json",
+    )
+    document = output.read_text()
+    view = build_report_view_model(report)
+
+    assert report["publication"] == publication
+    assert view["facts"]["publication"] == publication
+    assert "2026-09-07T01:02:03Z" in document
+    assert "2026-09-07T02:03:04Z" in document
+    assert '"report_json_filename":"agent-rca-v34-two-model-extension.json"' in document
+
+
+@pytest.mark.parametrize(
+    ("measurement", "generated", "message"),
+    [
+        ("2026-09-07 01:02:03", "2026-09-07T02:03:04Z", "UTC ISO 8601"),
+        ("2026-09-07T03:02:03Z", "2026-09-07T02:03:04Z", "predates"),
+    ],
+)
+def test_publication_timestamps_reject_invalid_metadata(
+    measurement: str, generated: str, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _report(
+            publication={
+                "schema_version": 1,
+                "measurement_updated_at": measurement,
+                "report_generated_at": generated,
+            }
+        )
 
 
 def test_rendered_page_reports_missing_i18n_keys(tmp_path: Path, monkeypatch) -> None:
@@ -798,7 +853,7 @@ def test_no_post_hoc_grade_survives_beside_the_registered_test() -> None:
 
     # A family where every endpoint passes is supported; one that passes some is partial.
     assert (
-        build_report_view_model(_report(storage_holm_adjusted_p=0.01))["verdicts"][1]["status"]
+        build_report_view_model(_report(storage_holm_adjusted_p=0.01))["verdicts"][0]["status"]
         == "supported"
     )
 
@@ -873,6 +928,26 @@ def test_spend_in_two_currencies_converts_at_the_published_rate() -> None:
     assert cost["converted_from"] == ["CNY"]
     assert cost["exchange_rates"]["CNY"]["units_per_usd"] == rate
     assert "glm-5.3" in cost["covered_models"]
+
+
+def test_two_model_extension_uses_its_pre_execution_exchange_rate() -> None:
+    from agent_rca_bench.formal_report import (
+        EXCHANGE_RATES_TO_USD,
+        EXTENSION_EXCHANGE_RATES_TO_USD,
+        _exchange_rates_for_suite,
+    )
+    from agent_rca_bench.formal_suite_protocol import (
+        EXTENSION_SUITE_PROTOCOL_REVISION,
+        SUITE_PROTOCOL_REVISION,
+    )
+
+    assert _exchange_rates_for_suite(SUITE_PROTOCOL_REVISION) is EXCHANGE_RATES_TO_USD
+    assert (
+        _exchange_rates_for_suite(EXTENSION_SUITE_PROTOCOL_REVISION)
+        is EXTENSION_EXCHANGE_RATES_TO_USD
+    )
+    assert EXTENSION_EXCHANGE_RATES_TO_USD["CNY"]["units_per_usd"] == 6.7787
+    assert EXTENSION_EXCHANGE_RATES_TO_USD["CNY"]["checked_at"] == "2026-09-04"
 
 
 def test_a_currency_without_a_frozen_rate_fails_rather_than_converting() -> None:

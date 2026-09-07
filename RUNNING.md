@@ -73,6 +73,7 @@ The runner reads credentials from environment variables or macOS Keychain:
 | DeepSeek | `DEEPSEEK_API_KEY` | `agent-rca-bench-deepseek` |
 | BigModel | `BIGMODEL_API_KEY` | `agent-rca-bench-bigmodel` |
 | DashScope | `DASHSCOPE_API_KEY` | `agent-rca-bench-dashscope` |
+| Gemini | `GEMINI_API_KEY` | `agent-rca-bench-gemini` |
 
 DashScope also requires a caller-owned Beijing workspace Responses endpoint in
 `DASHSCOPE_BASE_URL` or the `agent-rca-bench-dashscope-base-url` Keychain
@@ -105,9 +106,19 @@ uv run agent-rca transfer-run \
 
 Cases run in batches of up to four, with at most two environments prepared
 concurrently. Every environment in a batch is ready before any model call, so
-ingestion does not overlap measured queries. The runner limits each provider to
-two active cells, journals a cell before calling its provider, and records the
+ingestion does not overlap measured queries. By default, the runner limits each
+provider to two active cells, journals a cell before calling its provider, and records the
 result before merging it into the report.
+
+`--provider-concurrency-limit N` sets the provider scheduling limit for pending
+cells. The value must be between one and the frozen per-provider maximum. The runner
+records the setting in private execution records. Cells within a case remain
+serial; model configurations and per-cell budgets are unchanged.
+
+The exporter retains recorded concurrency overrides, including historical
+deviations above the frozen limit. Such reports can be audited and exported but
+cannot be resumed as protocol-conforming runs. Increasing the frozen maximum
+requires a new protocol.
 
 A run-root lock rejects a second runner invocation. If an invocation stops with
 an active cell and no recorded result, the next invocation refuses to retry that

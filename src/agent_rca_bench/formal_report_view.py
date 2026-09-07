@@ -70,7 +70,9 @@ SYMLOG_KNEE_FRACTION = 0.01
 POSITION_PRECISION = 9
 
 
-def build_report_view_model(report: Mapping[str, object]) -> dict[str, object]:
+def build_report_view_model(
+    report: Mapping[str, object], *, report_json_filename: str | None = None
+) -> dict[str, object]:
     """Everything the page renders that the report JSON does not already state."""
     execution = mapping(report, "execution")
     scope = mapping(report, "scope")
@@ -83,7 +85,8 @@ def build_report_view_model(report: Mapping[str, object]) -> dict[str, object]:
     return {
         "view_schema_version": REPORT_VIEW_SCHEMA_VERSION,
         "languages": list(LANGUAGES),
-        "report_json_filename": f"agent-rca-v{scope['benchmark_protocol_version']}.json",
+        "report_json_filename": report_json_filename
+        or f"agent-rca-v{scope['benchmark_protocol_version']}.json",
         "treatment_labels": dict(TREATMENT_LABELS),
         "treatments": treatments,
         "models": models,
@@ -102,8 +105,42 @@ def build_report_view_model(report: Mapping[str, object]) -> dict[str, object]:
             ),
             "capability_rubric_label": capability_rubric_label(),
             "capability_rubric_maximum": rubric_maximum(),
+            "publication": (
+                dict(mapping(report, "publication")) if report.get("publication") else None
+            ),
         },
         "verdicts": verdicts,
+        "execution_deviation_note": {
+            language: (
+                f"{len(report['execution_deviations'])} 次运行的 provider 并发上限超过冻结值；"
+                "逐次记录见 JSON。测量未单独检验并发调整的影响。"
+                if language == "zh"
+                else f"{len(report['execution_deviations'])} runs used a provider concurrency "
+                "limit above the frozen value; per-run records are in the JSON. "
+                "The measurement does not isolate the effect of this change."
+            )
+            for language in LANGUAGES
+        }
+        if report.get("execution_deviations")
+        else None,
+        "inference_groups": [
+            {
+                "protocol_revision": group["protocol_revision"],
+                "models": group["models"],
+                "family_size": mapping(group, "inference")["holm_family_size"],
+            }
+            for group in (
+                mapping_list(report, "inference_cohorts")
+                if report.get("inference_cohorts")
+                else [
+                    {
+                        "protocol_revision": scope["protocol_revision"],
+                        "models": models,
+                        "inference": scope["inference"],
+                    }
+                ]
+            )
+        ],
         "takeaways": _takeaways(report),
         "interface_matrix": _interface_matrix(report),
         # "CPU saturation", not whatever title-casing the code point order gives.
@@ -144,7 +181,10 @@ def build_report_view_model(report: Mapping[str, object]) -> dict[str, object]:
 def _verdicts(report: Mapping[str, object]) -> list[dict[str, object]]:
     """One row per research question, with the endpoint tally behind its status."""
     verdicts = []
-    for question in mapping_list(report, "research_questions"):
+    question_order = {"storage_shape": 0, "semantic_layer": 1, "model_ranking": 2}
+    for question in sorted(
+        mapping_list(report, "research_questions"), key=lambda item: question_order[item["goal"]]
+    ):
         goal = str(question["goal"])
         if goal not in FAMILY_COMPARISONS:
             verdicts.append(
@@ -165,6 +205,14 @@ def _verdicts(report: Mapping[str, object]) -> list[dict[str, object]]:
             raise ValueError(f"formal report has no primary results for family: {goal}")
         tally = _family_tally(report, goal)
         status = _family_status(tally)
+        family_sizes = (
+            [
+                int(mapping(group, "inference")["holm_family_size"])
+                for group in mapping_list(report, "inference_cohorts")
+            ]
+            if report.get("inference_cohorts")
+            else [_family_size(results)]
+        )
         verdicts.append(
             {
                 "goal": goal,
@@ -176,9 +224,25 @@ def _verdicts(report: Mapping[str, object]) -> list[dict[str, object]]:
                     "significant": tally["confirmed"],
                     "favouring_treatment": tally["favouring_treatment"],
                     "favouring_baseline": tally["favouring_baseline"],
-                    "family_size": _family_size(results),
+                    "family_sizes": family_sizes,
+                    "family_size": None
+                    if report.get("inference_cohorts")
+                    else _family_size(results),
                 },
-                "tally_text": {language: _tally_text(tally, language) for language in LANGUAGES},
+                "tally_text": {
+                    language: _tally_text(tally, language)
+                    + (
+                        (
+                            "；按模型组分别校正："
+                            if language == "zh"
+                            else "; corrected separately by model group: "
+                        )
+                        + ", ".join(f"m = {size}" for size in family_sizes)
+                        if len(family_sizes) > 1
+                        else ""
+                    )
+                    for language in LANGUAGES
+                },
             }
         )
     return verdicts
@@ -297,7 +361,7 @@ def _family_results(report: Mapping[str, object], family: str) -> list[dict[str,
         comparison = raw_family.get("comparison")
         if not isinstance(comparison, str):
             raise ValueError("confirmatory family comparison is malformed")
-        for metric_name, effect in metrics.items():
+        for metric_name, effect in sorted(metrics.items()):
             if not isinstance(effect, Mapping):
                 raise ValueError("confirmatory primary metric is not an object")
             results.append(
@@ -382,6 +446,9 @@ def _narrative(report: Mapping[str, object], language: str) -> dict[str, object]
         "families": {
             family: _family_finding(report, family, language) for family in FAMILY_COMPARISONS
         },
+        "family_summaries": {
+            family: _family_summary(report, family, language) for family in FAMILY_COMPARISONS
+        },
         "takeaways": _takeaway_text(report, language),
         "micro_row_reduction": _micro_row_reduction(report, language),
         "micro_summary": _micro_summary_text(report, language),
@@ -397,7 +464,7 @@ def _narrative(report: Mapping[str, object], language: str) -> dict[str, object]
     }
 
 
-def _significant_text(result: Mapping[str, object], language: str) -> str:
+def _significant_text(result: Mapping[str, object], language: str, *, detailed: bool = True) -> str:
     """The effect first, then the test that constrains what may be concluded from it.
 
     Leading with "the only endpoint that passed correction" makes the threshold
@@ -419,6 +486,22 @@ def _significant_text(result: Mapping[str, object], language: str) -> str:
     eligible = int(effect["eligible_cases"])
     metric = _metric_label(result["metric"], language)
     delta_text = f"{float(delta):+,.12g}"
+    if not detailed:
+        metric = {
+            "provider_visible_input_tokens": ("input tokens", "输入 token"),
+            "correct_completion_tool_calls": ("tool calls", "工具调用"),
+            "rows_returned": ("returned rows", "返回行数"),
+        }[str(result["metric"])][language == "zh"]
+        if language == "zh":
+            separator = " " if metric.endswith("token") else ""
+            return (
+                f"{result['model']}：{favored} 的{metric}{separator}更少"
+                f"（{agreeing}/{eligible} 个合格 case，中位差 {delta_text}）。"
+            )
+        return (
+            f"{result['model']}: {favored} used fewer {metric} "
+            f"({agreeing}/{eligible} eligible cases; median delta {delta_text})."
+        )
     holm = f"{float(effect['holm_adjusted_p']):.8g}"
     exact = f"{float(effect['sign_test_two_sided_p']):.8g}"
     if language == "zh":
@@ -435,7 +518,26 @@ def _significant_text(result: Mapping[str, object], language: str) -> str:
     )
 
 
+def _family_summary(report: Mapping[str, object], family: str, language: str) -> list[str]:
+    significant = [item for item in _family_results(report, family) if item["significant"]]
+    if significant:
+        return [_significant_text(item, language, detailed=False) for item in significant]
+    return [
+        "没有效率指标通过 Holm 校正；样本量有限，不代表两种接口等价。"
+        if language == "zh"
+        else "No efficiency endpoint passed Holm correction. "
+        "The small sample does not establish equivalence."
+    ]
+
+
 def _family_finding(report: Mapping[str, object], family: str, language: str) -> str:
+    if report.get("inference_cohorts"):
+        parts = [
+            _significant_text(item, language)
+            for item in _family_results(report, family)
+            if item["significant"]
+        ]
+        return " ".join(parts) or _tally_text(_family_tally(report, family), language)
     results = _family_results(report, family)
     if not results:
         raise ValueError(f"formal report has no primary results for confirmatory family: {family}")
@@ -481,11 +583,7 @@ def _conclusion(report: Mapping[str, object], language: str) -> str:
     storage_text = (
         "No primary endpoint in the interface-bundle family passes Holm correction"
         if not storage
-        else (
-            "The significant interface-bundle result is "
-            if len(storage) == 1
-            else "The significant interface-bundle results are "
-        )
+        else "Interface-bundle endpoints that pass Holm correction: "
         + " ".join(_significant_text(item, language) for item in storage)
     )
     terminator = "" if storage else "."
@@ -544,8 +642,8 @@ def _micro_summary_text(report: Mapping[str, object], language: str) -> str:
     """
     parts = _micro_row_reduction(report, language)
     if language == "zh":
-        return f"在两侧都合格的 case 上，GreptimeDB 语义层返回的行数全部下降：{parts}。"
-    return f"On every eligible case, the GreptimeDB Semantic Graph read back fewer rows: {parts}."
+        return f"在两侧都合格的 case 中，GreptimeDB 语义层返回行数下降的结果：{parts}。"
+    return f"Eligible results where the GreptimeDB Semantic Graph read back fewer rows: {parts}."
 
 
 def _mechanism_row_effects(report: Mapping[str, object]) -> dict[str, dict[str, float | None]]:
@@ -618,173 +716,50 @@ def _storage_headline(
     )
 
 
-def _only_survivor_text(tally: Mapping[str, int], language: str) -> str:
-    """How the endpoints that did not survive sat relative to the one that did."""
-    total = int(tally["total"])
-    confirmed = int(tally["confirmed"])
-    rest = int(tally["favouring_treatment"]) - confirmed
-    if language == "zh":
-        lead = (
-            f"这是 {total} 项预先指定端点里唯一通过校正的一项；"
-            if confirmed == 1
-            else f"{total} 项预先指定端点中有 {confirmed} 项通过校正；"
-        )
-        return (
-            f"{lead}另有 {rest} 项的 case median 也指向一体化接口，"
-            "但都没有通过校正，只能作为方向记录。"
-        )
-    lead = (
-        f"It is the only one of {total} pre-specified endpoints to pass correction."
-        if confirmed == 1
-        else f"{confirmed} of {total} pre-specified endpoints pass correction."
-    )
-    return (
-        f"{lead} Another {rest} have a case median pointing the same way toward GreptimeDB but "
-        "did not pass, so they are recorded as a direction and nothing more."
-    )
-
-
-def _no_survivor_text(tally: Mapping[str, int], language: str) -> str:
-    total = int(tally["total"])
-    toward = int(tally["favouring_treatment"])
-    other = int(tally["favouring_baseline"])
-    if language == "zh":
-        return (
-            f"{total} 项预先指定端点没有一项通过 Holm 校正。case median 的方向："
-            f"{toward} 项指向一体化接口，{other} 项指向三后端组合；只能作为方向记录。"
-        )
-    return (
-        f"No endpoint of {total} passed Holm correction. The case medians point to the "
-        f"all-in-one interface on {toward} and to the three-backend bundle on {other}; they are "
-        "recorded as directions and nothing more."
-    )
-
-
-def _takeaway_text(report: Mapping[str, object], language: str) -> dict[str, dict[str, str]]:
-    """A headline and a supporting sentence per takeaway, built from its counts.
-
-    Each headline states only what its own evidence supports. The first names the
-    one endpoint that survived correction rather than generalising from it; the
-    third reports a reversal without attributing it, because fault level and
-    source dataset are fully confounded in this cohort.
-    """
+def _takeaway_text(report: Mapping[str, object], language: str) -> dict[str, dict[str, object]]:
     takeaways = {item["id"]: mapping(item, "evidence") for item in _takeaways(report)}
     storage = takeaways["one_store"]
-    semantic = takeaways["semantic_layer"]
-    diagnosis = mapping(storage, "diagnosis")
-    runs = int(storage["diagnosis_runs"])
-    split, raw, graph = (
-        int(diagnosis["split_pillars"]),
-        int(diagnosis["raw"]),
-        int(diagnosis["semantic_graph"]),
-    )
-    # The largest surviving effect leads the storage-shape takeaway; with none
-    # surviving, the direction count leads instead. Both are written here rather
-    # than assuming this cohort's outcome, so a rerun that moves or loses the
-    # effect cannot leave the page crediting a model it no longer measured.
     significant = sorted(
         (item for item in _family_results(report, "storage_shape") if item["significant"]),
         key=lambda item: -abs(float(mapping(item, "effect")["case_median_delta"])),
     )
-    storage_headline = _storage_headline(significant, storage, language)
-    storage_detail = (
-        _significant_text(significant[0], language)
-        + ("" if language == "zh" else " ")
-        + _only_survivor_text(storage, language)
-        if significant
-        else _no_survivor_text(storage, language)
+    input_reduction = bool(significant) and all(
+        item["metric"] == "provider_visible_input_tokens"
+        and mapping(item, "effect")["case_median_delta"] < 0
+        for item in significant
     )
-    reversal = takeaways["fault_dependent"]
-    ahead, behind = [], []
-    for scope in reversal:
-        bucket = mapping(reversal, scope)
-        label = CAUSAL_SCOPE_LABELS.get(scope, {}).get(language, scope)
-        gap = int(bucket["semantic_graph"]) - int(bucket["raw"])
-        scope_runs = mapping(bucket, "runs")
-        graph_runs, raw_runs = int(scope_runs["semantic_graph"]), int(scope_runs["raw"])
-        # Semicolons between entries, because each entry already needs a comma.
-        if language == "zh":
-            part = (
-                f"{label}（{bucket['cases']} 个 case）Graph {bucket['semantic_graph']}/{graph_runs}"
-                f"，Raw {bucket['raw']}/{raw_runs}"
-            )
-        else:
-            part = (
-                f"{label} faults ({bucket['cases']} cases): Graph "
-                f"{bucket['semantic_graph']}/{graph_runs}, Raw {bucket['raw']}/{raw_runs}"
-            )
-        (ahead if gap >= 0 else behind).append(part)
-
-    if language == "zh":
-        return {
-            "one_store": {
-                "headline": storage_headline,
-                "support": (
-                    f"{storage_detail}"
-                    f"同一批故障的诊断正确数：GreptimeDB {raw}，三后端组合 {split}，"
-                    f"各 {runs} 次 run；诊断正确率不是预先指定端点，只作描述。"
-                ),
-            },
-            "semantic_layer": {
-                "headline": "没有证据显示 GreptimeDB 语义层系统性地减少了调查工作量。",
-                "support": (
-                    f"{semantic['total']} 项预先指定端点中 {semantic['confirmed']} 项通过 Holm "
-                    "校正，"
-                    f"case median 的方向也不一致：{semantic['favouring_treatment']} 项指向语义层，"
-                    f"{semantic['favouring_baseline']} 项指向不加语义层。"
-                    f"诊断正确数：加语义层 {graph} 次，不加 {raw} 次。"
-                    "这不证明语义层没有效果，也不证明两种接口等价——本队列的样本量"
-                    "不足以支持任何一种结论。"
-                ),
-            },
-            "fault_dependent": {
-                "headline": "Graph 与 Raw 的诊断差在两类故障上方向相反。",
-                "support": (
-                    "按故障所在层级拆分。Graph 正确数更高的层级："
-                    f"{_join_clauses(ahead, language)}。"
-                    f"Raw 正确数更高的层级：{_join_clauses(behind, language)}。"
-                    "这是测量之后才做的拆分，不是预先指定的比较。"
-                    "本队列里节点故障全部来自同一个数据源，层级和数据源完全混杂，"
-                    "因此无法判断是哪一个造成了这个反转。这是描述，不是解释。"
-                ),
-            },
-        }
     return {
         "one_store": {
-            "headline": storage_headline,
-            "support": (
-                f"{storage_detail} On the same incidents the models diagnosed {raw} correctly "
-                f"through GreptimeDB and {split} through the three-backend bundle, out of "
-                f"{runs} runs each; diagnosis accuracy is descriptive, not a pre-specified "
-                "endpoint."
+            "headline": (
+                "Raw 降低了部分模型的输入量。"
+                if input_reduction and language == "zh"
+                else "Raw reduced input for some models."
+                if input_reduction
+                else _storage_headline(significant, storage, language)
             ),
+            "support": _family_summary(report, "storage_shape", language),
         },
         "semantic_layer": {
             "headline": (
-                "No evidence that the GreptimeDB Semantic Graph systematically reduced "
-                "investigation work."
+                "Graph 尚未显示普遍的端到端效率改善。"
+                if language == "zh"
+                else "Graph has not shown a general end-to-end efficiency gain."
+            )
+            if not any(item["significant"] for item in _family_results(report, "semantic_layer"))
+            else (
+                "Graph 部分效率指标通过校正。"
+                if language == "zh"
+                else "Some Graph efficiency endpoints passed correction."
             ),
-            "support": (
-                f"{semantic['confirmed']} of {semantic['total']} pre-specified endpoints pass Holm "
-                f"correction, and the case medians do not agree either: "
-                f"{semantic['favouring_treatment']} point to the Semantic Graph and "
-                f"{semantic['favouring_baseline']} point the other way. Correct diagnoses came "
-                f"out at {graph} with the layer and {raw} without. This does not show the layer "
-                "has no effect, nor that the two interfaces are equivalent; this cohort is too "
-                "small to support either conclusion."
-            ),
+            "support": _family_summary(report, "semantic_layer", language),
         },
         "fault_dependent": {
-            "headline": "The Graph-to-Raw diagnosis gap runs opposite ways on the two cohorts.",
-            "support": (
-                "Split by the level the fault sat at. Graph is ahead on "
-                f"{_join_clauses(ahead, language)}. Graph is behind on "
-                f"{_join_clauses(behind, language)}. "
-                "This split was made after the measurement and was not a pre-specified "
-                "comparison. Every node-level case in this cohort comes from a single source, so "
-                "level and source are fully confounded and neither can be credited with the "
-                "reversal. This is a description, not an explanation."
+            "headline": (
+                "Graph 在两类故障上的诊断表现不同。"
+                if language == "zh"
+                else "Graph diagnosis results differ across fault types."
             ),
+            "support": _dataset_reversal_text(report, language),
         },
     }
 
@@ -800,8 +775,10 @@ def _cost_direction_text(report: Mapping[str, object], language: str) -> dict[st
     Models without a frozen rate are excluded from both the count and the base.
     """
     series = _cost_bars(report)["series"]
-    priced = [item for item in series if item["estimable"]]
-    unpriced = [str(item["model"]) for item in series if not item["estimable"]]
+    priced = [item for item in series if item["estimable"] and not item.get("undiscounted")]
+    unpriced = [
+        str(item["model"]) for item in series if not item["estimable"] or item.get("undiscounted")
+    ]
     texts = {}
     for family, (treatment, baseline) in FAMILY_COMPARISONS.items():
         comparable = [
@@ -819,7 +796,7 @@ def _cost_direction_text(report: Mapping[str, object], language: str) -> dict[st
                 f"低于 {other_label}。"
             )
             if unpriced:
-                text += f"{_join(unpriced, language)} 没有冻结的官方价格，不参与比较。"
+                text += f"{_join(unpriced, language)} 的完整成本不可估算，不参与比较。"
         else:
             text = (
                 f"{cheaper} of {len(comparable)} priced models spent less through "
@@ -828,14 +805,14 @@ def _cost_direction_text(report: Mapping[str, object], language: str) -> dict[st
             if unpriced:
                 text += (
                     f" {_join(unpriced, language)} "
-                    f"{'has' if len(unpriced) == 1 else 'have'} no frozen rate and "
+                    f"{'has' if len(unpriced) == 1 else 'have'} no complete cost estimate and "
                     f"{'is' if len(unpriced) == 1 else 'are'} left out of the comparison."
                 )
         texts[family] = text
     return texts
 
 
-def _dataset_reversal_text(report: Mapping[str, object], language: str) -> str:
+def _dataset_reversal_text(report: Mapping[str, object], language: str) -> list[str]:
     """States the direction of the Graph − Raw diagnosis difference per source.
 
     The cohort-wide total hides that the two sources disagree, so the sentence is
@@ -846,24 +823,35 @@ def _dataset_reversal_text(report: Mapping[str, object], language: str) -> str:
     for dataset, bucket in buckets.items():
         correct = mapping(bucket, "diagnosis_correct")
         label = _dataset_attribution(dataset)["label"]
+        scopes = sorted(
+            {
+                str(case["causal_scope"])
+                for case in mapping_list(report, "case_catalog")
+                if case["dataset"] == dataset
+            }
+        )
+        scope_names = {
+            "component": ("service", "服务"),
+            "dependency_edge": ("dependency", "依赖"),
+            "infrastructure_node": ("node", "节点"),
+        }
+        fault_types = "/".join(scope_names[scope][language == "zh"] for scope in scopes)
         graph = int(correct["semantic_graph"])
         raw = int(correct["raw"])
-        cases = int(bucket["cases"])
         if language == "zh":
-            parts.append(f"{label} 的 {cases} 个 case 上 Graph {graph}、Raw {raw}")
+            parts.append(f"{fault_types}故障（{label}）：Graph {graph}、Raw {raw} 次正确诊断")
         else:
-            parts.append(f"{graph} against {raw} over the {cases} {label} cases")
+            parts.append(
+                f"{fault_types.capitalize()} faults ({label}): "
+                f"Graph {graph}, Raw {raw} correct diagnoses"
+            )
     if language == "zh":
-        return (
-            f"同一批数据按来源拆分：{_join(parts, language)}。"
-            "节点故障全部来自后一个来源，因此层级和来源在本队列里无法区分，"
-            "两种拆法只是同一个分界的两种说法。"
-        )
-    return (
-        f"The same runs split by source instead: {_join(parts, language)}. "
-        "Every node fault comes from the second source, so level and source cannot be "
-        "separated in this cohort; the two splits are two names for one boundary."
-    )
+        return [*parts, "这是测量后的分组分析；故障类型与数据来源重合，不能单独归因于故障类型。"]
+    return [
+        *parts,
+        "Post-measurement comparison: fault type and dataset are confounded, "
+        "so their effects cannot be separated.",
+    ]
 
 
 def _tool_use_text(report: Mapping[str, object], language: str) -> str:
@@ -1090,14 +1078,6 @@ def _join(items: Sequence[str], language: str) -> str:
     return f"{', '.join(items[:-1])}, and {items[-1]}"
 
 
-def _join_clauses(items: Sequence[str], language: str) -> str:
-    """Semicolons, for list entries that each already contain a comma."""
-    return "; ".join(items) if language == "en" else "；".join(items)
-
-
-# --- charts ---------------------------------------------------------------
-
-
 def _delta_strips(report: Mapping[str, object]) -> list[dict[str, object]]:
     """One strip per model and registered endpoint: the sign test's own input.
 
@@ -1152,6 +1132,7 @@ def _delta_strips(report: Mapping[str, object]) -> list[dict[str, object]]:
                     },
                     "unadjusted_p": effect.get("sign_test_two_sided_p"),
                     "holm_adjusted_p": effect.get("holm_adjusted_p"),
+                    "multiplicity_family_size": effect["multiplicity_family_size"],
                     "significant": bool(result["significant"]),
                     # Which side the medians fell on is a reading of the data, so
                     # it is decided here and the renderer only prints it.
@@ -1379,7 +1360,14 @@ def _diagnosis_slope(report: Mapping[str, object]) -> dict[str, object]:
                 "values": {treatment: int(correct[treatment]) for treatment in treatments},
             }
         )
-    return {"treatments": treatments, "runs_per_treatment": runs, "series": series}
+    return {
+        "treatments": treatments,
+        "runs_per_treatment": runs,
+        "series": series,
+        "ranked_series": sorted(
+            series, key=lambda item: (-sum(item["values"].values()), item["model"])
+        ),
+    }
 
 
 def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
@@ -1421,7 +1409,14 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
     # One row in USD, converted at the frozen rate the report publishes. Spend
     # billed in another currency is still recorded in that currency; converting
     # only makes the arms addable, which is what a single cost row requires.
-    usd = mapping(usage, "estimated_cost_usd")
+    usd = mapping(
+        usage,
+        "conservative_estimated_cost_usd"
+        if usage.get("conservative_estimated_cost_usd")
+        else "estimated_cost_usd",
+    )
+    if unpriced and not usage.get("conservative_estimated_cost_usd"):
+        usd = dict.fromkeys(treatments)
     rows.append(
         {
             "id": "cost",
@@ -1429,15 +1424,51 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
             "better": "lower",
             "unit": "currency",
             "currency": "USD",
+            "estimate_note": {
+                language: (
+                    f"合计包含 {_join(unpriced, language)} 按普通输入单价、不计缓存折扣的保守估算；"
+                    "其余模型使用已报告的缓存用量计价。"
+                    if language == "zh"
+                    else f"Total includes {_join(unpriced, language)} at ordinary input rates "
+                    "without cache discounts; other models use reported cache usage."
+                )
+                for language in LANGUAGES
+            }
+            if usage.get("conservative_estimated_cost_usd")
+            else None,
             "values": {
                 treatment: (None if usd[treatment] is None else float(usd[treatment]))
                 for treatment in treatments
             },
-            "covered_models": sorted(str(model) for model in priced),
-            "excluded_models": unpriced,
+            "covered_models": sorted(
+                [str(model) for model in priced]
+                + (unpriced if usage.get("conservative_estimated_cost_usd") else [])
+            ),
+            "excluded_models": [] if usage.get("conservative_estimated_cost_usd") else unpriced,
+            "conversions": _cost_bars(report)["converted"]
+            if usage.get("conservative_estimated_cost_usd")
+            else [],
+            "unavailable_text": {
+                language: (
+                    f"{_join(unpriced, language)} 的端到端用量无法完整计价，因此不提供全模型合计。"
+                    f"下方保留 {len(priced)} 个模型的端到端成本估算。"
+                    if language == "zh"
+                    else f"End-to-end usage for {_join(unpriced, language)} "
+                    "cannot be fully priced, "
+                    f"so no all-model total is reported. End-to-end cost estimates for "
+                    f"{len(priced)} {'model remains' if len(priced) == 1 else 'models remain'} "
+                    "available below."
+                )
+                for language in LANGUAGES
+            }
+            if unpriced and not usage.get("conservative_estimated_cost_usd")
+            else None,
             "converted_from": sorted(
                 {str(value) for value in priced.values() if str(value) != "USD"}
-            ),
+            )
+            if any(value is not None for value in usd.values())
+            and not report.get("inference_cohorts")
+            else [],
             "exchange_rates": {
                 currency: dict(rate)
                 for currency, rate in mapping(usage, "exchange_rates").items()
@@ -1597,6 +1628,20 @@ def _cost_bars(report: Mapping[str, object]) -> dict[str, object]:
                 merged[treatment] = cost
         entry = mapping(costs, str(model))
         currency = entry.get("currency")
+        undiscounted = (
+            mapping(report, "undiscounted_transfer_cost_estimates").get(str(model))
+            if report.get("undiscounted_transfer_cost_estimates")
+            else None
+        )
+        if isinstance(undiscounted, Mapping):
+            merged = mapping(undiscounted, "by_treatment")
+            currency = undiscounted["currency"]
+        model_rates = (
+            mapping(mapping(report, "exchange_rates_by_model"), str(model))
+            if report.get("exchange_rates_by_model")
+            else mapping(mapping(report, "usage_by_treatment"), "exchange_rates")
+        )
+        estimable = all(merged.get(treatment) is not None for treatment in treatments)
         # One chart, one currency. Bars billed in CNY beside bars billed in USD
         # share an axis that means nothing, and the reader has no way to see it.
         # The billed figure stays in `native` so the conversion is checkable.
@@ -1605,13 +1650,30 @@ def _cost_bars(report: Mapping[str, object]) -> dict[str, object]:
                 "model": str(model),
                 "currency": "USD",
                 "billed_currency": currency,
-                "estimable": entry.get("status") == "available",
+                "estimable": estimable,
+                "undiscounted": undiscounted is not None,
+                "estimate_note": {
+                    "en": (
+                        "Conservative estimate: all input at the ordinary rate, without cache "
+                        "discounts. Output includes reasoning. Not billed spend."
+                    ),
+                    "zh": (
+                        "保守估算：所有输入按普通单价计算，不计缓存折扣；"
+                        "输出包含 reasoning。这不是账单金额。"
+                    ),
+                }
+                if undiscounted is not None
+                else None,
+                "exchange_rate": model_rates.get(str(currency)),
                 "unavailable_reason_code": entry.get("unavailable_reason_code"),
                 "values": {
                     treatment: (
                         None
                         if merged.get(treatment) is None or not isinstance(currency, str)
-                        else round(to_usd(float(merged[treatment]), currency), 6)
+                        else round(
+                            to_usd(float(merged[treatment]), currency, exchange_rates=model_rates),
+                            6,
+                        )
                     )
                     for treatment in treatments
                 },
@@ -1654,14 +1716,15 @@ def _cost_bars(report: Mapping[str, object]) -> dict[str, object]:
         {
             "model": str(item["model"]),
             "currency": str(item["billed_currency"]),
-            "units_per_usd": rates[str(item["billed_currency"])]["units_per_usd"],
-            "checked_at": rates[str(item["billed_currency"])]["checked_at"],
+            "units_per_usd": item["exchange_rate"]["units_per_usd"],
+            "checked_at": item["exchange_rate"]["checked_at"],
+            "source": item["exchange_rate"]["source"],
         }
         for item in series
         if item["estimable"]
         and isinstance(item["billed_currency"], str)
         and item["billed_currency"] != "USD"
-        and item["billed_currency"] in rates
+        and isinstance(item["exchange_rate"], Mapping)
     ]
     return {"series": series, "exchange_rates": rates, "converted": converted}
 
@@ -1708,10 +1771,15 @@ def _capability_bars(report: Mapping[str, object]) -> dict[str, object]:
 # --- rendering ------------------------------------------------------------
 
 
-def render_formal_measurement_report(report: dict[str, object], output: Path) -> None:
+def render_formal_measurement_report(
+    report: dict[str, object],
+    output: Path,
+    *,
+    report_json_filename: str | None = None,
+) -> None:
     """Write the self-contained page: skeleton, design, renderer, and both payloads."""
     validate_formal_measurement_report(report)
-    view = build_report_view_model(report)
+    view = build_report_view_model(report, report_json_filename=report_json_filename)
     assets = files("agent_rca_bench").joinpath("assets/report")
     document = assets.joinpath("index.html").read_text(encoding="utf-8")
     for placeholder, replacement in (
@@ -1743,7 +1811,9 @@ def _load_i18n(assets) -> dict[str, object]:
 
 def _inline_json(payload: object) -> str:
     # `</` would close the host script element early; the parser reads text, not JSON.
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).replace(
+        "</", "<\\/"
+    )
 
 
 def _static_summary(report: Mapping[str, object], view: Mapping[str, object]) -> str:
@@ -1759,7 +1829,9 @@ def _static_summary(report: Mapping[str, object], view: Mapping[str, object]) ->
     findings = "".join(
         f"<li><strong>{_escape(mapping(copy, str(item['id']))['headline'])}</strong> "
         f"[{_escape(str(item['grade']))}] "
-        f"{_escape(mapping(copy, str(item['id']))['support'])}</li>"
+        "<ul>"
+        + "".join(f"<li>{_escape(line)}</li>" for line in mapping(copy, str(item["id"]))["support"])
+        + "</ul></li>"
         for item in mapping_list(view, "takeaways")
     )
     arms = "".join(
@@ -1785,9 +1857,22 @@ def _static_summary(report: Mapping[str, object], view: Mapping[str, object]) ->
     )
     verdicts = "".join(
         f"<li>{_escape(str(item['goal']).replace('_', ' '))}: "
-        f"{_escape(str(item['status']).replace('_', ' '))}</li>"
+        f"{_escape(str(item['status']).replace('_', ' '))}. "
+        f"{_escape(mapping(item, 'tally_text')['en'])}</li>"
         for item in mapping_list(view, "verdicts")
     )
+    publication = facts.get("publication")
+    publication_summary = ""
+    deviation_summary = (
+        f"<p>{_escape(mapping(view, 'execution_deviation_note')['en'])}</p>"
+        if view.get("execution_deviation_note")
+        else ""
+    )
+    if isinstance(publication, Mapping):
+        publication_summary = (
+            f"<p>Measurement updated at {_escape(publication['measurement_updated_at'])}; "
+            f"report generated at {_escape(publication['report_generated_at'])}.</p>"
+        )
     return (
         '<div class="static-summary">'
         "<h2>What we found</h2>"
@@ -1796,13 +1881,15 @@ def _static_summary(report: Mapping[str, object], view: Mapping[str, object]) ->
         f"<ul>{arms}</ul>"
         "<h3>Correct diagnoses by interface</h3>"
         f"<ul>{diagnosis_rows}</ul>"
-        "<h3>Registered questions</h3>"
+        "<h3>Pre-specified questions</h3>"
         f"<ul>{verdicts}</ul>"
         f"<p>{_escape(english['tool_use'])}</p>"
         f"<p>{facts['completed_cells']} completed runs across {facts['models']} models, "
         f"{facts['transfer_cases']} end-to-end cases and {facts['micro_cases']} micro cases. "
         'The full narrative report is in <a href="https://github.com/GreptimeTeam/'
         'agent-rca-bench/blob/main/REPORT.md">REPORT.md</a>.</p>'
+        f"{publication_summary}"
+        f"{deviation_summary}"
         "</div>"
     )
 
