@@ -532,11 +532,19 @@ def test_formal_measurement_report_combines_current_public_artifacts(tmp_path: P
     assert report["diagnosis_by_dataset"] == {
         "openrca2": {
             "cases": 10,
+            "diagnosis_correct_by_model": {
+                model: {"split_pillars": 20, "raw": 20, "semantic_graph": 20}
+                for model in report["model_order"]
+            },
             "runs": {"split_pillars": 80, "raw": 80, "semantic_graph": 80},
             "diagnosis_correct": {"split_pillars": 80, "raw": 80, "semantic_graph": 80},
         },
         "rca100": {
             "cases": 4,
+            "diagnosis_correct_by_model": {
+                model: {"split_pillars": 8, "raw": 8, "semantic_graph": 8}
+                for model in report["model_order"]
+            },
             "runs": {"split_pillars": 32, "raw": 32, "semantic_graph": 32},
             "diagnosis_correct": {"split_pillars": 32, "raw": 32, "semantic_graph": 32},
         },
@@ -580,7 +588,7 @@ def test_view_model_states_the_verdict_and_the_strip_geometry() -> None:
     # Effect size and case counts come before the p values.
     storage_finding = narrative["conclusion"]
     assert "in 6 of 8 eligible cases" in storage_finding
-    assert storage_finding.index("case median") < storage_finding.index("Exact sign p")
+    assert storage_finding.index("median case delta") < storage_finding.index("Exact sign p")
     assert "adjusted p 0.01" in storage_finding
     assert (
         "没有效率指标通过 Holm 校正"
@@ -643,7 +651,7 @@ def test_rendered_page_inlines_every_payload_and_leaks_nothing(tmp_path: Path) -
         )
         for name in ("semantic-rca-report", "semantic-rca-view", "semantic-rca-i18n")
     }
-    assert payloads["semantic-rca-report"]["report_schema_version"] == 7
+    assert payloads["semantic-rca-report"]["report_schema_version"] == 8
     assert payloads["semantic-rca-view"]["report_json_filename"] == "agent-rca-v34.json"
     assert set(payloads["semantic-rca-i18n"]["en"]) == set(payloads["semantic-rca-i18n"]["zh"])
 
@@ -735,7 +743,7 @@ def test_dataset_attribution_carries_source_license_and_transformation_scope() -
         "15 aggregate node-fault candidate profiles" in view["narrative"]["en"]["attribution_terms"]
     )
     assert "does not relicense upstream data" in view["narrative"]["en"]["attribution_terms"]
-    assert "15 个节点故障 candidate" in view["narrative"]["zh"]["attribution_terms"]
+    assert "15 个节点故障候选" in view["narrative"]["zh"]["attribution_terms"]
 
 
 def test_incomplete_artifacts_fail_before_pair_aggregation() -> None:
@@ -894,7 +902,7 @@ def test_a_model_that_always_cites_produces_no_citation_warning() -> None:
     text = _citation_submission_text(report, "en")
     assert "24 of its 84 runs" in text
     assert "13 of which" in text
-    assert _citation_submission_text(report, "zh").startswith("glm-5.3 的 84 次 run 里有 24 次")
+    assert _citation_submission_text(report, "zh").startswith("glm-5.3 的 84 次运行中，24 次")
 
 
 def test_spend_in_two_currencies_converts_at_the_published_rate() -> None:
@@ -1222,3 +1230,14 @@ def test_hero_board_keeps_the_caveat_with_the_numbers(tmp_path: Path) -> None:
     # The renderer must still ask for it next to the board it annotates.
     assert 't("hero.board.caveat")' in document
     assert 'class: "hero-board"' in document
+
+
+def test_report_validator_rejects_previous_schema_and_missing_cost_bounds():
+    report = _report()
+    report["report_schema_version"] = 7
+    with pytest.raises(ValueError, match="unsupported formal measurement report"):
+        validate_formal_measurement_report(report)
+    report = _report()
+    del report["bounded_transfer_cost_estimates"]
+    with pytest.raises(ValueError, match="bounded_transfer_cost_estimates"):
+        validate_formal_measurement_report(report)

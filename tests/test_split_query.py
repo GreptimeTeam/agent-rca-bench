@@ -31,11 +31,10 @@ def test_prometheus_matrix_is_normalized_to_samples() -> None:
         },
     )
 
-    assert columns == ["labels", "timestamp", "value"]
-    assert rows == [
-        [{"__name__": "cpu", "service_name": "search"}, "1", "0.1"],
-        [{"__name__": "cpu", "service_name": "search"}, "2", "0.9"],
-    ]
+    # One row per sample, so max_items still caps samples, but each label is a
+    # column rather than a map repeated on every row.
+    assert columns == ["__name__", "service_name", "timestamp", "value"]
+    assert rows == [["cpu", "search", "1", "0.1"], ["cpu", "search", "2", "0.9"]]
 
 
 def test_loki_streams_are_normalized_to_log_entries() -> None:
@@ -54,8 +53,8 @@ def test_loki_streams_are_normalized_to_log_entries() -> None:
         },
     )
 
-    assert columns == ["labels", "timestamp", "line"]
-    assert rows[0] == [{"service_name": "checkout"}, "10", "failed"]
+    assert columns == ["service_name", "timestamp", "line"]
+    assert rows[0] == ["checkout", "10", "failed"]
 
 
 def test_native_result_marks_client_side_truncation() -> None:
@@ -334,13 +333,45 @@ def test_a_log_line_carries_its_correlation_ids_to_the_model() -> None:
         },
     )
 
-    assert columns == ["labels", "timestamp", "line"]
     # GreptimeDB holds trace_id and span_id as columns. Loki carries them as
     # structured metadata, and the split arm needs them to reach the trace.
-    assert rows[0][0] == {
-        "log_table": "logs",
-        "service_name": "user",
-        "trace_id": "abc",
-        "span_id": "def",
-    }
-    assert rows[1][0] == {"log_table": "logs", "service_name": "user"}
+    assert columns == ["log_table", "service_name", "trace_id", "span_id", "timestamp", "line"]
+    assert rows[0] == ["logs", "user", "abc", "def", "1", "boom"]
+    # An entry without structured metadata leaves those columns empty rather
+    # than shifting the row.
+    assert rows[1] == ["logs", "user", None, None, "2", "quiet"]
+
+
+def test_a_label_named_like_a_result_column_is_escaped_not_refused() -> None:
+    columns, rows = prometheus_rows(
+        "query_range",
+        {
+            "data": {
+                "resultType": "matrix",
+                "result": [
+                    {
+                        "metric": {"value": "cpu", "timestamp": "noon", "value_": "taken"},
+                        "values": [["1", "0.1"]],
+                    }
+                ],
+            }
+        },
+    )
+
+    assert columns == ["value", "timestamp", "value_", "timestamp_", "value__"]
+    assert rows == [["cpu", "noon", "taken", "1", "0.1"]]
+
+
+def test_prometheus_series_uses_the_same_columns_as_every_other_result() -> None:
+    columns, rows = prometheus_rows(
+        "series",
+        {
+            "data": [
+                {"__name__": "cpu", "pod": "a"},
+                {"__name__": "cpu", "pod": "b", "node": "n1"},
+            ]
+        },
+    )
+
+    assert columns == ["__name__", "pod", "node"]
+    assert rows == [["cpu", "a", None], ["cpu", "b", "n1"]]

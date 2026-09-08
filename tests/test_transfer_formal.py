@@ -76,29 +76,41 @@ def test_promql_preflight_results_must_match_the_source_metric_and_time() -> Non
     metric = "cpu"
 
     assert transfer_formal._promql_result_matches_source(
-        "labels", [["__name__"]], metric=metric, expected_timestamp_ms=timestamp_ms
+        "labels", ["value"], [["__name__"]], metric=metric, expected_timestamp_ms=timestamp_ms
     )
     assert transfer_formal._promql_result_matches_source(
-        "label_values", [[metric]], metric=metric, expected_timestamp_ms=timestamp_ms
+        "label_values", ["value"], [[metric]], metric=metric, expected_timestamp_ms=timestamp_ms
     )
     assert transfer_formal._promql_result_matches_source(
-        "series", [[{"__name__": metric}]], metric=metric, expected_timestamp_ms=timestamp_ms
+        "series", ["__name__"], [[metric]], metric=metric, expected_timestamp_ms=timestamp_ms
     )
     assert transfer_formal._promql_result_matches_source(
         "query",
-        [[{"__name__": metric}, 1.5, "1"]],
+        ["__name__", "timestamp", "value"],
+        [[metric, 1.5, "1"]],
         metric=metric,
         expected_timestamp_ms=timestamp_ms,
     )
     assert transfer_formal._promql_result_matches_source(
         "query_range",
-        [[{"__name__": metric}, 1.499, "1"]],
+        ["__name__", "timestamp", "value"],
+        [[metric, 1.499, "1"]],
         metric=metric,
         expected_timestamp_ms=timestamp_ms,
     )
     assert not transfer_formal._promql_result_matches_source(
         "query_range",
-        [[{"__name__": metric}, 2.5, "1"]],
+        ["__name__", "timestamp", "value"],
+        [[metric, 2.5, "1"]],
+        metric=metric,
+        expected_timestamp_ms=timestamp_ms,
+    )
+    # A label named `value` pushes the sample columns along; the timestamp is
+    # still the column before the value, not whichever one is called timestamp.
+    assert transfer_formal._promql_result_matches_source(
+        "query_range",
+        ["__name__", "timestamp", "value", "timestamp_", "value_"],
+        [[metric, "noon", "loud", 1.5, "1"]],
         metric=metric,
         expected_timestamp_ms=timestamp_ms,
     )
@@ -282,6 +294,109 @@ def test_every_arm_gets_the_same_agent_facing_query_timeout() -> None:
 
     # A shorter budget on one store turns a slow query into a tool failure
     # there and a citable result elsewhere, which moves headline eligibility.
-    assert "timeout=AGENT_QUERY_TIMEOUT_SECONDS," in source
-    assert source.count("timeout=AGENT_QUERY_TIMEOUT_SECONDS,") == 2
-    assert "timeout=120)" not in source
+    functions = {
+        node.name: node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef)
+    }
+    for name in ("prepare_transfer_environment", "_run_split_cell"):
+        timeouts = [
+            keyword.value
+            for node in ast.walk(functions[name])
+            if isinstance(node, ast.Call)
+            for keyword in node.keywords
+            if keyword.arg == "timeout"
+        ]
+        assert len(timeouts) == 1
+        assert isinstance(timeouts[0], ast.Name)
+        assert timeouts[0].id == "AGENT_QUERY_TIMEOUT_SECONDS"
+
+
+@pytest.mark.parametrize("failure_at", [0, 1, None])
+def test_split_health_failure_stops_execution_and_preserves_paid_output(
+    tmp_path, monkeypatch, failure_at
+):
+    import json
+
+    protocol, selection = load_transfer_protocol()
+    spec = selection.selected_cases[0]
+    prepared = SimpleNamespace(
+        spec=spec,
+        case=SimpleNamespace(input=SimpleNamespace()),
+        split_stack=SimpleNamespace(
+            run_dir=tmp_path,
+            prometheus_endpoint="http://127.0.0.1:1",
+            loki_endpoint="http://127.0.0.1:2",
+            tempo_endpoint="http://127.0.0.1:3",
+        ),
+    )
+    checks = []
+    calls = []
+
+    def audit(_prepared):
+        index = len(checks)
+        checks.append(index)
+        if index == failure_at:
+            raise ValueError("historical traces are unavailable")
+        return {"sample_equal": True}
+
+    def provider(*_args, **_kwargs):
+        calls.append(True)
+        raise RuntimeError("recorded provider failure")
+
+    monkeypatch.setattr(transfer_formal, "audit_transfer_trace_visibility", audit)
+    cell = next(
+        cell
+        for cell in transfer_formal.formal_schedule(protocol, selection)
+        if cell["visibility"] == "split_pillars"
+    )
+
+    def execute():
+        return transfer_formal.execute_transfer_cell(
+            protocol,
+            prepared,
+            cell,
+            source_semantic_hash="source",
+            run_split_agent_fn=provider,
+        )
+
+    if failure_at is None:
+        item = execute()
+        assert item["run"]["error"] == "runner failed: recorded provider failure"
+    else:
+        with pytest.raises(ValueError, match="historical traces"):
+            execute()
+    assert len(calls) == (0 if failure_at == 0 else 1)
+    records = list(tmp_path.glob("*-trace-health.json"))
+    if failure_at == 0:
+        assert records == []
+    else:
+        record = json.loads(records[0].read_text())
+        assert record["item"]["run"]["error"] == "runner failed: recorded provider failure"
+        assert (record["after"] is None) == (failure_at == 1)
+
+
+def test_live_trace_gate_rejects_search_loss_even_when_trace_ids_still_work(monkeypatch):
+    protocol, selection = load_transfer_protocol()
+    spec = selection.selected_cases[0]
+    adapter = SimpleNamespace(
+        split_source=lambda *_: SimpleNamespace(spans=[], trace_scope_name="test")
+    )
+    monkeypatch.setattr(transfer_formal, "_CASE_ADAPTERS", {False: adapter, True: adapter})
+    monkeypatch.setattr(transfer_formal, "_causal_trace_ids", lambda *_: frozenset())
+    monkeypatch.setattr(
+        transfer_formal,
+        "_audit_traces",
+        lambda *_args, **_kwargs: {
+            "sample_equal": True,
+            "source_window_traceql_search": False,
+            "causal_service_search": {"reachable": True},
+            "stored_sample_sha256": "unchanged",
+        },
+    )
+    prepared = SimpleNamespace(
+        spec=spec,
+        case=None,
+        split_stack=SimpleNamespace(tempo_endpoint="http://127.0.0.1:3"),
+        source_audit={"split_storage": {"traces": {"fidelity_sample_sha256": "unchanged"}}},
+    )
+    with pytest.raises(ValueError, match="live Tempo evidence changed"):
+        transfer_formal.audit_transfer_trace_visibility(prepared)

@@ -168,6 +168,12 @@ stored content instead of payload bytes.
 - Build every split-stack expectation from the source archive. Deriving one
   store's input from the other store's contents would let the audit clear
   itself.
+- Tempo block retention applies to historical trace timestamps. Its default
+  14-day retention can delete replayed blocks during an investigation even when
+  ingestion succeeded. The split-stack configuration sets `block_retention` to
+  `87600h`. Historical replay requires source-window visibility and sampled
+  content checks before and after measurement; ingestion success alone does not
+  establish continued availability.
 
 ## Public artifacts
 

@@ -51,7 +51,7 @@ from agent_rca_bench.datasets.rca100_audit import (
 )
 from agent_rca_bench.datasets.rca100_transfer import load_selected_case as load_node_case
 from agent_rca_bench.greptimedb.client import GreptimeClient, GreptimeError
-from agent_rca_bench.greptimedb.server import ManagedGreptime, inspect_checkout
+from agent_rca_bench.greptimedb.server import ManagedGreptime, inspect_checkout, write_json
 from agent_rca_bench.greptimedb.visibility import QueryGateway, QueryRejected
 from agent_rca_bench.inspect import (
     assert_semantic_graph_isolated,
@@ -61,7 +61,7 @@ from agent_rca_bench.inspect import (
 )
 from agent_rca_bench.protocol import benchmark_protocol
 from agent_rca_bench.report import MODEL_PRICING
-from agent_rca_bench.split_audit import audit_split_storage
+from agent_rca_bench.split_audit import _audit_traces, audit_split_storage
 from agent_rca_bench.split_client import FanoutIngestClient, ProtocolHttpClient
 from agent_rca_bench.split_ingest import (
     MetricSeries,
@@ -520,6 +520,7 @@ def _audit_greptimedb_promql(
         operations[operation] = {
             "pass": _promql_result_matches_source(
                 operation,
+                result.get("columns"),
                 rows,
                 metric=metric,
                 expected_timestamp_ms=evaluation_timestamp_ms,
@@ -539,34 +540,38 @@ def _audit_greptimedb_promql(
 
 def _promql_result_matches_source(
     operation: str,
+    columns: object,
     rows: object,
     *,
     metric: str,
     expected_timestamp_ms: int,
 ) -> bool:
-    if not isinstance(rows, list):
+    if not isinstance(rows, list) or not isinstance(columns, list):
         return False
     if operation == "labels":
         return ["__name__"] in rows
     if operation == "label_values":
         return [metric] in rows
+    if "__name__" not in columns:
+        return False
+    name = columns.index("__name__")
     if operation == "series":
         return any(
-            isinstance(row, list)
-            and len(row) == 1
-            and isinstance(row[0], dict)
-            and row[0].get("__name__") == metric
-            for row in rows
+            isinstance(row, list) and len(row) > name and row[name] == metric for row in rows
         )
+    # query and query_range append timestamp and value after the labels. Taking
+    # the timestamp by position survives a label that forces those names to be
+    # escaped.
+    time_index = len(columns) - 2
     expected_time = expected_timestamp_ms / 1000
     for row in rows:
-        if not isinstance(row, list) or len(row) < 3 or not isinstance(row[0], dict):
+        if not isinstance(row, list) or len(row) != len(columns) or time_index <= name:
             continue
         try:
-            returned_time = float(row[1])
+            returned_time = float(row[time_index])
         except (TypeError, ValueError):
             continue
-        if row[0].get("__name__") == metric and abs(returned_time - expected_time) <= 0.002:
+        if row[name] == metric and abs(returned_time - expected_time) <= 0.002:
             return True
     return False
 
@@ -744,6 +749,7 @@ def execute_transfer_cell(
         raise ValueError("transfer cell model is outside the protocol")
     visibility = Visibility(str(cell["visibility"]))
     if visibility is Visibility.SPLIT_PILLARS:
+        before = audit_transfer_trace_visibility(prepared)
         run, database_load = _run_split_cell(
             prepared,
             protocol,
@@ -767,13 +773,48 @@ def execute_transfer_cell(
         expected_max_output_tokens=model.max_output_tokens,
         max_tool_calls=protocol.max_tool_calls,
     )
-    return {
+    item = {
         **cell,
         "run": run.model_dump(mode="json"),
         "evaluation": evaluation.model_dump(mode="json"),
         "database_load": database_load.model_dump(mode="json"),
         "source_semantic_sha256": source_semantic_hash,
     }
+    if visibility is Visibility.SPLIT_PILLARS:
+        # Preserve paid output even if the environment failed during the investigation.
+        audit_path = prepared.split_stack.run_dir / f"cell-{cell['cell_index']}-trace-health.json"
+        write_json(audit_path, {"before": before, "item": item, "after": None})
+        after = audit_transfer_trace_visibility(prepared)
+        write_json(audit_path, {"before": before, "item": item, "after": after})
+    return item
+
+
+def audit_transfer_trace_visibility(prepared: PreparedTransferEnvironment) -> dict[str, object]:
+    import httpx
+
+    spec = prepared.spec
+    adapter = _CASE_ADAPTERS[spec.causal_scope is CausalScope.INFRASTRUCTURE_NODE]
+    source = adapter.split_source(prepared.case, spec)
+    with httpx.Client(timeout=AGENT_QUERY_TIMEOUT_SECONDS, trust_env=False) as client:
+        observed = _audit_traces(
+            client,
+            prepared.split_stack.tempo_endpoint,
+            window=(spec.normal_window[0], spec.abnormal_window[1]),
+            expected=source.spans,
+            scope_name=source.trace_scope_name,
+            causal_services=_causal_services(spec),
+            causal_trace_ids=_causal_trace_ids(spec, source.spans),
+            search_timeout=0,
+        )
+    expected = prepared.source_audit["split_storage"]["traces"]
+    if (
+        observed["sample_equal"] is not True
+        or observed["source_window_traceql_search"] is not True
+        or observed["causal_service_search"]["reachable"] is not True
+        or observed["stored_sample_sha256"] != expected["fidelity_sample_sha256"]
+    ):
+        raise ValueError(f"live Tempo evidence changed for {spec.opaque_case_id}: {observed}")
+    return observed
 
 
 def validate_private_report(

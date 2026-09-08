@@ -786,9 +786,31 @@ footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--m
  * group is one model rather than one metric. */
 .cost-groups { gap: 26px; }
 .cost-groups .headline-head h3 { font-family: var(--font-mono); font-size: 14px; }
+.cost-amount { grid-template-columns: 72px minmax(0, 1fr); }
+.cost-amount .bar-value { justify-content: flex-start; }
 
 @media (max-width: 900px) {
   .bar-row { grid-template-columns: 60px minmax(0, 1fr); }
   .bar-value { grid-column: 2; justify-content: flex-start; }
   .hero-grid { grid-template-columns: 1fr; gap: 28px; }
+}
+
+.diagnosis-chart { overflow-x: auto; }
+.diagnosis-chart svg { min-width: 720px; }
+.hero-board-note, .headline-head .caption { overflow-wrap: anywhere; }
+.hero-board tbody td.cost-interval { font-size: 11.5px; }
+
+.cost-range { position: relative; }
+.cost-range .bar-fill { border-radius: 5px 0 0 5px; }
+.cost-range .range-tail { position: absolute; top: 0; opacity: 0.35; border-radius: 0 5px 5px 0; }
+
+.cost-range-row .bar-value { display: grid; grid-template-columns: 1fr 92px; gap: 12px; align-items: center; white-space: nowrap; }
+.cost-range-row .bar-ratio { text-align: right; }
+.scope-diagnosis { margin-top: 32px; }
+@media (min-width: 901px) {
+  .cost-range-row { grid-template-columns: 72px minmax(0, 1fr) 260px; }
+}
+@media (max-width: 900px) {
+  .cost-range-row .bar-value strong { font-size: 12px; }
+  .cost-range-row .bar-ratio { font-size: 11px; }
 }

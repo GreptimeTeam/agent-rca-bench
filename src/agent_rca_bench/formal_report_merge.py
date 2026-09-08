@@ -155,49 +155,11 @@ def merge_formal_reports(
         for treatment in merged["execution"]["treatments"]
     }
     merged["usage_by_treatment"] = usage
-    undiscounted = {}
-    for model in usage["unpriced_models"]:
-        basis = next(
-            report["costs"]["pricing_basis"][model]
-            for report in reports
-            if model in report["model_order"]
-        )
-        amounts = dict.fromkeys(merged["execution"]["treatments"], 0.0)
-        for item in runs:
-            if item["model"] != model:
-                continue
-            run_usage = item["run"]["usage"]
-            amounts[item["visibility"]] += (
-                run_usage["provider_visible_input_tokens"] * basis["uncached_input_per_million"]
-                + run_usage["output_tokens"] * basis["output_per_million"]
-            ) / 1_000_000
-        undiscounted[model] = {
-            "currency": basis["currency"],
-            "by_treatment": amounts,
-            "basis": (
-                "all input at the ordinary input rate; output includes reasoning; no cache discount"
-            ),
-        }
-    merged["undiscounted_transfer_cost_estimates"] = undiscounted
-    if undiscounted:
-        usage["conservative_estimated_cost_usd"] = {
-            treatment: round(
-                sum(
-                    report["usage_by_treatment"]["estimated_cost_usd"][treatment] or 0.0
-                    for report in reports
-                )
-                + sum(
-                    report_core._to_usd(
-                        entry["by_treatment"][treatment],
-                        entry["currency"],
-                        exchange_rates=merged["exchange_rates_by_model"][model],
-                    )
-                    for model, entry in undiscounted.items()
-                ),
-                6,
-            )
-            for treatment in merged["execution"]["treatments"]
-        }
+    merged["bounded_transfer_cost_estimates"] = {
+        model: entry
+        for report in reports
+        for model, entry in report["bounded_transfer_cost_estimates"].items()
+    }
     costs = report_core._cost_report(merged["model_reports"])
     costs["models"] = {
         model: values for report in reports for model, values in report["costs"]["models"].items()
@@ -222,6 +184,9 @@ def merge_formal_reports(
     deviations = [item for report in reports for item in report.get("execution_deviations", [])]
     if deviations:
         merged["execution_deviations"] = deviations
+    corrections = [item for report in reports for item in report.get("split_reruns", [])]
+    if corrections:
+        merged["split_reruns"] = corrections
     source_power_limits = [
         report_core._power_limitation(
             report["execution"],

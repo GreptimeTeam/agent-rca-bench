@@ -70,6 +70,179 @@ SYMLOG_KNEE_FRACTION = 0.01
 POSITION_PRECISION = 9
 
 
+def split_rerun_note(
+    corrections: Sequence[Mapping[str, object]], usage_by_treatment: Mapping[str, object]
+) -> dict[str, str]:
+    replaced = sum(int(item["replaced_cells"]) for item in corrections)
+    retained = sum(int(item["retained_cells"]) for item in corrections)
+    pacing = next(
+        (item["gemini_input_pacing"] for item in corrections if item.get("gemini_input_pacing")),
+        None,
+    )
+    note = {
+        "en": (
+            f"Data correction: {replaced} Split cells were rerun and replaced; {retained} "
+            "Raw/Graph cells and all micro results were retained. The rerun corrected Tempo "
+            "retention and repeated label names in query results. Split max_items now uses "
+            "the original SQL max_rows guidance, with items as the returned unit; no aggregation "
+            "advice was added to the main tool descriptions. Raw/Graph query_metrics parameter "
+            "descriptions remain unchanged. Trace visibility and sample fidelity "
+            "passed before and after every replacement investigation. Per-cell gates and "
+            "superseded-result hashes are in the JSON. Raw/Graph retain their original PromQL "
+            "encoding and ran at different times; this comparison does not isolate provider "
+            "time effects or the individual corrections."
+        ),
+        "zh": (
+            f"数据修正：重新执行并替换 {replaced} 个 Split 单元，保留 {retained} 个 Raw/Graph "
+            "单元及全部 micro 结果。重跑修正了 Tempo 保留时间和查询结果中重复的标签名称。"
+            "Split max_items 沿用原 SQL max_rows 的参数建议，返回单位改为 items；"
+            "工具主描述未追加聚合建议。Raw/Graph 的 query_metrics 参数描述保持原样。"
+            "每次替换调查前后均通过 trace 可见性和样本完整性检查，"
+            "逐单元检查记录和被取代结果的哈希保存在 JSON 中。Raw/Graph 保留原始 PromQL 编码，"
+            "运行时间也不同；本次比较没有单独检验 provider 随时间变化或各项修正的影响。"
+        ),
+    }
+
+    audits = [item for item in corrections if item.get("retry_audit") is not None]
+    if audits:
+        attempts = [
+            attempt
+            for correction in audits
+            for attempt in correction["retry_audit"]["failed_attempts"]
+            if attempt["cohort"] == correction["cohort"]
+        ]
+        affected = len({(item["cohort"], item["cell_index"]) for item in attempts})
+        costs: dict[str, list[float]] = defaultdict(list)
+        for attempt in attempts:
+            usage = attempt["run"]["usage"]
+            if usage.get("estimated_cost") is None:
+                raise ValueError("Split retry cost is not estimable")
+            costs[str(usage["cost_currency"])].append(float(usage["estimated_cost"]))
+        extra_cost = " + ".join(
+            f"{currency} {math.fsum(values):.4f}" for currency, values in sorted(costs.items())
+        )
+        note["en"] += (
+            " A subsequent user authorization allowed temporary connection/provider failures "
+            "to be retried at most three times per cell (four attempts total), with every failed "
+            "attempt preserved. Incorrect diagnoses and exhausted budgets were not retried."
+        )
+        note["zh"] += (
+            "后续用户授权允许对临时连接或 provider 错误每个单元最多重跑 3 次"
+            "（总尝试最多 4 次），并保留每次失败记录；错误诊断和预算耗尽不重跑。"
+        )
+        if attempts:
+            failures = (
+                "SDK connection errors"
+                if all(item["failure_detail"] == "sdk_connection_error" for item in attempts)
+                else "temporary connection/provider errors"
+            )
+            failures_zh = (
+                "SDK 连接错误"
+                if all(item["failure_detail"] == "sdk_connection_error" for item in attempts)
+                else "临时连接或 provider 错误"
+            )
+            note["en"] += (
+                f" {len(attempts)} failed "
+                f"{'attempt was' if len(attempts) == 1 else 'attempts were'} "
+                f"retried across {affected} {'cell' if affected == 1 else 'cells'} after "
+                f"{failures}. Their "
+                f"additional observed cost was {extra_cost}; final replacement cells are already "
+                "included in the investigation costs below. Requests without returned usage may "
+                "have unobserved billed cost. The JSON retains the authorization, supervisor "
+                "amendments, sanitized attempts and provenance hashes."
+            )
+            note["zh"] += (
+                f"{affected} 个单元共发生 {len(attempts)} 次失败，已按授权重跑，"
+                f"原因是 {failures_zh}，额外观测费用为 {extra_cost}；"
+                "最终替换单元的正常费用已计入下方调查成本。"
+                "未返回用量的请求可能另有未观测到账单费用。JSON 保留授权、执行修订、"
+                "脱敏失败尝试及来源哈希。"
+            )
+        retained = [
+            failure
+            for correction in audits
+            for failure in correction["retry_audit"]["retained_failures"]
+            if failure["cohort"] == correction["cohort"]
+        ]
+        output_limited = [
+            item for item in retained if item["failure_class"] == "output_token_limit"
+        ]
+        if output_limited:
+            labels = "; ".join(
+                f"{item['model']} / {item['case_id']} / rep{item['repetition']}"
+                for item in output_limited
+            )
+            note["en"] += (
+                f" Output-limited failures were retained without retry ({labels}); "
+                "they remain scored failures and runner errors under the frozen runner contract."
+            )
+            note["zh"] += (
+                f"输出受限的失败原样保留，未重跑（{labels}）；"
+                "按冻结的运行器契约计为失败，并保留 runner error 标记。"
+            )
+    else:
+        note["en"] += (
+            " Runner failures pause new dispatch for review and remain scored failures; "
+            "completed cells are not automatically retried."
+        )
+        note["zh"] += (
+            "runner 失败会暂停新增调查以供复核，失败结果保留计分，已完成单元不会自动重试。"
+        )
+
+    encoding_estimate = next(
+        (
+            item["retained_encoding_estimate"]
+            for item in corrections
+            if item.get("retained_encoding_estimate")
+        ),
+        None,
+    )
+    if encoding_estimate and set(encoding_estimate["cohorts"]) == {
+        item["cohort"] for item in corrections
+    }:
+        raw = float(encoding_estimate["by_treatment"]["raw"]["estimated_share"]) * 100
+        graph = float(encoding_estimate["by_treatment"]["semantic_graph"]["estimated_share"]) * 100
+        usage = mapping(usage_by_treatment, "by_treatment")
+        gap = int(mapping(usage, "split_pillars")["provider_visible_input_tokens"]) - int(
+            mapping(usage, "raw")["provider_visible_input_tokens"]
+        )
+        saving = float(encoding_estimate["by_treatment"]["raw"]["estimated_reencoding_saving"])
+        note["en"] += (
+            " With queries and trajectories held fixed, offline reencoding with o200k_base "
+            f"and model-specific calibration estimates repeated-label overhead at {raw:.2f}% "
+            f"of retained Raw input and {graph:.2f}% of retained Graph input. These are estimates, "
+            "not new provider usage measurements or effects on diagnosis accuracy."
+        )
+        note["zh"] += (
+            "固定查询和轨迹，以 o200k_base 分词并按模型系数校准，重复标签名称的输入开销"
+            f"估算为保留 Raw 输入的 {raw:.2f}%、Graph 输入的 {graph:.2f}%。"
+            "这些是离线估算，不是 provider 新用量测量，也不表示对诊断准确率的影响。"
+        )
+        if gap > 0 and saving > 0:
+            increase = saving / gap * 100
+            note["en"] += (
+                " The retained overhead makes GreptimeDB appear more token-intensive; "
+                f"removing it widens the aggregate Split–Raw input gap by about {increase:.1f}%."
+            )
+            note["zh"] += (
+                "保留该冗余使 GreptimeDB 显得更费 token，对 GreptimeDB 不利；"
+                f"扣除后，Split 与 Raw 的总输入差距扩大约 {increase:.1f}%。"
+            )
+
+    if pacing:
+        budget = int(pacing["tokens_per_minute"])
+        note["en"] += (
+            f" Gemini requests shared a local {budget:,}-input-token/minute budget, including "
+            "SDK retries. Input is estimated before sending and corrected from actual usage; "
+            "elapsed time includes quota waits."
+        )
+        note["zh"] += (
+            f"Gemini 请求（含 SDK 重试）共用每分钟 {budget:,} 输入 token 的本地额度，"
+            "发送前估算、响应后按实际用量校正；总耗时包含等待额度的时间。"
+        )
+    return note
+
+
 def build_report_view_model(
     report: Mapping[str, object], *, report_json_filename: str | None = None
 ) -> dict[str, object]:
@@ -84,6 +257,15 @@ def build_report_view_model(
     verdicts = _verdicts(report)
     return {
         "view_schema_version": REPORT_VIEW_SCHEMA_VERSION,
+        **(
+            {
+                "split_rerun_note": split_rerun_note(
+                    mapping_list(report, "split_reruns"), mapping(report, "usage_by_treatment")
+                )
+            }
+            if report.get("split_reruns")
+            else {}
+        ),
         "languages": list(LANGUAGES),
         "report_json_filename": report_json_filename
         or f"agent-rca-v{scope['benchmark_protocol_version']}.json",
@@ -164,6 +346,9 @@ def build_report_view_model(
             "delta_strips": _delta_strips(report),
             "relative_change": _relative_change(report),
             "diagnosis_slope": _diagnosis_slope(report),
+            "component_dependency_slope": _diagnosis_slope(
+                report, ("component", "dependency_edge")
+            ),
             "headline": _headline_bars(report),
             "accuracy_by_level": _accuracy_by_level(report),
             "diagnosis_by_scope": _diagnosis_split(report, "causal_scope"),
@@ -500,13 +685,13 @@ def _significant_text(result: Mapping[str, object], language: str, *, detailed: 
     exact = f"{float(effect['sign_test_two_sided_p']):.8g}"
     if language == "zh":
         return (
-            f"{result['model']}：{eligible} 个 eligible case 里有 {agreeing} 个是 {favored} "
-            f"使用的 {metric} 少于 {other}，case median {delta_text}。"
-            f"Exact sign p {exact}；在本族内通过 Holm 校正，adjusted p {holm}。"
+            f"{result['model']}：{eligible} 个合格 case 中，{agreeing} 个的 {favored} "
+            f"{metric}少于 {other}，case 差值中位数为 {delta_text}。"
+            f"精确符号检验 p={exact}；通过本检验族的 Holm 校正，校正后 p={holm}。"
         )
     return (
         f"{result['model']}: {favored} used fewer {metric} than {other} in "
-        f"{agreeing} of {eligible} eligible cases, a case median of {delta_text}. "
+        f"{agreeing} of {eligible} eligible cases, with a median case delta of {delta_text}. "
         f"Exact sign p {exact}; it passes Holm correction within its family at "
         f"adjusted p {holm}."
     )
@@ -667,12 +852,12 @@ def _storage_headline(
         metric = _metric_label(result["metric"], language)
         if language == "zh":
             return (
-                f"在同一批故障上，{result['model']} 通过 GreptimeDB 一体化接口调查，"
-                f"中位数 case 上少用 {magnitude} {metric}。"
+                f"{result['model']} 使用 GreptimeDB 一体化接口时，"
+                f"相对 Split 的{metric}减少量在合格 case 中的中位数为 {magnitude}。"
             )
         return (
-            f"On the same incidents, {result['model']} used {magnitude} fewer {metric} on the "
-            "median case through the GreptimeDB all-in-one interface."
+            f"For {result['model']}, the median reduction in {metric} across eligible cases "
+            f"was {magnitude} with GreptimeDB's all-in-one interface compared with Split."
         )
     toward = int(tally["favouring_treatment"])
     total = int(tally["total"])
@@ -746,10 +931,8 @@ def _cost_direction_text(report: Mapping[str, object], language: str) -> dict[st
     Models without a frozen rate are excluded from both the count and the base.
     """
     series = _cost_bars(report)["series"]
-    priced = [item for item in series if item["estimable"] and not item.get("undiscounted")]
-    unpriced = [
-        str(item["model"]) for item in series if not item["estimable"] or item.get("undiscounted")
-    ]
+    priced = [item for item in series if item["estimable"]]
+    unpriced = [str(item["model"]) for item in series if not item["estimable"]]
     texts = {}
     for family, (treatment, baseline) in FAMILY_COMPARISONS.items():
         comparable = [
@@ -855,22 +1038,22 @@ def _tool_use_text(report: Mapping[str, object], language: str) -> str:
     )
     if language == "zh":
         return (
-            f"GreptimeDB 语义层在测量中被实际调用：{tool['runs']} 次 Graph run 中有 "
+            f"{tool['runs']} 次 Graph 运行中，"
             f"{tool['runs_with_successful_call']} 次至少成功调用过一次 query_semantic_graph，"
             f"合计 {tool['successful_calls']} 次。两个 GreptimeDB 接口共执行 {join_calls} 次"
-            f"成功的 SQL JOIN，分布在 {join_runs} 次 run 中；其中跨信号的只有 "
-            f"{cross_calls} 次，出现在 {cross_runs} 次 run 中。执行 PromQL 求值的 run，"
+            f"成功的 SQL JOIN，分布在 {join_runs} 次运行中；其中跨信号的有 "
+            f"{cross_calls} 次，出现在 {cross_runs} 次运行中。使用成功 PromQL 查询的运行，"
             f"GreptimeDB 侧为 {greptime_runs} 次中的 {greptime_promql} 次，"
             f"三后端侧为 {split_runs} 次中的 {promql.get('split_pillars', 0)} 次。"
         )
     return (
-        f"The GreptimeDB Semantic Graph was actually used: "
+        f"Among Graph runs, "
         f"{tool['runs_with_successful_call']} of "
         f"{tool['runs']} runs that had it made at least one successful query_semantic_graph "
         f"call, {tool['successful_calls']} calls in all. The two GreptimeDB interfaces issued "
         f"{join_calls} successful SQL JOIN calls across {join_runs} runs, of which only "
         f"{cross_calls} joined across signal kinds, in {cross_runs} runs. PromQL evaluation "
-        f"shows up in {greptime_promql} of {greptime_runs} GreptimeDB runs and "
+        f"succeeded in {greptime_promql} of {greptime_runs} GreptimeDB runs and "
         f"{promql.get('split_pillars', 0)} of {split_runs} three-backend runs."
     )
 
@@ -893,9 +1076,9 @@ def _citation_submission_text(report: Mapping[str, object], language: str) -> st
     for model, counts in offenders:
         if language == "zh":
             parts.append(
-                f"{model} 的 {counts['runs']} 次 run 里有 "
+                f"{model} 的 {counts['runs']} 次运行中，"
                 f"{counts['runs_without_citation']} 次没有提交任何引用"
-                f"（其中 {counts['correct_diagnoses_lost_to_missing_citation']} 次诊断本来是对的）"
+                f"（其中 {counts['correct_diagnoses_lost_to_missing_citation']} 次诊断正确）"
             )
         else:
             parts.append(
@@ -905,15 +1088,10 @@ def _citation_submission_text(report: Mapping[str, object], language: str) -> st
                 "had reached a correct diagnosis"
             )
     if language == "zh":
-        return (
-            f"{_join(parts, language)}。"
-            "入选需要至少一条可执行的引用，所以这些 run 不进配对样本；"
-            "该模型合格 case 偏少是这个原因，不是随机波动。"
-        )
+        return f"{_join(parts, language)}。这些运行缺少执行有效的引用，因此不纳入主要效率配对样本。"
     return (
         f"{_join(parts, language)}. Eligibility needs at least one execution-valid "
-        "citation, so those runs leave the paired sample. A small eligible count for "
-        "that model reflects this habit rather than chance."
+        "citation, so these runs are excluded from the paired efficiency sample."
     )
 
 
@@ -974,18 +1152,17 @@ def _attribution(report: Mapping[str, object], language: str) -> tuple[str, str]
     names = _join([_dataset_attribution(adapter)["label"] for adapter in datasets], language)
     if language == "zh":
         text = (
-            f"Micro-benchmark 使用 {_join(micro_parts, language)}；"
-            f"端到端 cohort 使用 {_join(transfer_parts, language)}。"
+            f"专项测试使用 {_join(micro_parts, language)}；"
+            f"端到端样本使用 {_join(transfer_parts, language)}。"
             f"感谢 {names} 的作者与维护者公开数据和研究材料，使本评测能够复现。"
         )
         terms = (
             "".join(_dataset_attribution(adapter)["zh"] for adapter in datasets)
-            + "本项目选择 case，将评测限制在冻结的 case 时间窗内，并把源格式映射到"
-            "评测使用的 ingestion protocol。RCA-100 的公开 selection fixture 记录 15 个"
-            "节点故障 candidate 的聚合 profile 和 4 个 selected case。发布物只包含经过 "
-            "sanitization 的标识符、派生事实、聚合测量和源文件哈希，不包含源 telemetry "
-            "row、源 archive、topology、causal graph 或 ground-truth 文件。本项目不替上游"
-            "解决 license 冲突。Apache-2.0 只适用于本项目原创的代码、artifact schema、"
+            + "本项目选择 case，将评测限制在冻结的时间窗内，并把源格式映射到"
+            "评测使用的写入协议。RCA-100 的公开选择记录包含 15 个节点故障候选的"
+            "聚合概况和 4 个入选 case。发布工件只包含脱敏标识符、派生事实、聚合测量"
+            "和源文件哈希，不包含原始遥测行、源数据归档、拓扑、因果图或参考答案文件。"
+            "本项目不解决上游许可冲突。Apache-2.0 只适用于本项目原创的代码、工件格式、"
             "报告文本和独立派生的聚合结果，不重新许可上游数据或上游数据集文档。"
         )
         return text, terms
@@ -1033,7 +1210,7 @@ def _metric_label(metric: object, language: str) -> str:
         ),
         "provider_visible_input_tokens": (
             "provider-visible input tokens",
-            "provider-visible input token",
+            "输入 token 数",
         ),
         "rows_returned": ("rows returned", "返回行数"),
     }
@@ -1200,14 +1377,10 @@ def _case_span_text(fewest: int, most: int, language: str) -> str:
         )
     if language == "en":
         return (
-            f"Models qualified on {fewest} to {most} incidents. A median over "
-            f"{fewest} cases moves more than one over {most}, and the bar does "
-            "not show that."
+            f"Eligible case counts range from {fewest} to {most} across models. "
+            "Bar lengths show medians, not sampling uncertainty."
         )
-    return (
-        f"各模型入选的故障数从 {fewest} 到 {most} 不等。{fewest} 个 case 的中位数比 "
-        f"{most} 个的波动大，条长看不出这一点。"
-    )
+    return f"各模型有 {fewest} 至 {most} 个合格 case；条长表示中位数，不表示抽样不确定性。"
 
 
 def _relative_metric_label(metric: str, language: str) -> str:
@@ -1317,14 +1490,35 @@ def _symlog_position(value: float, axis: Mapping[str, object]) -> float:
     return round(math.copysign(scaled, value), POSITION_PRECISION)
 
 
-def _diagnosis_slope(report: Mapping[str, object]) -> dict[str, object]:
+def _diagnosis_slope(
+    report: Mapping[str, object], scopes: tuple[str, ...] = ()
+) -> dict[str, object]:
     """Correct diagnoses per treatment for each model, on a shared run denominator."""
     execution = mapping(report, "execution")
     treatments = [str(item) for item in _sequence(execution, "treatments")]
     runs = int(execution["transfer_cases"]) * int(execution["repetitions_per_model_case"])
+    buckets = [mapping(mapping(report, "diagnosis_by_causal_scope"), scope) for scope in scopes]
+    if buckets:
+        runs = sum(int(bucket["cases"]) for bucket in buckets) * int(
+            execution["repetitions_per_model_case"]
+        )
     series = []
     for model in _sequence(report, "model_order"):
-        correct = mapping(_transfer(report, str(model)), "diagnosis_correct")
+        correct = (
+            {
+                treatment: sum(
+                    int(
+                        mapping(mapping(bucket, "diagnosis_correct_by_model"), str(model))[
+                            treatment
+                        ]
+                    )
+                    for bucket in buckets
+                )
+                for treatment in treatments
+            }
+            if buckets
+            else mapping(_transfer(report, str(model)), "diagnosis_correct")
+        )
         series.append(
             {
                 "model": str(model),
@@ -1334,6 +1528,16 @@ def _diagnosis_slope(report: Mapping[str, object]) -> dict[str, object]:
     return {
         "treatments": treatments,
         "runs_per_treatment": runs,
+        "scopes": list(scopes),
+        "label": (
+            {
+                language: " + ".join(CAUSAL_SCOPE_LABELS[scope][language] for scope in scopes)
+                + ("：诊断正确数" if language == "zh" else ": correct diagnoses")
+                for language in LANGUAGES
+            }
+            if scopes
+            else None
+        ),
         "series": series,
         "ranked_series": sorted(
             series, key=lambda item: (-sum(item["values"].values()), item["model"])
@@ -1380,13 +1584,8 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
     # One row in USD, converted at the frozen rate the report publishes. Spend
     # billed in another currency is still recorded in that currency; converting
     # only makes the arms addable, which is what a single cost row requires.
-    usd = mapping(
-        usage,
-        "conservative_estimated_cost_usd"
-        if usage.get("conservative_estimated_cost_usd")
-        else "estimated_cost_usd",
-    )
-    if unpriced and not usage.get("conservative_estimated_cost_usd"):
+    usd = mapping(usage, "estimated_cost_usd")
+    if unpriced:
         usd = dict.fromkeys(treatments)
     rows.append(
         {
@@ -1395,18 +1594,7 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
             "better": "lower",
             "unit": "currency",
             "currency": "USD",
-            "estimate_note": {
-                language: (
-                    f"合计包含 {_join(unpriced, language)} 按普通输入单价、不计缓存折扣的保守估算；"
-                    "其余模型使用已报告的缓存用量计价。"
-                    if language == "zh"
-                    else f"Total includes {_join(unpriced, language)} at ordinary input rates "
-                    "without cache discounts; other models use reported cache usage."
-                )
-                for language in LANGUAGES
-            }
-            if usage.get("conservative_estimated_cost_usd")
-            else None,
+            "estimate_note": None,
             "values": {
                 treatment: (None if usd[treatment] is None else float(usd[treatment]))
                 for treatment in treatments
@@ -1424,7 +1612,7 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
                 )
                 for language in LANGUAGES
             }
-            if unpriced and not usage.get("conservative_estimated_cost_usd")
+            if unpriced
             else None,
         }
     )
@@ -1440,6 +1628,73 @@ def _headline_bars(report: Mapping[str, object]) -> dict[str, object]:
             },
         }
     )
+
+    if unpriced:
+        cost_chart = _cost_bars(report)
+        series = cost_chart["series"]
+        if all(item["estimable"] or item["bounds"] for item in series):
+            totals = {treatment: [[], []] for treatment in treatments}
+            for item in series:
+                bounded = report.get("bounded_transfer_cost_estimates", {}).get(item["model"])
+                currency = bounded["currency"] if bounded else item["billed_currency"]
+                rate = 1.0 if currency == "USD" else item["exchange_rate"]["per_unit_usd"]
+                for treatment in treatments:
+                    limits = (
+                        bounded["by_treatment"][treatment]
+                        if bounded
+                        else [item["native"][treatment]] * 2
+                    )
+                    for index, value in enumerate(limits):
+                        totals[treatment][index].append(float(value) * rate)
+            bounds = {
+                treatment: [math.fsum(values) for values in limits]
+                for treatment, limits in totals.items()
+            }
+            widest = max(limits[1] for limits in bounds.values())
+            reference = [min(limits[index] for limits in bounds.values()) for index in (0, 1)]
+            ratio_bounds = {}
+            for treatment, limits in bounds.items():
+                if limits[1] <= min(other[0] for key, other in bounds.items() if key != treatment):
+                    ratio_bounds[treatment] = [1.0, 1.0]
+                elif reference[0] > 0:
+                    ratio_bounds[treatment] = [
+                        max(1.0, limits[0] / reference[1]),
+                        limits[1] / reference[0],
+                    ]
+                else:
+                    ratio_bounds[treatment] = None
+            next(row for row in rows if row["id"] == "cost").update(
+                bounds=bounds,
+                bounds_ratio_labels={
+                    treatment: (
+                        None
+                        if limits is None
+                        else f"×{limits[0]:.2f}"
+                        if limits[0] == limits[1]
+                        else f"×{limits[0]:.2f}–{limits[1]:.2f}"
+                    )
+                    for treatment, limits in ratio_bounds.items()
+                },
+                bounds_fractions={
+                    treatment: [value / widest if widest else 0.0 for value in limits]
+                    for treatment, limits in bounds.items()
+                },
+                bounds_labels={
+                    treatment: f"USD {limits[0]:.2f}–{limits[1]:.2f}"
+                    for treatment, limits in bounds.items()
+                },
+                unavailable_text=None,
+                estimate_note={
+                    "en": (
+                        f"Estimated end-to-end cost for all {len(series)} models. "
+                        "The interval reflects missing cache detail."
+                    ),
+                    "zh": (
+                        f"全部 {len(series)} 个模型的端到端成本估算；"
+                        "费用区间反映缓存明细缺失的影响。"
+                    ),
+                },
+            )
 
     for row in rows:
         # Only None is missing. Zero is a measured value: an arm that got nothing
@@ -1580,14 +1835,7 @@ def _cost_bars(report: Mapping[str, object]) -> dict[str, object]:
                 merged[treatment] = cost
         entry = mapping(costs, str(model))
         currency = entry.get("currency")
-        undiscounted = (
-            mapping(report, "undiscounted_transfer_cost_estimates").get(str(model))
-            if report.get("undiscounted_transfer_cost_estimates")
-            else None
-        )
-        if isinstance(undiscounted, Mapping):
-            merged = mapping(undiscounted, "by_treatment")
-            currency = undiscounted["currency"]
+        bounded = report.get("bounded_transfer_cost_estimates", {}).get(str(model))
         model_rates = (
             mapping(mapping(report, "exchange_rates_by_model"), str(model))
             if report.get("exchange_rates_by_model")
@@ -1603,18 +1851,24 @@ def _cost_bars(report: Mapping[str, object]) -> dict[str, object]:
                 "currency": "USD",
                 "billed_currency": currency,
                 "estimable": estimable,
-                "undiscounted": undiscounted is not None,
+                "bounds": bounded["by_treatment"] if bounded else None,
+                "bounds_labels": {
+                    treatment: f"{bounded['currency']} {limits[0]:.2f}–{limits[1]:.2f}"
+                    for treatment, limits in bounded["by_treatment"].items()
+                }
+                if bounded
+                else None,
                 "estimate_note": {
                     "en": (
-                        "Conservative estimate: all input at the ordinary rate, without cache "
-                        "discounts. Output includes reasoning. Not billed spend."
+                        "Cost interval retains reported cache discounts. Only input with missing "
+                        "cache detail ranges from cached to ordinary pricing. Not invoiced spend."
                     ),
                     "zh": (
-                        "保守估算：所有输入按普通单价计算，不计缓存折扣；"
-                        "输出包含 reasoning。这不是账单金额。"
+                        "成本区间保留已报告的缓存折扣，仅对缺失缓存明细的输入分别按缓存和普通单价计算。"
+                        "这不是账单金额。"
                     ),
                 }
-                if undiscounted is not None
+                if bounded
                 else None,
                 "exchange_rate": model_rates.get(str(currency)),
                 "unavailable_reason_code": entry.get("unavailable_reason_code"),
@@ -1825,6 +2079,25 @@ def _static_summary(report: Mapping[str, object], view: Mapping[str, object]) ->
             f"<p>Measurement updated at {_escape(publication['measurement_updated_at'])}; "
             f"report generated at {_escape(publication['report_generated_at'])}.</p>"
         )
+    cost = next(
+        row
+        for row in mapping_list(mapping(mapping(view, "charts"), "headline"), "rows")
+        if row["id"] == "cost"
+    )
+    cost_summary = ""
+    if cost.get("bounds_labels"):
+        cost_summary = (
+            "<h3>Estimated end-to-end cost / 端到端估算成本</h3><ul>"
+            + "".join(
+                f"<li>{_escape(TREATMENT_LABELS[treatment])}: {_escape(label)}</li>"
+                for treatment, label in cost["bounds_labels"].items()
+            )
+            + "</ul>"
+            + "".join(
+                f'<p lang="{language}">{_escape(text)}</p>'
+                for language, text in cost["estimate_note"].items()
+            )
+        )
     return (
         '<div class="static-summary">'
         "<h2>What we found</h2>"
@@ -1833,6 +2106,7 @@ def _static_summary(report: Mapping[str, object], view: Mapping[str, object]) ->
         f"<ul>{arms}</ul>"
         "<h3>Correct diagnoses by interface</h3>"
         f"<ul>{diagnosis_rows}</ul>"
+        f"{cost_summary}"
         "<h3>Pre-specified questions</h3>"
         f"<ul>{verdicts}</ul>"
         f"<p>{_escape(english['tool_use'])}</p>"
@@ -1842,7 +2116,15 @@ def _static_summary(report: Mapping[str, object], view: Mapping[str, object]) ->
         'agent-rca-bench/blob/main/REPORT.md">REPORT.md</a>.</p>'
         f"{publication_summary}"
         f"{deviation_summary}"
-        "</div>"
+        + (
+            "".join(
+                f'<p lang="{language}">{_escape(text)}</p>'
+                for language, text in mapping(view, "split_rerun_note").items()
+            )
+            if view.get("split_rerun_note")
+            else ""
+        )
+        + "</div>"
     )
 
 
