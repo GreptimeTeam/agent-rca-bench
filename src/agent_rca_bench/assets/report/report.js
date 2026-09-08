@@ -1160,7 +1160,12 @@
           deltaCell(item.correct_completion_tool_calls, 2),
           deltaCell(item.provider_visible_input_tokens, 0),
           deltaCell(item.output_tokens, 0),
-          deltaCell(item.estimated_cost, 4),
+          {
+            ...deltaCell(item.estimated_cost, 4),
+            value: isNum(item.estimated_cost)
+              ? `${item.estimated_cost_currency} ${signed(item.estimated_cost, 4)}`
+              : NA(),
+          },
         ]),
       ),
     );
@@ -1208,7 +1213,7 @@
           { label: t("th.rows"), numeric: true },
           { label: t("th.direction"), numeric: true },
           { label: t("th.calls"), numeric: true },
-          { label: t("th.input"), numeric: true },
+          { label: t("th.total_tokens_delta"), numeric: true },
         ],
         rows,
       ),
@@ -1340,7 +1345,7 @@
           { label: t("th.uncached"), numeric: true },
           { label: t("th.cache_read"), numeric: true },
           { label: t("th.cache_write"), numeric: true },
-          { label: t("th.output"), numeric: true },
+          { label: t("th.output_tokens"), numeric: true },
           { label: t("th.reasoning"), numeric: true },
         ],
         view.models.map((model) => {
@@ -1362,6 +1367,7 @@
       ),
       h("div", {},
         h("h3", { text: t("pricing.title") }),
+        h("p", { class: "caption", text: t("pricing.rate_unit") }),
         ...view.charts.cost_bars.series.filter((item) => item.estimate_note).map((item) =>
           h("p", { class: "caption", text: `${item.model}: ${item.estimate_note[language]}` }),
         ),
@@ -1404,7 +1410,7 @@
         t("th.model"),
         ...view.treatments.flatMap((key) => [
           { label: `${treatment(key)} ${t("th.correct").toLowerCase()}`, numeric: true },
-          { label: `${treatment(key)} ${t("th.eligible_cases").toLowerCase()}`, numeric: true },
+          { label: `${treatment(key)} ${t("th.eligible_runs").toLowerCase()}`, numeric: true },
         ]),
       ],
       view.models.map((model) => {
@@ -1499,7 +1505,7 @@
     ["uncached_input_per_million", "th.uncached"],
     ["cache_read_per_million", "th.cache_read"],
     ["cache_write_per_million", "th.cache_write"],
-    ["output_per_million", "th.output"],
+    ["output_per_million", "th.output_tokens"],
   ];
   const pricingTable = () => {
     return table(
