@@ -36,6 +36,7 @@ from agent_rca_bench.contracts import (
     Visibility,
 )
 from agent_rca_bench.evidence import is_valid_evidence_trace
+from agent_rca_bench.gemini_rate_limit import GEMINI_RATE_LIMITER
 from agent_rca_bench.greptimedb.profile import TableProfiler
 from agent_rca_bench.greptimedb.visibility import (
     DEFAULT_QUERY_MAX_ROWS,
@@ -1237,6 +1238,7 @@ def _anthropic_client(api_transport: ApiTransport) -> anthropic.Anthropic:
 
 def _chat_completions_client(api_transport: ApiTransport) -> openai.OpenAI:
     client_options: dict[str, object] = {}
+    http_options: dict[str, object] = {}
     if api_transport is ApiTransport.BIGMODEL_CHAT_COMPLETIONS:
         api_key = _api_credential("BIGMODEL_API_KEY", BIGMODEL_KEYCHAIN_SERVICE)
         base_url = BIGMODEL_CHAT_COMPLETIONS_BASE_URL
@@ -1246,12 +1248,16 @@ def _chat_completions_client(api_transport: ApiTransport) -> openai.OpenAI:
         base_url = GEMINI_OPENAI_BASE_URL
         trust_env = True
         client_options["max_retries"] = GEMINI_MAX_RETRIES
+        http_options["event_hooks"] = {
+            "request": [GEMINI_RATE_LIMITER.before_request],
+            "response": [GEMINI_RATE_LIMITER.after_response],
+        }
     else:
         raise AgentError(f"unsupported Chat Completions transport: {api_transport.value}")
     return openai.OpenAI(
         api_key=api_key,
         base_url=base_url,
-        http_client=openai.DefaultHttpxClient(trust_env=trust_env),
+        http_client=openai.DefaultHttpxClient(trust_env=trust_env, **http_options),
         **client_options,
     )
 

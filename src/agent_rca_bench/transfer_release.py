@@ -26,6 +26,7 @@ from agent_rca_bench.evidence import (
     is_evidence_sql,
     is_valid_evidence_trace,
 )
+from agent_rca_bench.partial_usage import cache_cost_bounds, gemini_cache_observation
 from agent_rca_bench.report import _estimated_api_cost, _raw_input_breakdown
 from agent_rca_bench.transfer_adjudication import (
     JUDGE_MODELS,
@@ -44,7 +45,7 @@ from agent_rca_bench.transfer_scorer import (
     _source_declared_identities,
 )
 
-ARTIFACT_SCHEMA_VERSION = 2
+ARTIFACT_SCHEMA_VERSION = 3
 
 
 def sanitize_transfer_run(
@@ -616,6 +617,26 @@ def _public_adjudication_resolution(
     }
 
 
+def public_run_usage(run: AgentRun, pricing: Mapping[str, object]) -> dict[str, object]:
+    raw = run.model_dump(mode="json")
+    uncached, cache_read, cache_creation, complete = _raw_input_breakdown(raw)
+    usage = {
+        "provider_visible_input_tokens": run.usage.input_tokens,
+        "output_tokens": run.usage.output_tokens,
+        "reasoning_output_tokens": run.usage.reasoning_tokens,
+        "uncached_input_tokens": uncached if complete else None,
+        "cache_read_input_tokens": cache_read if complete else None,
+        "cache_creation_input_tokens": cache_creation if complete else None,
+        "cache_breakdown_complete": complete,
+        "estimated_cost": _estimated_api_cost(raw, pricing),
+        "cost_currency": pricing.get("currency"),
+    }
+    if run.model == "gemini-3.8-flash":
+        usage["cache_observation"] = gemini_cache_observation(raw)
+        usage["estimated_cost_bounds"] = cache_cost_bounds(usage, pricing)
+    return usage
+
+
 def build_measurement_artifact(
     private_report: dict[str, object],
     protocol_path: Path,
@@ -709,22 +730,9 @@ def build_measurement_artifact(
                 ),
             )
         model = models[str(item["model"])]
-        raw_run = run.model_dump(mode="json")
-        uncached, cache_read, cache_creation, complete = _raw_input_breakdown(raw_run)
-        public["usage"] = {
-            **_mapping(public, "usage"),
-            "uncached_input_tokens": uncached if complete else None,
-            "cache_read_input_tokens": cache_read if complete else None,
-            "cache_creation_input_tokens": cache_creation if complete else None,
-            "cache_breakdown_complete": complete,
-            "estimated_cost": _estimated_api_cost(
-                raw_run,
-                _mapping(private_report, "pricing_snapshot")[model.model],
-            ),
-            "cost_currency": _mapping(private_report, "pricing_snapshot")[model.model].get(
-                "currency"
-            ),
-        }
+        public["usage"] = public_run_usage(
+            run, _mapping(private_report, "pricing_snapshot")[model.model]
+        )
         validate_public_transfer_run(
             public,
             case,
@@ -754,6 +762,7 @@ def build_measurement_artifact(
                         "visibility",
                     )
                 },
+                "source_semantic_sha256": item["source_semantic_sha256"],
                 "run": public,
                 **(
                     {"provider_concurrency_limit": item["provider_concurrency_limit"]}
@@ -785,6 +794,7 @@ def build_measurement_artifact(
         },
         "benchmark_protocol": private_report["benchmark_protocol"],
         "formal_protocol": private_report["formal_protocol"],
+        "pricing_snapshot": private_report["pricing_snapshot"],
         "sources": public_sources,
         "runs": public_runs,
         "semantic_adjudication": {
@@ -855,6 +865,184 @@ def build_measurement_artifact(
     return artifact
 
 
+def validate_split_retry_audit(
+    audit: Mapping[str, object],
+    manifest_sha256: str,
+    cohort: str,
+    runs: Sequence[Mapping[str, object]],
+) -> None:
+    policy = _mapping(audit, "policy")
+    amendments = _mapping_list(audit, "supervisor_amendments")
+    for document in (audit, policy, *amendments):
+        if (
+            document.get("integrity")
+            != canonical_sha256(
+                {key: value for key, value in document.items() if key != "integrity"}
+            )
+            or document.get("manifest_sha256") != manifest_sha256
+        ):
+            raise ValueError("Split retry audit seal or manifest binding drifted")
+    if (
+        audit.get("kind") != "split-rerun-retry-audit"
+        or policy.get("max_cell_reruns") != 3
+        or policy.get("max_total_attempts_per_cell") != 4
+        or not amendments
+    ):
+        raise ValueError("Split retry authorization or ceiling drifted")
+    for index, amendment in enumerate(amendments):
+        if (
+            amendment.get("retry_policy_sha256") != canonical_sha256(policy)
+            or amendment.get("measurement_code_changed") is not False
+            or (
+                index > 0
+                and amendment.get("supersedes_sha256") != canonical_sha256(amendments[index - 1])
+            )
+        ):
+            raise ValueError("Split retry supervisor amendment chain drifted")
+    final_cells = {item["cell_index"]: item for item in runs}
+    ordinals: dict[tuple[str, int], list[int]] = {}
+    record_hashes = set()
+    for attempt in _mapping_list(audit, "failed_attempts"):
+        key = (str(attempt["cohort"]), int(attempt["cell_index"]))
+        ordinal = attempt.get("attempt")
+        if type(ordinal) is not int:
+            raise ValueError("Split retry attempt ordinal is invalid")
+        ordinals.setdefault(key, []).append(ordinal)
+        for field in ("private_record_sha256", "retry_decision_sha256", "source_semantic_sha256"):
+            digest = attempt.get(field)
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or any(char not in "0123456789abcdef" for char in digest)
+            ):
+                raise ValueError("Split retry provenance hash is invalid")
+        if attempt["private_record_sha256"] in record_hashes:
+            raise ValueError("Split retry attempt was counted twice")
+        record_hashes.add(attempt["private_record_sha256"])
+        run = _mapping(attempt, "run")
+        if (
+            attempt.get("failure_class") != "temporary_provider_or_transport_failure"
+            or attempt.get("failure_detail")
+            not in {"sdk_connection_error", "temporary_provider_or_transport_failure"}
+            or _mapping(run, "execution").get("runner_error") is not True
+            or _mapping(run, "execution").get("tool_budget_exhausted") is not False
+            or _mapping(run, "evaluation").get("efficiency_eligible") is not False
+        ):
+            raise ValueError("Split retry attempt is not a saved temporary failure")
+        if key[0] == cohort:
+            final = final_cells.get(key[1])
+            if (
+                final is None
+                or attempt.get("final_cell_sha256") != canonical_sha256(final)
+                or any(
+                    attempt.get(field) != value for field, value in final.items() if field != "run"
+                )
+            ):
+                raise ValueError("Split retry attempt does not match its final cell")
+            for field in (
+                "model",
+                "visibility",
+                "api_transport",
+                "reasoning_effort",
+                "max_output_tokens",
+            ):
+                if run.get(field) != _mapping(final, "run").get(field):
+                    raise ValueError("Split retry changed a frozen model configuration")
+    if any(
+        values != list(range(1, len(values) + 1)) or len(values) > 3 for values in ordinals.values()
+    ):
+        raise ValueError("Split retry archive sequence or ceiling drifted")
+    retained = [
+        item for item in _mapping_list(audit, "retained_failures") if item["cohort"] == cohort
+    ]
+    failed_cells = {
+        item["cell_index"]: item
+        for item in runs
+        if _mapping(_mapping(item, "run"), "execution")["runner_error"]
+    }
+    if len(retained) != len(failed_cells) or {item["cell_index"] for item in retained} != set(
+        failed_cells
+    ):
+        raise ValueError("Split retry audit omits or duplicates a retained failure")
+    for item in retained:
+        final = failed_cells[item["cell_index"]]
+        if (
+            item.get("final_cell_sha256") != canonical_sha256(final)
+            or any(
+                item.get(field) != final.get(field) for field in ("model", "case_id", "repetition")
+            )
+            or item.get("failure_class")
+            not in {"output_token_limit", "temporary_provider_or_transport_failure"}
+        ):
+            raise ValueError("Split retained failure binding or classification drifted")
+        retries = ordinals.get((cohort, int(item["cell_index"])), [])
+        if item["failure_class"] == "temporary_provider_or_transport_failure" and len(retries) != 3:
+            raise ValueError(
+                "Split temporary failure retained before exhausting authorized retries"
+            )
+
+
+def validate_split_rerun(artifact: Mapping[str, object]) -> None:
+    bindings = _mapping(artifact, "bindings")
+    correction = artifact.get("split_rerun")
+    if correction is None:
+        if bindings.get("split_rerun_semantic_sha256") is not None:
+            raise ValueError("Split rerun binding has no correction record")
+        return
+    if not isinstance(correction, Mapping) or correction.get("schema_version") != 1:
+        raise ValueError("unsupported Split correction record")
+    runs = _mapping_list(artifact, "runs")
+    replaced = {item["cell_index"]: item for item in runs if item["visibility"] == "split_pillars"}
+    retained = {
+        str(item["cell_index"]): canonical_sha256(item)
+        for item in runs
+        if item["visibility"] != "split_pillars"
+    }
+    entries = _mapping_list(correction, "replacements")
+    if (
+        correction.get("replaced_cells") != len(replaced)
+        or correction.get("retained_cells") != len(retained)
+        or correction.get("retained_cell_sha256") != retained
+        or [item.get("cell_index") for item in entries] != list(replaced)
+        or correction.get("source_artifact_sha256") != bindings.get("split_rerun_semantic_sha256")
+        or correction.get("baseline_artifact_sha256")
+        != bindings.get("baseline_artifact_semantic_sha256")
+        or not correction.get("changes")
+        or not correction.get("execution_amendment")
+    ):
+        raise ValueError("Split correction count or binding drifted")
+    sources = _mapping(artifact, "split_rerun_sources")
+    if correction.get("retry_audit") is not None:
+        validate_split_retry_audit(
+            _mapping(correction, "retry_audit"),
+            str(correction["manifest_sha256"]),
+            str(correction["cohort"]),
+            list(replaced.values()),
+        )
+    for entry in entries:
+        cell = replaced[entry["cell_index"]]
+        previous = entry.get("superseded_cell_sha256")
+        if (
+            not isinstance(previous, str)
+            or len(previous) != 64
+            or any(char not in "0123456789abcdef" for char in previous)
+            or entry.get("replacement_cell_sha256") != canonical_sha256(cell)
+        ):
+            raise ValueError("Split correction cell hash drifted")
+        sample = _mapping(_mapping(sources, str(cell["case_id"])), "split_storage")[
+            "trace_sample_sha256"
+        ]
+        for side in ("before", "after"):
+            gate = _mapping(_mapping(entry, "trace_gate"), side)
+            if (
+                gate.get("sample_equal") is not True
+                or gate.get("source_window_traceql_search") is not True
+                or gate.get("causal_traces_reachable") is not True
+                or gate.get("stored_sample_sha256") != sample
+            ):
+                raise ValueError("Split correction trace gate failed")
+
+
 def validate_measurement_artifact(
     artifact: Mapping[str, object],
     protocol_path: Path,
@@ -885,6 +1073,11 @@ def validate_measurement_artifact(
         raise ValueError("public transfer artifact is incomplete")
     specs = {case.opaque_case_id: case for case in selection.selected_cases}
     models = {model.model: model for model in protocol.models}
+    payload = {key: value for key, value in artifact.items() if key != "integrity"}
+    if _mapping(artifact, "integrity").get("semantic_payload_sha256") != canonical_sha256(payload):
+        raise ValueError("public transfer artifact payload hash drifted")
+    _reject_private_fields(artifact)
+    validate_split_rerun(artifact)
     for expected, item in zip(schedule, runs, strict=True):
         if any(item.get(key) != value for key, value in expected.items()):
             raise ValueError("public transfer schedule drifted")
@@ -894,6 +1087,14 @@ def validate_measurement_artifact(
         if type(concurrency) is not int or not 1 <= concurrency <= protocol.parallel_runs:
             raise ValueError("public transfer recorded provider concurrency is invalid")
         model = models[str(item["model"])]
+        usage = _mapping(_mapping(item, "run"), "usage")
+        if ("cache_observation" in usage or "estimated_cost_bounds" in usage) and (
+            model.model != "gemini-3.8-flash"
+            or "cache_observation" not in usage
+            or usage.get("estimated_cost_bounds")
+            != cache_cost_bounds(usage, _mapping(artifact, "pricing_snapshot")[model.model])
+        ):
+            raise ValueError("public partial-cache cost bounds drifted")
         deterministic = validate_public_transfer_run(
             _mapping(item, "run"),
             specs[str(item["case_id"])],
@@ -1000,10 +1201,6 @@ def validate_measurement_artifact(
         raise ValueError("public transfer model reports drifted")
     if artifact.get("inference") != _public_inference(protocol.inference):
         raise ValueError("public transfer inference contract drifted")
-    payload = {key: value for key, value in artifact.items() if key != "integrity"}
-    if _mapping(artifact, "integrity").get("semantic_payload_sha256") != canonical_sha256(payload):
-        raise ValueError("public transfer artifact payload hash drifted")
-    _reject_private_fields(artifact)
 
 
 def _public_source(audit: Mapping[str, object], case: TransferCaseSpec) -> dict[str, object]:

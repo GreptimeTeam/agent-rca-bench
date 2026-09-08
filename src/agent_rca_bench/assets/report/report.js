@@ -184,6 +184,7 @@
     const basis = bests.size === 1 ? [...bests][0] : null;
     const cell = (row, key) => {
       if (row.id === "accuracy") return `${num(row.values[key])} / ${num(row.denominator)}`;
+      if (row.bounds_labels) return `${num(row.bounds[key][0], 2)}–${num(row.bounds[key][1], 2)}`;
       const ratio = row.ratios[key];
       return isNum(ratio) ? `×${ratio.toFixed(2)}` : NA();
     };
@@ -201,7 +202,7 @@
             "tr",
             null,
             h("th", { scope: "col" }),
-            rows.map((row) => h("th", { scope: "col", text: t(columnKey[row.id]) })),
+            rows.map((row) => h("th", { scope: "col", text: t(columnKey[row.id]) + (row.bounds_labels ? ` (${row.currency})` : "") })),
           ),
         ),
         h(
@@ -216,12 +217,15 @@
                 { scope: "row" },
                 h("span", { class: "arm-chip", "data-arm": key, text: treatment(key) }),
               ),
-              rows.map((row) => h("td", { text: cell(row, key) })),
+              rows.map((row) => h("td", { class: row.bounds_labels ? "cost-interval" : null, text: cell(row, key) })),
             ),
           ),
         ),
       ),
       h("p", { class: "hero-board-note", text: t("hero.board.note") }),
+      rows.filter((row) => row.bounds_labels).map((row) =>
+        h("p", { class: "hero-board-note", text: row.estimate_note[language] }),
+      ),
       h("h3", { class: "hero-board-sub", text: t("hero.models.title") }),
       heroModelTable(),
       h("p", {
@@ -350,6 +354,27 @@
       { class: "headline" },
       chart.rows.map((row) => {
         const best = row.best;
+        if (row.bounds_labels) {
+          return h("div", { class: "headline-row" },
+            h("div", { class: "headline-head" },
+              h("h3", { text: t(`headline.${row.label_key}`) }),
+              h("span", { class: "caption", text: row.estimate_note[language] }),
+            ),
+            h("div", { class: "bars" }, chart.treatments.map((key) =>
+              h("div", { class: "bar-row cost-range-row" },
+                h("span", { class: "bar-name", text: treatment(key) }),
+                h("div", { class: "bar-track cost-range" },
+                  h("div", { class: "bar-fill", "data-arm": key, style: `width:${row.bounds_fractions[key][0] * 100}%` }),
+                  h("div", { class: "bar-fill range-tail", "data-arm": key, style: `left:${row.bounds_fractions[key][0] * 100}%;width:${(row.bounds_fractions[key][1] - row.bounds_fractions[key][0]) * 100}%` }),
+                ),
+                h("div", { class: "bar-value" },
+                  h("strong", { text: row.bounds_labels[key] }),
+                  h("span", { class: "bar-ratio", text: row.bounds_ratio_labels[key] || NA() }),
+                ),
+              ),
+            )),
+          );
+        }
         if (!row.estimable) {
           return h(
             "div",
@@ -372,7 +397,7 @@
             "div",
             { class: "headline-head" },
             h("h3", { text: t(`headline.${row.label_key}`) }),
-            h("span", { class: "caption", text: row.estimate_note ? t("cost.conservative_total") : t(`headline.${row.label_key}.note`) }),
+            h("span", { class: "caption", text: row.estimate_note ? row.estimate_note[language] : t(`headline.${row.label_key}.note`) }),
             h("span", {
               class: "badge badge-sm",
               "data-grade": "descriptive",
@@ -799,57 +824,58 @@
 
   // --- charts -------------------------------------------------------------
 
-  const slopeChart = () => {
-    const chart = view.charts.diagnosis_slope;
-    const width = 720;
-    const height = 300;
-    const pad = { top: 24, right: 132, bottom: 34, left: 40 };
+  const slopeChart = (chart = view.charts.diagnosis_slope) => {
+    const width = 860;
+    const height = 430;
+    const pad = { top: 24, right: 210, bottom: 34, left: 48 };
     const max = chart.runs_per_treatment;
     const columns = chart.treatments;
+    const colors = ["#2563a6", "#a45b17", "#24816a", "#99548e", "#b34448", "#65721c"];
     const x = (index) => pad.left + (index * (width - pad.left - pad.right)) / Math.max(1, columns.length - 1);
     const y = (value) => pad.top + (1 - value / max) * (height - pad.top - pad.bottom);
-    const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, role: "img" });
+    const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": chart.label ? chart.label[language] : t("diagnosis.title") });
 
-    for (let step = 0; step <= 4; step += 1) {
-      const value = (max / 4) * step;
+    const tickStep = Math.max(1, Math.round(max / 4));
+    const ticks = [...new Set([0, ...Array.from({ length: Math.floor(max / tickStep) }, (_, i) => (i + 1) * tickStep), max])];
+    for (const value of ticks) {
       svg.append(svgEl("line", { class: "grid", x1: pad.left, x2: width - pad.right, y1: y(value), y2: y(value) }));
-      svg.append(svgEl("text", { class: "label", x: pad.left - 8, y: y(value) + 4, "text-anchor": "end", text: num(value) }));
+      svg.append(svgEl("text", { class: "label", x: 22, y: y(value) + 4, "text-anchor": "end", text: num(value) }));
     }
     columns.forEach((column, index) => {
-      svg.append(
-        svgEl("text", { class: "label", x: x(index), y: height - 12, "text-anchor": "middle", text: treatment(column) }),
-      );
+      svg.append(svgEl("text", { class: "label", x: x(index), y: height - 12, "text-anchor": "middle", text: treatment(column) }));
     });
     const endLabels = [];
-    for (const item of chart.series) {
+    const labeled = new Set();
+    chart.series.forEach((item, modelIndex) => {
+      const color = colors[modelIndex % colors.length];
       const points = columns.map((column, index) => [x(index), y(item.values[column])]);
-      svg.append(svgEl("polyline", { class: "series", points: points.map((point) => point.join(",")).join(" ") }));
+      const line = svgEl("polyline", { class: "series", style: `stroke:${color}`, points: points.map((point) => point.join(",")).join(" ") });
+      line.append(svgEl("title", { text: `${item.model}: ${columns.map((key) => `${treatment(key)} ${item.values[key]}/${max}`).join(", ")}` }));
+      svg.append(line);
       points.forEach(([px, py], index) => {
-        svg.append(svgEl("circle", { class: "series-dot", cx: px, cy: py, r: 4 }));
-        svg.append(
-          svgEl("text", {
-            class: "value",
-            x: px,
-            y: py - 10,
-            "text-anchor": "middle",
-            text: item.values[columns[index]],
-          }),
-        );
+        const value = item.values[columns[index]];
+        const dot = svgEl("circle", { class: "series-dot", style: `stroke:${color}`, cx: px, cy: py, r: 4, "data-model": item.model, "data-treatment": columns[index], "data-value": value });
+        dot.append(svgEl("title", { text: `${item.model}: ${value}/${max}` }));
+        svg.append(dot);
+        // Tied models share a coordinate and one value label.
+        const key = `${index}:${value}`;
+        if (!labeled.has(key)) {
+          labeled.add(key);
+          svg.append(svgEl("text", { class: "value", x: px + 8, y: py + 4, text: value }));
+        }
       });
-      endLabels.push({ model: item.model, x: points[points.length - 1][0], y: points[points.length - 1][1] });
-    }
-    /* Models can land within a couple of runs of each other on the last column,
-     * which stacks their names on top of one another. Nudge them apart. */
+      const last = points[points.length - 1];
+      endLabels.push({ model: item.model, x: last[0], pointY: last[1], y: last[1], color });
+    });
     endLabels.sort((a, b) => a.y - b.y);
-    const minimumGap = 15;
     for (let index = 1; index < endLabels.length; index += 1) {
-      const gap = endLabels[index].y - endLabels[index - 1].y;
-      if (gap < minimumGap) endLabels[index].y = endLabels[index - 1].y + minimumGap;
+      endLabels[index].y = Math.max(endLabels[index].y, endLabels[index - 1].y + 18);
     }
     for (const label of endLabels) {
-      svg.append(svgEl("text", { class: "label", x: label.x + 12, y: label.y + 4, text: label.model }));
+      svg.append(svgEl("line", { x1: label.x + 26, y1: label.pointY, x2: label.x + 42, y2: label.y, style: `stroke:${label.color};stroke-width:1` }));
+      svg.append(svgEl("text", { class: "label", x: label.x + 46, y: label.y + 4, style: `fill:${label.color}`, text: label.model }));
     }
-    return h("div", { class: "chart" }, svg);
+    return h("div", { class: "chart diagnosis-chart" }, svg);
   };
 
   const reversalChart = (chart) => {
@@ -928,9 +954,9 @@
               const ratio = item.ratios[key];
               return h(
                 "div",
-                { class: "bar-row", "data-best": String(key === best) },
+                { class: item.estimable ? "bar-row" : "bar-row cost-amount", "data-best": String(key === best) },
                 h("span", { class: "bar-name", text: treatment(key) }),
-                h(
+                item.estimable ? h(
                   "div",
                   { class: "bar-track" },
                   isNum(value)
@@ -940,22 +966,22 @@
                         style: `width:${Math.max(1, (item.fractions[key] || 0) * 100)}%`,
                       })
                     : null,
-                ),
+                ) : null,
                 h(
                   "div",
                   { class: "bar-value" },
                   // Two decimals, as in the headline; the exact figure is in the table below.
-                  h("strong", { text: isNum(value) ? `${item.currency} ${num(value, 2)}` : NA() }),
-                  h("span", {
+                  h("strong", { text: item.bounds_labels ? item.bounds_labels[key] : isNum(value) ? `${item.currency} ${num(value, 2)}` : NA() }),
+                  isNum(ratio) ? h("span", {
                     class: "bar-ratio",
-                    text: isNum(ratio) ? `\u00d7${ratio.toFixed(2)}` : NA(),
-                  }),
+                    text: `\u00d7${ratio.toFixed(2)}`,
+                  }) : null,
                 ),
               );
             }),
           ),
           item.estimate_note
-            ? h("p", { class: "caption" }, h("a", { href: `#${language}-resources`, text: t("cost.conservative") }))
+            ? h("p", { class: "caption" }, item.estimate_note[language])
             : item.estimable
             ? null
             : h("p", { class: "caption", text: t("cost.not_estimable") }),
@@ -1038,6 +1064,11 @@
       h("p", { class: "caption", text: t("semantic.reversal_lede") }),
       sectionInsight("fault_dependent"),
       accuracyByLevel(),
+      h("div", { class: "scope-diagnosis" },
+        h("h3", { text: view.charts.component_dependency_slope.label[language] }),
+        h("p", { class: "caption", text: t("diagnosis.lede", { runs: view.charts.component_dependency_slope.runs_per_treatment }) }),
+        slopeChart(view.charts.component_dependency_slope),
+      ),
       // The same runs split by source, published because the two splits are
       // collinear here and the reader has to be able to see that.
       panel(
@@ -1457,9 +1488,9 @@
       view.charts.cost_bars.series.map((item) => [
         item.model,
         ...view.treatments.map((key) => ({
-          value: isNum(item.values[key]) ? money(item.values[key], item.currency) : NA(),
+          value: item.bounds_labels ? item.bounds_labels[key] : isNum(item.values[key]) ? money(item.values[key], item.currency) : NA(),
           numeric: true,
-          class: isNum(item.values[key]) ? null : "na",
+          class: item.bounds_labels || isNum(item.values[key]) ? null : "na",
         })),
       ]),
     );
@@ -1571,6 +1602,9 @@
           .map(([key, value]) => [key.split("_").join(" "), String(value)]),
       ),
       h("h3", { style: "margin-top:24px", text: t("method.audit") }),
+      view.split_rerun_note
+        ? h("p", { class: "caption", text: view.split_rerun_note[language] })
+        : null,
       view.execution_deviation_note
         ? h("p", { class: "caption", text: view.execution_deviation_note[language] })
         : null,

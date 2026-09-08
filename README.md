@@ -17,26 +17,33 @@ The [interactive report](artifacts/measurement/agent-rca-v34-six-model.html) com
 
 ## Results
 
-Protocol v34 supports two model-specific input reductions. With `claude-fable-5-1`, the
+The results combine original v34 and two-model extension measurements with a complete
+168-cell Split rerun correcting Tempo retention and repeated label names in query results.
+The original 336 Raw/Graph cells and 192 micro cells are retained. The reports' Data correction
+section describes the execution changes, bounded connection-error retries, and retained failures.
+
+Protocol v34 supports three model-specific input reductions. With `claude-fable-5-1`, the
 GreptimeDB all-in-one interface used fewer provider-visible input tokens than
 the Prometheus, Loki, and Tempo interface bundle in all 13 eligible cases. The
-case-median difference was `-446,252.5` tokens (exact p `0.000244140625`, Holm p `0.001953125`).
+case-median difference was `-276,203.5` tokens (exact p `0.000244140625`, Holm p `0.001953125`).
 Gemini 3.8 Flash reduced input in 10 of 11 eligible cases, with a median difference of
-`-1,575,917` tokens (exact p `0.01171875`, Holm p `0.046875`). These were the only passing
-endpoints: two of twelve passed their frozen Holm tests.
+`-2,492,151` tokens (exact p `0.01171875`, Holm p `0.03515625`). Qwen reduced input in
+13 of 14 eligible cases, with a median difference of `-523,121` tokens (exact p
+`0.0018310546875`, Holm p `0.00732421875`). These were the only passing endpoints:
+three of twelve passed their frozen Holm tests; no tool-call endpoint passed.
 
 No endpoint in the `semantic_graph - raw` family passed Holm correction. The
 Semantic Graph reduced rows in every eligible Discovery result (`35/35`), and both rows
 and calls in 11/12 Graph-retrieval results. One Qwen case increased both. End-to-end
 case medians point in both directions.
 
-Across 168 runs per treatment, Split, Raw, and Graph produced 97, 130, and 124
+Across 168 runs per treatment, Split, Raw, and Graph produced 105, 130, and 124
 correct diagnoses. These totals are descriptive. The direction also changes
 between the OpenRCA2 service cases and the RCA-100 infrastructure-node cases; this
 post-measurement split confounds dataset with fault level.
-Across all 28 runs per arm, Raw reduced Gemini input by 54.35% and Qwen input by 22.06%.
-Qwen's estimated Raw cost was 25.52% lower than Split. Gemini's displayed end-to-end
-cost uses ordinary input rates without cache discounts because its cache breakdown is incomplete.
+Across all 28 runs per arm, Raw reduced Gemini input by 63.42% and Qwen input by 24.40%.
+Qwen's estimated Raw cost was 27.98% lower than Split. Gemini's displayed end-to-end
+cost retains known cache discounts and bounds only the input with missing cache details.
 [REPORT.md](REPORT.md) has the complete results and power limits.
 
 ## What the benchmark measures
@@ -90,17 +97,31 @@ cd agent-rca-bench
 uv sync --extra dev --frozen
 ```
 
-From the v34 release tree, validate the sanitized artifacts, recompute the
-combined report, and render the self-contained HTML report:
+The end-to-end results use three measurement sources: the original v34 cohort,
+the two-model extension, and the complete Split rerun. Composition retains the
+original Raw/Graph cells and substitutes the new Split cells. The two composed
+transfer files are derived artifacts, not additional measurement sources.
+
+From the release tree, compose the transfer artifacts and render the reports:
 
 ```bash
 output_dir=$(mktemp -d)
 
+uv run python -m agent_rca_bench.split_rerun_release compose \
+  --rerun artifacts/measurement/agent-rca-v34-split-rerun.json \
+  --output-dir "$output_dir/composed"
+
+cmp artifacts/measurement/agent-rca-v34-composed-transfer.json \
+  "$output_dir/composed/four_model-transfer.json"
+cmp artifacts/measurement/agent-rca-v34-two-model-extension-composed-transfer.json \
+  "$output_dir/composed/two_model_extension-transfer.json"
+
 uv run agent-rca formal-suite-report \
   --micro-artifact artifacts/measurement/agent-rca-v34-micro.json \
-  --transfer-artifact artifacts/measurement/agent-rca-v34-transfer.json \
+  --transfer-artifact "$output_dir/composed/four_model-transfer.json" \
   --suite-protocol fixtures/reference/agent-rca-v34-four-model-suite.json \
   --transfer-protocol fixtures/reference/transfer-v34-protocol.json \
+  --publication-metadata artifacts/measurement/agent-rca-v34-publication.json \
   --output-json "$output_dir/agent-rca-v34.json" \
   --output-html "$output_dir/agent-rca-v34.html"
 
@@ -110,13 +131,13 @@ cmp artifacts/measurement/agent-rca-v34.html \
   "$output_dir/agent-rca-v34.html"
 ```
 
-Both `cmp` commands exit with status 0 when the original four-model report reproduces
-byte for byte. The Gemini and Qwen extension is reproduced separately:
+The `cmp` commands exit with status 0 when the composed artifacts and four-model
+report reproduce byte for byte. Reproduce the Gemini and Qwen report separately:
 
 ```bash
 uv run agent-rca formal-suite-report \
   --micro-artifact artifacts/measurement/agent-rca-v34-two-model-extension-micro.json \
-  --transfer-artifact artifacts/measurement/agent-rca-v34-two-model-extension-transfer.json \
+  --transfer-artifact "$output_dir/composed/two_model_extension-transfer.json" \
   --suite-protocol fixtures/reference/agent-rca-v34-two-model-extension-suite.json \
   --transfer-protocol fixtures/reference/transfer-v34-two-model-extension-protocol.json \
   --publication-metadata artifacts/measurement/agent-rca-v34-two-model-extension-publication.json \
@@ -140,8 +161,8 @@ Generate the unified page from the two reproduced reports and their bound transf
 uv run agent-rca formal-report-merge \
   --reports "$output_dir/agent-rca-v34.json" \
     "$output_dir/agent-rca-v34-two-model-extension.json" \
-  --transfer-artifacts artifacts/measurement/agent-rca-v34-transfer.json \
-    artifacts/measurement/agent-rca-v34-two-model-extension-transfer.json \
+  --transfer-artifacts "$output_dir/composed/four_model-transfer.json" \
+    "$output_dir/composed/two_model_extension-transfer.json" \
   --publication-metadata artifacts/measurement/agent-rca-v34-six-model-publication.json \
   --output-json "$output_dir/agent-rca-v34-six-model.json" \
   --output-html "$output_dir/agent-rca-v34-six-model.html"

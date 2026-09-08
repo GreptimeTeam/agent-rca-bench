@@ -150,7 +150,12 @@ def test_chat_completions_clients_use_transport_bound_credentials_and_endpoints(
     monkeypatch, transport, environment_variable, expected_base_url, expected_trust_env
 ) -> None:
     calls = []
+    http_options = []
     http_clients = {False: object(), True: object()}
+
+    def fake_http_client(**kwargs):
+        http_options.append(kwargs)
+        return http_clients[kwargs["trust_env"]]
 
     def fake_client(**kwargs):
         calls.append(kwargs)
@@ -160,7 +165,7 @@ def test_chat_completions_clients_use_transport_bound_credentials_and_endpoints(
     monkeypatch.setattr(
         agent_module.openai,
         "DefaultHttpxClient",
-        lambda **kwargs: http_clients[kwargs["trust_env"]],
+        fake_http_client,
     )
     monkeypatch.setattr(agent_module.openai, "OpenAI", fake_client)
 
@@ -173,6 +178,12 @@ def test_chat_completions_clients_use_transport_bound_credentials_and_endpoints(
     }
     if transport is ApiTransport.GEMINI_OPENAI_CHAT_COMPLETIONS:
         expected["max_retries"] = 10
+        assert http_options[0]["event_hooks"] == {
+            "request": [agent_module.GEMINI_RATE_LIMITER.before_request],
+            "response": [agent_module.GEMINI_RATE_LIMITER.after_response],
+        }
+    else:
+        assert "event_hooks" not in http_options[0]
     assert client == expected
     assert calls == [client]
 
@@ -1976,3 +1987,20 @@ def test_a_greptimedb_tool_call_still_records_its_row_delta() -> None:
 
     assert delta.rows_returned == 25
     assert delta.query_count == 1
+
+
+def test_split_guidance_matches_sql_without_mutating_shared_metrics_schema() -> None:
+    from copy import deepcopy
+
+    from agent_rca_bench.split_query import metrics_query_tool, split_investigation_tools
+
+    before = deepcopy(metrics_query_tool(native_stack=False))
+    sql = _execute_sql_tool(Visibility.RAW)
+    expected = sql["input_schema"]["properties"]["max_rows"]["description"].replace(
+        "Maximum rows returned", "Maximum items returned", 1
+    )
+    assert "Prefer aggregation or narrower filters." in sql["description"]
+    for tool in split_investigation_tools():
+        assert "Prefer aggregation or narrower filters." not in tool["description"]
+        assert tool["input_schema"]["properties"]["max_items"]["description"] == expected
+    assert metrics_query_tool(native_stack=False) == before

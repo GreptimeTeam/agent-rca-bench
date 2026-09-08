@@ -403,6 +403,11 @@ storage:
       path: /var/tempo/wal
     local:
       path: /var/tempo/blocks
+overrides:
+  defaults:
+    compaction:
+      # Retention uses source timestamps, not the time the archive was replayed.
+      block_retention: 87600h
 usage_report:
   reporting_enabled: false
 """

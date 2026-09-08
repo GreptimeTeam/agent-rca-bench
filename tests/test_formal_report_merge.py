@@ -16,7 +16,7 @@ ARTIFACTS = Path(__file__).resolve().parents[1] / "artifacts/measurement"
 REPORTS = [
     ARTIFACTS / f"{stem}.json" for stem in ("agent-rca-v34", "agent-rca-v34-two-model-extension")
 ]
-TRANSFERS = [path.with_name(f"{path.stem}-transfer.json") for path in REPORTS]
+TRANSFERS = [path.with_name(f"{path.stem}-composed-transfer.json") for path in REPORTS]
 PUBLICATION = ARTIFACTS / "agent-rca-v34-six-model-publication.json"
 
 
@@ -33,8 +33,8 @@ def test_merge_preserves_models_and_independent_correction_scopes(merged_report)
     assert merged_report["execution"]["completed_cells"] == 696
     view = build_report_view_model(merged_report)
     storage = next(item for item in view["verdicts"] if item["goal"] == "storage_shape")
-    assert storage["endpoints"]["significant"] == 2
-    assert "2 of 12" in storage["tally_text"]["en"]
+    assert storage["endpoints"]["significant"] == 3
+    assert "3 of 12" in storage["tally_text"]["en"]
     assert "m = 8, m = 4" in storage["tally_text"]["en"]
     assert storage["endpoints"]["family_sizes"] == [8, 4]
     assert [group["family_size"] for group in view["inference_groups"]] == [8, 4]
@@ -44,7 +44,7 @@ def test_merge_preserves_models_and_independent_correction_scopes(merged_report)
     assert (
         len([text for text in merged_report["limitations"] if "endpoint eligibility" in text]) == 1
     )
-    assert any("3-13 cases" in text for text in merged_report["limitations"])
+    assert any("2-14 cases" in text for text in merged_report["limitations"])
     assert "token更少" not in json.dumps(view, ensure_ascii=False)
     assert "results are claude" not in view["narrative"]["en"]["conclusion"]
     assert {item["multiplicity_family_size"] for item in view["charts"]["delta_strips"]} == {4, 8}
@@ -62,7 +62,7 @@ def test_merge_preserves_models_and_independent_correction_scopes(merged_report)
         "glm-5.3",
     ]
     summaries = view["narrative"]["en"]["family_summaries"]["storage_shape"]
-    assert len(summaries) == 2
+    assert len(summaries) == 3
     assert all("Exact sign p" not in text and len(text) < 160 for text in summaries)
     narrative = json.dumps(view["narrative"], ensure_ascii=False)
     assert "11/12" in narrative
@@ -92,7 +92,7 @@ def test_merged_totals_match_source_runs(merged_report):
             inputs[treatment] += item["run"]["usage"]["provider_visible_input_tokens"]
     view = build_report_view_model(merged_report)
     assert view["charts"]["headline"]["rows"][0]["values"] == dict(correct)
-    assert dict(correct) == {"split_pillars": 97, "raw": 130, "semantic_graph": 124}
+    assert dict(correct) == {"split_pillars": 105, "raw": 130, "semantic_graph": 124}
     for treatment, total in inputs.items():
         assert (
             merged_report["usage_by_treatment"]["by_treatment"][treatment][
@@ -108,7 +108,7 @@ def test_cost_chart_uses_model_cohort_rate_and_transfer_only_eligibility(merged_
     qwen = series["qwen3.8-max-0902"]
     assert qwen["estimable"] is True
     for treatment, native in {
-        "split_pillars": 126.449341,
+        "split_pillars": 130.783517,
         "raw": 94.183764,
         "semantic_graph": 97.519404,
     }.items():
@@ -119,17 +119,13 @@ def test_cost_chart_uses_model_cohort_rate_and_transfer_only_eligibility(merged_
     assert set(merged_report["exchange_rates_by_model"]["gemini-3.8-flash"]) == {"USD"}
     assert set(merged_report["exchange_rates_by_model"]["qwen3.8-max-0902"]) == {"CNY"}
     gemini = series["gemini-3.8-flash"]
-    assert gemini["estimable"] is True
-    assert gemini["undiscounted"] is True
-    assert "without cache discounts" in gemini["estimate_note"]["en"]
-    expected = Counter()
-    for item in json.loads(TRANSFERS[1].read_text())["runs"]:
-        if item["model"] == "gemini-3.8-flash":
-            usage = item["run"]["usage"]
-            expected[item["visibility"]] += (
-                usage["provider_visible_input_tokens"] * 0.75 + usage["output_tokens"] * 3.75
-            ) / 1_000_000
-    assert gemini["values"] == {key: round(value, 6) for key, value in expected.items()}
+    assert gemini["estimable"] is False
+    assert all(value is None for value in gemini["values"].values())
+    assert "retains reported cache discounts" in gemini["estimate_note"]["en"]
+    assert gemini["bounds"]["split_pillars"] == pytest.approx([23.036213625, 26.472951825])
+    assert gemini["bounds"]["raw"] == pytest.approx([10.15122435, 12.2813772])
+    assert gemini["bounds"]["semantic_graph"] == pytest.approx([11.121473475, 13.209591375])
+    assert gemini["bounds_labels"]["split_pillars"] == "USD 23.04–26.47"
     assert merged_report["costs"]["cross_currency_total"] is None
     assert merged_report["costs"]["models"]["qwen3.8-max-0902"]["estimated_cost"] is None
     assert all(
@@ -137,17 +133,29 @@ def test_cost_chart_uses_model_cohort_rate_and_transfer_only_eligibility(merged_
         for value in merged_report["usage_by_treatment"]["estimated_cost_usd"].values()
     )
     cost = next(row for row in view["charts"]["headline"]["rows"] if row["id"] == "cost")
-    assert cost["estimable"] is True
-    assert "gemini-3.8-flash" in cost["estimate_note"]["en"]
-    assert "without cache discounts" in cost["estimate_note"]["en"]
+    assert cost["estimable"] is False
+    assert all(value is None for value in cost["values"].values())
+    assert cost["bounds"]["split_pillars"] == pytest.approx([183.9517355075667, 187.3884737075667])
+    assert cost["bounds"]["raw"] == pytest.approx([98.37131779603715, 100.50147064603715])
+    assert cost["bounds"]["semantic_graph"] == pytest.approx(
+        [106.88346453667717, 108.97158243667717]
+    )
+    assert cost["bounds_labels"]["raw"] == "USD 98.37–100.50"
+    assert cost["bounds_ratio_labels"] == {
+        "raw": "×1.00",
+        "split_pillars": "×1.83–1.90",
+        "semantic_graph": "×1.06–1.11",
+    }
+    assert cost["unavailable_text"] is None
+    assert "all 6 models" in cost["estimate_note"]["en"]
+    assert cost["bounds_fractions"]["split_pillars"][1] == 1.0
+    assert cost["bounds_fractions"]["raw"] == pytest.approx(
+        [98.37131779603715 / 187.3884737075667, 100.50147064603715 / 187.3884737075667]
+    )
     assert {entry["units_per_usd"] for entry in view["charts"]["cost_bars"]["converted"]} == {
         6.7179,
         6.7787,
     }
-    for treatment in expected:
-        assert cost["values"][treatment] == pytest.approx(
-            sum(row["values"][treatment] for row in series.values()), abs=0.00001
-        )
 
 
 def test_merge_rejects_overlapping_rosters_and_wrong_source_binding():
@@ -158,7 +166,9 @@ def test_merge_rejects_overlapping_rosters_and_wrong_source_binding():
 
 
 def test_partial_cost_is_not_presented_as_a_cohort_total():
-    view = build_report_view_model(json.loads(REPORTS[1].read_text()))
+    report = json.loads(REPORTS[1].read_text())
+    report["bounded_transfer_cost_estimates"] = {}
+    view = build_report_view_model(report)
     cost = next(row for row in view["charts"]["headline"]["rows"] if row["id"] == "cost")
     assert cost["estimable"] is False
     assert all(value is None for value in cost["values"].values())
@@ -179,9 +189,9 @@ def test_merge_preserves_public_execution_deviations(merged_report):
     overrides = {
         item["cell_index"]: item["provider_concurrency_limit"]
         for item in source["runs"]
-        if "provider_concurrency_limit" in item
+        if item.get("provider_concurrency_limit", 2) != 2
     }
-    assert overrides == {index: 4 for index in (11, 35, 153, 154, 155, 165, 166, 167)}
+    assert overrides == {index: 4 for index in (11, 154, 155, 165, 167)}
     assert {
         item["cell_index"]: item["actual_provider_concurrency_limit"]
         for item in merged_report["execution_deviations"]
@@ -191,7 +201,7 @@ def test_merge_preserves_public_execution_deviations(merged_report):
         for item in merged_report["execution_deviations"]
     )
     view = build_report_view_model(merged_report)
-    assert "8 runs used" in view["execution_deviation_note"]["en"]
+    assert "5 runs used" in view["execution_deviation_note"]["en"]
 
 
 def test_merged_html_reproduces_and_has_utc_fallback(merged_report, tmp_path):
@@ -202,4 +212,24 @@ def test_merged_html_reproduces_and_has_utc_fallback(merged_report, tmp_path):
     document = first.read_text()
     for key in ("measurement_updated_at", "report_generated_at"):
         assert merged_report["publication"][key] in document
-    assert "2 of 12" in document
+    assert "3 of 12" in document
+
+
+def test_scoped_diagnosis_charts_match_all_source_runs(merged_report):
+    scopes = {case["case_id"]: case["causal_scope"] for case in merged_report["case_catalog"]}
+    correct = Counter()
+    totals = Counter()
+    for path in TRANSFERS:
+        for item in json.loads(path.read_text())["runs"]:
+            key = (scopes[item["case_id"]], item["model"], item["visibility"])
+            totals[key] += 1
+            correct[key] += item["run"]["evaluation"]["diagnosis_correct"] is True
+    chart = build_report_view_model(merged_report)["charts"]["component_dependency_slope"]
+    assert chart["scopes"] == ["component", "dependency_edge"]
+    assert chart["runs_per_treatment"] == 20
+    assert [series["model"] for series in chart["series"]] == merged_report["model_order"]
+    for series in chart["series"]:
+        for arm, value in series["values"].items():
+            keys = [(scope, series["model"], arm) for scope in chart["scopes"]]
+            assert value == sum(correct[key] for key in keys)
+            assert chart["runs_per_treatment"] == sum(totals[key] for key in keys)

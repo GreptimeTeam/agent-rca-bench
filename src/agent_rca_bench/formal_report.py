@@ -18,10 +18,11 @@ from agent_rca_bench.formal_suite_protocol import (
     sha256_file,
 )
 from agent_rca_bench.formal_suite_release import validate_micro_measurement_artifact
+from agent_rca_bench.partial_usage import bounded_transfer_costs
 from agent_rca_bench.report import MODEL_PRICING
 from agent_rca_bench.transfer_release import validate_measurement_artifact
 
-FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION = 7
+FORMAL_MEASUREMENT_REPORT_SCHEMA_VERSION = 8
 
 # Display names, upstream links, and the license statement each source declares.
 # The published prose enumerates only the datasets the bound cohort actually uses.
@@ -295,6 +296,8 @@ def build_formal_measurement_report(
             ),
         ],
     }
+    if transfer.get("split_rerun"):
+        payload["split_reruns"] = [dict(_mapping(transfer, "split_rerun"))]
     if publication is not None:
         payload["publication"] = publication
     deviations = [
@@ -311,6 +314,7 @@ def build_formal_measurement_report(
     ]
     if deviations:
         payload["execution_deviations"] = deviations
+    payload["bounded_transfer_cost_estimates"] = bounded_transfer_costs(transfer_runs)
     return {
         **payload,
         "integrity": {
@@ -326,6 +330,7 @@ def validate_formal_measurement_report(report: dict[str, object]) -> None:
         or report.get("report_type") != "semantic-rca-measurement-report"
     ):
         raise ValueError("unsupported formal measurement report")
+    _mapping(report, "bounded_transfer_cost_estimates")
     execution = _mapping(report, "execution")
     if execution.get("completed_cells") != execution.get("expected_cells"):
         raise ValueError("formal measurement report execution is incomplete")
@@ -1120,15 +1125,24 @@ def _diagnosis_by(
     cases: Counter[str] = Counter(group_of.values())
     correct: dict[str, Counter[str]] = {group: Counter() for group in cases}
     totals: dict[str, Counter[str]] = {group: Counter() for group in cases}
+    models = sorted({str(item["model"]) for item in runs})
+    model_correct = {group: {model: Counter() for model in models} for group in cases}
     for item in runs:
         group = group_of[str(item["case_id"])]
         treatment = str(item["visibility"])
         totals[group][treatment] += 1
         if _mapping(_mapping(item, "run"), "evaluation").get("diagnosis_correct") is True:
             correct[group][treatment] += 1
+            model_correct[group][str(item["model"])][treatment] += 1
     return {
         group: {
             "cases": cases[group],
+            "diagnosis_correct_by_model": {
+                model: {
+                    treatment: model_correct[group][model][treatment] for treatment in treatments
+                }
+                for model in models
+            },
             "runs": {treatment: totals[group][treatment] for treatment in treatments},
             "diagnosis_correct": {treatment: correct[group][treatment] for treatment in treatments},
         }
@@ -1443,8 +1457,8 @@ def _citation_submission(
 
     Eligibility needs at least one execution-valid citation, so a model that
     ends a run without citing anything drops out of the paired sample even when
-    its diagnosis was right. Published per model because a small eligible sample
-    then reflects that habit rather than chance.
+    its diagnosis was right. Reported per model to identify exclusions caused by
+    missing citations.
     """
     submitted: Counter[str] = Counter()
     empty: Counter[str] = Counter()

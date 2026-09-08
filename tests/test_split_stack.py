@@ -86,3 +86,13 @@ def test_loki_disables_automatic_stream_sharding(tmp_path) -> None:
 
     config = (stack.run_dir / "loki" / "loki.yml").read_text()
     assert "shard_streams:\n    enabled: false" in config
+
+
+def test_tempo_retains_the_historical_timestamps_it_accepts(tmp_path) -> None:
+    stack = ManagedSplitStack(tmp_path / "split")
+    stack._write_configs()
+
+    config = (stack.run_dir / "tempo" / "tempo.yml").read_text()
+    assert "ingestion_time_range_slack: 87600h" in config
+    assert "overrides:\n  defaults:\n    compaction:" in config
+    assert "block_retention: 87600h" in config

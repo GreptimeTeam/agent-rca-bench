@@ -5,6 +5,7 @@ import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime
 from threading import Lock
 from typing import Literal
@@ -370,7 +371,7 @@ _COMMON_TIME_PROPERTIES = {
 
 def split_investigation_tools() -> list[dict[str, object]]:
     common_time = _COMMON_TIME_PROPERTIES
-    return [
+    tools = [
         metrics_query_tool(native_stack=True),
         {
             "name": "query_logs",
@@ -422,6 +423,14 @@ def split_investigation_tools() -> list[dict[str, object]]:
         },
     ]
 
+    tools = deepcopy(tools)
+    for tool in tools:
+        tool["input_schema"]["properties"]["max_items"]["description"] = (
+            "Maximum items returned for this query. Raise it only when a complete "
+            "result cannot be obtained with aggregation or narrower filters."
+        )
+    return tools
+
 
 def native_result(
     backend: Literal["prometheus", "loki", "tempo"],
@@ -452,6 +461,23 @@ def native_result(
     )
 
 
+def _spread_labels(
+    rows: list[list[object]],
+    sample_columns: list[str],
+) -> tuple[list[str], list[list[object]]]:
+    """Expand label maps into columns while preserving one row per sample."""
+    names = list(dict.fromkeys(name for row in rows for name in row[0]))
+    taken = set(names)
+    columns = []
+    for column in sample_columns:
+        # Preserve label names; escape colliding sample columns instead.
+        while column in taken:
+            column += "_"
+        taken.add(column)
+        columns.append(column)
+    return [*names, *columns], [[*(row[0].get(name) for name in names), *row[1:]] for row in rows]
+
+
 def prometheus_rows(
     operation: str,
     payload: dict[str, object],
@@ -469,9 +495,9 @@ def prometheus_rows(
         return ["metric", "metadata"], rows
     if operation == "series":
         values = data if isinstance(data, list) else []
-        return ["labels"], [[value] for value in values]
+        return _spread_labels([[value] for value in values if isinstance(value, dict)], [])
     if not isinstance(data, dict):
-        return ["labels", "timestamp", "value"], []
+        return _spread_labels([], ["timestamp", "value"])
     result = data.get("result")
     result_type = data.get("resultType")
     rows: list[list[object]] = []
@@ -493,7 +519,7 @@ def prometheus_rows(
                 sample = series.get("value")
                 if isinstance(sample, list) and len(sample) >= 2:
                     rows.append([labels, sample[0], sample[1]])
-    return ["labels", "timestamp", "value"], rows
+    return _spread_labels(rows, ["timestamp", "value"])
 
 
 def loki_rows(
@@ -505,7 +531,7 @@ def loki_rows(
         values = data if isinstance(data, list) else []
         return ["value"], [[value] for value in values]
     if not isinstance(data, dict) or not isinstance(data.get("result"), list):
-        return ["labels", "timestamp", "value"], []
+        return _spread_labels([], ["timestamp", "value"])
     result_type = data.get("resultType")
     rows: list[list[object]] = []
     for series in data["result"]:
@@ -531,7 +557,7 @@ def loki_rows(
                 for sample in samples
                 if isinstance(sample, list) and len(sample) >= 2
             )
-    return ["labels", "timestamp", "line" if result_type == "streams" else "value"], rows
+    return _spread_labels(rows, ["timestamp", "line" if result_type == "streams" else "value"])
 
 
 def tempo_rows(

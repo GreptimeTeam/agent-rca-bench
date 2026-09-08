@@ -5,19 +5,26 @@
 
 ## Conclusion
 
-Raw reduced input for Fable and Gemini, but the results do not support a general end-to-end
+Raw reduced input for Fable, Gemini, and Qwen, but the results do not support a general end-to-end
 efficiency gain from Semantic Graph.
 
-- Raw vs Split: two of twelve pre-specified endpoints passed their frozen Holm tests.
-  Both measured input reduction; no tool-call endpoint passed.
+- Raw vs Split: three of twelve pre-specified endpoints passed Holm correction within their
+  separately frozen cohorts (m = 8 and m = 4), not a pooled twelve-endpoint correction.
+  All three measured input reduction; no tool-call endpoint passed.
 - Graph vs Raw: no endpoint passed. Non-significance does not establish equivalence.
 - Focused retrieval: Graph reduced rows in 35/35 eligible Discovery results and both rows
   and calls in 11/12 Graph-retrieval results. Qwen had one counterexample.
 
-Correct diagnoses were Split 97/168, Raw 130/168, and Graph 124/168. These are descriptive totals.
+Correct diagnoses were Split 105/168, Raw 130/168, and Graph 124/168. These are descriptive totals.
 Graph did better than Raw on service and dependency faults (OpenRCA2), but worse on node faults
 (RCA100). This post-measurement breakdown
 confounds dataset with node-level faults, so it does not explain the difference.
+
+## Data correction
+
+<!-- split-rerun-correction:start -->
+Data correction: 168 Split cells were rerun and replaced; 336 Raw/Graph cells and all micro results were retained. The rerun corrected Tempo retention and repeated label names in query results. Split max_items now uses the original SQL max_rows guidance, with items as the returned unit; no aggregation advice was added to the main tool descriptions. Raw/Graph query_metrics parameter descriptions remain unchanged. Trace visibility and sample fidelity passed before and after every replacement investigation. Per-cell gates and superseded-result hashes are in the JSON. Raw/Graph retain their original PromQL encoding and ran at different times; this comparison does not isolate provider time effects or the individual corrections. A subsequent user authorization allowed temporary connection/provider failures to be retried at most three times per cell (four attempts total), with every failed attempt preserved. Incorrect diagnoses and exhausted budgets were not retried. 6 failed attempts were retried across 3 cells after SDK connection errors. Their additional observed cost was USD 28.9673; final replacement cells are already included in the investigation costs below. Requests without returned usage may have unobserved billed cost. The JSON retains the authorization, supervisor amendments, sanitized attempts and provenance hashes. Output-limited failures were retained without retry (gemini-3.8-flash / semantic-rca-transfer-014 / rep0); they remain scored failures and runner errors under the frozen runner contract. With queries and trajectories held fixed, offline reencoding with o200k_base and model-specific calibration estimates repeated-label overhead at 0.71% of retained Raw input and 0.21% of retained Graph input. These are estimates, not new provider usage measurements or effects on diagnosis accuracy. The retained overhead makes GreptimeDB appear more token-intensive; removing it widens the aggregate Split–Raw input gap by about 0.8%. Gemini requests shared a local 1,800,000-input-token/minute budget, including SDK retries. Input is estimated before sending and corrected from actual usage; elapsed time includes quota waits.
+<!-- split-rerun-correction:end -->
 
 ## Measurement scope
 
@@ -30,9 +37,13 @@ The report covers six model configurations and 696 agent cells:
 Each model entry is a complete provider configuration. Reasoning settings are not a shared
 cross-provider compute scale; model ranking is descriptive.
 
-Eight Qwen end-to-end runs used a per-provider concurrency limit of 4 instead of
+Five retained Qwen end-to-end runs used a per-provider concurrency limit of 4 instead of
 the frozen limit of 2. Their execution metadata is retained in the artifacts.
 The measurement does not isolate the effect of this deviation.
+
+The Split rerun used at most eight investigations globally, four per cohort, two per
+provider, and one per case environment. These limits apply to the replacement runs;
+retained Raw/Graph runs keep their original execution metadata.
 
 The three end-to-end treatments are:
 
@@ -59,20 +70,20 @@ one median per model and case before cross-case summaries. Each confirmatory fam
 correction independently. The frozen family size is 8 for GPT, DeepSeek, Fable, and GLM, and 4
 for Gemini and Qwen. The interactive endpoint tables report it as `m`.
 
-The cohort holds 14 independent cases, and endpoint eligibility leaves 3-13 cases for an
-individual test. Exact sign tests on that many cases have low and discrete power, so a
+The cohort contains 14 independent cases; eligibility leaves 2–14 cases for each test.
+At these sample sizes, exact sign tests have limited power and discrete p values. A
 non-significant result indicates insufficient evidence and does not establish equivalence.
 
 ## End-to-end results
 
 | Model | Correct Split / Raw / Graph | Eligible Split / Raw / Graph | Capability Split / Raw / Graph |
-| --- | ---: | ---: | ---: |
-| `gpt-5.6-sol` | 11 / 22 / 20 | 11 / 22 / 20 | 59.24 / 81.93 / 73.11 |
-| `deepseek-v4-pro` | 9 / 18 / 18 | 9 / 18 / 18 | 44.54 / 68.07 / 71.85 |
-| `claude-fable-5-1` | 25 / 26 / 23 | 25 / 26 / 23 | 91.60 / 93.28 / 86.55 |
-| `glm-5.3` | 15 / 14 / 16 | 12 / 11 / 9 | 61.97 / 59.24 / 67.02 |
-| `gemini-3.8-flash` | 21 / 25 / 24 | 21 / 25 / 24 | 78.15 / 94.12 / 90.76 |
-| `qwen3.8-max-0902` | 16 / 25 / 23 | 16 / 25 / 23 | 69.33 / 92.02 / 85.71 |
+| --- | --- | --- | --- |
+| `gpt-5.6-sol` | 13 / 22 / 20 | 13 / 22 / 20 | 55.04 / 81.93 / 73.11 |
+| `deepseek-v4-pro` | 13 / 18 / 18 | 13 / 18 / 18 | 57.98 / 68.07 / 71.85 |
+| `claude-fable-5-1` | 27 / 26 / 23 | 27 / 26 / 23 | 97.06 / 93.28 / 86.55 |
+| `glm-5.3` | 10 / 14 / 16 | 6 / 11 / 9 | 50.84 / 59.24 / 67.02 |
+| `gemini-3.8-flash` | 22 / 25 / 24 | 22 / 25 / 24 | 81.72 / 94.12 / 90.76 |
+| `qwen3.8-max-0902` | 20 / 25 / 23 | 20 / 25 / 23 | 75.63 / 92.02 / 85.71 |
 
 Correct and eligible counts cover 28 runs per treatment. For every model except GLM,
 all correct diagnoses were eligible. GLM lost eligibility when a final answer lacked an
@@ -82,21 +93,21 @@ execution-valid citation, even though the provider run itself completed.
 
 The table reports `Raw - Split`. Negative values favor Raw.
 
-| Model | Eligible cases | Calls delta | Direction | Input delta | Direction | Exact p, calls / input | Holm p, calls / input |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `gpt-5.6-sol` | 8 | -6 | 7 / 0 / 1 | -373,281.5 | 7 / 0 / 1 | 0.0703125 / 0.0703125 | 0.375 / 0.375 |
-| `deepseek-v4-pro` | 5 | -3 | 5 / 0 / 0 | +18,043 | 2 / 0 / 3 | 0.0625 / 1.0 | 0.375 / 1.0 |
-| `claude-fable-5-1` | 13 | -4 | 11 / 0 / 2 | -446,252.5 | 13 / 0 / 0 | 0.0224609375 / 0.000244140625 | 0.1572265625 / 0.001953125 |
-| `glm-5.3` | 7 | -11 | 6 / 0 / 1 | -217,676 | 6 / 0 / 1 | 0.125 / 0.125 | 0.375 / 0.375 |
-| `gemini-3.8-flash` | 11 | 0 | 5 / 1 / 5 | -1,575,917 | 10 / 0 / 1 | 1.0 / 0.01171875 | 1.0 / 0.046875 |
-| `qwen3.8-max-0902` | 9 | -8.5 | 7 / 0 / 2 | -370,741 | 5 / 0 / 4 | 0.1796875 / 1.0 | 0.5390625 / 1.0 |
+| Model | Eligible cases | Calls delta | Direction | Input delta | Direction | Exact p | Holm p |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `gpt-5.6-sol` | 8 | -7.25 | 7 / 0 / 1 | -308,273.5 | 8 / 0 / 0 | 0.0703125 / 0.0078125 | 0.421875 / 0.0546875 |
+| `deepseek-v4-pro` | 6 | -4 | 4 / 2 / 0 | -188,749.5 | 3 / 0 / 3 | 0.125 / 1.0 | 0.625 / 1.0 |
+| `claude-fable-5-1` | 13 | -1.5 | 7 / 1 / 5 | -276,203.5 | 13 / 0 / 0 | 0.7744140625 / 0.000244140625 | 1.0 / 0.001953125 |
+| `glm-5.3` | 2 | -10 | 2 / 0 / 0 | -3,594,276.5 | 2 / 0 / 0 | 0.5 / 0.5 | 1.0 / 1.0 |
+| `gemini-3.8-flash` | 11 | +1 | 2 / 2 / 7 | -2,492,151 | 10 / 0 / 1 | 0.1796875 / 0.01171875 | 0.1796875 / 0.03515625 |
+| `qwen3.8-max-0902` | 14 | -6 | 11 / 0 / 3 | -523,121 | 13 / 0 / 1 | 0.057373046875 / 0.0018310546875 | 0.11474609375 / 0.00732421875 |
 
 Direction is fewer / tied / more cases for Raw. Raw needed fewer complete-run tool calls for
-41 of 53 eligible model-case results, but the call endpoint did not pass Holm correction for
-any model. Provider-visible input was not uniformly lower: DeepSeek's median was positive.
+33 of 54 eligible model-case results, but the call endpoint did not pass Holm correction for
+any model. All six input case medians were negative, while individual cases moved in both directions.
 
 The split arm uses native PromQL, LogQL, and TraceQL interfaces and cannot join signals in one
-query. Raw can query all three signal families through one SQL surface. The Fable and Gemini results
+query. Raw can query all three signal families through one SQL surface. The Fable, Gemini, and Qwen results
 support an interface-bundle claim for those configurations, not a claim that one storage
 engine alone caused the reduction.
 
@@ -105,15 +116,15 @@ per arm, including incorrect diagnoses; they are descriptive and differ from the
 case-median endpoint above.
 
 | Model | Split input tokens | Raw input tokens | Raw reduction |
-| --- | ---: | ---: | ---: |
-| `gpt-5.6-sol` | 38,918,260 | 13,648,607 | 64.93% |
-| `deepseek-v4-pro` | 39,749,142 | 38,039,654 | 4.30% |
-| `claude-fable-5-1` | 37,539,536 | 15,827,965 | 57.84% |
-| `glm-5.3` | 37,352,298 | 32,011,651 | 14.30% |
-| `gemini-3.8-flash` | 149,985,955 | 68,462,777 | 54.35% |
-| `qwen3.8-max-0902` | 40,844,825 | 31,832,932 | 22.06% |
+| --- | --- | --- | --- |
+| `gpt-5.6-sol` | 29,038,323 | 13,648,607 | 53.00% |
+| `deepseek-v4-pro` | 48,752,606 | 38,039,654 | 21.97% |
+| `claude-fable-5-1` | 30,904,794 | 15,827,965 | 48.78% |
+| `glm-5.3` | 43,892,554 | 32,011,651 | 27.07% |
+| `gemini-3.8-flash` | 187,148,396 | 68,462,777 | 63.42% |
+| `qwen3.8-max-0902` | 42,106,989 | 31,832,932 | 24.40% |
 
-Qwen's estimated end-to-end cost was 25.52% lower under Raw than Split. Gemini's exact
+Qwen's estimated end-to-end cost was 27.98% lower under Raw than Split. Gemini's exact
 frozen-rate cost is not estimable because its returned usage does not consistently separate
 cached input from uncached input. Lower input volume alone does not establish the same cost reduction.
 
@@ -121,8 +132,8 @@ cached input from uncached input. Lower input volume alone does not establish th
 
 The table reports `Graph - Raw`. Negative values favor Graph.
 
-| Model | Eligible cases | Rows delta | Direction | Calls delta | Direction | Exact p, rows / calls | Holm p, rows / calls |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Model | Eligible cases | Rows delta | Direction | Calls delta | Direction | Exact p | Holm p |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 | `gpt-5.6-sol` | 9 | +22.5 | 4 / 0 / 5 | +2.5 | 4 / 0 / 5 | 1.0 / 1.0 | 1.0 / 1.0 |
 | `deepseek-v4-pro` | 10 | -258.5 | 7 / 0 / 3 | -3.75 | 8 / 0 / 2 | 0.34375 / 0.109375 | 1.0 / 0.875 |
 | `claude-fable-5-1` | 13 | +16 | 6 / 0 / 7 | +0.5 | 6 / 0 / 7 | 1.0 / 1.0 | 1.0 / 1.0 |
@@ -182,24 +193,23 @@ Discovery rows fell in all 35 eligible case-model results. Graph retrieval reduc
 calls in 11 of 12 results; one Qwen case increased both. Discovery calls were mixed because semantic
 lookup can add a step before the evidence query. Fable's Discovery input increased by a median
 `7,129` tokens. Qwen's median total-token deltas were `+3,443.75` in Discovery and `+8,031.25` in
-Graph retrieval. Row compression does not guarantee token compression.
+Graph retrieval. Fewer returned rows do not guarantee fewer tokens.
 
 ## Tool-use audit
 
-The trajectories show that all three intended GreptimeDB capabilities were exercised, but not at
-the same frequency:
+The trajectories record use of Semantic Graph, SQL JOIN, and PromQL:
 
 - Every Graph run made at least one successful `query_semantic_graph` call: 168 of 168 runs and
   369 successful calls in total.
 - The Raw and Graph arms made 192 successful SQL `JOIN` calls across 92 runs. Most joined spans
-  within `traces` or combined metric tables. Joins that actually span two signal kinds were rare:
+  within `traces` or combined metric tables. Cross-signal joins accounted for
   three successful calls across three runs.
-- Native PromQL `query` or `query_range` calls appeared in 22 of 336 GreptimeDB-arm runs: 15 Raw
-  runs and seven Graph runs. Split used successful PromQL queries in 165 of 168 runs because that
+- Successful native PromQL `query` or `query_range` calls occurred in 22 of 336 GreptimeDB-arm runs: 15 Raw
+  runs and seven Graph runs. Split used successful PromQL queries in 160 of 168 runs because that
   interface exposes metrics through Prometheus rather than SQL.
 
 The prompt states that `execute_sql` can query metric, log, and trace tables and that GreptimeDB
-also exposes PromQL. Models still preferred SQL in the GreptimeDB arms. The benchmark therefore
+also exposes PromQL. Models primarily used SQL in the GreptimeDB arms. The benchmark therefore
 measures how the frozen agents chose the available interfaces; it does not measure the maximum
 performance of hand-designed cross-signal SQL or PromQL plans.
 
@@ -211,13 +221,13 @@ incorrect runs remain in the denominator. The index is descriptive and is not us
 testing.
 
 | Rank | Model | Overall | Split | Raw | Graph |
-| ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | `claude-fable-5-1` | 90.48 | 91.60 | 93.28 | 86.55 |
-| 2 | `gemini-3.8-flash` | 87.68 | 78.15 | 94.12 | 90.76 |
-| 3 | `qwen3.8-max-0902` | 82.35 | 69.33 | 92.02 | 85.71 |
-| 4 | `gpt-5.6-sol` | 71.43 | 59.24 | 81.93 | 73.11 |
-| 5 | `glm-5.3` | 62.75 | 61.97 | 59.24 | 67.02 |
-| 6 | `deepseek-v4-pro` | 61.48 | 44.54 | 68.07 | 71.85 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `claude-fable-5-1` | 92.30 | 97.06 | 93.28 | 86.55 |
+| 2 | `gemini-3.8-flash` | 88.87 | 81.72 | 94.12 | 90.76 |
+| 3 | `qwen3.8-max-0902` | 84.45 | 75.63 | 92.02 | 85.71 |
+| 4 | `gpt-5.6-sol` | 70.03 | 55.04 | 81.93 | 73.11 |
+| 5 | `deepseek-v4-pro` | 65.97 | 57.98 | 68.07 | 71.85 |
+| 6 | `glm-5.3` | 59.03 | 50.84 | 59.24 | 67.02 |
 
 Deterministic evidence sufficiency remains a separate audit. The SQL verifier proved required
 evidence in 71 Raw and 58 Graph runs. It cannot evaluate native Prometheus, Loki, or Tempo evidence,
@@ -227,18 +237,20 @@ non-truncated cited query.
 
 ## Reliability, tokens, and cost
 
-The 696-cell measurement contains no runner errors and no budget exhaustion. End-to-end
-database-query failures remain in the trajectories and report: GPT 57, DeepSeek 125, Fable 49,
-GLM 258, Gemini 114, and Qwen 138. The usage table combines 32 micro and 84 end-to-end runs per model.
+The 696 included cells contain one runner error: Gemini reached its per-response output
+limit. It remains a scored failure and was not retried. No cell exhausted its tool budget.
+Six archived SDK connection failures were retried under the bounded authorization described
+in Data correction. End-to-end database-query failures remain in the trajectories and report:
+GPT 64, DeepSeek 107, Fable 38, GLM 220, Gemini 117, and Qwen 140. The usage table combines 32 micro and 84 end-to-end runs per model.
 
 | Model | Provider-visible input | Uncached | Cache read | Cache write | Output | Reasoning output |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `gpt-5.6-sol` | 73,817,172 | 14,685 | 60,936,673 | 12,865,814 | 491,441 | 146,497 |
-| `deepseek-v4-pro` | 109,026,459 | 7,793,435 | 101,233,024 | 0 | 1,801,489 | Not separately reported |
-| `claude-fable-5-1` | 69,755,036 | 741,472 | 61,126,348 | 7,887,216 | 974,831 | 289,721 |
-| `glm-5.3` | 103,210,965 | 5,888,213 | 97,322,752 | 0 | 1,185,652 | 637,041 |
-| `gemini-3.8-flash` | 295,802,466 | N/A | N/A | N/A | 1,836,996 | 1,429,124 |
-| `qwen3.8-max-0902` | 107,979,385 | N/A | N/A | N/A | 2,404,662 | 1,642,750 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `gpt-5.6-sol` | 63,937,235 | 14,727 | 53,056,153 | 10,866,355 | 495,559 | 149,632 |
+| `deepseek-v4-pro` | 118,029,923 | 8,507,107 | 109,522,816 | 0 | 1,789,201 | Not separately reported |
+| `claude-fable-5-1` | 63,120,294 | 741,396 | 55,383,433 | 6,995,465 | 961,633 | 277,310 |
+| `glm-5.3` | 109,751,221 | 6,089,525 | 103,661,696 | 0 | 1,287,048 | 733,828 |
+| `gemini-3.8-flash` | 332,964,907 | N/A | N/A | N/A | 1,852,742 | 1,452,993 |
+| `qwen3.8-max-0902` | 109,241,549 | N/A | N/A | N/A | 2,491,291 | 1,703,008 |
 
 Reasoning is a subset of output and is not added twice. DeepSeek does not report a separate
 reasoning breakdown; zero in that field does not mean that the model performed no reasoning.
@@ -252,23 +264,29 @@ End-to-end estimated cost covers all 28 executed runs in each treatment, not onl
 Every figure is an estimate from the frozen provider rates, not an invoice:
 
 | Model | Split | Raw | Graph | Raw - Split | Graph - Raw |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `gpt-5.6-sol` | USD 54.6501 | USD 18.2465 | USD 24.4954 | USD -36.4036 | USD +6.2489 |
-| `deepseek-v4-pro` | USD 8.6517 | USD 6.8193 | USD 5.6526 | USD -1.8324 | USD -1.1667 |
-| `claude-fable-5-1` | USD 85.6178 | USD 36.8636 | USD 38.2825 | USD -48.7542 | USD +1.4189 |
-| `glm-5.3` | CNY 102.1473 | CNY 83.2793 | CNY 86.9650 | CNY -18.8680 | CNY +3.6857 |
-| `gemini-3.8-flash`* | USD 114.7369 | USD 53.3436 | USD 58.6155 | USD -61.3932 | USD +5.2719 |
-| `qwen3.8-max-0902` | USD 18.6539 | USD 13.8941 | USD 14.3862 | USD -4.7598 | USD +0.4921 |
+| --- | --- | --- | --- | --- | --- |
+| `gpt-5.6-sol` | USD 41.5831 | USD 18.2465 | USD 24.4954 | USD -23.3366 | USD +6.2489 |
+| `deepseek-v4-pro` | USD 9.9098 | USD 6.8193 | USD 5.6526 | USD -3.0905 | USD -1.1667 |
+| `claude-fable-5-1` | USD 72.3745 | USD 36.8636 | USD 38.2825 | USD -35.5110 | USD +1.4189 |
+| `glm-5.3` | CNY 119.2748 | CNY 83.2793 | CNY 86.9650 | CNY -35.9955 | CNY +3.6857 |
+| `gemini-3.8-flash`* | USD 23.0362–26.4730 | USD 10.1512–12.2814 | USD 11.1215–13.2096 | USD -16.3217–-10.7548 | USD -1.1599–+3.0584 |
+| `qwen3.8-max-0902` | CNY 130.7835 | CNY 94.1838 | CNY 97.5194 | CNY -36.5998 | CNY +3.3356 |
 
-*Gemini is a conservative estimate: all input is charged at the frozen ordinary input
-rate, without cache discounts; output includes reasoning. These figures and their differences
-are not billed spend. Other models retain their reported cache usage in the cost calculation.
-The unified page's end-to-end total includes this Gemini estimate and labels that basis.
+*Gemini intervals retain reported cache discounts and price only input with missing cache detail
+at the cached and ordinary rates. Output includes reasoning once. These are bounds, not confidence
+intervals or invoices. Raw's upper bound is below Split's lower bound; Graph and Raw overlap, so
+their cost direction is unresolved. No exact six-model total is reported. The other five models
+retain reported cache usage.
 
-Qwen's USD figures use the frozen rate of `6.7787` CNY per USD, dated 2026-09-04
-([SAFE](https://www.safe.gov.cn/AppStructured/hlw/RMBQuery.do)). Native Split / Raw / Graph
-subtotals remain `CNY 126.449341 / 94.183764 / 97.519404` in the artifacts. This is an exchange-rate
-conversion, not a change to the billed currency.
+The estimated end-to-end totals below include all six models, using Gemini's cost interval.
+They cover 168 runs per interface, including retained failures, and exclude the archived retry
+cost of USD 28.9673. These are frozen-rate estimates, not invoices or confidence intervals.
+
+| Interface | Estimated total (USD) |
+| --- | ---: |
+| Split | 183.95–187.39 |
+| Raw | 98.37–100.50 |
+| Graph | 106.88–108.97 |
 
 Qwen's frozen rates are CNY `12 / 15 / 1 / 36` per million ordinary input, cache creation,
 cache read, and output tokens, verified on 2026-09-06
@@ -279,22 +297,24 @@ The rates alone cannot fill missing usage fields.
 
 Complete micro-plus-end-to-end estimates, by billing currency:
 
-- `gpt-5.6-sol`: `USD 98.5912992`
-- `deepseek-v4-pro`: `USD 21.875483696`
-- `claude-fable-5-1`: `USD 170.028057`
-- `glm-5.3`: `CNY 274.949464`
+- `gpt-5.6-sol`: `USD 85.5243242`
+- `deepseek-v4-pro`: `USD 23.133621104`
+- `claude-fable-5-1`: `USD 156.78478075`
+- `glm-5.3`: `CNY 292.076936`
 
 GLM-5.3 is billed in CNY at `8.0 / 2.0 / 28.0` per million input, cache-hit and output tokens,
 verified on 2026-09-04 at <https://bigmodel.cn/pricing>. That rate was in force during the run but
 was missed when the pricing snapshot was first assembled; filling it in changes no token count and
-no model behaviour. Cache storage is billed per million tokens per hour and was a limited-time
+no model behavior. Cache storage is billed per million tokens per hour and was a limited-time
 free promotion, so no cache-write rate is frozen and a run reporting cache-creation tokens stays
 unpriced.
 
 Spend is recorded in the currency it was billed in. Complete micro-plus-end-to-end
 estimates are available for four of the six models; no all-model total is reported.
-GLM's USD estimates use `6.7179` CNY per USD, verified on 2026-09-03 at
-<https://tradingeconomics.com/china/currency>.
+USD totals and charts use the frozen exchange rates: GLM at `6.7179` CNY/USD
+(2026-09-03, [Trading Economics](https://tradingeconomics.com/china/currency));
+Qwen at `6.7787` CNY/USD (2026-09-04,
+[SAFE](https://www.safe.gov.cn/AppStructured/hlw/RMBQuery.do)). Per-model tables retain billed currencies.
 
 ## Dataset attribution and license boundary
 
@@ -336,6 +356,6 @@ The provider trajectories were executed before the public release tag. The tagge
 the sanitized artifacts and deterministically regenerates scoring, aggregates, JSON, and HTML.
 Calling a provider again is a replication, not part of report reproduction.
 
-Measurement updated at: `2026-09-07T01:35:19Z` (UTC).
+Measurement updated at: `2026-09-08T03:50:20Z` (UTC).
 
-Report generated at: `2026-09-07T02:01:15Z` (UTC).
+Report generated at: `2026-09-08T04:51:03Z` (UTC).

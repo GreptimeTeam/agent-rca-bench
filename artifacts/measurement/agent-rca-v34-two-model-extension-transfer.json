@@ -1,5 +1,5 @@
 {
-  "artifact_schema_version": 2,
+  "artifact_schema_version": 3,
   "artifact_type": "semantic-rca-transfer-measurement",
   "benchmark_protocol": {
     "agent_runner": "repairable-final-citation-validation-v14",
@@ -215,7 +215,7 @@
   },
   "integrity": {
     "hash_scope": "all artifact fields except integrity",
-    "semantic_payload_sha256": "88ae37674a70e7bf6bcdd8b7e832a335f2ea08878b039a22666bceb5fb9bfdf0"
+    "semantic_payload_sha256": "bb973501c6702996d276aec7708b116d034aae90b6b2793cfa749597133a53cd"
   },
   "license": {
     "artifact_schema_and_derived_aggregates": "Apache-2.0",
@@ -1861,6 +1861,29 @@
         "semantic_graph": 23,
         "split_pillars": 16
       }
+    }
+  },
+  "pricing_snapshot": {
+    "gemini-3.8-flash": {
+      "checked_at": "2026-09-06",
+      "currency": "USD",
+      "input_cache_hit_per_million": 0.075,
+      "input_per_million": 0.75,
+      "note": "Google AI Developer API standard paid tier introductory pricing through 2026-12-31. Standard pricing doubles on 2027-01-01. Implicit caching is enabled by the provider; explicit cache creation and storage are not used by this runner.",
+      "output_per_million": 3.75,
+      "output_tokens_from_total": true,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    "qwen3.8-max-0902": {
+      "cache_creation_breakdown_required": true,
+      "checked_at": "2026-09-06",
+      "currency": "CNY",
+      "input_cache_hit_per_million": 1.0,
+      "input_cache_write_per_million": 15.0,
+      "input_per_million": 12.0,
+      "note": "Alibaba Cloud Model Studio China (Beijing) workspace deployment. Automatic cache hits cost CNY 1.5 per million tokens. The Responses session cache uses explicit caching at CNY 15 per million tokens created and CNY 1 per million tokens read. Cost is unavailable when the Responses usage omits the cache-creation breakdown.",
+      "output_per_million": 36.0,
+      "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-max"
     }
   },
   "publication_status": "sanitized measurement result; contains no provider payloads or raw telemetry rows",
@@ -4303,9 +4326,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1527782,
+            "known_uncached_input_tokens": 151746,
+            "unknown_cache_input_tokens": 52972
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.32059230000000005,
+            0.35634840000000007
+          ],
           "output_tokens": 23527,
           "provider_visible_input_tokens": 1732500,
           "reasoning_output_tokens": 19510,
@@ -4313,6 +4345,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "raw"
     },
     {
@@ -6873,9 +6906,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1777648,
+            "known_uncached_input_tokens": 152034,
+            "unknown_cache_input_tokens": 131078
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.3578037,
+            0.44628135
+          ],
           "output_tokens": 26833,
           "provider_visible_input_tokens": 2060760,
           "reasoning_output_tokens": 22833,
@@ -6883,6 +6925,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "semantic_graph"
     },
     {
@@ -8694,9 +8737,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2539486,
+            "known_uncached_input_tokens": 217898,
+            "unknown_cache_input_tokens": 37163
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.408410925,
+            0.43349594999999996
+          ],
           "output_tokens": 13797,
           "provider_visible_input_tokens": 2794547,
           "reasoning_output_tokens": 9512,
@@ -8704,6 +8756,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "split_pillars"
     },
     {
@@ -10962,9 +11015,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 840792,
+            "known_uncached_input_tokens": 112665,
+            "unknown_cache_input_tokens": 163081
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.211344225,
+            0.3214239
+          ],
           "output_tokens": 13748,
           "provider_visible_input_tokens": 1116538,
           "reasoning_output_tokens": 9791,
@@ -10972,6 +11034,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "semantic_graph"
     },
     {
@@ -12636,9 +12699,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2428345,
+            "known_uncached_input_tokens": 188055,
+            "unknown_cache_input_tokens": 171680
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.400145625,
+            0.516029625
+          ],
           "output_tokens": 17094,
           "provider_visible_input_tokens": 2788080,
           "reasoning_output_tokens": 12901,
@@ -12646,6 +12718,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "split_pillars"
     },
     {
@@ -15280,9 +15353,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1549958,
+            "known_uncached_input_tokens": 140219,
+            "unknown_cache_input_tokens": 68988
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.3045402,
+            0.35110709999999995
+          ],
           "output_tokens": 20788,
           "provider_visible_input_tokens": 1759165,
           "reasoning_output_tokens": 17053,
@@ -15290,6 +15372,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "raw"
     },
     {
@@ -17326,6 +17409,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "semantic_graph"
     },
     {
@@ -18952,6 +19036,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "split_pillars"
     },
     {
@@ -20766,6 +20851,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "raw"
     },
     {
@@ -22662,6 +22748,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "split_pillars"
     },
     {
@@ -25193,6 +25280,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "raw"
     },
     {
@@ -27177,6 +27265,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "6c36baa865f60e00ad59f343860533043b9558f871695e889190539f4c299b57",
       "visibility": "semantic_graph"
     },
     {
@@ -28777,9 +28866,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 3086090,
+            "known_uncached_input_tokens": 224580,
+            "unknown_cache_input_tokens": 98792
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.47891490000000003,
+            0.5455995
+          ],
           "output_tokens": 19097,
           "provider_visible_input_tokens": 3409462,
           "reasoning_output_tokens": 14567,
@@ -28787,6 +28885,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "split_pillars"
     },
     {
@@ -31157,9 +31256,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1030317,
+            "known_uncached_input_tokens": 118278,
+            "unknown_cache_input_tokens": 161183
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.2601885,
+            0.368987025
+          ],
           "output_tokens": 21898,
           "provider_visible_input_tokens": 1309778,
           "reasoning_output_tokens": 17963,
@@ -31167,6 +31275,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "raw"
     },
     {
@@ -33759,9 +33868,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2267646,
+            "known_uncached_input_tokens": 192894,
+            "unknown_cache_input_tokens": 85508
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.40191704999999994,
+            0.45963494999999993
+          ],
           "output_tokens": 21536,
           "provider_visible_input_tokens": 2546048,
           "reasoning_output_tokens": 17443,
@@ -33769,6 +33887,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "semantic_graph"
     },
     {
@@ -36296,9 +36415,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1220007,
+            "known_uncached_input_tokens": 118224,
+            "unknown_cache_input_tokens": 179358
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.27410287499999997,
+            0.395169525
+          ],
           "output_tokens": 21462,
           "provider_visible_input_tokens": 1517589,
           "reasoning_output_tokens": 17803,
@@ -36306,6 +36434,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "raw"
     },
     {
@@ -38425,9 +38554,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1465295,
+            "known_uncached_input_tokens": 164326,
+            "unknown_cache_input_tokens": 60525
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.320841,
+            0.361695375
+          ],
           "output_tokens": 22176,
           "provider_visible_input_tokens": 1690146,
           "reasoning_output_tokens": 18166,
@@ -38435,6 +38573,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "semantic_graph"
     },
     {
@@ -40164,9 +40303,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 4736533,
+            "known_uncached_input_tokens": 280484,
+            "unknown_cache_input_tokens": 49941
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.6525047999999999,
+            0.686214975
+          ],
           "output_tokens": 22175,
           "provider_visible_input_tokens": 5066958,
           "reasoning_output_tokens": 17111,
@@ -40174,6 +40322,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "split_pillars"
     },
     {
@@ -42390,6 +42539,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "raw"
     },
     {
@@ -44427,6 +44577,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "semantic_graph"
     },
     {
@@ -46477,6 +46628,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "split_pillars"
     },
     {
@@ -48760,6 +48912,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "semantic_graph"
     },
     {
@@ -50676,6 +50829,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "split_pillars"
     },
     {
@@ -53009,6 +53163,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "fc27563a9fcfdda110296f095217f67543974f291e6156f0d237027db85f3642",
       "visibility": "raw"
     },
     {
@@ -55547,9 +55702,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1692685,
+            "known_uncached_input_tokens": 163387,
+            "unknown_cache_input_tokens": 192732
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.32275777499999997,
+            0.452851875
+          ],
           "output_tokens": 15683,
           "provider_visible_input_tokens": 2048804,
           "reasoning_output_tokens": 11827,
@@ -55557,6 +55721,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "semantic_graph"
     },
     {
@@ -57265,9 +57430,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2808333,
+            "known_uncached_input_tokens": 224899,
+            "unknown_cache_input_tokens": 29498
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.438721575,
+            0.458632725
+          ],
           "output_tokens": 15256,
           "provider_visible_input_tokens": 3062730,
           "reasoning_output_tokens": 11369,
@@ -57275,6 +57449,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "split_pillars"
     },
     {
@@ -59377,9 +59552,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1304225,
+            "known_uncached_input_tokens": 136911,
+            "unknown_cache_input_tokens": 99054
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.322187925,
+            0.389049375
+          ],
           "output_tokens": 30469,
           "provider_visible_input_tokens": 1540190,
           "reasoning_output_tokens": 24937,
@@ -59387,6 +59571,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "raw"
     },
     {
@@ -61164,9 +61349,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 6510952,
+            "known_uncached_input_tokens": 294069,
+            "unknown_cache_input_tokens": 585490
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.8104148999999999,
+            1.20562065
+          ],
           "output_tokens": 15368,
           "provider_visible_input_tokens": 7390511,
           "reasoning_output_tokens": 10804,
@@ -61174,6 +61368,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "split_pillars"
     },
     {
@@ -63808,9 +64003,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2788450,
+            "known_uncached_input_tokens": 167107,
+            "unknown_cache_input_tokens": 78614
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.4034313,
+            0.45649575
+          ],
           "output_tokens": 16819,
           "provider_visible_input_tokens": 3034171,
           "reasoning_output_tokens": 12795,
@@ -63818,6 +64022,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "raw"
     },
     {
@@ -66102,9 +66307,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2285121,
+            "known_uncached_input_tokens": 156453,
+            "unknown_cache_input_tokens": 103577
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.35214209999999996,
+            0.42205657499999993
+          ],
           "output_tokens": 14840,
           "provider_visible_input_tokens": 2545151,
           "reasoning_output_tokens": 11672,
@@ -66112,6 +66326,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "semantic_graph"
     },
     {
@@ -67690,6 +67905,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "split_pillars"
     },
     {
@@ -69713,6 +69929,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "raw"
     },
     {
@@ -71686,6 +71903,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "semantic_graph"
     },
     {
@@ -73455,6 +73673,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "raw"
     },
     {
@@ -75190,6 +75409,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "semantic_graph"
     },
     {
@@ -77268,6 +77488,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "a26e594f82e1d46cdb900be24dde2d9519b69c2213ebbcb53883ea12f3e7ce2c",
       "visibility": "split_pillars"
     },
     {
@@ -79596,9 +79817,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1120586,
+            "known_uncached_input_tokens": 158888,
+            "unknown_cache_input_tokens": 48304
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.26455275,
+            0.29715795
+          ],
           "output_tokens": 15392,
           "provider_visible_input_tokens": 1327778,
           "reasoning_output_tokens": 11755,
@@ -79606,6 +79836,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "raw"
     },
     {
@@ -81920,9 +82151,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1363915,
+            "known_uncached_input_tokens": 174347,
+            "unknown_cache_input_tokens": 43407
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.29348189999999996,
+            0.32278162499999996
+          ],
           "output_tokens": 15246,
           "provider_visible_input_tokens": 1581669,
           "reasoning_output_tokens": 11458,
@@ -81930,6 +82170,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "semantic_graph"
     },
     {
@@ -83622,9 +83863,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 3270399,
+            "known_uncached_input_tokens": 211088,
+            "unknown_cache_input_tokens": 199908
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.489771525,
+            0.624709425
+          ],
           "output_tokens": 18982,
           "provider_visible_input_tokens": 3681395,
           "reasoning_output_tokens": 15023,
@@ -83632,6 +83882,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "split_pillars"
     },
     {
@@ -86173,9 +86424,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1308521,
+            "known_uncached_input_tokens": 164649,
+            "unknown_cache_input_tokens": 221788
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.312843675,
+            0.46255057499999996
+          ],
           "output_tokens": 19889,
           "provider_visible_input_tokens": 1694958,
           "reasoning_output_tokens": 14368,
@@ -86183,6 +86443,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "semantic_graph"
     },
     {
@@ -87905,9 +88166,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1749452,
+            "known_uncached_input_tokens": 147978,
+            "unknown_cache_input_tokens": 105763
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.29732962500000004,
+            0.36871965
+          ],
           "output_tokens": 12588,
           "provider_visible_input_tokens": 2003193,
           "reasoning_output_tokens": 9151,
@@ -87915,6 +88185,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "split_pillars"
     },
     {
@@ -90297,9 +90568,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 883888,
+            "known_uncached_input_tokens": 126151,
+            "unknown_cache_input_tokens": 194937
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.24521512499999998,
+            0.37679759999999995
+          ],
           "output_tokens": 18584,
           "provider_visible_input_tokens": 1204976,
           "reasoning_output_tokens": 14801,
@@ -90307,6 +90587,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "raw"
     },
     {
@@ -92894,6 +93175,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "semantic_graph"
     },
     {
@@ -94760,6 +95042,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "split_pillars"
     },
     {
@@ -96398,6 +96681,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "raw"
     },
     {
@@ -98269,6 +98553,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "split_pillars"
     },
     {
@@ -100403,6 +100688,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "raw"
     },
     {
@@ -102911,6 +103197,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "c80c9f688c9d1b62b45efd2bcacb1ae7170d9fd963be6c97b361ddb51f254e1d",
       "visibility": "semantic_graph"
     },
     {
@@ -104580,9 +104867,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2303408,
+            "known_uncached_input_tokens": 210677,
+            "unknown_cache_input_tokens": 121797
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.42340312499999994,
+            0.5056160999999999
+          ],
           "output_tokens": 22268,
           "provider_visible_input_tokens": 2635882,
           "reasoning_output_tokens": 16946,
@@ -104590,6 +104886,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "split_pillars"
     },
     {
@@ -106826,9 +107123,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1392207,
+            "known_uncached_input_tokens": 169834,
+            "unknown_cache_input_tokens": 107308
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.31266787500000004,
+            0.38510077500000006
+          ],
           "output_tokens": 19421,
           "provider_visible_input_tokens": 1669349,
           "reasoning_output_tokens": 12701,
@@ -106836,6 +107142,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "raw"
     },
     {
@@ -109281,9 +109588,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1813220,
+            "known_uncached_input_tokens": 189684,
+            "unknown_cache_input_tokens": 34638
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.3547011,
+            0.37808175
+          ],
           "output_tokens": 19693,
           "provider_visible_input_tokens": 2037542,
           "reasoning_output_tokens": 14963,
@@ -109291,6 +109607,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "semantic_graph"
     },
     {
@@ -111686,9 +112003,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1083841,
+            "known_uncached_input_tokens": 135275,
+            "unknown_cache_input_tokens": 144999
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.254283,
+            0.352157325
+          ],
           "output_tokens": 16177,
           "provider_visible_input_tokens": 1364115,
           "reasoning_output_tokens": 11239,
@@ -111696,6 +112022,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "raw"
     },
     {
@@ -113981,9 +114308,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 954960,
+            "known_uncached_input_tokens": 151358,
+            "unknown_cache_input_tokens": 143073
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.27808597500000004,
+            0.37466025000000003
+          ],
           "output_tokens": 21924,
           "provider_visible_input_tokens": 1249391,
           "reasoning_output_tokens": 15355,
@@ -113991,6 +114327,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "semantic_graph"
     },
     {
@@ -115695,9 +116032,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 3337911,
+            "known_uncached_input_tokens": 283669,
+            "unknown_cache_input_tokens": 85943
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.5376670499999999,
+            0.595678575
+          ],
           "output_tokens": 18167,
           "provider_visible_input_tokens": 3707523,
           "reasoning_output_tokens": 14045,
@@ -115705,6 +116051,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "split_pillars"
     },
     {
@@ -118065,6 +118412,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "raw"
     },
     {
@@ -120347,6 +120695,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "semantic_graph"
     },
     {
@@ -122301,6 +122650,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "split_pillars"
     },
     {
@@ -124312,6 +124662,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "semantic_graph"
     },
     {
@@ -126262,6 +126613,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "split_pillars"
     },
     {
@@ -128892,6 +129244,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "777b33408f4a9a0ca2b690ec38d272f4c2bda8fe3014ca21997c2896720c3745",
       "visibility": "raw"
     },
     {
@@ -131036,9 +131389,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 957708,
+            "known_uncached_input_tokens": 134906,
+            "unknown_cache_input_tokens": 71564
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.24529739999999997,
+            0.2936031
+          ],
           "output_tokens": 17846,
           "provider_visible_input_tokens": 1164178,
           "reasoning_output_tokens": 13435,
@@ -131046,6 +131408,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "semantic_graph"
     },
     {
@@ -132665,9 +133028,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 3487781,
+            "known_uncached_input_tokens": 283817,
+            "unknown_cache_input_tokens": 56224
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.575563125,
+            0.6135143249999999
+          ],
           "output_tokens": 25840,
           "provider_visible_input_tokens": 3827822,
           "reasoning_output_tokens": 21802,
@@ -132675,6 +133047,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "split_pillars"
     },
     {
@@ -134633,9 +135006,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 838330,
+            "known_uncached_input_tokens": 116875,
+            "unknown_cache_input_tokens": 92235
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.23107987500000002,
+            0.2933385
+          ],
           "output_tokens": 19635,
           "provider_visible_input_tokens": 1047440,
           "reasoning_output_tokens": 14597,
@@ -134643,6 +135025,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "raw"
     },
     {
@@ -136440,9 +136823,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 4525860,
+            "known_uncached_input_tokens": 312350,
+            "unknown_cache_input_tokens": 166561
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.684429075,
+            0.79685775
+          ],
           "output_tokens": 26196,
           "provider_visible_input_tokens": 5004771,
           "reasoning_output_tokens": 21570,
@@ -136450,6 +136842,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "split_pillars"
     },
     {
@@ -138539,9 +138932,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 688030,
+            "known_uncached_input_tokens": 98415,
+            "unknown_cache_input_tokens": 130094
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.19458555,
+            0.282399
+          ],
           "output_tokens": 15844,
           "provider_visible_input_tokens": 916539,
           "reasoning_output_tokens": 11577,
@@ -138549,6 +138951,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "raw"
     },
     {
@@ -140751,9 +141154,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 870938,
+            "known_uncached_input_tokens": 124404,
+            "unknown_cache_input_tokens": 146175
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.231918975,
+            0.3305871
+          ],
           "output_tokens": 16622,
           "provider_visible_input_tokens": 1141517,
           "reasoning_output_tokens": 12261,
@@ -140761,6 +141173,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "semantic_graph"
     },
     {
@@ -142378,6 +142791,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "split_pillars"
     },
     {
@@ -144885,6 +145299,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "raw"
     },
     {
@@ -147245,6 +147660,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "semantic_graph"
     },
     {
@@ -149568,6 +149984,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "raw"
     },
     {
@@ -151690,6 +152107,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "semantic_graph"
     },
     {
@@ -153934,6 +154352,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "0247870f138a60f4db759cc5c786084df12baa376366742d1e4e6833ce767451",
       "visibility": "split_pillars"
     },
     {
@@ -156352,9 +156771,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1338776,
+            "known_uncached_input_tokens": 149687,
+            "unknown_cache_input_tokens": 168272
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.28924259999999996,
+            0.4028262
+          ],
           "output_tokens": 17053,
           "provider_visible_input_tokens": 1656735,
           "reasoning_output_tokens": 12764,
@@ -156362,6 +156790,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "raw"
     },
     {
@@ -158670,9 +159099,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1013750,
+            "known_uncached_input_tokens": 119280,
+            "unknown_cache_input_tokens": 187729
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.254657175,
+            0.38137425
+          ],
           "output_tokens": 20023,
           "provider_visible_input_tokens": 1320759,
           "reasoning_output_tokens": 15671,
@@ -158680,6 +159118,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "semantic_graph"
     },
     {
@@ -160465,9 +160904,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 5207373,
+            "known_uncached_input_tokens": 263940,
+            "unknown_cache_input_tokens": 67185
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.6973731,
+            0.742722975
+          ],
           "output_tokens": 27687,
           "provider_visible_input_tokens": 5538498,
           "reasoning_output_tokens": 20624,
@@ -160475,6 +160923,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "split_pillars"
     },
     {
@@ -162481,9 +162930,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1149868,
+            "known_uncached_input_tokens": 128664,
+            "unknown_cache_input_tokens": 71347
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.26290912499999997,
+            0.31106834999999994
+          ],
           "output_tokens": 19952,
           "provider_visible_input_tokens": 1349879,
           "reasoning_output_tokens": 15934,
@@ -162491,6 +162949,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "semantic_graph"
     },
     {
@@ -164219,9 +164678,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2733299,
+            "known_uncached_input_tokens": 184905,
+            "unknown_cache_input_tokens": 145260
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.43566817499999994,
+            0.5337186749999999
+          ],
           "output_tokens": 21626,
           "provider_visible_input_tokens": 3063464,
           "reasoning_output_tokens": 17180,
@@ -164229,6 +164697,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "split_pillars"
     },
     {
@@ -166515,9 +166984,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1111861,
+            "known_uncached_input_tokens": 126103,
+            "unknown_cache_input_tokens": 191157
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.26318610000000003,
+            0.392217075
+          ],
           "output_tokens": 18902,
           "provider_visible_input_tokens": 1429121,
           "reasoning_output_tokens": 14984,
@@ -166525,6 +167003,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "raw"
     },
     {
@@ -168555,6 +169034,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "semantic_graph"
     },
     {
@@ -170584,6 +171064,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "split_pillars"
     },
     {
@@ -173002,6 +173483,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "raw"
     },
     {
@@ -174764,6 +175246,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "split_pillars"
     },
     {
@@ -176649,6 +177132,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "raw"
     },
     {
@@ -178733,6 +179217,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "49fd857b5f7418c7658bb732e237d3225b09a8311c08b1792888569fd5fc24c8",
       "visibility": "semantic_graph"
     },
     {
@@ -180465,9 +180950,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2831992,
+            "known_uncached_input_tokens": 240000,
+            "unknown_cache_input_tokens": 100704
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.4677972,
+            0.5357724
+          ],
           "output_tokens": 18092,
           "provider_visible_input_tokens": 3172696,
           "reasoning_output_tokens": 13071,
@@ -180475,6 +180969,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "split_pillars"
     },
     {
@@ -182654,9 +183149,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1055671,
+            "known_uncached_input_tokens": 120684,
+            "unknown_cache_input_tokens": 134748
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.23000317500000003,
+            0.320958075
+          ],
           "output_tokens": 13389,
           "provider_visible_input_tokens": 1311103,
           "reasoning_output_tokens": 9691,
@@ -182664,6 +183168,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "raw"
     },
     {
@@ -185096,9 +185601,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1846213,
+            "known_uncached_input_tokens": 170357,
+            "unknown_cache_input_tokens": 66586
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.328471425,
+            0.37341697499999993
+          ],
           "output_tokens": 15265,
           "provider_visible_input_tokens": 2083156,
           "reasoning_output_tokens": 10119,
@@ -185106,6 +185620,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "semantic_graph"
     },
     {
@@ -187459,9 +187974,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2092691,
+            "known_uncached_input_tokens": 195553,
+            "unknown_cache_input_tokens": 100801
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.38862539999999995,
+            0.45666607499999995
+          ],
           "output_tokens": 20653,
           "provider_visible_input_tokens": 2389045,
           "reasoning_output_tokens": 13769,
@@ -187469,6 +187993,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "raw"
     },
     {
@@ -189721,9 +190246,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1339853,
+            "known_uncached_input_tokens": 150198,
+            "unknown_cache_input_tokens": 115036
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.283186425,
+            0.360835725
+          ],
           "output_tokens": 16379,
           "provider_visible_input_tokens": 1605087,
           "reasoning_output_tokens": 11505,
@@ -189731,6 +190265,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "semantic_graph"
     },
     {
@@ -191441,9 +191976,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1632934,
+            "known_uncached_input_tokens": 163099,
+            "unknown_cache_input_tokens": 108665
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.30138292499999997,
+            0.3747318
+          ],
           "output_tokens": 12917,
           "provider_visible_input_tokens": 1904698,
           "reasoning_output_tokens": 9615,
@@ -191451,6 +191995,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "split_pillars"
     },
     {
@@ -194277,6 +194822,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "raw"
     },
     {
@@ -196934,6 +197480,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "semantic_graph"
     },
     {
@@ -198878,6 +199425,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "split_pillars"
     },
     {
@@ -201659,6 +202207,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "semantic_graph"
     },
     {
@@ -203495,6 +204044,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "split_pillars"
     },
     {
@@ -205840,6 +206390,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "fd2051bf6f48431d6e137906c5c9c57f4de4b0008e0aff3f9e739fec6eaa50a2",
       "visibility": "raw"
     },
     {
@@ -207986,9 +208537,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 959448,
+            "known_uncached_input_tokens": 171297,
+            "unknown_cache_input_tokens": 123906
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.2701893,
+            0.35382585
+          ],
           "output_tokens": 16124,
           "provider_visible_input_tokens": 1254651,
           "reasoning_output_tokens": 10520,
@@ -207996,6 +208556,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "semantic_graph"
     },
     {
@@ -209716,9 +210277,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 4939997,
+            "known_uncached_input_tokens": 263319,
+            "unknown_cache_input_tokens": 31631
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.6397888499999999,
+            0.6611397749999999
+          ],
           "output_tokens": 18514,
           "provider_visible_input_tokens": 5234947,
           "reasoning_output_tokens": 14323,
@@ -209726,6 +210296,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "split_pillars"
     },
     {
@@ -212100,9 +212671,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 754164,
+            "known_uncached_input_tokens": 113957,
+            "unknown_cache_input_tokens": 192145
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.217895925,
+            0.3475938
+          ],
           "output_tokens": 16388,
           "provider_visible_input_tokens": 1060266,
           "reasoning_output_tokens": 10822,
@@ -212110,6 +212690,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "raw"
     },
     {
@@ -213826,9 +214407,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1918999,
+            "known_uncached_input_tokens": 172415,
+            "unknown_cache_input_tokens": 165392
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.353448075,
+            0.465087675
+          ],
           "output_tokens": 18082,
           "provider_visible_input_tokens": 2256806,
           "reasoning_output_tokens": 13134,
@@ -213836,6 +214426,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "split_pillars"
     },
     {
@@ -216477,9 +217068,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1283845,
+            "known_uncached_input_tokens": 146414,
+            "unknown_cache_input_tokens": 102477
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.26842965,
+            0.337601625
+          ],
           "output_tokens": 14572,
           "provider_visible_input_tokens": 1532736,
           "reasoning_output_tokens": 9867,
@@ -216487,6 +217087,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "raw"
     },
     {
@@ -218823,9 +219424,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1039059,
+            "known_uncached_input_tokens": 141601,
+            "unknown_cache_input_tokens": 118008
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.25007827499999996,
+            0.32973367499999995
+          ],
           "output_tokens": 15226,
           "provider_visible_input_tokens": 1298668,
           "reasoning_output_tokens": 9953,
@@ -218833,6 +219443,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "semantic_graph"
     },
     {
@@ -220583,6 +221194,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "split_pillars"
     },
     {
@@ -223138,6 +223750,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "raw"
     },
     {
@@ -225455,6 +226068,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "semantic_graph"
     },
     {
@@ -228416,6 +229030,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "raw"
     },
     {
@@ -230778,6 +231393,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "semantic_graph"
     },
     {
@@ -232237,6 +232853,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "5ae1e6cdedea5fdcb1072a9af55ee6a6159388a8f688acce2c32404672da8f7d",
       "visibility": "split_pillars"
     },
     {
@@ -234585,9 +235202,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1046812,
+            "known_uncached_input_tokens": 156101,
+            "unknown_cache_input_tokens": 176939
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.269235825,
+            0.38866965
+          ],
           "output_tokens": 16101,
           "provider_visible_input_tokens": 1379852,
           "reasoning_output_tokens": 12418,
@@ -234595,6 +235221,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "raw"
     },
     {
@@ -236914,9 +237541,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1218901,
+            "known_uncached_input_tokens": 164868,
+            "unknown_cache_input_tokens": 101127
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.28180560000000004,
+            0.350066325
+          ],
           "output_tokens": 15774,
           "provider_visible_input_tokens": 1484896,
           "reasoning_output_tokens": 11405,
@@ -236924,6 +237560,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "semantic_graph"
     },
     {
@@ -238566,9 +239203,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 4505902,
+            "known_uncached_input_tokens": 313829,
+            "unknown_cache_input_tokens": 123767
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.6522681749999999,
+            0.7358108999999998
+          ],
           "output_tokens": 18579,
           "provider_visible_input_tokens": 4943498,
           "reasoning_output_tokens": 13815,
@@ -238576,6 +239222,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "split_pillars"
     },
     {
@@ -240966,9 +241613,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1087422,
+            "known_uncached_input_tokens": 149126,
+            "unknown_cache_input_tokens": 129966
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.27319485,
+            0.3609219
+          ],
           "output_tokens": 18679,
           "provider_visible_input_tokens": 1366514,
           "reasoning_output_tokens": 12500,
@@ -240976,6 +241632,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "semantic_graph"
     },
     {
@@ -242719,9 +243376,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1601118,
+            "known_uncached_input_tokens": 153587,
+            "unknown_cache_input_tokens": 37099
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.29627527499999995,
+            0.32131709999999997
+          ],
           "output_tokens": 15525,
           "provider_visible_input_tokens": 1791804,
           "reasoning_output_tokens": 11450,
@@ -242729,6 +243395,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "split_pillars"
     },
     {
@@ -245113,9 +245780,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1305008,
+            "known_uncached_input_tokens": 140905,
+            "unknown_cache_input_tokens": 110733
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.274671825,
+            0.34941659999999997
+          ],
           "output_tokens": 16750,
           "provider_visible_input_tokens": 1556646,
           "reasoning_output_tokens": 11910,
@@ -245123,6 +245799,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "raw"
     },
     {
@@ -247652,6 +248329,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "semantic_graph"
     },
     {
@@ -249582,6 +250260,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "split_pillars"
     },
     {
@@ -252095,6 +252774,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "raw"
     },
     {
@@ -254113,6 +254793,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "split_pillars"
     },
     {
@@ -256423,6 +257104,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "raw"
     },
     {
@@ -258776,6 +259458,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "e0e0469676bc1b94e437c7c3acdf4c7d217a405663205730f5ae0b2a97122250",
       "visibility": "semantic_graph"
     },
     {
@@ -260508,9 +261191,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 16922626,
+            "known_uncached_input_tokens": 605985,
+            "unknown_cache_input_tokens": 312756
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            1.92889365,
+            2.14000395
+          ],
           "output_tokens": 48467,
           "provider_visible_input_tokens": 17841367,
           "reasoning_output_tokens": 43738,
@@ -260518,6 +261210,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "split_pillars"
     },
     {
@@ -262999,9 +263692,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 8762791,
+            "known_uncached_input_tokens": 251786,
+            "unknown_cache_input_tokens": 140441
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.9566093999999999,
+            1.051407075
+          ],
           "output_tokens": 26674,
           "provider_visible_input_tokens": 9155018,
           "reasoning_output_tokens": 22122,
@@ -263009,6 +263711,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "raw"
     },
     {
@@ -266417,9 +267120,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 9133522,
+            "known_uncached_input_tokens": 383064,
+            "unknown_cache_input_tokens": 51777
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            1.0904841749999998,
+            1.12543365
+          ],
           "output_tokens": 30477,
           "provider_visible_input_tokens": 9568363,
           "reasoning_output_tokens": 24772,
@@ -266427,6 +267139,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "semantic_graph"
     },
     {
@@ -268829,9 +269542,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 8593894,
+            "known_uncached_input_tokens": 235302,
+            "unknown_cache_input_tokens": 140298
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.9238246499999999,
+            1.0185258
+          ],
           "output_tokens": 24609,
           "provider_visible_input_tokens": 8969494,
           "reasoning_output_tokens": 18746,
@@ -268839,6 +269561,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "raw"
     },
     {
@@ -271628,9 +272351,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 8986805,
+            "known_uncached_input_tokens": 226940,
+            "unknown_cache_input_tokens": 179358
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.955965975,
+            1.077032625
+          ],
           "output_tokens": 26213,
           "provider_visible_input_tokens": 9393103,
           "reasoning_output_tokens": 20537,
@@ -271638,6 +272370,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "semantic_graph"
     },
     {
@@ -273251,9 +273984,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 4252908,
+            "known_uncached_input_tokens": 282888,
+            "unknown_cache_input_tokens": 111203
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.611069325,
+            0.68613135
+          ],
           "output_tokens": 19092,
           "provider_visible_input_tokens": 4646999,
           "reasoning_output_tokens": 15219,
@@ -273261,6 +274003,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "split_pillars"
     },
     {
@@ -276169,6 +276912,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "raw"
     },
     {
@@ -278659,6 +279403,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "semantic_graph"
     },
     {
@@ -279216,7 +279961,7 @@
                   "end": "2026-04-12T21:59:10+00:00",
                   "max_items": 100,
                   "operation": "query_range",
-                  "query": "sum(count_over_time({container_name=\"recommendation\"} |= \"Dify API\u8c03\u7528\u5931\u8d25\" [1m]))",
+                  "query": "sum(count_over_time({container_name=\"recommendation\"} |= \"Dify API调用失败\" [1m]))",
                   "start": "2026-04-12T21:40:44+00:00",
                   "step": "60s"
                 },
@@ -280511,7 +281256,7 @@
               "end": "2026-04-12T21:59:10+00:00",
               "max_items": 100,
               "operation": "query_range",
-              "query": "sum(count_over_time({container_name=\"recommendation\"} |= \"Dify API\u8c03\u7528\u5931\u8d25\" [1m]))",
+              "query": "sum(count_over_time({container_name=\"recommendation\"} |= \"Dify API调用失败\" [1m]))",
               "start": "2026-04-12T21:40:44+00:00",
               "step": "60s"
             },
@@ -280856,6 +281601,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "split_pillars"
     },
     {
@@ -282705,7 +283451,7 @@
             },
             "error": false,
             "input": {
-              "query": "SELECT greptime_timestamp, pod_name, node_name, line FROM semantic_rca_transfer_011.logs WHERE container_name='recommendation' AND greptime_timestamp >= '2026-04-12 21:50:00' AND greptime_timestamp < '2026-04-12 21:59:10' AND (line LIKE '%token%' OR line LIKE '%ai_probability%' OR line LIKE '%\u6982\u7387%' OR line LIKE '%ERROR%' OR line LIKE '%WARN%') ORDER BY greptime_timestamp LIMIT 60"
+              "query": "SELECT greptime_timestamp, pod_name, node_name, line FROM semantic_rca_transfer_011.logs WHERE container_name='recommendation' AND greptime_timestamp >= '2026-04-12 21:50:00' AND greptime_timestamp < '2026-04-12 21:59:10' AND (line LIKE '%token%' OR line LIKE '%ai_probability%' OR line LIKE '%概率%' OR line LIKE '%ERROR%' OR line LIKE '%WARN%') ORDER BY greptime_timestamp LIMIT 60"
             },
             "mechanism_verdict": {
               "anomaly_present": false,
@@ -283403,6 +284149,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "semantic_graph"
     },
     {
@@ -285160,6 +285907,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "split_pillars"
     },
     {
@@ -287165,7 +287913,7 @@
             },
             "error": true,
             "input": {
-              "query": "SELECT date_bin('1 minute', greptime_timestamp) AS m,\n SUM(CASE WHEN line LIKE \"%'enabled': True%\" THEN 1 ELSE 0 END) AS tok_enabled_true,\n SUM(CASE WHEN line LIKE \"%'enabled': False%\" THEN 1 ELSE 0 END) AS tok_enabled_false,\n SUM(CASE WHEN line LIKE \"%recommendationCacheFailure\u6807\u5fd7\u503c: True%\" THEN 1 ELSE 0 END) AS cache_fail_true,\n SUM(CASE WHEN line LIKE \"%recommendationCacheFailure\u6807\u5fd7\u503c: False%\" THEN 1 ELSE 0 END) AS cache_fail_false,\n COUNT(*) AS total FROM logs WHERE container_name='recommendation' GROUP BY m ORDER BY m"
+              "query": "SELECT date_bin('1 minute', greptime_timestamp) AS m,\n SUM(CASE WHEN line LIKE \"%'enabled': True%\" THEN 1 ELSE 0 END) AS tok_enabled_true,\n SUM(CASE WHEN line LIKE \"%'enabled': False%\" THEN 1 ELSE 0 END) AS tok_enabled_false,\n SUM(CASE WHEN line LIKE \"%recommendationCacheFailure标志值: True%\" THEN 1 ELSE 0 END) AS cache_fail_true,\n SUM(CASE WHEN line LIKE \"%recommendationCacheFailure标志值: False%\" THEN 1 ELSE 0 END) AS cache_fail_false,\n COUNT(*) AS total FROM logs WHERE container_name='recommendation' GROUP BY m ORDER BY m"
             },
             "mechanism_verdict": {
               "anomaly_present": false,
@@ -288082,6 +288830,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "c8459c5445c251d696da223eb3841b21fa67ecd93b0550e63eacb1a71b62c3d2",
       "visibility": "raw"
     },
     {
@@ -290947,9 +291696,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 4653704,
+            "known_uncached_input_tokens": 244610,
+            "unknown_cache_input_tokens": 213527
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.637558575,
+            0.7816893
+          ],
           "output_tokens": 23749,
           "provider_visible_input_tokens": 5111841,
           "reasoning_output_tokens": 20369,
@@ -290957,6 +291715,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "semantic_graph"
     },
     {
@@ -292780,9 +293539,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 16975884,
+            "known_uncached_input_tokens": 685459,
+            "unknown_cache_input_tokens": 46943
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            1.881998775,
+            1.9136853
+          ],
           "output_tokens": 24318,
           "provider_visible_input_tokens": 17708286,
           "reasoning_output_tokens": 19376,
@@ -292790,6 +293558,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "split_pillars"
     },
     {
@@ -295073,9 +295842,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 4487924,
+            "known_uncached_input_tokens": 217356,
+            "unknown_cache_input_tokens": 54912
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.5695797,
+            0.6066453
+          ],
           "output_tokens": 17560,
           "provider_visible_input_tokens": 4760192,
           "reasoning_output_tokens": 14418,
@@ -295083,6 +295861,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "raw"
     },
     {
@@ -296882,9 +297661,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 6917526,
+            "known_uncached_input_tokens": 366528,
+            "unknown_cache_input_tokens": 102394
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.8874224999999999,
+            0.9565384499999999
+          ],
           "output_tokens": 22942,
           "provider_visible_input_tokens": 7386448,
           "reasoning_output_tokens": 18574,
@@ -296892,6 +297680,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "split_pillars"
     },
     {
@@ -298996,9 +299785,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 4001436,
+            "known_uncached_input_tokens": 214211,
+            "unknown_cache_input_tokens": 49728
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.5608780499999999,
+            0.5944444499999999
+          ],
           "output_tokens": 25702,
           "provider_visible_input_tokens": 4265375,
           "reasoning_output_tokens": 21520,
@@ -299006,6 +299804,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "raw"
     },
     {
@@ -301311,9 +302110,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 4751652,
+            "known_uncached_input_tokens": 265761,
+            "unknown_cache_input_tokens": 51243
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.6425028749999999,
+            0.6770919
+          ],
           "output_tokens": 22124,
           "provider_visible_input_tokens": 5068656,
           "reasoning_output_tokens": 18508,
@@ -301321,6 +302129,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "semantic_graph"
     },
     {
@@ -303119,6 +303928,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "split_pillars"
     },
     {
@@ -305936,6 +306746,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "raw"
     },
     {
@@ -308081,6 +308892,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "semantic_graph"
     },
     {
@@ -310799,6 +311611,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "raw"
     },
     {
@@ -313323,6 +314136,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "semantic_graph"
     },
     {
@@ -314987,6 +315801,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "a4847ae0de7f8275b95aa7b81595606a6b7f208183d1828392f682599d0cbfc9",
       "visibility": "split_pillars"
     },
     {
@@ -317225,9 +318040,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2067338,
+            "known_uncached_input_tokens": 188347,
+            "unknown_cache_input_tokens": 46192
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.35879999999999995,
+            0.3899796
+          ],
           "output_tokens": 15740,
           "provider_visible_input_tokens": 2301877,
           "reasoning_output_tokens": 12574,
@@ -317235,6 +318059,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "raw"
     },
     {
@@ -319436,9 +320261,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 3086491,
+            "known_uncached_input_tokens": 221639,
+            "unknown_cache_input_tokens": 72039
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.47514524999999996,
+            0.5237715749999999
+          ],
           "output_tokens": 19207,
           "provider_visible_input_tokens": 3380169,
           "reasoning_output_tokens": 15917,
@@ -319446,6 +320280,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "semantic_graph"
     },
     {
@@ -321143,9 +321978,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 13158511,
+            "known_uncached_input_tokens": 657254,
+            "unknown_cache_input_tokens": 136432
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            1.623531225,
+            1.715622825
+          ],
           "output_tokens": 35592,
           "provider_visible_input_tokens": 13952197,
           "reasoning_output_tokens": 30313,
@@ -321153,6 +321997,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "split_pillars"
     },
     {
@@ -323534,9 +324379,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2550077,
+            "known_uncached_input_tokens": 212460,
+            "unknown_cache_input_tokens": 55859
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.43757895,
+            0.475283775
+          ],
           "output_tokens": 22077,
           "provider_visible_input_tokens": 2818396,
           "reasoning_output_tokens": 18589,
@@ -323544,6 +324398,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "semantic_graph"
     },
     {
@@ -325293,9 +326148,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 6277520,
+            "known_uncached_input_tokens": 329485,
+            "unknown_cache_input_tokens": 95321
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.835743075,
+            0.9000847500000001
+          ],
           "output_tokens": 29511,
           "provider_visible_input_tokens": 6702326,
           "reasoning_output_tokens": 23783,
@@ -325303,6 +326167,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "split_pillars"
     },
     {
@@ -327557,9 +328422,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 1973475,
+            "known_uncached_input_tokens": 186591,
+            "unknown_cache_input_tokens": 68213
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.35133735,
+            0.397381125
+          ],
           "output_tokens": 15538,
           "provider_visible_input_tokens": 2228279,
           "reasoning_output_tokens": 12412,
@@ -327567,6 +328441,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "raw"
     },
     {
@@ -330253,6 +331128,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "semantic_graph"
     },
     {
@@ -332025,6 +332901,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "split_pillars"
     },
     {
@@ -334884,6 +335761,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "raw"
     },
     {
@@ -336829,6 +337707,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "split_pillars"
     },
     {
@@ -339661,6 +340540,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "raw"
     },
     {
@@ -342064,6 +342944,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "bea900a4ec3e7fbffa2ccc648e0eef17bfa948e4a3e078297949e41b1ce8bc6c",
       "visibility": "semantic_graph"
     },
     {
@@ -343856,9 +344737,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 4077556,
+            "known_uncached_input_tokens": 277792,
+            "unknown_cache_input_tokens": 88441
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.5960937749999999,
+            0.6557914499999999
+          ],
           "output_tokens": 20080,
           "provider_visible_input_tokens": 4443789,
           "reasoning_output_tokens": 15550,
@@ -343866,6 +344756,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "split_pillars"
     },
     {
@@ -346415,9 +347306,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2819670,
+            "known_uncached_input_tokens": 197300,
+            "unknown_cache_input_tokens": 60229
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.43750117499999996,
+            0.47815575
+          ],
           "output_tokens": 19609,
           "provider_visible_input_tokens": 3077199,
           "reasoning_output_tokens": 15707,
@@ -346425,6 +347325,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "raw"
     },
     {
@@ -348972,9 +349873,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2988516,
+            "known_uncached_input_tokens": 219660,
+            "unknown_cache_input_tokens": 121335
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.450600075,
+            0.5325012
+          ],
           "output_tokens": 14031,
           "provider_visible_input_tokens": 3329511,
           "reasoning_output_tokens": 10572,
@@ -348982,6 +349892,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "semantic_graph"
     },
     {
@@ -351593,9 +352504,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 2710009,
+            "known_uncached_input_tokens": 195789,
+            "unknown_cache_input_tokens": 60451
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.40397625,
+            0.44478067499999996
+          ],
           "output_tokens": 13160,
           "provider_visible_input_tokens": 2966249,
           "reasoning_output_tokens": 9501,
@@ -351603,6 +352523,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "raw"
     },
     {
@@ -354009,9 +354930,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 3864325,
+            "known_uncached_input_tokens": 248083,
+            "unknown_cache_input_tokens": 37519
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.54401055,
+            0.5693358749999999
+          ],
           "output_tokens": 17416,
           "provider_visible_input_tokens": 4149927,
           "reasoning_output_tokens": 12937,
@@ -354019,6 +354949,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "semantic_graph"
     },
     {
@@ -355825,9 +356756,18 @@
         "usage": {
           "cache_breakdown_complete": false,
           "cache_creation_input_tokens": null,
+          "cache_observation": {
+            "known_cached_input_tokens": 3708732,
+            "known_uncached_input_tokens": 259106,
+            "unknown_cache_input_tokens": 57420
+          },
           "cache_read_input_tokens": null,
           "cost_currency": "USD",
           "estimated_cost": null,
+          "estimated_cost_bounds": [
+            0.5572508999999999,
+            0.5960093999999999
+          ],
           "output_tokens": 21456,
           "provider_visible_input_tokens": 4025258,
           "reasoning_output_tokens": 15881,
@@ -355835,6 +356775,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "split_pillars"
     },
     {
@@ -358597,6 +359538,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "raw"
     },
     {
@@ -361019,6 +361961,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "semantic_graph"
     },
     {
@@ -362832,6 +363775,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "split_pillars"
     },
     {
@@ -365406,6 +366350,7 @@
         },
         "visibility": "semantic_graph"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "semantic_graph"
     },
     {
@@ -367396,6 +368341,7 @@
         },
         "visibility": "split_pillars"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "split_pillars"
     },
     {
@@ -370079,6 +371025,7 @@
         },
         "visibility": "raw"
       },
+      "source_semantic_sha256": "bb4cfc9d2e49c59d54f602a39da6c3de0dd6286f7774e1dd5ae9e5ea3a4eef42",
       "visibility": "raw"
     }
   ],

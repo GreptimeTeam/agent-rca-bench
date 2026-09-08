@@ -35,11 +35,14 @@ may need network access, but report generation does not call providers.
 2. Install the locked dependencies with `uv sync --extra dev --frozen`.
 3. Verify all applicable `SHA256SUMS` manifests under `artifacts/measurement/`.
    A mismatch is a verification failure; do not rewrite the manifest to clear it.
-4. Run the README's `formal-suite-report` commands into a fresh directory from
-   `mktemp -d`. Generate both input reports before calling `formal-report-merge`
-   with those regenerated JSON files and their bound transfer artifacts.
-5. Compare every regenerated JSON and HTML with its published counterpart using
-   `cmp`. For the six-model v34 report, all six comparisons must exit with 0.
+4. Follow the README's composition and rendering commands in a fresh directory
+   from `mktemp -d`. First run `python -m agent_rca_bench.split_rerun_release compose`
+   using the public Split rerun artifact and its two bound baselines. Compare both
+   composed transfer files, then use them to generate the two cohort reports.
+   Pass those regenerated JSON files and transfer files to `formal-report-merge`.
+5. Compare every regenerated artifact with its published counterpart using
+   `cmp`. For v34, all eight comparisons must exit with 0: two composed transfer
+   files, three report JSON files, and three HTML files.
    Preserve publication metadata, including both UTC timestamps, and output
    basenames: changing either can change the rendered bytes.
 6. Report the comparison results and the generated six-model HTML path. Open
@@ -113,7 +116,9 @@ Do not treat a credential check or a smoke test as free if it calls a provider.
   only took effect after the run. Keep token counts unchanged in either case.
   Separate input, cache read/write, output, and reasoning according to the
   provider contract. Missing cache detail is not zero, and an ordinary-token
-  estimate must remain separate from confirmed cache-aware cost.
+  estimate must remain separate from confirmed cache-aware cost. Preserve observed
+  cache discounts when estimating bounds for missing cache detail; do not replace
+  known cache hits with ordinary input pricing.
 - Micro execution uses `formal-suite-micro-run` with the preflight report,
   `--live-audits-dir`, and a fresh `--run-root`. On continuation, keep the same
   report but use fresh run-root and live-audit directories.
@@ -148,7 +153,10 @@ Verify sanitized exports contain no raw telemetry, provider payloads, reasoning
 text, credentials, tenant endpoints, labels, or machine-local paths. For a new
 measurement, record its actual measurement-update and report-generation times in UTC;
 do not reuse historical publication timestamps. Regenerate from the exported
-artifacts and compare the outputs before delivery.
+artifacts and compare the outputs before delivery. After an authorized report
+change, regenerate all dependent reports and synchronize the bilingual Markdown
+correction notes before updating checksums. Verify checksums and reproduce from
+fresh outputs again. Keep CI's reproduction commands aligned with the README.
 
 Return completed and pending cell counts, failures requiring action, cost and
 token accounting limits, artifact paths, and checks actually performed. Report
