@@ -4,43 +4,44 @@ Files under `artifacts/measurement/` are sanitized inputs to the published
 report. They exclude source telemetry, source archives, labels, provider
 payloads, reasoning text, credentials, endpoints, and machine-local paths.
 
-The active report uses:
+The six-model report combines three end-to-end measurement sources:
 
-- `agent-rca-v34-micro.json`: 128 fixed-cohort Discovery and Graph cells.
-- `agent-rca-v34-transfer.json`: 336 end-to-end RCA cells.
-- `agent-rca-v34.json`: deterministic combined report data.
-- `agent-rca-v34.html`: self-contained bilingual report.
-- `agent-rca-v34-SHA256SUMS`: hashes for the public artifacts and narrative
-  reports, listed as paths relative to the repository root.
+| Source | Artifact | Cells |
+| --- | --- | ---: |
+| Original four-model cohort | `agent-rca-v34-transfer.json` | 336 |
+| Gemini and Qwen extension | `agent-rca-v34-two-model-extension-transfer.json` | 168 |
+| Complete Split rerun | `agent-rca-v34-split-rerun.json` | 168 replacements |
 
-Regenerate the combined JSON and HTML with:
+Composition replaces the 168 Split cells and retains 336 Raw/Graph cells. The
+result contains 504 end-to-end cells, not the sum of the three source counts.
+The two micro artifacts, `agent-rca-v34-micro.json` and
+`agent-rca-v34-two-model-extension-micro.json`, supply another 128 and 64 cells.
+The combined report contains 696 cells.
 
-```bash
-output_dir=$(mktemp -d)
+The derived outputs are:
 
-uv run agent-rca formal-suite-report \
-  --micro-artifact artifacts/measurement/agent-rca-v34-micro.json \
-  --transfer-artifact artifacts/measurement/agent-rca-v34-transfer.json \
-  --suite-protocol fixtures/reference/agent-rca-v34-four-model-suite.json \
-  --transfer-protocol fixtures/reference/transfer-v34-protocol.json \
-  --output-json "$output_dir/agent-rca.json" \
-  --output-html "$output_dir/agent-rca.html"
+- `agent-rca-v34-composed-transfer.json` and
+  `agent-rca-v34-two-model-extension-composed-transfer.json`: composed end-to-end results.
+- `agent-rca-v34.json` / `.html` and `agent-rca-v34-two-model-extension.json` / `.html`:
+  the two cohort reports.
+- `agent-rca-v34-six-model.json` / `.html`: the unified six-model report.
+- Each report's `*-publication.json`: fixed publication timestamps for reproduction.
+- Each report's `*-SHA256SUMS`: checksums, with paths relative to the repository root.
 
-cmp artifacts/measurement/agent-rca-v34.json \
-  "$output_dir/agent-rca.json"
-cmp artifacts/measurement/agent-rca-v34.html \
-  "$output_dir/agent-rca.html"
-```
+Follow the [report reproduction procedure](../README.md#reproduce-the-published-report)
+to compose the transfer files and regenerate all three JSON/HTML reports. It
+checks eight outputs byte for byte without invoking a model provider.
 
-Verify the published hashes from the repository root:
+Verify all published checksums from the repository root:
 
 ```bash
 shasum -a 256 -c artifacts/measurement/agent-rca-v34-SHA256SUMS
+shasum -a 256 -c artifacts/measurement/agent-rca-v34-two-model-extension-SHA256SUMS
+shasum -a 256 -c artifacts/measurement/agent-rca-v34-six-model-SHA256SUMS
 ```
 
-The exporter validates source artifact hashes before generating either output.
-The tagged source deterministically revalidates scoring, aggregates, and report
-integrity without invoking a model provider.
+The composition and report commands validate source bindings and artifact
+integrity before generating their outputs.
 
 The repository's Apache-2.0 license covers the benchmark code, artifact schema,
 and derived report. It does not relicense upstream telemetry. OpenRCA2's dataset

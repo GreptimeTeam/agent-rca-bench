@@ -24,7 +24,7 @@ key. Rescoring the published artifacts and regenerating the report run offline.
 
 ## Before opening a pull request
 
-Run what CI runs:
+Run the local checks:
 
 ```bash
 uv run pytest -q
@@ -33,13 +33,16 @@ uv run ruff format --check src tests
 uv lock --check
 uv build
 shasum -a 256 -c artifacts/measurement/agent-rca-v34-SHA256SUMS
+shasum -a 256 -c artifacts/measurement/agent-rca-v34-two-model-extension-SHA256SUMS
+shasum -a 256 -c artifacts/measurement/agent-rca-v34-six-model-SHA256SUMS
 ```
 
 If your change touches report generation, confirm the published artifacts still
-reproduce byte for byte using the command in
+reproduce byte for byte using the composition and rendering commands in
 [README.md](README.md#reproduce-the-published-report). A diff there means either
 the change is wrong or the artifacts need regenerating in the same commit; the
-two must never disagree on `main`.
+two must never disagree on `main`. CI also validates `CITATION.cff` and rejects
+machine-local paths in published HTML.
 
 ## What a change has to hold to
 
@@ -60,9 +63,11 @@ otherwise an improvement.
 - **A protocol change needs a new protocol identifier.** Changing the prompt,
   the treatment surface, the scorer, selection, the runner contract, or a
   frozen metric produces a new version rather than mutating the published one.
-- **Published prose tracks the numbers.** A sentence whose wording depends on a
-  measured value is built in `formal_report_view.py` and asserted in tests, not
-  written into the renderer or the Markdown by hand.
+- **Published prose tracks the numbers.** HTML text that depends on measured values
+  is built in `formal_report_view.py` and tested there, not written in the renderer.
+  Both Markdown reports must agree with the artifacts; generate their correction
+  notes with `uv run python -m agent_rca_bench.split_rerun_release sync-correction`
+  and its `--report`, `--english`, and `--chinese` paths.
 
 ## Tests
 

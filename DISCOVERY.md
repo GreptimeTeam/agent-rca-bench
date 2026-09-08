@@ -69,6 +69,6 @@ uv run agent-rca discovery-audit \
   --report .reports/smoke-openrca-<run-id>.json
 ```
 
-The complete four-model results appear in [REPORT.md](REPORT.md). Discovery
+The complete six-model results appear in [REPORT.md](REPORT.md). Discovery
 tests schema and signal retrieval; it does not establish end-to-end RCA
 correctness or efficiency.
