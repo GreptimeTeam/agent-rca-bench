@@ -19,8 +19,9 @@ the investigating agent.
 
 The structured diagnosis separates the causal locus from propagated impact:
 
-- `causal_scope` is `component` or `dependency_edge`.
+- `causal_scope` is `component`, `dependency_edge`, or `infrastructure_node`.
 - A component-scoped diagnosis identifies one `causal_component` and no edge.
+- A node-scoped diagnosis names the infrastructure node in `causal_component` and defines no edge.
 - An edge-scoped diagnosis identifies one directed `edge_source` and `edge_destination` and no
   causal component.
 - `causal_operation` identifies the affected operation when the source telemetry supports one.

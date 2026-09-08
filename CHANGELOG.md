@@ -12,6 +12,21 @@ protocol.
 
 ## [Unreleased]
 
+- Extend the report to six models with Gemini and Qwen: 192 micro cells and
+  504 end-to-end cells, 696 in total.
+- Correct Tempo retention and repeated label names in Split query results.
+  Replace all 168 Split cells; retain 336 Raw/Graph cells and all micro results.
+  Publish the replacement records, trace checks, and retry audit.
+- Report correct diagnoses as Split 105/168, Raw 130/168, and Graph 124/168.
+  Three Raw-vs-Split input endpoints pass the separately frozen cohort Holm
+  corrections (m = 8 and m = 4); no Graph-vs-Raw endpoint passes.
+  Updated case medians and p values are in the
+  [Raw-vs-Split endpoint table](REPORT.md#raw-compared-with-split).
+- Add Gemini cost intervals that preserve observed cache discounts, and update
+  the bilingual reports and charts.
+- Use transfer artifact schema 3 and report schema 8. Reproduction and CI compose
+  the three measurement sources and compare eight derived artifacts byte for byte.
+
 ## [0.1.0] - 2026-09-04
 
 Published as `agent-rca-bench`. The project was developed under the name

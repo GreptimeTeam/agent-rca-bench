@@ -53,7 +53,7 @@ Run the source and storage preflight:
 uv run agent-rca transfer-preflight \
   --greptimedb-repo /path/to/greptimedb \
   --run-root .instances/openrca2-transfer-preflight \
-  --output .reports/openrca2-transfer-preflight.json
+  --output .reports/openrca2-transfer-measurement.json
 ```
 
 The preflight fails on source or fixture drift, protocol rejection, identity or
@@ -99,6 +99,7 @@ protocol:
 
 ```bash
 uv run agent-rca transfer-run \
+  --greptimedb-repo /path/to/greptimedb \
   --report .reports/openrca2-transfer-measurement.json \
   --run-root .instances/openrca2-transfer-measurement \
   --confirm-paid-api
