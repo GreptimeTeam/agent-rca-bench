@@ -32,6 +32,7 @@ uv run ruff check src tests
 uv run ruff format --check src tests
 uv lock --check
 uv build
+uvx --from cffconvert cffconvert --validate -i CITATION.cff
 shasum -a 256 -c artifacts/measurement/agent-rca-v34-SHA256SUMS
 shasum -a 256 -c artifacts/measurement/agent-rca-v34-two-model-extension-SHA256SUMS
 shasum -a 256 -c artifacts/measurement/agent-rca-v34-six-model-SHA256SUMS
@@ -65,9 +66,11 @@ otherwise an improvement.
   frozen metric produces a new version rather than mutating the published one.
 - **Published prose tracks the numbers.** HTML text that depends on measured values
   is built in `formal_report_view.py` and tested there, not written in the renderer.
-  Both Markdown reports must agree with the artifacts; generate their correction
-  notes with `uv run python -m agent_rca_bench.split_rerun_release sync-correction`
-  and its `--report`, `--english`, and `--chinese` paths.
+  Generate both Markdown reports' correction notes with
+  `uv run python -m agent_rca_bench.split_rerun_release sync-correction` and its
+  `--report`, `--english`, and `--chinese` paths. Authors and reviewers must manually
+  check the remaining Markdown prose and numeric tables against the artifacts;
+  CI does not compare those values with the report JSON.
 
 ## Tests
 

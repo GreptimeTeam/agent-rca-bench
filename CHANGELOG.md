@@ -20,6 +20,8 @@ protocol.
 - Report correct diagnoses as Split 105/168, Raw 130/168, and Graph 124/168.
   Three Raw-vs-Split input endpoints pass the separately frozen cohort Holm
   corrections (m = 8 and m = 4); no Graph-vs-Raw endpoint passes.
+  Updated case medians and p values are in the
+  [Raw-vs-Split endpoint table](REPORT.md#raw-compared-with-split).
 - Add Gemini cost intervals that preserve observed cache discounts, and update
   the bilingual reports and charts.
 - Use transfer artifact schema 3 and report schema 8. Reproduction and CI compose
