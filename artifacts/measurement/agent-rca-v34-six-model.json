@@ -4148,7 +4148,7 @@
     }
   ],
   "integrity": {
-    "semantic_payload_sha256": "4ddaebaf8365757bd75ed8f8be73658a557ceead0bdbde6aac259a42471f1f85"
+    "semantic_payload_sha256": "ab23b23c3b3cf70fced9f804c39ead76e6efd9dd370212efaca8dd58a05f78cb"
   },
   "license": {
     "micro_source_terms": {
@@ -16224,7 +16224,7 @@
   },
   "publication": {
     "measurement_updated_at": "2026-09-08T03:50:20Z",
-    "report_generated_at": "2026-09-08T04:43:03Z",
+    "report_generated_at": "2026-09-08T04:51:03Z",
     "schema_version": 1
   },
   "publication_status": "public measurement report",
@@ -16543,8 +16543,8 @@
     },
     "cohort_1_report": {
       "artifact_type": null,
-      "semantic_payload_sha256": "bbf0e242800b203b4cee3e7d4b6d72a08cd394f4522ba9884f182a6b2d22b3d7",
-      "sha256": "9b71fa9d12d099f1d57be1a93936d65507830bbf4e08781deabe1ce110f5eb8f"
+      "semantic_payload_sha256": "8af40fd04d53e7eb69091f9e5eb66551e0211395d70aaa1dc0da63d628bffb20",
+      "sha256": "556c86d9ff6f2ba62154f292767b64aa30656aa0cb5a6dbdf429f97de3c946e3"
     },
     "cohort_1_transfer": {
       "artifact_type": "semantic-rca-transfer-measurement",
@@ -16558,8 +16558,8 @@
     },
     "cohort_2_report": {
       "artifact_type": null,
-      "semantic_payload_sha256": "8829e0d05bce43f3acc4197e7cbdd209ecf6bbda0bfd79a561cad67ed493ea25",
-      "sha256": "6ad40ece1cc08ce5fbe4806e743c857e26eaabf1c12b39cb24a0e5e158ebef75"
+      "semantic_payload_sha256": "22f89427ad2416345a89848d438ac19c4a9870bd3857496b2c8beac3b78ceee3",
+      "sha256": "0a9accb2c5de6f08cad3561e6b1ecb09d863e45e6b4c10c79853313dfa030aa6"
     },
     "cohort_2_transfer": {
       "artifact_type": "semantic-rca-transfer-measurement",

@@ -8,7 +8,8 @@
 Raw reduced input for Fable, Gemini, and Qwen, but the results do not support a general end-to-end
 efficiency gain from Semantic Graph.
 
-- Raw vs Split: three of twelve pre-specified endpoints passed their frozen Holm tests.
+- Raw vs Split: three of twelve pre-specified endpoints passed Holm correction within their
+  separately frozen cohorts (m = 8 and m = 4), not a pooled twelve-endpoint correction.
   All three measured input reduction; no tool-call endpoint passed.
 - Graph vs Raw: no endpoint passed. Non-significance does not establish equivalence.
 - Focused retrieval: Graph reduced rows in 35/35 eligible Discovery results and both rows
@@ -203,7 +204,7 @@ The trajectories record use of Semantic Graph, SQL JOIN, and PromQL:
 - The Raw and Graph arms made 192 successful SQL `JOIN` calls across 92 runs. Most joined spans
   within `traces` or combined metric tables. Cross-signal joins accounted for
   three successful calls across three runs.
-- Native PromQL `query` or `query_range` calls appeared in 22 of 336 GreptimeDB-arm runs: 15 Raw
+- Successful native PromQL `query` or `query_range` calls occurred in 22 of 336 GreptimeDB-arm runs: 15 Raw
   runs and seven Graph runs. Split used successful PromQL queries in 160 of 168 runs because that
   interface exposes metrics through Prometheus rather than SQL.
 
@@ -357,4 +358,4 @@ Calling a provider again is a replication, not part of report reproduction.
 
 Measurement updated at: `2026-09-08T03:50:20Z` (UTC).
 
-Report generated at: `2026-09-08T04:43:03Z` (UTC).
+Report generated at: `2026-09-08T04:51:03Z` (UTC).

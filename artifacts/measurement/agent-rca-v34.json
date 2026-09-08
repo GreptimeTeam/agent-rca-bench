@@ -2941,7 +2941,7 @@
   },
   "integrity": {
     "hash_scope": "all report fields except integrity",
-    "semantic_payload_sha256": "bbf0e242800b203b4cee3e7d4b6d72a08cd394f4522ba9884f182a6b2d22b3d7"
+    "semantic_payload_sha256": "8af40fd04d53e7eb69091f9e5eb66551e0211395d70aaa1dc0da63d628bffb20"
   },
   "license": {
     "micro_source_terms": {
@@ -10986,7 +10986,7 @@
   },
   "publication": {
     "measurement_updated_at": "2026-09-08T03:50:20Z",
-    "report_generated_at": "2026-09-08T04:43:03Z",
+    "report_generated_at": "2026-09-08T04:51:03Z",
     "schema_version": 1
   },
   "publication_status": "public measurement report",

@@ -415,11 +415,16 @@ def _verdicts(report: Mapping[str, object]) -> list[dict[str, object]]:
                     language: _tally_text(tally, language)
                     + (
                         (
-                            "；按模型组分别校正："
+                            "；按各模型组冻结的范围分别校正："
                             if language == "zh"
-                            else "; corrected separately by model group: "
+                            else "; corrected within separately frozen model cohorts: "
                         )
                         + ", ".join(f"m = {size}" for size in family_sizes)
+                        + (
+                            f"，未合并为 {tally['total']} 项统一校正"
+                            if language == "zh"
+                            else f"; not pooled across all {tally['total']} endpoints"
+                        )
                         if len(family_sizes) > 1
                         else ""
                     )
