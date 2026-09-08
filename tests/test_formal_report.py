@@ -670,6 +670,43 @@ def test_rendered_page_inlines_every_payload_and_leaks_nothing(tmp_path: Path) -
     assert str(report["execution"]["completed_cells"]) in summary
 
 
+def test_renderer_table_labels_match_metric_units() -> None:
+    assets = Path("src/agent_rca_bench/assets/report")
+    renderer = (assets / "report.js").read_text()
+    strings = json.loads((assets / "i18n.json").read_text())
+
+    def section(start: str, end: str) -> str:
+        return renderer.split(f"const {start} =", 1)[1].split(f"const {end} =", 1)[0]
+
+    retrieval = section("retrievalSection", "modelsSection")
+    assert "effect.reported_total_tokens.median_delta" in retrieval
+    assert 't("th.total_tokens_delta")' in retrieval
+    assert 't("th.input")' not in retrieval
+    assert strings["en"]["th.total_tokens_delta"] == "Total tokens Δ"
+    assert strings["zh"]["th.total_tokens_delta"] == "总 token Δ"
+
+    resources = section("resourcesSection", "eligibilityTable")
+    assert "num(usage.output_tokens)" in resources
+    assert 't("th.output_tokens")' in resources
+    assert 't("th.output")' not in resources
+    assert '["output_per_million", "th.output_tokens"]' in renderer
+    assert 't("pricing.rate_unit")' in resources
+    assert "per million tokens" in strings["en"]["pricing.rate_unit"]
+    assert "每百万 token" in strings["zh"]["pricing.rate_unit"]
+
+    eligibility = section("eligibilityTable", "evidenceQualityTable")
+    assert "transfer.efficiency_eligibility.by_treatment[key]" in eligibility
+    assert 't("th.eligible_runs")' in eligibility
+    assert 't("th.eligible_cases")' not in eligibility
+    assert strings["en"]["th.eligible_runs"] == "Eligible runs"
+    assert strings["zh"]["th.eligible_runs"] == "合格运行"
+
+    costs = section("caseEffectTable", "retrievalSection")
+    assert "${item.estimated_cost_currency} ${signed(item.estimated_cost, 4)}" in costs
+    assert 't("th.input")' in costs
+    assert 't("th.output")' in costs
+
+
 def test_html_reproduces_after_sorted_json_round_trip(tmp_path: Path) -> None:
     report = _report()
     original = tmp_path / "original.html"
