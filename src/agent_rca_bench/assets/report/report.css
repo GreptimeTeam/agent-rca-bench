@@ -1,44 +1,76 @@
 /* Agent RCA Bench report.
  *
- * Neutral by construction. Hue is reserved for one job: which side of a paired
- * comparison a delta favours. Verdicts are encoded by fill density and countable
- * marks instead of colour, so nothing on the page reads as "good" or "bad"
- * before the reader has looked at the number.
+ * The palette, type and card treatment are greptime.com's, read off the live
+ * site: warm paper #f9f8f7, one ink #473460 used for every word and every rule,
+ * accent #792af6 for links, highlight #fdd254 for the small outlined blocks the
+ * site marks things with, Geist at weight 800 for display. Radius is 4px
+ * everywhere, as it is there.
+ *
+ * Hue does three jobs and no others. Highlight marks a figure this measurement
+ * produced. The arm colours identify an interface and follow it through every
+ * chart: both GreptimeDB arms are brand purple because both are ours, and the
+ * three-backend bundle is the neutral. The diverging pair says which side of a
+ * comparison a delta favours. Verdicts stay encoded by fill density and
+ * countable marks, so no number reads as "good" or "bad" before it is read.
  */
-
 :root {
   color-scheme: light;
 
-  --paper: #eef1f3;
-  --card: #fbfcfd;
-  --ink: #10161c;
-  --ink-2: #33424e;
-  --muted: #5b6a75;
-  --rule: #cfd8de;
-  --rule-strong: #a9b7c1;
+  --paper: #f9f8f7;
+  --card: #ffffff;
+  --ink: #473460;
+  --ink-2: rgba(71, 52, 96, 0.78);
+  --muted: rgba(71, 52, 96, 0.62);
+  --rule: #e6e3dd;
+  --rule-strong: rgba(71, 52, 96, 0.3);
 
-  /* The only two hues on the page. Negative deltas favour the first treatment
-   * named in the comparison; positive deltas favour the second. */
-  --favors-left: #1f5fa8;
-  --favors-right: #c2680d;
-  --favors-left-soft: #dce7f4;
-  --favors-right-soft: #f6e6d4;
+  --accent: #792af6;
+  --highlight: #fdd254;
 
-  /* One colour per interface, used by every bar and by the hero board, so the
-   * reader ties a mark back to the same arm wherever it appears. */
-  --arm-split: #94a3b3;
-  --arm-raw: #1f5fa8;
-  --arm-graph: #6b4c9a;
+  /* Negative deltas favour the first treatment named in the comparison;
+   * positive deltas favour the second. That first treatment is Raw in one family
+   * and Graph in the other, so the pair must stay out of the purples: an arm
+   * colour here would name the wrong arm in one of the two families.
+   *
+   * The face is the brand's teal against a warm counterpart held at the same
+   * lightness. Equal weight is the point: a vivid favourable side beside a muted
+   * reversed one would put a thumb on the scale of every chart that draws both.
+   * The text pair is the same two hues darkened, because the brand teal reads at
+   * 1.4:1 on this paper and the percentages are the values most read here. */
+  --favors-left: #12817c;
+  --favors-right: #b35f0b;
+  --favors-left-face: #3feee6;
+  --favors-right-face: #ffc08a;
+
+  /* One colour per interface, used by every bar, chip and table, so the reader
+   * ties a mark back to the same arm wherever it appears. Both GreptimeDB arms
+   * are brand purple, from the site's own purple scale. The store the report
+   * leads with takes the bright one so the arm the page is about is the arm that
+   * carries colour; the layered variant takes the deep main purple, and the
+   * three-backend bundle is the warm neutral. The vivid accent stays off large
+   * fills - at bar size it overpowered a page this quiet. */
+  --arm-split: #cfcac2;
+  --arm-split-line: #a49c92;
+  --arm-raw: #b684f7;
+  --arm-graph: #473460;
+
+  /* Large fills are the illustration's construction: the site draws its blocks
+   * as a light face of the arm's colour inside a solid ink edge, so a bar reads
+   * soft while its length stays exact. Small marks keep the colour at full
+   * strength, where a tint would disappear. */
+  --arm-raw-face: color-mix(in srgb, var(--arm-raw) 55%, var(--paper));
+  --arm-graph-face: color-mix(in srgb, var(--arm-graph) 42%, var(--paper));
+  --arm-split-face: color-mix(in srgb, var(--arm-split) 62%, var(--paper));
 
   --step: 4px;
   --gutter: clamp(20px, 4vw, 40px);
   --measure: 68ch;
-  --radius: 10px;
+  --radius: 4px;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB",
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 }
 
@@ -62,15 +94,15 @@ body {
 
 .wrap { width: min(1120px, calc(100% - 2 * var(--gutter))); margin-inline: auto; }
 
-h1, h2, h3, h4 { margin: 0; font-weight: 640; letter-spacing: -0.02em; }
-h1 { font-size: clamp(34px, 5.4vw, 58px); line-height: 1.02; letter-spacing: -0.035em; font-weight: 680; }
-h2 { font-size: clamp(21px, 2.6vw, 27px); }
-h3 { font-size: 16px; }
-h4 { font-size: 13px; font-weight: 600; }
+h1, h2, h3, h4 { margin: 0; font-weight: 800; letter-spacing: -0.01em; }
+h1 { font-size: clamp(30px, 3.8vw, 46px); line-height: 1.14; }
+h2 { font-size: clamp(24px, 2.6vw, 34px); line-height: 1.25; }
+h3 { font-size: 18px; }
+h4 { font-size: 13px; font-weight: 700; }
 p { margin: 0 0 12px; max-width: var(--measure); }
 a { color: var(--ink); text-underline-offset: 3px; text-decoration-color: var(--rule-strong); overflow-wrap: anywhere; }
-a:hover { text-decoration-color: currentColor; }
-:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 2px; }
+a:hover { color: var(--accent); text-decoration-color: currentColor; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 
 /* Hashes, model ids and source URLs are unbreakable tokens that would otherwise
  * push the page wider than a phone viewport. */
@@ -101,6 +133,13 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
   gap: 16px;
   padding: 10px 0;
 }
+.topbar-brand {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--ink);
+  text-decoration: none;
+}
+.topbar-brand .logo svg { height: 18px; }
 .topbar nav {
   display: flex;
   gap: 2px;
@@ -120,7 +159,7 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
 }
 .topbar nav a:hover { color: var(--ink); background: var(--card); }
 
-.lang { display: flex; gap: 0; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.lang { display: flex; gap: 0; border: 1px solid var(--ink); border-radius: var(--radius); overflow: hidden; }
 .lang button {
   padding: 5px 11px;
   border: 0;
@@ -130,24 +169,134 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
   font-size: 13px;
   cursor: pointer;
 }
-.lang button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.lang button[aria-pressed="true"] { background: var(--ink); color: var(--card); }
 
 /* --- hero: the three questions and their verdicts ------------------------ */
 
-.hero { padding: clamp(40px, 6vw, 68px) 0 clamp(24px, 3vw, 36px); }
-.hero h1 { max-width: 16ch; }
-.hero .lede { margin-top: 16px; max-width: 56ch; font-size: clamp(16px, 1.7vw, 19px); color: var(--ink-2); }
-.hero-meta { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 22px; font-size: 13px; color: var(--muted); }
-.hero-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+/* The first screen states the comparison and then shows it. No panel, no tinted
+ * block: the page is one paper, and the only marked areas on it are the gaps a
+ * measurement produced. */
+.hero { padding: clamp(40px, 6vw, 76px) 0 clamp(30px, 4vw, 44px); }
+.hero .eyebrow { margin-bottom: 18px; }
+.hero h1 { max-width: 26ch; }
+.hero .lede {
+  margin-top: 18px;
+  max-width: 60ch;
+  font-size: clamp(16px, 1.5vw, 18px);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+/* The figures, marked the way the site marks things: a highlight block with an
+ * ink rule around it. They sit between the claim and the lede so the eye lands
+ * on them on the way down to the measurement. */
+.hero-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 26px;
+  margin: 22px 0 0;
+  max-width: none;
+  font-size: clamp(17px, 1.9vw, 22px);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.hero-claim { display: inline-flex; align-items: baseline; gap: 9px; }
+.hero-claim mark {
+  padding: 2px 9px 3px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--highlight);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.96em;
+}
+
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 30px; }
 .hero-actions a {
-  padding: 8px 14px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 999px;
-  font-size: 13.5px;
+  padding: 9px 22px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
   text-decoration: none;
   background: var(--card);
 }
-.hero-actions a:first-child { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.hero-actions a:hover { background: var(--highlight); color: var(--ink); }
+.hero-actions a:first-child { background: var(--ink); border-color: var(--ink); color: var(--card); }
+.hero-actions a:first-child:hover { background: var(--accent); border-color: var(--accent); }
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin-top: 26px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.hero-stamp { margin: 6px 0 0; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+
+/* The signature: one comparison, three measures, each drawn as two bars on a
+ * shared scale from a shared origin. Length is the value, so the reader
+ * compares two lengths directly; the percentage belongs to the arm whose bar it
+ * sits on. Yellow is the arm that used more, which is the thing this benchmark
+ * exists to price. */
+.ledger { margin-top: clamp(30px, 4vw, 44px); border-top: 1px solid var(--ink); }
+.ledger-row { padding: 18px 0 20px; border-bottom: 1px solid var(--rule); }
+.ledger-label {
+  margin: 0 0 12px;
+  max-width: none;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ledger-pair {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) 168px 88px;
+  align-items: center;
+  gap: 0 16px;
+}
+.ledger-pair + .ledger-pair { margin-top: 8px; }
+.ledger-arm { font-size: 13px; font-weight: 600; }
+.ledger-pair[data-side="right"] .ledger-arm { color: var(--ink-2); font-weight: 500; }
+.ledger-track { display: block; height: 26px; }
+.ledger-fill {
+  display: block;
+  height: 100%;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--arm-raw-face);
+}
+.ledger-pair[data-side="right"] .ledger-fill { background: var(--arm-split-face); border-color: var(--arm-split-line); }
+.ledger-value {
+  font-family: var(--font-mono);
+  font-size: clamp(16px, 1.6vw, 20px);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-align: right;
+}
+.ledger-pair[data-side="right"] .ledger-value { color: var(--ink-2); }
+.ledger-delta {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .ledger-pair { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; }
+  .ledger-arm { grid-column: 1; }
+  .ledger-value { grid-column: 2; text-align: right; }
+  .ledger-track { grid-column: 1 / -1; height: 20px; }
+  .ledger-delta { grid-column: 1 / -1; text-align: left; }
+  .ledger-delta:empty { display: none; }
+}
+
+.logo { display: inline-flex; align-items: center; }
+.logo svg { height: 20px; width: auto; display: block; }
 
 /* The question on the left, the answer on the right. Before this the first
  * screen was prose with an empty half, and the first number sat two screens
@@ -164,6 +313,9 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
   background: var(--card);
   border: 1px solid var(--rule);
   border-radius: var(--radius);
+  /* A light card on the dark hero: restate the ink, or every number in it
+   * inherits the hero's pale text and vanishes against white. */
+  color: var(--ink);
 }
 .hero-board figcaption {
   margin-bottom: 14px;
@@ -272,20 +424,23 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
 .arms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 24px 0 8px; }
 .arm {
   position: relative;
-  padding: 20px 18px 18px;
+  padding: 22px 20px 20px;
   background: var(--card);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--ink);
   border-radius: var(--radius);
 }
 /* The short name is the card's headline: every later strip, table and axis end
  * refers to it, so it has to be the thing the reader remembers from here. */
 .arm-name {
   display: inline-block;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   padding: 4px 12px;
-  border-radius: 6px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
   background: var(--ink);
-  color: var(--paper);
+  color: var(--card);
+  /* Set per arm below: three identical dark chips made the GreptimeDB arms
+   * look no more ours than the bundle they are measured against. */
   font-family: var(--font-mono);
   font-size: 15px;
   font-weight: 600;
@@ -293,6 +448,9 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
 }
 .arm h3 { margin-bottom: 6px; font-size: 16px; font-weight: 600; color: var(--ink-2); }
 .arm p { margin: 0; }
+.arm[data-arm="split_pillars"] .arm-name { background: var(--arm-split); color: var(--ink); }
+.arm[data-arm="raw"] .arm-name { background: var(--arm-raw); color: var(--ink); }
+.arm[data-arm="semantic_graph"] .arm-name { background: var(--arm-graph); }
 
 /* Wherever the three names appear in running prose, they get the same monospace
  * treatment so the reader ties them back to the cards. */
@@ -319,19 +477,10 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
   padding: 24px 0;
   border-bottom: 1px solid var(--rule);
 }
-/* The verdict spans both rows so a two-line gloss cannot push the supporting
- * paragraph away from the claim it supports. */
-.finding-body {
-  display: grid;
-  /* Content-sized, not 1fr: the text columns are capped for line length, and a
-   * stretched track would park the verdict against the far margin again. */
-  grid-template-columns: minmax(0, auto) 190px;
-  justify-content: start;
-  column-gap: 28px;
-  align-items: start;
-}
-.finding-body > h3 { grid-area: 1 / 1; }
-.finding-support { grid-area: 2 / 1; }
+/* Claim, then the counts behind it, then the grade, then the limits. Reading
+ * order is the order of weight: the verdict used to sit in its own column level
+ * with the claim, which gave a reader the grading before the result. */
+.finding-body { display: block; }
 .finding-index {
   font-family: var(--font-mono);
   font-size: 26px;
@@ -339,16 +488,34 @@ code, .num { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: an
   line-height: 1;
   color: var(--rule-strong);
 }
-.finding h3 { font-size: clamp(17px, 2vw, 21px); line-height: 1.35; max-width: 46ch; }
-.finding-support { margin: 10px 0 0; font-size: 14px; color: var(--ink-2); max-width: 62ch; }
-.finding-grade {
-  grid-area: 1 / 2 / span 2 / auto;
-  display: grid;
-  gap: 6px;
-  align-content: start;
-  justify-items: start;
-  padding-top: 3px;
+.finding h3 { font-size: clamp(19px, 2.3vw, 24px); line-height: 1.3; max-width: 48ch; }
+.finding-support { margin: 12px 0 0; font-size: 14.5px; color: var(--ink-2); max-width: 68ch; }
+.finding-support li { margin: 6px 0; }
+.finding-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 14px; }
+.caveats { margin-top: 8px; }
+.caveats > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 3px 0;
+  list-style: none;
 }
+.caveats > summary::-webkit-details-marker { display: none; }
+.caveats > summary::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+}
+.caveats[open] > summary::before { transform: rotate(45deg); }
+.caveats > summary:hover { color: var(--ink); }
+.caveats ul { margin: 4px 0 0; }
 
 .board-title { margin-top: clamp(44px, 6vw, 68px); }
 .board { border-top: 1px solid var(--rule-strong); }
@@ -484,6 +651,8 @@ section { padding: clamp(40px, 6vw, 68px) 0; border-top: 1px solid var(--rule); 
   border: 1px solid var(--card);
   animation: point-in 240ms ease-out both;
 }
+/* A 9px mark behaves like text, not like an area: it takes the darker pair, and
+ * keeps the paper-coloured ring that separates overlapping points. */
 .strip-point[data-side="negative"] { background: var(--favors-left); }
 .strip-point[data-side="positive"] { background: var(--favors-right); }
 .strip-point[data-side="zero"] { background: var(--muted); }
@@ -579,7 +748,7 @@ section { padding: clamp(40px, 6vw, 68px) 0; border-top: 1px solid var(--rule); 
 
 .panel {
   margin: 16px 0;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
   background: var(--card);
 }
@@ -608,7 +777,7 @@ section { padding: clamp(40px, 6vw, 68px) 0; border-top: 1px solid var(--rule); 
 .panel-body { padding: 16px; display: grid; gap: 14px; }
 .panel-body > h4 { margin-top: 6px; }
 
-.table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--card); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule-strong); border-radius: var(--radius); background: var(--card); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
 th {
@@ -636,6 +805,31 @@ ul.plain { margin: 0; padding-left: 18px; }
 ul.plain li { margin: 5px 0; max-width: var(--measure); }
 
 footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; }
+.footer-cta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-bottom: 28px;
+  padding: 22px 24px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+}
+.footer-cta .logo svg { height: 22px; }
+.footer-cta-note { margin: 0; flex: 1 1 240px; font-size: 15px; font-weight: 500; color: var(--ink); }
+.footer-cta-link {
+  padding: 9px 20px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--highlight);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.footer-cta-link:hover { background: var(--accent); color: var(--card); }
 
 /* --- fallback ------------------------------------------------------------ */
 
@@ -688,10 +882,6 @@ footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--m
     mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
   }
   .finding { grid-template-columns: 28px minmax(0, 1fr); }
-  .finding-body { grid-template-columns: minmax(0, 1fr); }
-  .finding-body > h3 { grid-area: auto; }
-  .finding-grade { grid-area: auto; padding-top: 10px; }
-  .finding-support { grid-area: auto; }
   .strip-scale { grid-template-columns: 1fr; padding: 0 12px; }
   .strip-scale span { grid-column: 1; }
   .strip-scale .scale-right { grid-row: auto; justify-self: start; }
@@ -727,16 +917,18 @@ footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--m
   background: var(--ink);
   opacity: 0.55;
 }
-.pct-fill { position: absolute; top: 3px; height: 18px; }
+/* Face and edge, the construction the rest of the page uses: the bar reads in
+ * the brand's colours and its end stays exact against the zero line. */
+.pct-fill { position: absolute; top: 3px; height: 18px; border: 1px solid var(--ink); }
 .pct-fill[data-direction="down"] {
   right: 50%;
-  border-radius: 4px 0 0 4px;
-  background: var(--favors-left);
+  border-radius: var(--radius) 0 0 var(--radius);
+  background: var(--favors-left-face);
 }
 .pct-fill[data-direction="up"] {
   left: 50%;
-  border-radius: 0 4px 4px 0;
-  background: var(--favors-right);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--favors-right-face);
 }
 
 .pct-value { display: flex; align-items: baseline; justify-content: flex-end; gap: 10px; }
@@ -769,13 +961,15 @@ footer { padding: 32px 0 64px; border-top: 1px solid var(--rule); color: var(--m
 .bar-name { font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
 .bar-row[data-best="true"] .bar-name { color: var(--ink); font-weight: 600; }
 .bar-track { height: 26px; border-radius: 5px; background: color-mix(in srgb, var(--rule) 55%, transparent); }
-.bar-fill { height: 26px; border-radius: 5px; }
+/* The same construction as the hero's bars: a light face inside a solid edge,
+ * so a long bar stays quiet and its end stays exact. */
+.bar-fill { height: 26px; border: 1px solid var(--ink); border-radius: var(--radius); }
 
 /* Three arm identities. None of them is a "good" or "bad" colour; the number
  * beside the bar carries the direction. */
-.bar-fill[data-arm="split_pillars"] { background: var(--arm-split); }
-.bar-fill[data-arm="raw"] { background: var(--arm-raw); }
-.bar-fill[data-arm="semantic_graph"] { background: var(--arm-graph); }
+.bar-fill[data-arm="split_pillars"] { background: var(--arm-split-face); border-color: var(--arm-split-line); }
+.bar-fill[data-arm="raw"] { background: var(--arm-raw-face); border-color: var(--ink); }
+.bar-fill[data-arm="semantic_graph"] { background: var(--arm-graph-face); border-color: var(--ink); }
 
 .bar-value { display: flex; align-items: baseline; justify-content: flex-end; gap: 10px; }
 .bar-value strong { font-family: var(--font-mono); font-size: 14px; font-weight: 600; }

@@ -584,7 +584,9 @@ def test_view_model_states_the_verdict_and_the_strip_geometry() -> None:
         "No efficiency endpoint passed Holm correction"
         in (narrative["family_summaries"]["semantic_layer"][0])
     )
-    assert any("Raw used fewer" in text for text in narrative["family_summaries"]["storage_shape"])
+    assert any(
+        "GreptimeDB used fewer" in text for text in narrative["family_summaries"]["storage_shape"]
+    )
     # Effect size and case counts come before the p values.
     storage_finding = narrative["conclusion"]
     assert "in 6 of 8 eligible cases" in storage_finding
@@ -806,29 +808,37 @@ def test_cost_direction_counts_models_instead_of_claiming_a_reduction() -> None:
     # comparison and the sentence must say so.
     narrative = build_report_view_model(_report(transfer_graph_run_cost=0.12))["narrative"]
     assert narrative["en"]["cost_direction"]["semantic_layer"] == (
-        "0 of 4 priced models spent less through Graph than through Raw."
+        "0 of 4 priced models spent less on the Semantic Graph than on GreptimeDB."
     )
     assert narrative["en"]["cost_direction"]["storage_shape"] == (
-        "4 of 4 priced models spent less through Raw than through Split."
+        "4 of 4 priced models spent less on GreptimeDB than on three backends."
     )
     assert narrative["zh"]["cost_direction"]["semantic_layer"] == (
-        "4 个可计价模型中，0 个使用 Graph 的成本低于 Raw。"
+        "4 个可计价模型中，0 个在语义层上的支出低于 GreptimeDB。"
     )
 
     cheaper = build_report_view_model(_report(transfer_graph_run_cost=0.05))
     assert cheaper["narrative"]["en"]["cost_direction"]["semantic_layer"] == (
-        "4 of 4 priced models spent less through Graph than through Raw."
+        "4 of 4 priced models spent less on the Semantic Graph than on GreptimeDB."
     )
 
 
-def test_a_significant_interface_result_reaches_the_headline() -> None:
+def test_the_headline_leads_with_the_effect_not_the_test() -> None:
+    """The first line a reader meets states what changed and by how much.
+
+    An earlier headline read "8 interface endpoints are significant", which makes
+    the correction threshold the subject of the sentence and says nothing about
+    the size or direction of what was measured.
+    """
     view = build_report_view_model(_report(storage_holm_adjusted_p=0.01))
 
-    assert view["narrative"]["en"]["headline"] == (
-        "8 interface endpoints are significant; Graph E2E varies"
-    )
+    headline = view["narrative"]["en"]["headline"]
+    assert "significant" not in headline
+    assert "endpoints" not in headline
+    assert "GreptimeDB got" in headline and "/" in headline
+    assert view["narrative"]["en"]["hero_title"].startswith("One database instead of")
     assert (
-        "Raw used fewer provider-visible input tokens than Split"
+        "GreptimeDB used fewer provider-visible input tokens than three backends"
         in view["narrative"]["en"]["conclusion"]
     )
     assert "接口组合检验族中通过校正的结果" in view["narrative"]["zh"]["conclusion"]
@@ -875,6 +885,143 @@ def test_an_unmeasurable_evidence_dimension_does_not_cap_a_treatment() -> None:
     assert audited["unscored_dimensions"]["required_evidence_covered"] == {"covered": 1}
     assert not_estimable["unscored_dimensions"]["required_evidence_covered"] == {"not_estimable": 1}
     assert failed["unscored_dimensions"]["required_evidence_covered"] == {"failed": 1}
+
+
+def test_the_first_screen_states_effects_and_keeps_every_limit_on_the_page() -> None:
+    """The hero and the findings lead with what was measured; nothing is dropped.
+
+    The page is a marketing artifact and reads like one, which is exactly why the
+    limits have to survive the rewrite: they are what a reader checks the claims
+    against. They move into the caveat disclosure on each finding, they do not
+    leave the page.
+    """
+    view = build_report_view_model(_report(storage_holm_adjusted_p=0.01))
+    english = view["narrative"]["en"]
+
+    # No hedge and no test vocabulary in the line a reader meets first.
+    title = english["hero_title"]
+    assert not {"may", "might", "suggests", "appears"} & set(title.lower().split())
+
+    # The claim is in the title; the figures are marked on the result line.
+    marks = [
+        part["value"]
+        for clause in english["hero_result"]
+        for part in clause
+        if part["kind"] == "mark"
+    ]
+    assert marks and all(value.endswith("%") for value in marks)
+    assert all(
+        len(view["narrative"][language]["hero_result"]) == len(english["hero_result"])
+        for language in view["languages"]
+    )
+
+    # Every headline figure carries the value it was measured against.
+    ledger = view["charts"]["hero_ledger"]
+    assert ledger["left"] == "raw" and ledger["right"] == "split_pillars"
+    for row in ledger["rows"]:
+        assert row["left_text"] and row["right_text"]
+        # Both lengths are signed here, not inferred in the browser: the renderer
+        # must not be the thing that decides which arm is the longer bar.
+        assert 0 < row["left_fill"] <= row["right_fill"] == 1
+        assert row["label"]["en"] and row["label"]["zh"]
+
+    findings = {item["id"]: item for item in view["takeaways"]}
+    assert set(findings) == {"one_store", "semantic_layer", "cross_model"}
+    for identifier, finding in findings.items():
+        copy_ = english["takeaways"][identifier]
+        assert copy_["headline"] and copy_["support"]
+        # The grade names what the finding above it claims. Grading a diagnosis
+        # breakdown from an efficiency tally attaches a verdict to a sentence
+        # that tally never ran on.
+        if finding["goal"] == "semantic_layer":
+            assert finding["grade"] == "descriptive"
+
+    # Every limit the page used to print beside the claim is still on the page.
+    caveats = " ".join(english["takeaways"]["semantic_layer"]["caveats"])
+    assert "No efficiency endpoint passed Holm correction" in caveats
+    assert "confounded" in caveats
+    assert "12/48" in caveats or "with the layer against" in caveats
+    storage_caveats = " ".join(english["takeaways"]["one_store"]["caveats"])
+    assert "Holm correction" in storage_caveats
+    assert "not equivalence" in storage_caveats
+
+
+def test_page_metadata_carries_the_result_and_never_invents_a_location(tmp_path: Path) -> None:
+    """The card states what was measured, and claims an address only when given one.
+
+    A guessed canonical tells a crawler the real page is a duplicate of this one,
+    and a guessed image URL ships a card with a broken picture. Both are worse
+    than the tag being absent.
+    """
+    report = _report(storage_holm_adjusted_p=0.01)
+
+    anonymous = tmp_path / "anonymous.html"
+    render_formal_measurement_report(report, anonymous, report_json_filename="r.json")
+    document = anonymous.read_text()
+    assert "__REPORT_" not in document
+    for tag in ('rel="canonical"', 'property="og:url"', 'property="og:image"'):
+        assert tag not in document
+    assert 'name="twitter:card" content="summary_large_image"' in document
+
+    located = tmp_path / "located.html"
+    render_formal_measurement_report(
+        report,
+        located,
+        report_json_filename="r.json",
+        canonical_url="https://example.test",
+        cover_filename="cover.png",
+    )
+    document = located.read_text()
+    assert '<link rel="canonical" href="https://example.test">' in document
+    assert 'content="https://example.test/cover.png"' in document
+
+    # Title and description are the measurement's own, not copy that can go stale.
+    title = re.search(r"<title>(.*?)</title>", document).group(1)
+    description = re.search(r'<meta name="description" content="(.*?)">', document).group(1)
+    assert "Agent RCA Bench" in title
+    assert any(character.isdigit() for character in description)
+    structured = json.loads(
+        re.search(r'<script type="application/ld\+json">(.*?)</script>', document, re.S).group(1)
+    )
+    assert structured["@type"] == "Dataset"
+    assert structured["url"] == "https://example.test"
+    assert structured["name"] == title
+
+
+def test_a_metric_with_no_eligible_pair_states_no_denominator() -> None:
+    """ "0 of 0 models" reads as a measured result; it is a missing one.
+
+    An endpoint can leave every model without an eligible pair - this cohort's
+    predecessor shipped with none - and the cross-model sentence has to fall back
+    to a count that has a denominator rather than print an empty fraction.
+    """
+    from agent_rca_bench.formal_report_view import _cross_model_headline
+
+    empty = {"models": 0, "reduced": 0}
+    for language in ("en", "zh"):
+        headline = _cross_model_headline(empty, 5, 6, language)
+        assert "0/0" not in headline and "0 of 0" not in headline
+        assert "5" in headline and "6" in headline
+
+    measured = {"models": 6, "reduced": 6}
+    assert _cross_model_headline(measured, 5, 6, "en").startswith("Every model")
+    partial = {"models": 4, "reduced": 3}
+    assert "3 of 4" in _cross_model_headline(partial, 5, 6, "en")
+
+
+def test_chinese_sentences_space_latin_names_the_way_chinese_does() -> None:
+    """A Latin run takes a space against Han characters and none against 。
+
+    The arm names reaching these sentences are Latin ("GreptimeDB") or Chinese
+    ("三个后端") depending on the arm, so this cannot be hardcoded per sentence;
+    an earlier version keyed the space off whether the metric ended in "token".
+    """
+    from agent_rca_bench.formal_report_view import _zh_join
+
+    assert _zh_join("在", "GreptimeDB", "上") == "在 GreptimeDB 上"
+    assert _zh_join("在", "三个后端", "上") == "在三个后端上"
+    assert _zh_join("低于", "GreptimeDB", "。") == "低于 GreptimeDB。"
+    assert _zh_join("读入", "token", "，下略") == "读入 token，下略"
 
 
 def test_no_post_hoc_grade_survives_beside_the_registered_test() -> None:

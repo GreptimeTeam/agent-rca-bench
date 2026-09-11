@@ -68,6 +68,15 @@
     return node;
   };
 
+  /* The wordmark ships as an asset and is inlined into a template, so the page
+   * stays self-contained and the renderer never carries markup of its own. */
+  const logoMark = () =>
+    h(
+      "span",
+      { class: "logo", role: "img", "aria-label": "Greptime" },
+      document.getElementById("semantic-rca-logo").content.cloneNode(true),
+    );
+
   const isNum = (value) => typeof value === "number" && Number.isFinite(value);
   const NA = () => t("label.na");
 
@@ -269,6 +278,72 @@
     );
   };
 
+  /* One comparison, three measures. Each measure draws both arms as bars on a
+   * shared scale from a shared origin, so the length of a bar is the value and
+   * the reader compares two lengths rather than reading a split. An earlier
+   * version drew one bar divided at the ratio: a 1.9x difference came out as a
+   * 52/48 split, which reads as "about the same" and left the percentage sitting
+   * on the arm it was measured against. The view model decides which rows exist,
+   * which arm leads, and how each is worded. */
+  const heroLedger = () => {
+    const ledger = view.charts.hero_ledger;
+    if (!ledger) return null;
+    const name = (key) => ledger[`${key}_name`][language] || ledger[`${key}_name`].en;
+    const bar = (side, fraction, value, delta) =>
+      h(
+        "div",
+        { class: "ledger-pair", "data-side": side },
+        h("span", { class: "ledger-arm", text: name(side) }),
+        h(
+          "span",
+          { class: "ledger-track" },
+          h("span", {
+            class: "ledger-fill",
+            "data-arm": ledger[side],
+            style: `width:${(fraction * 100).toFixed(4)}%`,
+          }),
+        ),
+        h("span", { class: "ledger-value", text: value }),
+        h("span", { class: "ledger-delta", text: delta || "" }),
+      );
+    return h(
+      "div",
+      { class: "ledger" },
+      ledger.rows.map((row) =>
+        h(
+          "div",
+          { class: "ledger-row", "data-row": row.id },
+          h("p", { class: "ledger-label", text: row.label[language] || row.label.en }),
+          bar("left", row.left_fill, row.left_text, row.delta[language] || row.delta.en),
+          bar("right", row.right_fill, row.right_text, null),
+        ),
+      ),
+    );
+  };
+
+  /* The figures the title claims, marked so they read before the words around
+   * them. Which clauses exist, their order and their wording are decided in the
+   * view model; the renderer marks and spaces them. */
+  const heroResult = () => {
+    const clauses = narrative().hero_result;
+    if (!clauses || !clauses.length) return null;
+    return h(
+      "p",
+      { class: "hero-result" },
+      clauses.map((clause) =>
+        h(
+          "span",
+          { class: "hero-claim" },
+          clause.map((part) =>
+            part.kind === "mark"
+              ? h("mark", { text: part.value })
+              : h("span", { text: part.value }),
+          ),
+        ),
+      ),
+    );
+  };
+
   const heroSection = () => {
     const facts = view.facts;
     const meta = [
@@ -277,35 +352,35 @@
       t("hero.meta.cases", { n: facts.transfer_cases }),
       t("hero.meta.micro", { n: facts.micro_cases }),
     ];
-    if (facts.publication) {
-      meta.push(
-        t("hero.meta.measurement_updated", { timestamp: facts.publication.measurement_updated_at }),
-        t("hero.meta.report_generated", { timestamp: facts.publication.report_generated_at }),
-      );
-    }
     const repo = "https://github.com/GreptimeTeam/agent-rca-bench";
     return h(
       "header",
       { class: "hero" },
       h(
         "div",
-        { class: "wrap hero-grid" },
+        { class: "wrap" },
+        h("p", { class: "eyebrow", text: t("hero.eyebrow") }),
+        h("h1", { text: narrative().hero_title }),
+        heroResult(),
+        h("p", { class: "lede", text: narrative().hero_lede }),
+        heroLedger(),
         h(
           "div",
-          { class: "hero-copy" },
-          h("p", { class: "eyebrow", text: t("hero.eyebrow") }),
-          h("h1", { text: t("hero.title") }),
-          h("p", { class: "lede", text: t("hero.lede") }),
-          h("div", { class: "hero-meta" }, meta.map((item) => h("span", { text: item }))),
-          h(
-            "div",
-            { class: "hero-actions" },
-            h("a", { href: view.report_json_filename, download: true, text: t("hero.download") }),
-            h("a", { href: `${repo}#reproduce-the-published-report`, text: t("hero.reproduce") }),
-            h("a", { href: repo, text: t("hero.source") }),
-          ),
+          { class: "hero-actions" },
+          h("a", { href: view.report_json_filename, download: true, text: t("hero.download") }),
+          h("a", { href: `${repo}#reproduce-the-published-report`, text: t("hero.reproduce") }),
+          h("a", { href: repo, text: t("hero.source") }),
         ),
-        heroScoreboard(),
+        h("div", { class: "hero-meta" }, meta.map((item) => h("span", { text: item }))),
+        facts.publication
+          ? h("p", {
+              class: "hero-stamp",
+              text: [
+                t("hero.meta.measurement_updated", { timestamp: facts.publication.measurement_updated_at }),
+                t("hero.meta.report_generated", { timestamp: facts.publication.report_generated_at }),
+              ].join(" · "),
+            })
+          : null,
       ),
     );
   };
@@ -330,6 +405,7 @@
         }),
         armCards(),
         interfaceMatrix(),
+        heroScoreboard(),
         h("h2", { class: "findings-title", text: t("headline.title") }),
         h("p", { class: "section-lede", text: t("headline.lede") }),
         headlineBars(),
@@ -508,7 +584,7 @@
       view.treatments.map((key) =>
         h(
           "div",
-          { class: "arm" },
+          { class: "arm", "data-arm": key },
           h("span", { class: "arm-name", text: treatment(key) }),
           h("h3", { text: t(`arm.${key}.name`) }),
           h("p", { class: "caption", text: t(`arm.${key}.gloss`) }),
@@ -545,6 +621,9 @@
     );
   };
 
+  /* The finding leads with what was measured. The limits on reading it are on
+   * the same card, one disclosure away: they qualify the claim, they are not the
+   * claim, and a reader who opens none of them must still not be misled. */
   const takeawayRow = (takeaway, index) => {
     const copy = narrative().takeaways[takeaway.id];
     return h(
@@ -555,9 +634,10 @@
         "div",
         { class: "finding-body" },
         h("h3", { text: copy.headline }),
+        h("ul", { class: "finding-support plain" }, copy.support.map((text) => h("li", { text }))),
         h(
           "div",
-          { class: "finding-grade" },
+          { class: "finding-foot" },
           h("span", {
             class: "badge",
             "data-grade": takeaway.grade,
@@ -565,7 +645,14 @@
           }),
           h("span", { class: "caption", text: t(`grade.${takeaway.grade}.gloss`) }),
         ),
-        h("ul", { class: "finding-support plain" }, copy.support.map((text) => h("li", { text }))),
+        copy.caveats && copy.caveats.length
+          ? h(
+              "details",
+              { class: "caveats" },
+              h("summary", { text: t("panel.caveats") }),
+              h("ul", { class: "caption plain" }, copy.caveats.map((text) => h("li", { text }))),
+            )
+          : null,
       ),
     );
   };
@@ -1653,6 +1740,7 @@
       h(
         "div",
         { class: "wrap topbar-inner" },
+        h("a", { class: "topbar-brand", href: "https://greptime.com" }, logoMark()),
         h(
           "nav",
           { "aria-label": t("nav.overview") },
@@ -1680,6 +1768,13 @@
       h(
         "div",
         { class: "wrap" },
+        h(
+          "div",
+          { class: "footer-cta" },
+          logoMark(),
+          h("p", { class: "footer-cta-note", text: t("footer.cta_note") }),
+          h("a", { class: "footer-cta-link", href: "https://greptime.com", text: t("footer.cta") }),
+        ),
         h("p", { text: t("footer.text") }),
         view.facts.publication ? h("p", { text: [
           t("hero.meta.measurement_updated", { timestamp: view.facts.publication.measurement_updated_at }),

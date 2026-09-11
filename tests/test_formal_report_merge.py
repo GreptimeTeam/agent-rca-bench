@@ -72,8 +72,8 @@ def test_merge_preserves_models_and_independent_correction_scopes(merged_report)
     reversal = view["narrative"]["zh"]["takeaways"]["fault_dependent"]["support"]
     assert reversal[0].startswith("服务/依赖故障")
     assert reversal[1].startswith("节点故障")
-    assert "Graph 112、Raw 106" in reversal[0]
-    assert "Graph 12、Raw 24" in reversal[1]
+    assert "语义层 112 次、GreptimeDB 106 次" in reversal[0]
+    assert "语义层 12 次、GreptimeDB 24 次" in reversal[1]
     assert "不能单独归因" in reversal[2]
     invalid = copy.deepcopy(merged_report)
     invalid["inference_cohorts"][0]["models"] += invalid["inference_cohorts"][1]["models"]

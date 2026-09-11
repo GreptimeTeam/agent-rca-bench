@@ -20,6 +20,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from importlib.resources import files
 from pathlib import Path
+from urllib.parse import quote
 
 from agent_rca_bench.formal_report import (
     CAUSAL_SCOPE_LABELS,
@@ -35,11 +36,30 @@ from agent_rca_bench.formal_report import _mechanism_cohort as mechanism_cohort
 from agent_rca_bench.formal_report import _mechanism_label as mechanism_label
 from agent_rca_bench.formal_report import _to_usd as to_usd
 
+# Where the report is published, as recorded in CITATION.cff and the README
+# badge. A page only claims a canonical URL when its caller knows one: a
+# supplementary artifact served from somewhere else would otherwise tell a
+# crawler that the primary report is a duplicate of it.
+PUBLICATION_URL = "https://rca-bench.greptime.com"
+
+# The site's own share-card geometry, so a card from this page crops the way a
+# card from greptime.com does.
+COVER_SIZE = (1800, 900)
+
 REPORT_VIEW_SCHEMA_VERSION = 1
 
 LANGUAGES = ("en", "zh")
 
 TREATMENT_LABELS = {"raw": "Raw", "semantic_graph": "Graph", "split_pillars": "Split"}
+
+# Raw, Graph and Split are the short axis labels a chart needs. A sentence naming
+# an arm says what it is instead: a reader meeting "Raw used fewer tokens" has to
+# look the code up, and the finding is where they are least willing to.
+ARM_NAMES = {
+    "raw": {"en": "GreptimeDB", "zh": "GreptimeDB"},
+    "semantic_graph": {"en": "the Semantic Graph", "zh": "语义层"},
+    "split_pillars": {"en": "three backends", "zh": "三个后端"},
+}
 
 # Registered endpoints only. A metric that is not comparable in a family - rows
 # returned across the split stack - is absent here rather than plotted as zero.
@@ -350,6 +370,7 @@ def build_report_view_model(
                 report, ("component", "dependency_edge")
             ),
             "headline": _headline_bars(report),
+            "hero_ledger": _hero_ledger(report),
             "accuracy_by_level": _accuracy_by_level(report),
             "diagnosis_by_scope": _diagnosis_split(report, "causal_scope"),
             "diagnosis_by_dataset": _diagnosis_split(report, "dataset"),
@@ -474,9 +495,10 @@ def _interface_matrix(report: Mapping[str, object]) -> dict[str, object]:
 def _takeaways(report: Mapping[str, object]) -> list[dict[str, object]]:
     """The three findings a reader who stops after the first screen should have.
 
-    Ordered by how much the measurement supports them, not by which arm they
-    favour, and each carries the counts it was derived from so the claim and its
-    evidence cannot drift apart.
+    One per research question, each carrying the counts it was derived from so
+    the claim and its evidence cannot drift apart. The fault-level split is not
+    among them: it is a post-measurement breakdown of the second question and is
+    stated in that section, beside the chart that shows both sides of it.
     """
     storage = _family_tally(report, "storage_shape")
     semantic = _family_tally(report, "semantic_layer")
@@ -487,6 +509,7 @@ def _takeaways(report: Mapping[str, object]) -> list[dict[str, object]]:
     }
     total_runs = diagnosis["runs_per_treatment"] * len(diagnosis["series"])
     scopes = mapping(report, "diagnosis_by_causal_scope")
+    scoped = _scope_contrast(report)
     return [
         {
             "id": "one_store",
@@ -500,31 +523,49 @@ def _takeaways(report: Mapping[str, object]) -> list[dict[str, object]]:
         },
         {
             "id": "semantic_layer",
-            "goal": "semantic_layer",
-            "grade": _tally_grade(semantic),
-            "evidence": dict(semantic),
-        },
-        {
-            "id": "fault_dependent",
+            # The claim above the badge is a diagnosis-accuracy breakdown, which
+            # no endpoint in this family tests. Grading it `not_confirmed` from
+            # the efficiency tally would attach a verdict to a sentence the tally
+            # never ran on. The tally itself is in the caveats and on the board.
             "goal": "semantic_layer",
             "grade": "descriptive",
             "evidence": {
-                scope: {
-                    "cases": int(mapping(scopes, scope)["cases"]),
-                    # The three levels hold different numbers of runs, so a count
-                    # without its denominator is not comparable across them.
-                    "runs": {
-                        treatment: int(value)
-                        for treatment, value in mapping(mapping(scopes, scope), "runs").items()
-                    },
-                    **{
-                        treatment: int(value)
-                        for treatment, value in mapping(
-                            mapping(scopes, scope), "diagnosis_correct"
-                        ).items()
-                    },
-                }
-                for scope in scopes
+                **semantic,
+                # The three levels hold different numbers of runs, so a count
+                # without its denominator is not comparable across them.
+                "by_fault_level": {
+                    scope: {
+                        "cases": int(mapping(scopes, scope)["cases"]),
+                        "runs": {
+                            treatment: int(value)
+                            for treatment, value in mapping(mapping(scopes, scope), "runs").items()
+                        },
+                        **{
+                            treatment: int(value)
+                            for treatment, value in mapping(
+                                mapping(scopes, scope), "diagnosis_correct"
+                            ).items()
+                        },
+                    }
+                    for scope in scopes
+                },
+                **({"service_and_dependency": scoped} if scoped else {}),
+            },
+        },
+        {
+            "id": "cross_model",
+            "goal": "model_ranking",
+            "grade": "descriptive",
+            "evidence": {
+                "models": len(mapping_list(diagnosis, "series")),
+                "input_tokens": _reduction_counts(
+                    _relative_rows(report, "storage_shape", "provider_visible_input_tokens")
+                ),
+                "tool_calls": _reduction_counts(
+                    _relative_rows(report, "storage_shape", "correct_completion_tool_calls")
+                ),
+                "diagnosis": totals,
+                "diagnosis_runs": total_runs,
             },
         },
     ]
@@ -630,6 +671,12 @@ def _narrative(report: Mapping[str, object], language: str) -> dict[str, object]
     return {
         "conclusion": _conclusion(report, language),
         "headline": _headline(report, language),
+        "hero_title": _hero_title(report, language),
+        "hero_lede": _hero_lede(report, language),
+        "hero_result": [
+            [{"kind": str(part["kind"]), "value": str(part[language])} for part in clause]
+            for clause in _hero_result(report)
+        ],
         "family_summaries": {
             family: _family_summary(report, family, language) for family in FAMILY_COMPARISONS
         },
@@ -648,6 +695,30 @@ def _narrative(report: Mapping[str, object], language: str) -> dict[str, object]
     }
 
 
+# Chinese typography puts a space between a Latin run and the Han characters
+# around it, and none before Chinese punctuation. The arm and metric names that
+# land in these sentences are sometimes Latin ("GreptimeDB") and sometimes not
+# ("三个后端"), so the spacing follows the characters that actually meet rather
+# than a per-name special case.
+_ZH_PUNCTUATION = "。，、；：？！（）《》“”‘’…—％"
+
+
+def _zh_join(*parts: str) -> str:
+    text = ""
+    for part in parts:
+        if not part:
+            continue
+        if text:
+            left, right = text[-1], part[0]
+            latin_left = left.isascii() and left.isalnum()
+            latin_right = right.isascii() and right.isalnum()
+            han = right if latin_left else left
+            if latin_left != latin_right and not left.isspace() and han not in _ZH_PUNCTUATION:
+                text += " "
+        text += part
+    return text
+
+
 def _significant_text(result: Mapping[str, object], language: str, *, detailed: bool = True) -> str:
     """The effect first, then the test that constrains what may be concluded from it.
 
@@ -663,7 +734,7 @@ def _significant_text(result: Mapping[str, object], language: str, *, detailed: 
     delta = effect.get("case_median_delta")
     if not isinstance(delta, (int, float)):
         raise ValueError("significant primary result has no case median delta")
-    left, right = (TREATMENT_LABELS.get(part, part) for part in parts)
+    left, right = (ARM_NAMES[part][language] if part in ARM_NAMES else part for part in parts)
     favored, other = (left, right) if delta < 0 else (right, left)
     # The cases that moved the way the median points, not the total.
     agreeing = int(effect["negative_cases"] if delta < 0 else effect["positive_cases"])
@@ -677,10 +748,12 @@ def _significant_text(result: Mapping[str, object], language: str, *, detailed: 
             "rows_returned": ("returned rows", "返回行数"),
         }[str(result["metric"])][language == "zh"]
         if language == "zh":
-            separator = " " if metric.endswith("token") else ""
-            return (
-                f"{result['model']}：{favored} 的{metric}{separator}更少"
-                f"（{agreeing}/{eligible} 个合格 case，中位差 {delta_text}）。"
+            return _zh_join(
+                f"{result['model']}：",
+                favored,
+                "的",
+                metric,
+                f"更少（{agreeing}/{eligible} 个合格 case，中位差 {delta_text}）。",
             )
         return (
             f"{result['model']}: {favored} used fewer {metric} "
@@ -689,10 +762,14 @@ def _significant_text(result: Mapping[str, object], language: str, *, detailed: 
     holm = f"{float(effect['holm_adjusted_p']):.8g}"
     exact = f"{float(effect['sign_test_two_sided_p']):.8g}"
     if language == "zh":
-        return (
-            f"{result['model']}：{eligible} 个合格 case 中，{agreeing} 个的 {favored} "
-            f"{metric}少于 {other}，case 差值中位数为 {delta_text}。"
-            f"精确符号检验 p={exact}；通过本检验族的 Holm 校正，校正后 p={holm}。"
+        return _zh_join(
+            f"{result['model']}：{eligible} 个合格 case 中，{agreeing} 个的",
+            favored,
+            metric,
+            "少于",
+            other,
+            f"，case 差值中位数为 {delta_text}。"
+            f"精确符号检验 p={exact}；通过本检验族的 Holm 校正，校正后 p={holm}。",
         )
     return (
         f"{result['model']}: {favored} used fewer {metric} than {other} in "
@@ -715,26 +792,52 @@ def _family_summary(report: Mapping[str, object], family: str, language: str) ->
 
 
 def _conclusion(report: Mapping[str, object], language: str) -> str:
+    """The result first, then the tests that constrain what may be concluded from it."""
     semantic = [item for item in _family_results(report, "semantic_layer") if item["significant"]]
     storage = [item for item in _family_results(report, "storage_shape") if item["significant"]]
     micro = _micro_row_reduction(report, language)
+    scoped = _scope_contrast(report)
+    facts = _contrast_facts(report)
+    correct = mapping(facts, "correct")
     if language == "zh":
+        effect = (
+            f"同一批故障下，GreptimeDB 诊断正确 {correct['raw']}/{facts['runs']}，"
+            f"三后端 {correct['split_pillars']}/{facts['runs']}；"
+            f"读入的 token 为 {facts['tokens']['split_pillars']:,} 对 "
+            f"{facts['tokens']['raw']:,}。"
+        )
+        if scoped:
+            effect += (
+                f"服务与依赖层故障上，语义层正确 {scoped['correct']['semantic_graph']}/"
+                f"{scoped['runs']}，高于裸接口的 {scoped['correct']['raw']}/{scoped['runs']}；"
+            )
+        effect += f"聚焦检索中语义层减少返回行数的合格结果为 {micro}。"
         semantic_text = (
-            "GreptimeDB 语义层检验族没有端到端主要指标通过 Holm 校正"
+            "语义层检验族没有端到端主要指标通过 Holm 校正"
             if not semantic
             else f"语义层检验族有 {len(semantic)} 项端到端主要指标通过 Holm 校正"
         )
         storage_text = (
-            "接口组合检验族没有主要指标通过 Holm 校正"
+            "接口组合检验族没有主要指标通过 Holm 校正。"
             if not storage
             else "接口组合检验族中通过校正的结果——"
             + "".join(_significant_text(item, language) for item in storage)
         )
-        terminator = "" if storage else "。"
-        return (
-            f"聚焦检索中 Graph 减少 rows 的合格结果为 {micro}；{semantic_text}。"
-            f"{storage_text}{terminator}其余端到端效果随模型和故障机制变化。"
+        return f"{effect}{semantic_text}。{storage_text}"
+    effect = (
+        f"On the same incidents, GreptimeDB reached a correct diagnosis in "
+        f"{correct['raw']}/{facts['runs']} runs against "
+        f"{correct['split_pillars']}/{facts['runs']} on three backends, "
+        f"reading {facts['tokens']['split_pillars']:,} input tokens against "
+        f"{facts['tokens']['raw']:,}. "
+    )
+    if scoped:
+        effect += (
+            f"On service and dependency faults the Semantic Graph was correct in "
+            f"{scoped['correct']['semantic_graph']}/{scoped['runs']} runs against "
+            f"{scoped['correct']['raw']}/{scoped['runs']} without it. "
         )
+    effect += f"Eligible focused-retrieval results where the layer read back fewer rows: {micro}. "
     semantic_text = (
         "No end-to-end primary endpoint in the semantic-layer family passes Holm correction"
         if not semantic
@@ -742,33 +845,346 @@ def _conclusion(report: Mapping[str, object], language: str) -> str:
         "pass Holm correction"
     )
     storage_text = (
-        "No primary endpoint in the interface-bundle family passes Holm correction"
+        "No primary endpoint in the interface-bundle family passes Holm correction."
         if not storage
         else "Interface-bundle endpoints that pass Holm correction: "
         + " ".join(_significant_text(item, language) for item in storage)
     )
-    terminator = "" if storage else "."
+    return f"{effect}{semantic_text}. {storage_text}"
+
+
+def _contrast_facts(report: Mapping[str, object]) -> dict[str, object]:
+    """The arm-level contrast the page leads with, derived once.
+
+    The hero line, the findings and the no-JavaScript summary all state this
+    same comparison. Deriving it separately in each let one of them keep a
+    number that a rerun had already moved.
+    """
+    rows = {str(row["id"]): row for row in mapping_list(_headline_bars(report), "rows")}
+    accuracy = rows["accuracy"]
+    runs = int(accuracy["denominator"])
+    correct = {key: int(value) for key, value in mapping(accuracy, "values").items()}
+    wrong = {key: runs - value for key, value in correct.items()}
+    tokens = {key: int(value) for key, value in mapping(rows["input_tokens"], "values").items()}
+    cost = rows["cost"]
+    cost_label = (cost.get("bounds_ratio_labels") or {}).get("split_pillars")
+    if cost_label is None:
+        ratio = (cost.get("ratios") or {}).get("split_pillars")
+        cost_label = f"×{float(ratio):.2f}" if isinstance(ratio, (int, float)) else None
+    return {
+        "runs": runs,
+        "correct": correct,
+        "wrong": wrong,
+        "tokens": tokens,
+        # A share of the baseline's misses, not of its runs: "40% fewer wrong"
+        # is the quantity a reader checks against 63 and 38, not against 168.
+        "wrong_reduction": (
+            (wrong["split_pillars"] - wrong["raw"]) / wrong["split_pillars"]
+            if wrong["split_pillars"] > 0
+            else None
+        ),
+        "token_reduction": (
+            (tokens["split_pillars"] - tokens["raw"]) / tokens["split_pillars"]
+            if tokens["split_pillars"] > 0
+            else None
+        ),
+        "cost_ratio_label": cost_label,
+    }
+
+
+def _percent(value: float) -> str:
+    return f"{round(value * 100):g}%"
+
+
+def _gain(facts: Mapping[str, object], key: str) -> float | None:
+    """A reduction only when one was measured, so no headline can invent one."""
+    value = facts.get(key)
+    return float(value) if isinstance(value, (int, float)) and value > 0 else None
+
+
+def _hero_lead_metric(facts: Mapping[str, object]) -> str | None:
+    """Which reduction the title states, so the stat band does not repeat it.
+
+    Accuracy leads when there is one: it is the outcome a reader came for, and
+    the resource figures mean less before they know whether the answer was right.
+    """
+    if _gain(facts, "wrong_reduction") is not None:
+        return "accuracy"
+    return "tokens" if _gain(facts, "token_reduction") is not None else None
+
+
+def _hero_title(report: Mapping[str, object], language: str) -> str:
+    """The claim the page makes, without the figures the result line states.
+
+    The three stores are named rather than counted: "three backends" says
+    nothing about what is being measured, while the three product names tell a
+    reader the subject is observability before the lede gets a chance to.
+
+    One clause, so it sets in two display lines. An earlier title carried both
+    reductions and ran four lines while repeating the band below it.
+    """
+    if not _hero_result(report):
+        return (
+            "换掉 agent 背后的可观测性接口，根因分析的结果会变"
+            if language == "zh"
+            else "The observability interface behind the agent changes the root cause analysis"
+        )
+    if language == "zh":
+        return "一个数据库取代 Prometheus、Loki 和 Tempo"
+    return "One database instead of Prometheus, Loki and Tempo."
+
+
+def _page_title(report: Mapping[str, object], language: str = "en") -> str:
+    """The claim, then the benchmark, because a result is what a share card shows."""
+    return f"{_hero_title(report, language).rstrip('.')} — Agent RCA Bench"
+
+
+def _page_description(report: Mapping[str, object], language: str = "en") -> str:
+    """The measured result and the scale it was measured at, in one sentence.
+
+    Derived rather than written into the template: a description that outlives
+    its numbers is what a stale share card is.
+    """
+    execution = mapping(report, "execution")
+    cases = int(execution["transfer_cases"])
+    models = len(_sequence(report, "model_order"))
+    runs = (
+        int(execution["repetitions_per_model_case"])
+        * cases
+        * len(_sequence(execution, "treatments"))
+        * models
+    )
+    effect = _join(
+        [" ".join(part[language] for part in clause) for clause in _hero_result(report)],
+        language,
+    )
+    if language == "zh":
+        opening = f"GreptimeDB 对比 Prometheus、Loki 和 Tempo：{effect}。" if effect else ""
+        return (
+            f"{opening}{models} 个模型、{cases} 个故障、{runs} 次端到端根因分析调查，"
+            "同一套 prompt 与遥测数据，只改变 agent 背后的可观测性接口。"
+        )
+    opening = f"GreptimeDB against Prometheus, Loki and Tempo: {effect}. " if effect else ""
     return (
-        f"Eligible focused-retrieval results where Graph reduced rows: {micro}. "
-        f"{semantic_text}. {storage_text}{terminator} Other end-to-end effects vary by model and "
-        "fault mechanism."
+        f"{opening}{models} models, {cases} incidents and {runs} end-to-end root cause "
+        "investigations on the same prompt and the same telemetry, changing only the "
+        "observability interface behind the agent."
     )
 
 
-def _headline(report: Mapping[str, object], language: str) -> str:
-    storage = [item for item in _family_results(report, "storage_shape") if item["significant"]]
-    semantic = [item for item in _family_results(report, "semantic_layer") if item["significant"]]
-    if storage and not semantic:
-        count = len(storage)
-        if language == "zh":
-            return f"接口组合 {count} 项显著；Graph 端到端不稳定"
-        return (
-            f"{'One' if count == 1 else count} interface "
-            f"endpoint{' is' if count == 1 else 's are'} significant; Graph E2E varies"
-        )
+def _hero_lede(report: Mapping[str, object], language: str) -> str:
+    execution = mapping(report, "execution")
+    treatments = len(_sequence(execution, "treatments"))
+    cases = int(execution["transfer_cases"])
+    models = len(_sequence(report, "model_order"))
+    runs = int(execution["repetitions_per_model_case"]) * cases * treatments * models
     if language == "zh":
-        return "聚焦检索用量下降，端到端结果随场景变化"
-    return "Focused retrieval improves; E2E varies"
+        return (
+            f"{models} 个模型、{cases} 个故障、{runs} 次端到端调查。"
+            "同一套 prompt、同一份遥测数据、同一个工具预算，"
+            "唯一改变的是 agent 背后的可观测性接口。"
+        )
+    return (
+        f"{models} models, {cases} incidents, {runs} end-to-end investigations. "
+        "Same prompt, same telemetry, same tool budget. The observability interface "
+        "behind the agent is the only variable."
+    )
+
+
+def _hero_ledger(report: Mapping[str, object]) -> dict[str, object] | None:
+    """The first screen's comparison, as measured gaps rather than lone figures.
+
+    Every row is the same two arms on the same runs, so a headline figure cannot
+    appear without the value it is measured against. A row is included only while
+    GreptimeDB is the lower side of it: the condition is on the direction the
+    data took, never on which arm it favours, so a rerun that reverses one drops
+    the row instead of restating it.
+    """
+    facts = _contrast_facts(report)
+    left, right = "raw", "split_pillars"
+    rows: list[dict[str, object]] = []
+
+    misses = mapping(facts, "wrong")
+    wrong = _gain(facts, "wrong_reduction")
+    if wrong is not None:
+        rows.append(
+            {
+                "id": "accuracy",
+                "label": {
+                    "en": f"wrong diagnoses, of {facts['runs']} runs",
+                    "zh": f"错误诊断，共 {facts['runs']} 次运行",
+                },
+                "left_text": f"{misses[left]:,}",
+                "right_text": f"{misses[right]:,}",
+                "left_fill": round(misses[left] / misses[right], POSITION_PRECISION),
+                "right_fill": 1.0,
+                "delta": {"en": f"−{_percent(wrong)}", "zh": f"−{_percent(wrong)}"},
+            }
+        )
+
+    read = mapping(facts, "tokens")
+    tokens = _gain(facts, "token_reduction")
+    if tokens is not None:
+        rows.append(
+            {
+                "id": "input_tokens",
+                "label": {"en": "input tokens read", "zh": "读入的 token"},
+                "left_text": f"{read[left]:,}",
+                "right_text": f"{read[right]:,}",
+                "left_fill": round(read[left] / read[right], POSITION_PRECISION),
+                "right_fill": 1.0,
+                "delta": {"en": f"−{_percent(tokens)}", "zh": f"−{_percent(tokens)}"},
+            }
+        )
+
+    cost = _cost_ledger_row(report, left, right)
+    if cost:
+        rows.append(cost)
+    if not rows:
+        return None
+    return {
+        "left": left,
+        "right": right,
+        "left_name": dict(ARM_NAMES[left]),
+        "right_name": dict(ARM_NAMES[right]),
+        "rows": rows,
+    }
+
+
+def _cost_arms(report: Mapping[str, object], left: str, right: str) -> dict[str, object] | None:
+    """Both arms' estimated spend, as an interval when the estimate carries one.
+
+    Returns None when either arm is unpriced, or when the two intervals overlap:
+    a reduction cannot be stated from estimates that do not separate.
+    """
+    row = next(
+        item for item in mapping_list(_headline_bars(report), "rows") if item["id"] == "cost"
+    )
+    bounds, values = row.get("bounds"), mapping(row, "values")
+    if isinstance(bounds, Mapping):
+        left_low, left_high = (float(value) for value in bounds[left])
+        right_low, right_high = (float(value) for value in bounds[right])
+        left_text = f"{left_low:,.2f}–{left_high:,.2f}"
+        right_text = f"{right_low:,.2f}–{right_high:,.2f}"
+    elif isinstance(values.get(left), (int, float)) and isinstance(values.get(right), (int, float)):
+        left_low = left_high = float(values[left])
+        right_low = right_high = float(values[right])
+        left_text = f"{left_low:,.2f}"
+        right_text = f"{right_low:,.2f}"
+    else:
+        return None
+    if not right_low or left_high >= right_low:
+        return None
+    return {
+        "currency": str(row.get("currency") or ""),
+        "left_text": left_text,
+        "right_text": right_text,
+        "fill": round(left_high / right_high, POSITION_PRECISION),
+        # The smallest and largest reductions the two intervals allow. The
+        # smallest is the one a headline may state: it is true at either end.
+        "least": 1.0 - left_high / right_low,
+        "most": 1.0 - left_low / right_high,
+    }
+
+
+def _cost_ledger_row(
+    report: Mapping[str, object], left: str, right: str
+) -> dict[str, object] | None:
+    """Spend as a pair of bars, carrying the estimate's interval into both ends."""
+    arms = _cost_arms(report, left, right)
+    if arms is None:
+        return None
+    least, most = float(arms["least"]), float(arms["most"])
+    delta = (
+        f"−{_percent(least)}"
+        if round(least * 100) == round(most * 100)
+        else f"−{round(least * 100):g}–{_percent(most)}"
+    )
+    currency = str(arms["currency"])
+    return {
+        "id": "cost",
+        # The unit rides with the label, not with each end: repeating it in both
+        # value cells pushed the bars out of a shared column and made three rows
+        # in three different units look like one scale.
+        "label": {
+            "en": f"estimated cost to run, {currency}".rstrip(", "),
+            "zh": f"估算运行成本（{currency}）" if currency else "估算运行成本",
+        },
+        "left_text": arms["left_text"],
+        "right_text": arms["right_text"],
+        "left_fill": arms["fill"],
+        "right_fill": 1.0,
+        "delta": {"en": delta, "zh": delta},
+    }
+
+
+def _hero_result(report: Mapping[str, object]) -> list[list[dict[str, str]]]:
+    """The reductions the title line marks, as clauses the renderer only lays out.
+
+    Two at most, and accuracy leads: the resource figures mean less before a
+    reader knows whether the answer was right. A clause exists only while the
+    measurement points that way, so a rerun that reverses one drops it rather
+    than restating it. Cost states the smaller bound of its interval, which is
+    the reduction that holds at either end of the estimate.
+    """
+    facts = _contrast_facts(report)
+    clauses: list[list[dict[str, str]]] = []
+    wrong = _gain(facts, "wrong_reduction")
+    if wrong is not None:
+        clauses.append(
+            [
+                {"kind": "mark", "en": _percent(wrong), "zh": _percent(wrong)},
+                {"kind": "text", "en": "fewer wrong diagnoses", "zh": "更少的错误诊断"},
+            ]
+        )
+    cost = _cost_arms(report, "raw", "split_pillars")
+    if cost is not None:
+        share = _percent(float(cost["least"]))
+        clauses.append(
+            [
+                {"kind": "mark", "en": share, "zh": share},
+                {"kind": "text", "en": "lower cost to run", "zh": "更低的运行成本"},
+            ]
+        )
+    tokens = _gain(facts, "token_reduction")
+    if tokens is not None and len(clauses) < 2:
+        share = _percent(tokens)
+        clauses.append(
+            [
+                {"kind": "mark", "en": share, "zh": share},
+                {"kind": "text", "en": "fewer tokens read", "zh": "更少的读入 token"},
+            ]
+        )
+    return clauses
+
+
+def _headline(report: Mapping[str, object], language: str) -> str:
+    """The one-line result, stated as the effect rather than as a test outcome."""
+    facts = _contrast_facts(report)
+    wrong, tokens = _gain(facts, "wrong_reduction"), _gain(facts, "token_reduction")
+    if wrong is None and tokens is None:
+        return (
+            "聚焦检索用量下降，端到端结果随场景变化"
+            if language == "zh"
+            else "Focused retrieval improves; E2E varies"
+        )
+    correct = mapping(facts, "correct")
+    parts = []
+    if wrong is not None:
+        parts.append(
+            f"GreptimeDB 诊断正确 {correct['raw']}/{facts['runs']}，三后端 "
+            f"{correct['split_pillars']}/{facts['runs']}"
+            if language == "zh"
+            else f"GreptimeDB got {correct['raw']}/{facts['runs']} right against "
+            f"{correct['split_pillars']}/{facts['runs']} on three backends"
+        )
+    if tokens is not None:
+        parts.append(
+            f"读入 token 减少 {_percent(tokens)}"
+            if language == "zh"
+            else f"reading {_percent(tokens)} fewer tokens"
+        )
+    return "，".join(parts) if language == "zh" else ", ".join(parts)
 
 
 def _micro_row_reduction(report: Mapping[str, object], language: str) -> str:
@@ -803,8 +1219,8 @@ def _micro_summary_text(report: Mapping[str, object], language: str) -> str:
     """
     parts = _micro_row_reduction(report, language)
     if language == "zh":
-        return f"在两侧都合格的 case 中，GreptimeDB 语义层返回行数下降的结果：{parts}。"
-    return f"Eligible results where the GreptimeDB Semantic Graph read back fewer rows: {parts}."
+        return f"聚焦检索中语义层读回更少行的合格结果：{parts}。"
+    return f"Focused retrieval, eligible results where the layer read back fewer rows: {parts}."
 
 
 def _mechanism_row_effects(report: Mapping[str, object]) -> dict[str, dict[str, float | None]]:
@@ -845,83 +1261,348 @@ def _mechanism_summary(report: Mapping[str, object], language: str) -> str:
     )
 
 
-def _storage_headline(
-    significant: Sequence[Mapping[str, object]],
-    tally: Mapping[str, int],
-    language: str,
-) -> str:
-    """Lead with the effect, or with the direction count when none survived."""
-    if significant:
-        result = significant[0]
-        magnitude = f"{abs(float(mapping(result, 'effect')['case_median_delta'])):,.10g}"
-        metric = _metric_label(result["metric"], language)
-        if language == "zh":
-            return (
-                f"{result['model']} 使用 GreptimeDB 一体化接口时，"
-                f"相对 Split 的{metric}减少量在合格 case 中的中位数为 {magnitude}。"
-            )
-        return (
-            f"For {result['model']}, the median reduction in {metric} across eligible cases "
-            f"was {magnitude} with GreptimeDB's all-in-one interface compared with Split."
-        )
-    toward = int(tally["favouring_treatment"])
-    total = int(tally["total"])
-    if language == "zh":
-        return (
-            f"{total} 项预先指定端点中 {toward} 项的 case median 指向 GreptimeDB 一体化接口，"
-            "但没有一项通过校正。"
-        )
-    return (
-        f"{toward} of {total} pre-specified endpoints have a case median pointing to the "
-        "GreptimeDB all-in-one interface, and none passed correction."
-    )
-
-
 def _takeaway_text(report: Mapping[str, object], language: str) -> dict[str, dict[str, object]]:
-    takeaways = {item["id"]: mapping(item, "evidence") for item in _takeaways(report)}
-    storage = takeaways["one_store"]
-    significant = sorted(
-        (item for item in _family_results(report, "storage_shape") if item["significant"]),
-        key=lambda item: -abs(float(mapping(item, "effect")["case_median_delta"])),
+    """Each finding as an effect sentence, its counts, and the limits on reading it.
+
+    `support` carries what was measured and `caveats` what constrains it. They are
+    separate fields because the page gives them different weight, not different
+    standing: every caveat is on the page, in the finding it belongs to.
+    """
+    scoped = _scope_contrast(report)
+    node = _scope_contrast(report, ("infrastructure_node",))
+    facts = _contrast_facts(report)
+    correct = mapping(facts, "correct")
+    runs = facts["runs"]
+    tokens = _reduction_counts(
+        _relative_rows(report, "storage_shape", "provider_visible_input_tokens")
     )
-    input_reduction = bool(significant) and all(
-        item["metric"] == "provider_visible_input_tokens"
-        and mapping(item, "effect")["case_median_delta"] < 0
-        for item in significant
+    steps = _reduction_counts(
+        _relative_rows(report, "storage_shape", "correct_completion_tool_calls")
     )
+    accuracy_gain = sum(
+        int(mapping(item, "values")["raw"]) > int(mapping(item, "values")["split_pillars"])
+        for item in mapping_list(_diagnosis_slope(report), "series")
+    )
+    models = len(_sequence(report, "model_order"))
+    cost = _cost_direction_text(report, language)["storage_shape"]
+    zh = language == "zh"
+
+    one_store_support = [
+        f"诊断正确 {correct['raw']}/{runs}，三后端 {correct['split_pillars']}/{runs}。"
+        if zh
+        else f"Correct diagnoses: {correct['raw']}/{runs} against "
+        f"{correct['split_pillars']}/{runs} on three backends.",
+        f"读入的 token 合计 {facts['tokens']['raw']:,}，三后端 "
+        f"{facts['tokens']['split_pillars']:,}。"
+        if zh
+        else f"Input tokens read: {facts['tokens']['raw']:,} against "
+        f"{facts['tokens']['split_pillars']:,}.",
+    ]
+    if tokens["reduced"]:
+        one_store_support.append(
+            f"{tokens['reduced']}/{tokens['models']} 个模型在 GreptimeDB 上读入更少 token，"
+            f"case 中位降幅 {tokens['smallest']:.0f}%–{tokens['largest']:.0f}%。"
+            if zh
+            else f"{tokens['reduced']} of {tokens['models']} models read fewer tokens on "
+            f"GreptimeDB; the case medians fall between {tokens['smallest']:.0f}% and "
+            f"{tokens['largest']:.0f}%."
+        )
+    one_store_support.append(cost)
+    # A surviving endpoint is the strongest evidence the family produced, so it
+    # belongs beside the effect rather than among the limits on reading it. The
+    # per-endpoint deltas stay in the caveats and the endpoint table: four
+    # near-identical sentences buried the three lines above them.
+    passed = [item for item in _family_results(report, "storage_shape") if item["significant"]]
+    if passed:
+        names = _join([str(item["model"]) for item in passed], language)
+        one_store_support.append(
+            f"{len(passed)} 项预先指定端点通过 Holm 校正，方向全部指向 GreptimeDB（{names}）。"
+            if zh
+            else f"{len(passed)} pre-specified endpoints passed Holm correction, all of them "
+            f"favouring GreptimeDB ({names})."
+        )
+
+    semantic_support = []
+    if scoped:
+        semantic_support.append(
+            f"服务与依赖层故障：语义层 {scoped['correct']['semantic_graph']}/{scoped['runs']}，"
+            f"裸接口 {scoped['correct']['raw']}/{scoped['runs']}，"
+            f"三后端 {scoped['correct']['split_pillars']}/{scoped['runs']}。"
+            if zh
+            else f"Service and dependency faults: "
+            f"{scoped['correct']['semantic_graph']}/{scoped['runs']} with the layer, "
+            f"{scoped['correct']['raw']}/{scoped['runs']} without it, "
+            f"{scoped['correct']['split_pillars']}/{scoped['runs']} on three backends."
+        )
+        if not scoped["worse"]:
+            semantic_support.append(
+                f"这些故障上，启用语义层没有使任何模型的正确诊断数下降，"
+                f"{scoped['better']}/{scoped['models']} 个模型上升。"
+                if zh
+                else "No model returned fewer correct diagnoses with the layer on these "
+                f"faults; {scoped['better']} of {scoped['models']} returned more."
+            )
+    semantic_support.append(_micro_summary_text(report, language))
+
+    semantic_caveats = list(_family_summary(report, "semantic_layer", language))
+    if node:
+        semantic_caveats.append(
+            f"基础设施节点故障：语义层 {node['correct']['semantic_graph']}/{node['runs']}，"
+            f"低于裸接口的 {node['correct']['raw']}/{node['runs']}。"
+            if zh
+            else f"Infrastructure-node faults: "
+            f"{node['correct']['semantic_graph']}/{node['runs']} with the layer against "
+            f"{node['correct']['raw']}/{node['runs']} without it."
+        )
+    semantic_caveats.extend(_dataset_reversal_text(report, language))
+
+    cross_model_support = [
+        f"{tokens['reduced']}/{tokens['models']} 个模型在 GreptimeDB 上读入更少 token。"
+        if zh
+        else f"{tokens['reduced']} of {tokens['models']} models read fewer tokens on GreptimeDB.",
+        f"{accuracy_gain}/{models} 个模型的诊断正确数更高。"
+        if zh
+        else f"{accuracy_gain} of {models} models produced more correct diagnoses.",
+        f"{steps['reduced']}/{steps['models']} 个模型达成正确诊断所用的工具调用更少。"
+        if zh
+        else f"{steps['reduced']} of {steps['models']} models reached a correct diagnosis in "
+        "fewer tool calls.",
+    ]
+
     return {
         "one_store": {
-            "headline": (
-                "Raw 降低了部分模型的输入量。"
-                if input_reduction and language == "zh"
-                else "Raw reduced input for some models."
-                if input_reduction
-                else _storage_headline(significant, storage, language)
-            ),
-            "support": _family_summary(report, "storage_shape", language),
+            "headline": _one_store_headline(report, language),
+            "support": one_store_support,
+            "caveats": _family_caveats(report, "storage_shape", language),
         },
         "semantic_layer": {
-            "headline": (
-                "Graph 尚未显示普遍的端到端效率改善。"
-                if language == "zh"
-                else "Graph has not shown a general end-to-end efficiency gain."
-            )
-            if not any(item["significant"] for item in _family_results(report, "semantic_layer"))
-            else (
-                "Graph 部分效率指标通过校正。"
-                if language == "zh"
-                else "Some Graph efficiency endpoints passed correction."
-            ),
-            "support": _family_summary(report, "semantic_layer", language),
+            "headline": _semantic_headline(scoped, language),
+            "support": semantic_support,
+            "caveats": semantic_caveats,
+        },
+        "cross_model": {
+            "headline": _cross_model_headline(tokens, accuracy_gain, models, language),
+            "support": cross_model_support,
+            "caveats": [
+                "模型排名是描述性结果，没有做显著性检验。"
+                if zh
+                else "Model ranking is descriptive; no significance is claimed for it."
+            ],
         },
         "fault_dependent": {
             "headline": (
-                "Graph 在两类故障上的诊断表现不同。"
-                if language == "zh"
-                else "Graph diagnosis results differ across fault types."
+                _fault_level_headline(scoped, node, language)
+                if scoped
+                else (
+                    "Graph 在两类故障上的诊断表现不同。"
+                    if zh
+                    else "Graph results differ by fault type."
+                )
             ),
             "support": _dataset_reversal_text(report, language),
+            "caveats": [],
         },
+    }
+
+
+def _cross_model_headline(
+    tokens: Mapping[str, object], accuracy_gain: int, models: int, language: str
+) -> str:
+    """How consistently the arms separated across models, from whichever metric has a base.
+
+    "Every model" needs every model in the cohort to have been measured and every
+    one of them to have moved that way. Where no model had an eligible token pair
+    the sentence falls back to diagnosis counts, which always have a denominator.
+    """
+    measured, reduced = int(tokens["models"]), int(tokens["reduced"])
+    if measured == reduced == models:
+        if language == "zh":
+            return (
+                f"{models} 个模型全部在 GreptimeDB 上读入更少 token，"
+                f"{accuracy_gain}/{models} 个诊断更准。"
+            )
+        return (
+            f"Every model read fewer tokens on GreptimeDB, and "
+            f"{accuracy_gain} of {models} were more accurate."
+        )
+    if measured:
+        if language == "zh":
+            return f"{reduced}/{measured} 个模型在 GreptimeDB 上读入更少 token。"
+        return f"{reduced} of {measured} models read fewer tokens on GreptimeDB."
+    if language == "zh":
+        return f"{accuracy_gain}/{models} 个模型在 GreptimeDB 上的诊断正确数更高。"
+    return f"{accuracy_gain} of {models} models produced more correct diagnoses on GreptimeDB."
+
+
+def _one_store_headline(report: Mapping[str, object], language: str) -> str:
+    """Names the axes GreptimeDB actually led on, so a reversal cannot be claimed as a win."""
+    facts = _contrast_facts(report)
+    correct, tokens = mapping(facts, "correct"), mapping(facts, "tokens")
+    won = []
+    if correct["raw"] > correct["split_pillars"]:
+        won.append("准确率" if language == "zh" else "accuracy")
+    if tokens["raw"] < tokens["split_pillars"]:
+        won.append("读入 token" if language == "zh" else "tokens read")
+    cost = _headline_cost_direction(report)
+    if cost is not None and cost > 1:
+        won.append("成本" if language == "zh" else "cost")
+    if not won:
+        return (
+            "一个库和三个后端的差距按指标而定。"
+            if language == "zh"
+            else "One store and three backends differ by metric."
+        )
+    if language == "zh":
+        return f"在{'、'.join(won)}三项上，一个数据库均优于三个后端。"
+    return f"One database beat three backends on {_join(won, language)}."
+
+
+def _headline_cost_direction(report: Mapping[str, object]) -> float | None:
+    """The three-backend spend as a multiple of GreptimeDB's, when both are priced."""
+    cost = next(row for row in mapping_list(_headline_bars(report), "rows") if row["id"] == "cost")
+    bounds = cost.get("bounds")
+    if isinstance(bounds, Mapping):
+        low = float(bounds["split_pillars"][0])
+        high = float(bounds["raw"][1])
+        return low / high if high else None
+    ratio = (cost.get("ratios") or {}).get("split_pillars")
+    return float(ratio) if isinstance(ratio, (int, float)) else None
+
+
+def _semantic_headline(scoped: Mapping[str, object] | None, language: str) -> str:
+    """The fault levels the layer was built for, named with the arm that led them."""
+    if scoped is None:
+        return (
+            "语义层减少了聚焦检索读回的数据量。"
+            if language == "zh"
+            else "The Semantic Graph read back less data in focused retrieval."
+        )
+    correct = mapping(scoped, "correct")
+    best = max(correct, key=lambda key: correct[key])
+    if best != "semantic_graph":
+        return (
+            "服务与依赖层故障上，语义层没有取得最高准确率。"
+            if language == "zh"
+            else "The Semantic Graph did not lead on service and dependency faults."
+        )
+    if language == "zh":
+        return "服务与依赖层故障上，语义层是三个接口里最准的。"
+    return "On service and dependency faults, the Semantic Graph was the most accurate interface."
+
+
+def _fault_level_headline(
+    scoped: Mapping[str, object], node: Mapping[str, object] | None, language: str
+) -> str:
+    """States which side of the fault-level split each arm led, since the chart shows both."""
+    graph_ahead = mapping(scoped, "correct")["semantic_graph"] >= mapping(scoped, "correct")["raw"]
+    node_behind = node is not None and (
+        mapping(node, "correct")["semantic_graph"] < mapping(node, "correct")["raw"]
+    )
+    if graph_ahead and node_behind:
+        return (
+            "语义层的收益集中在服务与依赖层故障；节点层故障上它低于不带语义层的 GreptimeDB。"
+            if language == "zh"
+            else "The layer's gain is on service and dependency faults; on node faults it fell "
+            "behind GreptimeDB alone."
+        )
+    if graph_ahead:
+        return (
+            "语义层在服务与依赖层故障上领先。"
+            if language == "zh"
+            else "The layer leads on service and dependency faults."
+        )
+    return (
+        "语义层在不同故障层级上的表现不同。"
+        if language == "zh"
+        else "The layer's results differ by fault level."
+    )
+
+
+def _family_caveats(report: Mapping[str, object], family: str, language: str) -> list[str]:
+    """What the family's frozen test does and does not license, kept with the finding."""
+    tally = _family_tally(report, family)
+    caveats = [_tally_text(tally, language) + ("。" if language == "zh" else ".")]
+    caveats.extend(
+        _significant_text(item, language)
+        for item in _family_results(report, family)
+        if item["significant"]
+    )
+    caveats.append(
+        "配对端点仅限于冻结的合格规则筛选出的 case，数量少于队列总数；"
+        "不显著表示证据不足，不表示等价。"
+        if language == "zh"
+        else "Paired endpoints are restricted to the cases the frozen eligibility rule admits, "
+        "which is fewer cases than the cohort holds. Non-significant means insufficient "
+        "evidence, not equivalence."
+    )
+    return caveats
+
+
+SCOPED_FAULT_LEVELS = ("component", "dependency_edge")
+
+
+def _scope_contrast(
+    report: Mapping[str, object], scopes: tuple[str, ...] = SCOPED_FAULT_LEVELS
+) -> dict[str, object] | None:
+    """Correct diagnoses per arm over one group of fault levels, with per-model direction.
+
+    Returns None when the cohort holds none of those levels, so a finding about
+    them is dropped rather than printed against an empty denominator.
+    """
+    buckets = mapping(report, "diagnosis_by_causal_scope")
+    present = tuple(scope for scope in scopes if isinstance(buckets.get(scope), Mapping))
+    if not present:
+        return None
+    slope = _diagnosis_slope(report, present)
+    series = mapping_list(slope, "series")
+    treatments = [str(item) for item in _sequence(slope, "treatments")]
+    values = [mapping(item, "values") for item in series]
+    return {
+        "scopes": list(present),
+        "models": len(series),
+        "runs_per_model": int(slope["runs_per_treatment"]),
+        "runs": int(slope["runs_per_treatment"]) * len(series),
+        "correct": {
+            treatment: sum(int(item[treatment]) for item in values) for treatment in treatments
+        },
+        "better": sum(int(item["semantic_graph"]) > int(item["raw"]) for item in values),
+        "worse": sum(int(item["semantic_graph"]) < int(item["raw"]) for item in values),
+    }
+
+
+def _relative_rows(
+    report: Mapping[str, object], family: str, metric: str
+) -> list[Mapping[str, object]]:
+    group = next((item for item in _relative_change(report) if item["family"] == family), None)
+    if group is None:
+        return []
+    return next(
+        (
+            mapping_list(item, "rows")
+            for item in mapping_list(group, "metrics")
+            if item["metric"] == metric
+        ),
+        [],
+    )
+
+
+def _reduction_counts(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    """How many models' case medians moved toward the first treatment, and by how much.
+
+    A model with no eligible pair has no median and is left out of both the count
+    and its denominator: carrying it in the denominator would report "5 of 6"
+    where one of the six was never measured, and carrying it in the numerator
+    would report a reduction that no pair produced.
+    """
+    percents = [
+        float(row["percent"]) for row in rows if isinstance(row.get("percent"), (int, float))
+    ]
+    magnitudes = sorted(-value for value in percents if value < 0)
+    return {
+        "models": len(percents),
+        "reduced": len(magnitudes),
+        "smallest": magnitudes[0] if magnitudes else None,
+        "largest": magnitudes[-1] if magnitudes else None,
     }
 
 
@@ -947,19 +1628,22 @@ def _cost_direction_text(report: Mapping[str, object], language: str) -> dict[st
             and isinstance(item["values"].get(baseline), (int, float))
         ]
         cheaper = sum(item["values"][treatment] < item["values"][baseline] for item in comparable)
-        cheaper_label = TREATMENT_LABELS[treatment]
-        other_label = TREATMENT_LABELS[baseline]
+        cheaper_label = ARM_NAMES[treatment][language]
+        other_label = ARM_NAMES[baseline][language]
         if language == "zh":
-            text = (
-                f"{len(comparable)} 个可计价模型中，{cheaper} 个使用 {cheaper_label} 的成本"
-                f"低于 {other_label}。"
+            text = _zh_join(
+                f"{len(comparable)} 个可计价模型中，{cheaper} 个在",
+                cheaper_label,
+                "上的支出低于",
+                other_label,
+                "。",
             )
             if unpriced:
                 text += f"{_join(unpriced, language)} 的完整成本不可估算，不参与比较。"
         else:
             text = (
-                f"{cheaper} of {len(comparable)} priced models spent less through "
-                f"{cheaper_label} than through {other_label}."
+                f"{cheaper} of {len(comparable)} priced models spent less on "
+                f"{cheaper_label} than on {other_label}."
             )
             if unpriced:
                 text += (
@@ -997,12 +1681,17 @@ def _dataset_reversal_text(report: Mapping[str, object], language: str) -> list[
         fault_types = "/".join(scope_names[scope][language == "zh"] for scope in scopes)
         graph = int(correct["semantic_graph"])
         raw = int(correct["raw"])
+        graph_name = ARM_NAMES["semantic_graph"][language]
+        raw_name = ARM_NAMES["raw"][language]
         if language == "zh":
-            parts.append(f"{fault_types}故障（{label}）：Graph {graph}、Raw {raw} 次正确诊断")
+            parts.append(
+                f"{fault_types}故障（{label}）：{graph_name} {graph} 次、"
+                f"{raw_name} {raw} 次正确诊断"
+            )
         else:
             parts.append(
                 f"{fault_types.capitalize()} faults ({label}): "
-                f"Graph {graph}, Raw {raw} correct diagnoses"
+                f"{graph} correct with {graph_name}, {raw} with {raw_name}"
             )
     if language == "zh":
         return [*parts, "这是测量后的分组分析；故障类型与数据来源重合，不能单独归因于故障类型。"]
@@ -1987,6 +2676,8 @@ def render_formal_measurement_report(
     output: Path,
     *,
     report_json_filename: str | None = None,
+    canonical_url: str | None = None,
+    cover_filename: str | None = None,
 ) -> None:
     """Write the self-contained page: skeleton, design, renderer, and both payloads."""
     validate_formal_measurement_report(report)
@@ -1996,6 +2687,12 @@ def render_formal_measurement_report(
     for placeholder, replacement in (
         ("__REPORT_STYLE__", assets.joinpath("report.css").read_text(encoding="utf-8")),
         ("__REPORT_SCRIPT__", assets.joinpath("report.js").read_text(encoding="utf-8")),
+        ("__REPORT_LOGO__", assets.joinpath("logo.svg").read_text(encoding="utf-8").strip()),
+        ("__REPORT_FAVICON__", _data_uri(assets.joinpath("favicon.svg").read_text("utf-8"))),
+        ("__REPORT_TITLE__", _escape(_page_title(report))),
+        ("__REPORT_DESCRIPTION__", _escape(_page_description(report))),
+        ("__REPORT_LOCATION_META__", _location_meta(canonical_url, cover_filename)),
+        ("__REPORT_JSONLD__", _structured_data(report, canonical_url)),
         ("__REPORT_I18N__", _inline_json(_load_i18n(assets))),
         ("__REPORT_DATA__", _inline_json(report)),
         ("__REPORT_VIEW__", _inline_json(view)),
@@ -2004,6 +2701,133 @@ def render_formal_measurement_report(
         if placeholder not in document:
             raise ValueError(f"report template is missing a placeholder: {placeholder}")
         document = document.replace(placeholder, replacement)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(document, encoding="utf-8")
+
+
+def _location_meta(canonical_url: str | None, cover_filename: str | None) -> str:
+    """The tags that name a location, emitted only where the caller knows one.
+
+    A guessed canonical tells a crawler the real page is a duplicate, and a
+    guessed `og:image` shows a card with no picture; both are worse than the
+    tag's absence.
+    """
+    if not canonical_url:
+        return ""
+    tags = [
+        f'  <link rel="canonical" href="{_escape(canonical_url)}">',
+        f'  <meta property="og:url" content="{_escape(canonical_url)}">',
+    ]
+    if cover_filename:
+        cover = canonical_url.rstrip("/") + "/" + cover_filename
+        width, height = COVER_SIZE
+        tags += [
+            f'  <meta property="og:image" content="{_escape(cover)}">',
+            f'  <meta property="og:image:width" content="{width}">',
+            f'  <meta property="og:image:height" content="{height}">',
+        ]
+    return "\n".join(tags)
+
+
+def _structured_data(report: Mapping[str, object], canonical_url: str | None) -> str:
+    """A Dataset record, which is what this page is: measurements and their terms."""
+    publication = report.get("publication")
+    record: dict[str, object] = {
+        "@context": "https://schema.org",
+        "@type": "Dataset",
+        "name": _page_title(report),
+        "description": _page_description(report),
+        "creator": {"@type": "Organization", "name": "Greptime"},
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "inLanguage": list(LANGUAGES),
+        "isAccessibleForFree": True,
+    }
+    if isinstance(publication, Mapping):
+        record["dateModified"] = str(publication["measurement_updated_at"])
+        record["datePublished"] = str(publication["report_generated_at"])
+    if canonical_url:
+        record["url"] = canonical_url
+    return _inline_json(record)
+
+
+def render_social_cover(
+    report: Mapping[str, object], output: Path, *, language: str = "en"
+) -> None:
+    """The share card as a standalone page, ready to be captured at COVER_SIZE.
+
+    It carries the report's own stylesheet and the same class names as the first
+    screen, so the card cannot drift into a second design of the same numbers.
+    The capture step is separate: the page is deterministic, the raster is not.
+    """
+    if language not in LANGUAGES:
+        raise ValueError(f"no cover language: {language}")
+    assets = files("agent_rca_bench").joinpath("assets/report")
+    ledger = _hero_ledger(report)
+    rows = ""
+    if ledger:
+        arm = {side: ARM_NAMES[str(ledger[side])][language] for side in ("left", "right")}
+        rows = "".join(
+            '<div class="ledger-row">'
+            f'<p class="ledger-label">{_escape(mapping(row, "label")[language])}</p>'
+            + "".join(
+                f'<div class="ledger-pair" data-side="{side}">'
+                f'<span class="ledger-arm">{_escape(arm[side])}</span>'
+                '<span class="ledger-track">'
+                f'<span class="ledger-fill" style="width:{float(row[side + "_fill"]) * 100:.4f}%">'
+                "</span></span>"
+                f'<span class="ledger-value">{_escape(str(row[side + "_text"]))}</span>'
+                f'<span class="ledger-delta">{_escape(delta)}</span>'
+                "</div>"
+                for side, delta in (
+                    ("left", str(mapping(row, "delta")[language])),
+                    ("right", ""),
+                )
+            )
+            + "</div>"
+            for row in mapping_list(ledger, "rows")
+        )
+    marks = "".join(
+        '<span class="hero-claim">'
+        + "".join(
+            (
+                f"<mark>{_escape(str(part[language]))}</mark>"
+                if part["kind"] == "mark"
+                else f"<span>{_escape(str(part[language]))}</span>"
+            )
+            for part in clause
+        )
+        + "</span>"
+        for clause in _hero_result(report)
+    )
+    width, height = COVER_SIZE
+    document = f"""<!doctype html>
+<html lang="{"zh-CN" if language == "zh" else "en"}">
+<head><meta charset="utf-8">
+<style>{assets.joinpath("report.css").read_text(encoding="utf-8")}</style>
+<style>
+  body {{ width: {width}px; height: {height}px; overflow: hidden; }}
+  .cover {{ height: 100%; padding: 72px 88px; display: flex; flex-direction: column; }}
+  .cover .logo svg {{ height: 36px; }}
+  .cover h1 {{ margin-top: 34px; font-size: 72px; line-height: 1.06; max-width: 24ch; }}
+  .cover .hero-result {{ margin: 30px 0 0; font-size: 34px; gap: 14px 40px; }}
+  .cover .ledger {{ margin-top: auto; }}
+  .cover .ledger-row {{ padding: 14px 0 16px; }}
+  .cover .ledger-row:last-child {{ border-bottom: 0; padding-bottom: 0; }}
+  .cover .ledger-label {{ font-size: 18px; margin-bottom: 10px; }}
+  .cover .ledger-pair {{ grid-template-columns: 230px minmax(0, 1fr) 280px 140px; gap: 0 24px; }}
+  .cover .ledger-pair + .ledger-pair {{ margin-top: 6px; }}
+  .cover .ledger-arm {{ font-size: 21px; }}
+  .cover .ledger-track {{ height: 26px; }}
+  .cover .ledger-value {{ font-size: 27px; }}
+  .cover .ledger-delta {{ font-size: 26px; }}
+</style></head>
+<body><div class="cover">
+<span class="logo">{assets.joinpath("logo.svg").read_text(encoding="utf-8").strip()}</span>
+<h1>{_escape(_hero_title(report, language))}</h1>
+<p class="hero-result">{marks}</p>
+<div class="ledger">{rows}</div>
+</div></body></html>
+"""
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(document, encoding="utf-8")
 
@@ -2018,6 +2842,15 @@ def _load_i18n(assets) -> dict[str, object]:
     if incomplete:
         raise ValueError(f"report i18n is missing keys: {incomplete}")
     return strings
+
+
+def _data_uri(svg: str) -> str:
+    """An SVG icon inlined into the document, so the page still fetches nothing.
+
+    The double quotes inside the markup are percent-encoded: left literal they
+    close the `href` attribute early and the rest of the icon lands in the body.
+    """
+    return "data:image/svg+xml," + quote(svg.strip(), safe="/:=<>() '")
 
 
 def _inline_json(payload: object) -> str:
