@@ -946,6 +946,50 @@ def test_the_first_screen_states_effects_and_keeps_every_limit_on_the_page() -> 
     assert "not equivalence" in storage_caveats
 
 
+def test_an_arm_name_is_sentence_case_as_a_label_and_lowercase_in_prose() -> None:
+    """The same name takes its case from where it sits, not from one global spelling.
+
+    The ledger's row headers are labels and the interface cards next to them
+    already read "Three backends"; the same words inside "spent less on three
+    backends" are mid-sentence and take no capital.
+    """
+    view = build_report_view_model(_report())
+    ledger = view["charts"]["hero_ledger"]
+    assert ledger["right_name"]["en"] == "Three backends"
+    assert ledger["left_name"]["en"] == "GreptimeDB"
+    # Chinese has no case, so the label transform must leave it untouched.
+    assert ledger["right_name"]["zh"] == "三个后端"
+
+    prose = " ".join(
+        [view["narrative"]["en"]["cost_direction"]["storage_shape"]]
+        + view["narrative"]["en"]["takeaways"]["one_store"]["support"]
+    )
+    assert "on three backends" in prose
+    assert "Three backends" not in prose
+
+
+@pytest.mark.parametrize(
+    ("location", "message"),
+    [
+        ({"canonical_url": "http://example.test"}, "https URL"),
+        ({"canonical_url": "https://example.test/"}, "end in a slash"),
+        ({"canonical_url": "https://example.test", "cover_image": "a/b.png"}, "filename beside"),
+        ({"cover_image": "cover.png"}, "needs a canonical_url"),
+    ],
+)
+def test_publication_location_is_validated(location: dict, message: str) -> None:
+    """The address is part of the record, so it is checked like the rest of it."""
+    with pytest.raises(ValueError, match=message):
+        _report(
+            publication={
+                "schema_version": 1,
+                "measurement_updated_at": "2026-09-08T03:50:20Z",
+                "report_generated_at": "2026-09-08T04:51:03Z",
+                **location,
+            }
+        )
+
+
 def test_page_metadata_carries_the_result_and_never_invents_a_location(tmp_path: Path) -> None:
     """The card states what was measured, and claims an address only when given one.
 
@@ -964,13 +1008,17 @@ def test_page_metadata_carries_the_result_and_never_invents_a_location(tmp_path:
     assert 'name="twitter:card" content="summary_large_image"' in document
 
     located = tmp_path / "located.html"
-    render_formal_measurement_report(
-        report,
-        located,
-        report_json_filename="r.json",
-        canonical_url="https://example.test",
-        cover_filename="cover.png",
+    situated = _report(
+        storage_holm_adjusted_p=0.01,
+        publication={
+            "schema_version": 1,
+            "measurement_updated_at": "2026-09-08T03:50:20Z",
+            "report_generated_at": "2026-09-08T04:51:03Z",
+            "canonical_url": "https://example.test",
+            "cover_image": "cover.png",
+        },
     )
+    render_formal_measurement_report(situated, located, report_json_filename="r.json")
     document = located.read_text()
     assert '<link rel="canonical" href="https://example.test">' in document
     assert 'content="https://example.test/cover.png"' in document

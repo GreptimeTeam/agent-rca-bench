@@ -4148,7 +4148,7 @@
     }
   ],
   "integrity": {
-    "semantic_payload_sha256": "ab23b23c3b3cf70fced9f804c39ead76e6efd9dd370212efaca8dd58a05f78cb"
+    "semantic_payload_sha256": "c2c4d3ca42ba71b6885052e9979fd415dc9c59a22f46f3e5f6de89e7f54a870d"
   },
   "license": {
     "micro_source_terms": {
@@ -16223,6 +16223,8 @@
     }
   },
   "publication": {
+    "canonical_url": "https://rca-bench.greptime.com",
+    "cover_image": "agent-rca-v34-six-model-cover.png",
     "measurement_updated_at": "2026-09-08T03:50:20Z",
     "report_generated_at": "2026-09-08T04:51:03Z",
     "schema_version": 1

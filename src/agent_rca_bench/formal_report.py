@@ -377,6 +377,21 @@ def _validate_publication_metadata(publication: object) -> None:
     generated = _utc_timestamp(publication.get("report_generated_at"))
     if generated < measurement:
         raise ValueError("report_generated_at predates measurement_updated_at")
+    # Where the report is served. It belongs to the record rather than to the
+    # command that renders it: a page whose canonical URL came from an invocation
+    # argument cannot be reproduced byte-for-byte from these inputs alone.
+    canonical = publication.get("canonical_url")
+    if canonical is not None:
+        if not isinstance(canonical, str) or not canonical.startswith("https://"):
+            raise ValueError("publication canonical_url must be an https URL")
+        if canonical.endswith("/"):
+            raise ValueError("publication canonical_url must not end in a slash")
+    cover = publication.get("cover_image")
+    if cover is not None:
+        if not isinstance(cover, str) or not cover or "/" in cover:
+            raise ValueError("publication cover_image must be a filename beside the report")
+        if canonical is None:
+            raise ValueError("publication cover_image needs a canonical_url to resolve against")
 
 
 def _utc_timestamp(value: object) -> datetime:

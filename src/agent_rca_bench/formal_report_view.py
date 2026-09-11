@@ -36,12 +36,6 @@ from agent_rca_bench.formal_report import _mechanism_cohort as mechanism_cohort
 from agent_rca_bench.formal_report import _mechanism_label as mechanism_label
 from agent_rca_bench.formal_report import _to_usd as to_usd
 
-# Where the report is published, as recorded in CITATION.cff and the README
-# badge. A page only claims a canonical URL when its caller knows one: a
-# supplementary artifact served from somewhere else would otherwise tell a
-# crawler that the primary report is a duplicate of it.
-PUBLICATION_URL = "https://rca-bench.greptime.com"
-
 # The site's own share-card geometry, so a card from this page crops the way a
 # card from greptime.com does.
 COVER_SIZE = (1800, 900)
@@ -60,6 +54,18 @@ ARM_NAMES = {
     "semantic_graph": {"en": "the Semantic Graph", "zh": "语义层"},
     "split_pillars": {"en": "three backends", "zh": "三个后端"},
 }
+
+
+def _label_case(name: Mapping[str, str]) -> dict[str, str]:
+    """The same name as a standalone label rather than mid-sentence.
+
+    `ARM_NAMES` is written for prose, where "spent less on three backends" is
+    correct and a capital would not be. A row header or a legend is sentence
+    case, and the interface cards on this page already say "Three backends".
+    Chinese has no case, so the transform is a no-op there.
+    """
+    return {language: text[:1].upper() + text[1:] for language, text in name.items()}
+
 
 # Registered endpoints only. A metric that is not comparable in a family - rows
 # returned across the split stack - is absent here rather than plotted as zero.
@@ -1045,8 +1051,8 @@ def _hero_ledger(report: Mapping[str, object]) -> dict[str, object] | None:
     return {
         "left": left,
         "right": right,
-        "left_name": dict(ARM_NAMES[left]),
-        "right_name": dict(ARM_NAMES[right]),
+        "left_name": _label_case(ARM_NAMES[left]),
+        "right_name": _label_case(ARM_NAMES[right]),
         "rows": rows,
     }
 
@@ -2676,11 +2682,18 @@ def render_formal_measurement_report(
     output: Path,
     *,
     report_json_filename: str | None = None,
-    canonical_url: str | None = None,
-    cover_filename: str | None = None,
 ) -> None:
-    """Write the self-contained page: skeleton, design, renderer, and both payloads."""
+    """Write the self-contained page: skeleton, design, renderer, and both payloads.
+
+    Where the page will be served is read from the report's publication record,
+    not passed in here: a canonical URL that arrived as an invocation argument
+    would leave the published bytes unreproducible from the committed inputs.
+    """
     validate_formal_measurement_report(report)
+    publication = report.get("publication")
+    location = publication if isinstance(publication, Mapping) else {}
+    canonical_url = location.get("canonical_url")
+    cover_filename = location.get("cover_image")
     view = build_report_view_model(report, report_json_filename=report_json_filename)
     assets = files("agent_rca_bench").joinpath("assets/report")
     document = assets.joinpath("index.html").read_text(encoding="utf-8")
@@ -2705,21 +2718,22 @@ def render_formal_measurement_report(
     output.write_text(document, encoding="utf-8")
 
 
-def _location_meta(canonical_url: str | None, cover_filename: str | None) -> str:
-    """The tags that name a location, emitted only where the caller knows one.
+def _location_meta(canonical_url: object, cover_filename: object) -> str:
+    """The tags that name a location, emitted only where the record carries one.
 
     A guessed canonical tells a crawler the real page is a duplicate, and a
     guessed `og:image` shows a card with no picture; both are worse than the
-    tag's absence.
+    tag's absence. A supplementary artifact publishes no location and gets
+    neither tag.
     """
-    if not canonical_url:
+    if not isinstance(canonical_url, str) or not canonical_url:
         return ""
     tags = [
         f'  <link rel="canonical" href="{_escape(canonical_url)}">',
         f'  <meta property="og:url" content="{_escape(canonical_url)}">',
     ]
-    if cover_filename:
-        cover = canonical_url.rstrip("/") + "/" + cover_filename
+    if isinstance(cover_filename, str) and cover_filename:
+        cover = f"{canonical_url}/{cover_filename}"
         width, height = COVER_SIZE
         tags += [
             f'  <meta property="og:image" content="{_escape(cover)}">',
@@ -2729,7 +2743,7 @@ def _location_meta(canonical_url: str | None, cover_filename: str | None) -> str
     return "\n".join(tags)
 
 
-def _structured_data(report: Mapping[str, object], canonical_url: str | None) -> str:
+def _structured_data(report: Mapping[str, object], canonical_url: object) -> str:
     """A Dataset record, which is what this page is: measurements and their terms."""
     publication = report.get("publication")
     record: dict[str, object] = {
@@ -2745,7 +2759,7 @@ def _structured_data(report: Mapping[str, object], canonical_url: str | None) ->
     if isinstance(publication, Mapping):
         record["dateModified"] = str(publication["measurement_updated_at"])
         record["datePublished"] = str(publication["report_generated_at"])
-    if canonical_url:
+    if isinstance(canonical_url, str) and canonical_url:
         record["url"] = canonical_url
     return _inline_json(record)
 
@@ -2765,7 +2779,7 @@ def render_social_cover(
     ledger = _hero_ledger(report)
     rows = ""
     if ledger:
-        arm = {side: ARM_NAMES[str(ledger[side])][language] for side in ("left", "right")}
+        arm = {side: mapping(ledger, f"{side}_name")[language] for side in ("left", "right")}
         rows = "".join(
             '<div class="ledger-row">'
             f'<p class="ledger-label">{_escape(mapping(row, "label")[language])}</p>'
