@@ -2730,6 +2730,10 @@ def _location_meta(canonical_url: object, cover_filename: object) -> str:
         return ""
     tags = [
         f'  <link rel="canonical" href="{_escape(canonical_url)}">',
+        # The inlined icon keeps the file self-contained, but a crawler does not
+        # fetch a data URI: search results show an icon only for one it can
+        # request. A served page declares both.
+        f'  <link rel="icon" type="image/svg+xml" href="{_escape(canonical_url)}/favicon.svg">',
         f'  <meta property="og:url" content="{_escape(canonical_url)}">',
     ]
     if isinstance(cover_filename, str) and cover_filename:
