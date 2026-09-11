@@ -6,6 +6,7 @@ on:
     paths:
       - artifacts/measurement/agent-rca-v34-six-model.html
       - artifacts/measurement/agent-rca-v34-six-model.json
+      - artifacts/measurement/agent-rca-v34-six-model-cover.png
       - artifacts/measurement/agent-rca-v34-six-model-SHA256SUMS
       - artifacts/measurement/agent-rca-v34.html
       - artifacts/measurement/agent-rca-v34.json
@@ -42,6 +43,9 @@ jobs:
           mkdir _site
           cp artifacts/measurement/agent-rca-v34-six-model.html _site/index.html
           cp artifacts/measurement/agent-rca-v34-six-model.json _site/
+          # The share card the page's og:image points at. Its filename comes from
+          # the report's publication record, so the copy has to keep that name.
+          cp artifacts/measurement/agent-rca-v34-six-model-cover.png _site/
           cp artifacts/measurement/agent-rca-v34.html _site/
           cp artifacts/measurement/agent-rca-v34.json _site/
           cp artifacts/measurement/agent-rca-v34-two-model-extension.html _site/
